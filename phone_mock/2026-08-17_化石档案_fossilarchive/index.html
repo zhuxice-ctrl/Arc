@@ -1,0 +1,2919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>化石档案 Fossil Archive — 原生 App</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #1A1410;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 20% 20%, rgba(160,82,45,0.18), transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(74,124,111,0.15), transparent 50%),
+      #1A1410;
+  }
+  .stage { display: flex; gap: 40px; align-items: center; justify-content: center; }
+  .caption {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(237,228,211,0.4); font-size: 12px; letter-spacing: 0.08em;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── custom cursor ── */
+  .cursor {
+    position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999;
+    width: 28px; height: 28px;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(.2,.9,.3,1.2), height 0.25s cubic-bezier(.2,.9,.3,1.2);
+    will-change: transform;
+  }
+  .cursor-ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 2.5px solid #fff;
+    box-shadow:
+      0 0 12px rgba(255,255,255,0.5),
+      0 0 24px rgba(160,82,45,0.6),
+      0 0 40px rgba(160,82,45,0.3);
+    transition: all 0.25s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .cursor-dot {
+    position: absolute; top: 50%; left: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #A0522D;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(160,82,45,0.8);
+    transition: all 0.2s ease;
+  }
+  .cursor.hover .cursor-ring {
+    width: 100%; height: 100%;
+    border-color: #4A7C6F;
+    box-shadow: 0 0 16px rgba(74,124,111,0.7), 0 0 32px rgba(74,124,111,0.4);
+    transform: scale(1.4);
+  }
+  .cursor.hover .cursor-dot { background: #4A7C6F; }
+  .cursor.click .cursor-ring {
+    animation: cursorRipple 0.5s ease-out;
+  }
+  @keyframes cursorRipple {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* page transition */
+  .page-enter { animation: pageSlideIn 0.35s cubic-bezier(.2,.8,.2,1) both; }
+  .page-exit { animation: pageSlideOut 0.3s cubic-bezier(.4,0,.8,.2) both; }
+  @keyframes pageSlideIn {
+    from { transform: translateX(100%); opacity: 0.5; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes pageSlideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(-30%); opacity: 0; }
+  }
+
+  /* modal */
+  .modal-enter { animation: modalUp 0.35s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes modalUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .modal-backdrop-enter { animation: fadeIn 0.25s ease both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { display: none; }
+  * { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* utility */
+  .interactive { cursor: pointer; }
+  .serif { font-family: 'Playfair Display', Georgia, serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* particle */
+  .particle {
+    position: absolute; pointer-events: none;
+    border-radius: 50%;
+    animation: particleFloat 2.5s ease-out forwards;
+  }
+  @keyframes particleFloat {
+    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+  }
+
+  /* fade-up items */
+  .fade-up { animation: fadeUp 0.6s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* shimmer */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* bone wiggle */
+  @keyframes boneWiggle {
+    0%, 100% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+  }
+
+  /* dust float */
+  @keyframes dustFloat {
+    0% { transform: translateY(0) translateX(0); opacity: 0; }
+    20% { opacity: 0.7; }
+    100% { transform: translateY(-60px) translateX(10px); opacity: 0; }
+  }
+
+  /* spin slow */
+  @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* pulse ring */
+  @keyframes pulseRing {
+    0% { transform: scale(0.8); opacity: 1; }
+    100% { transform: scale(2); opacity: 0; }
+  }
+
+  /* typing */
+  @keyframes typingBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* wave */
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  /* slide up staggered */
+  .slide-1 { animation: slideUp 0.5s cubic-bezier(.2,.8,.2,1) 0.05s both; }
+  .slide-2 { animation: slideUp 0.5s cubic-bezier(.2,.8,.2,1) 0.1s both; }
+  .slide-3 { animation: slideUp 0.5s cubic-bezier(.2,.8,.2,1) 0.15s both; }
+  .slide-4 { animation: slideUp 0.5s cubic-bezier(.2,.8,.2,1) 0.2s both; }
+  .slide-5 { animation: slideUp 0.5s cubic-bezier(.2,.8,.2,1) 0.25s both; }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div id="root"></div>
+  </div>
+  <div class="caption">FOSSIL ARCHIVE · V2 NATIVE APP · 2026</div>
+
+  <div class="cursor" id="cursor">
+    <div class="cursor-ring"></div>
+    <div class="cursor-dot"></div>
+  </div>
+
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+  /* ================================================================
+     FOSSIL ARCHIVE — Native iOS App
+     All JSX inlined per constraint.
+     Palette: earth #6B4F3A / bone #EDE4D3 / patina #4A7C6F / dark #2E211A / rust #A0522D
+     ================================================================ */
+
+  const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+  // ── palette ──
+  const C = {
+    earth: '#6B4F3A',
+    bone: '#EDE4D3',
+    patina: '#4A7C6F',
+    dark: '#2E211A',
+    deeper: '#1A1410',
+    rust: '#A0522D',
+    boneSoft: 'rgba(237,228,211,0.7)',
+    boneFaint: 'rgba(237,228,211,0.25)',
+    earthSoft: 'rgba(107,79,58,0.6)',
+    rustSoft: 'rgba(160,82,45,0.6)',
+  };
+
+  // ── fossil data (real species, periods, locations) ──
+  const FOSSILS = [
+    {
+      id: 'tyrannosaurus',
+      name: '霸王龙',
+      latin: 'Tyrannosaurus rex',
+      period: '白垩纪晚期',
+      periodYears: '6800–6600 万年前',
+      location: '美国蒙大拿州地狱溪组',
+      class: '兽脚亚目 · 暴龙科',
+      rarity: '珍稀',
+      image: 'tyrannosaurus',
+      desc: '暴龙科体型最大的属种，体长可达 12–13 米，重约 8 吨。拥有陆地动物中最强的咬合力，约 35,000 牛顿。',
+      facts: ['牙齿最长可达 30 厘米，呈香蕉形，边缘带锯齿', '后肢强壮但前肢极度退化，仅两指', '化石主要发现于北美西部'],
+      color: C.rust,
+    },
+    {
+      id: 'triceratops',
+      name: '三角龙',
+      latin: 'Triceratops horridus',
+      period: '白垩纪晚期',
+      periodYears: '6800–6600 万年前',
+      location: '美国怀俄明州兰斯组',
+      class: '鸟臀目 · 角龙科',
+      rarity: '常见',
+      image: 'triceratops',
+      desc: '晚白垩世最具代表性的植食性恐龙，头盾与三根角是其标志性特征。头骨可达 2.5 米长。',
+      facts: ['头盾可能用于种内展示与防御', '共有三根角：鼻角一根，眉角两根', '曾与霸王龙共存于同一生态系统'],
+      color: C.patina,
+    },
+    {
+      id: 'stegosaurus',
+      name: '剑龙',
+      latin: 'Stegosaurus stenops',
+      period: '侏罗纪晚期',
+      periodYears: '1.55–1.5 亿年前',
+      location: '美国科罗拉多州莫里逊组',
+      class: '鸟臀目 · 剑龙科',
+      rarity: '常见',
+      image: 'stegosaurus',
+      desc: '背部两排交替排列的骨质板是其最显著特征。尾部长有四根 1 米长的尾刺，用作防御武器。',
+      facts: ['背板可能用于体温调节与展示', '脑仅核桃大小，重约 70 克', '体型可达 9 米长，4 吨重'],
+      color: C.earth,
+    },
+    {
+      id: 'archaeopteryx',
+      name: '始祖鸟',
+      latin: 'Archaeopteryx lithographica',
+      period: '侏罗纪晚期',
+      periodYears: '1.5 亿年前',
+      location: '德国巴伐利亚索伦霍芬',
+      class: '蜥臀目 · 近鸟类',
+      rarity: '极珍稀',
+      image: 'archaeopteryx',
+      desc: '被认为是最早的鸟类之一，兼具恐龙与鸟类特征：有牙齿、长尾、羽毛与翅膀。仅发现 12 具标本。',
+      facts: ['1861 年首具标本发现于德国', '大小与现代乌鸦相当', '羽毛结构证明其具备滑翔能力'],
+      color: C.patina,
+    },
+    {
+      id: 'ammonite',
+      name: '菊石',
+      latin: 'Ammonoidea',
+      period: '泥盆纪–白垩纪',
+      periodYears: '4.09 亿–6600 万年前',
+      location: '全球海洋沉积岩',
+      class: '头足纲 · 菊石亚纲',
+      rarity: '常见',
+      image: 'ammonite',
+      desc: '已灭绝的头足类软体动物，与现代章鱼、乌贼远亲。螺旋形外壳由多个气室组成，可调节浮力。',
+      facts: ['壳面缝合线复杂多样，是分类重要依据', '体型从几厘米到 2 米以上不等', '与恐龙一同在白垩纪末灭绝'],
+      color: C.rust,
+    },
+    {
+      id: 'trilobite',
+      name: '三叶虫',
+      latin: 'Trilobita',
+      period: '寒武纪–二叠纪',
+      periodYears: '5.21 亿–2.52 亿年前',
+      location: '全球浅海沉积',
+      class: '三叶虫纲',
+      rarity: '常见',
+      image: 'trilobite',
+      desc: '已灭绝的节肢动物，身体纵分为三叶（轴叶和两个肋叶），因此得名。是古生代最繁盛的海洋生物之一。',
+      facts: ['种类超过 20,000 种，持续生存近 2.7 亿年', '复眼由方解石晶体构成，为动物界独有', '二叠纪末大灭绝中彻底消失'],
+      color: C.earth,
+    },
+    {
+      id: 'mammoth',
+      name: '猛犸象',
+      latin: 'Mammuthus primigenius',
+      period: '更新世',
+      periodYears: '40 万–4000 年前',
+      location: '西伯利亚 · 阿拉斯加永冻层',
+      class: '长鼻目 · 象科',
+      rarity: '珍稀',
+      image: 'mammoth',
+      desc: '最后一批真猛犸象在约 4000 年前灭绝于弗兰格尔岛。因永冻土层保存完整，可提取 DNA。',
+      facts: ['肩高约 3–3.5 米，体重 6–8 吨', '象牙可长达 4.5 米，且有扭旋纹理', '厚皮下有 10 厘米厚的脂肪层御寒'],
+      color: C.rust,
+    },
+    {
+      id: 'megalodon',
+      name: '巨齿鲨',
+      latin: 'Otodus megalodon',
+      period: '中新世–上新世',
+      periodYears: '2300 万–260 万年前',
+      location: '全球温带与热带海洋',
+      class: '软骨鱼纲 · 鼠鲨目',
+      rarity: '极珍稀',
+      image: 'megalodon',
+      desc: '地球历史上体型最大的鲨鱼，体长估计 15–20 米，体重 60–70 吨。以鲸类为主要猎物。',
+      facts: ['单颗牙齿可长达 18 厘米', '咬合力约 18 万牛顿，为动物史之最', '骨骼为软骨，化石几乎仅剩牙齿'],
+      color: C.earth,
+    },
+  ];
+
+  const COLLECTION_DATA = [
+    { id: 'ammonite-01', fossil: 'ammonite', found: '2024.06.12', location: '西藏聂拉木', condition: '完整' },
+    { id: 'trilobite-01', fossil: 'trilobite', found: '2024.03.08', location: '云南澄江', condition: '良好' },
+    { id: 'mammoth-01', fossil: 'mammoth', found: '2023.08.20', location: '俄罗斯雅库特', condition: '极佳' },
+    { id: 'triceratops-01', fossil: 'triceratops', found: '2023.11.02', location: '美国南达科他州', condition: '碎片' },
+  ];
+
+  const PERIODS = [
+    { name: '寒武纪', years: '5.41–4.85 亿年', color: '#4A7C6F', count: 128 },
+    { name: '奥陶纪', years: '4.85–4.44 亿年', color: '#3D6B5E', count: 86 },
+    { name: '志留纪', years: '4.44–4.19 亿年', color: '#5A8B7A', count: 54 },
+    { name: '泥盆纪', years: '4.19–3.59 亿年', color: '#6B4F3A', count: 92 },
+    { name: '石炭纪', years: '3.59–2.99 亿年', color: '#7B5A45', count: 73 },
+    { name: '二叠纪', years: '2.99–2.52 亿年', color: '#8B6A55', count: 105 },
+    { name: '三叠纪', years: '2.52–2.01 亿年', color: '#A0522D', count: 67 },
+    { name: '侏罗纪', years: '2.01–1.45 亿年', color: '#B8653F', count: 156 },
+    { name: '白垩纪', years: '1.45 亿–6600 万年', color: '#A0522D', count: 214 },
+    { name: '古近纪', years: '6600–2300 万年', color: '#6B4F3A', count: 89 },
+    { name: '新近纪', years: '2300–260 万年', color: '#7B5A45', count: 77 },
+    { name: '第四纪', years: '260 万年至今', color: '#5A8B7A', count: 43 },
+  ];
+
+  // ── SVG fossil silhouettes (inline, no external images) ──
+  function FossilSVG({ kind = 'triceratops', color = C.bone, size = 80 }) {
+    const common = { width: size, height: size, viewBox: '0 0 100 100', fill: 'none', stroke: color, strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    switch (kind) {
+      case 'tyrannosaurus':
+        return (
+          <svg {...common}>
+            <path d="M10 75 Q 15 65 25 62 L 35 60 Q 45 58 55 55 L 65 52 Q 75 48 82 42 L 88 35 Q 92 28 88 22 L 82 18 Q 78 16 75 20 L 72 26 Q 68 30 62 33 L 55 36 Q 48 38 42 39 L 35 40 Q 28 42 22 45 L 18 50 Q 15 55 16 62 L 14 70 Q 12 73 10 75Z" />
+            <path d="M30 62 L 32 80 M 40 60 L 42 80 M 50 57 L 52 75 M 60 54 L 62 72" />
+            <path d="M82 42 Q 78 55 85 65 Q 78 60 75 52" />
+            <circle cx="80" cy="25" r="1.5" fill={color} />
+            <path d="M86 30 L 88 28 M 85 32 L 87 30" strokeWidth="0.8" />
+          </svg>
+        );
+      case 'triceratops':
+        return (
+          <svg {...common}>
+            <path d="M15 65 Q 18 55 30 52 L 50 50 Q 65 48 72 42 L 78 32 Q 80 22 75 18 L 65 15 Q 60 14 58 20 L 55 28 Q 52 35 45 38 L 38 40 Q 30 42 25 45 L 20 50 Q 16 55 15 65Z" />
+            <path d="M68 20 L 75 8 M 60 18 L 58 6" />
+            <path d="M28 52 L 30 75 M 40 52 L 42 75 M 52 51 L 54 73 M 62 48 L 64 70" />
+            <circle cx="65" cy="25" r="1.2" fill={color} />
+            <path d="M72 35 Q 70 30 68 28" strokeWidth="1" />
+          </svg>
+        );
+      case 'stegosaurus':
+        return (
+          <svg {...common}>
+            <path d="M10 70 Q 15 60 28 58 L 70 55 Q 82 53 88 48 L 92 45 Q 94 42 92 40 L 88 38 Q 85 37 82 40 L 78 44 Q 72 48 65 50 L 55 52 Q 45 53 35 53 L 25 53 Q 18 53 12 58 L 10 62 Q 8 67 10 70Z" />
+            <path d="M20 55 L 18 40 M 28 53 L 27 35 M 36 52 L 36 32 M 44 51 L 45 30 M 52 50 L 53 28 M 60 49 L 62 27 M 68 47 L 70 26 M 76 44 L 78 25" strokeWidth="2" />
+            <path d="M15 58 L 16 75 M 25 57 L 27 75 M 55 52 L 57 73 M 70 50 L 72 72" />
+            <path d="M92 45 L 96 40 L 94 48 Z" fill={color} />
+          </svg>
+        );
+      case 'archaeopteryx':
+        return (
+          <svg {...common}>
+            <path d="M70 25 Q 75 23 78 28 L 76 34 Q 74 38 70 38 L 60 42 Q 50 45 40 48 L 30 52 Q 22 55 18 60 L 20 65 Q 22 68 28 67 L 38 64 Q 48 62 58 60 L 68 58 Q 72 56 74 52 L 76 44 Q 78 38 76 32 Z" />
+            <path d="M60 42 Q 50 35 40 32 Q 30 30 20 35 Q 15 40 18 48 L 25 52 Q 35 50 45 48 Z" />
+            <path d="M45 62 L 44 75 L 48 76 M 55 60 L 54 73 L 58 74" />
+            <path d="M74 27 L 78 25 M 76 30 L 79 28" strokeWidth="0.8" />
+            <circle cx="75" cy="29" r="1" fill={color} />
+          </svg>
+        );
+      case 'ammonite':
+        return (
+          <svg {...common}>
+            <path d="M50 50 m -35,0 a 35,35 0 1,0 70,0 a 35,35 0 1,0 -70,0" />
+            <path d="M50 50 m -26,0 a 26,26 0 1,0 52,0 a 26,26 0 1,0 -52,0" />
+            <path d="M50 50 m -18,0 a 18,18 0 1,0 36,0 a 18,18 0 1,0 -36,0" />
+            <path d="M50 50 m -10,0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0" />
+            <path d="M50 50 m -4,0 a 4,4 0 1,0 8,0 a 4,4 0 1,0 -8,0" />
+            <path d="M50 15 Q 48 25 50 35 M 25 30 Q 30 35 35 35 M 75 30 Q 70 35 65 35 M 20 55 Q 28 55 35 50 M 80 55 Q 72 55 65 50" strokeWidth="0.8" />
+          </svg>
+        );
+      case 'trilobite':
+        return (
+          <svg {...common}>
+            <path d="M50 15 Q 35 16 28 25 L 18 40 Q 15 50 18 60 L 28 75 Q 35 85 50 86 Q 65 85 72 75 L 82 60 Q 85 50 82 40 L 72 25 Q 65 16 50 15Z" />
+            <path d="M50 15 L 50 86" />
+            <path d="M38 18 L 38 82 M 62 18 L 62 82" strokeWidth="0.8" />
+            <path d="M25 30 L 18 28 M 22 40 L 16 38 M 22 50 L 15 50 M 22 60 L 16 62 M 25 70 L 18 73" />
+            <path d="M75 30 L 82 28 M 78 40 L 84 38 M 78 50 L 85 50 M 78 60 L 84 62 M 75 70 L 82 73" />
+            <circle cx="44" cy="22" r="1.5" fill={color} />
+            <circle cx="56" cy="22" r="1.5" fill={color} />
+          </svg>
+        );
+      case 'mammoth':
+        return (
+          <svg {...common}>
+            <path d="M25 70 Q 22 55 30 45 L 42 38 Q 50 35 58 35 L 70 38 Q 78 42 82 50 L 85 60 Q 86 68 84 75 L 80 80 Q 76 82 74 78 L 72 72 Q 68 68 62 68 L 45 68 Q 38 68 34 72 L 32 78 Q 30 82 26 80 L 22 75 Q 20 72 25 70Z" />
+            <path d="M60 45 Q 55 48 52 55 Q 50 62 55 68" />
+            <path d="M72 50 Q 68 55 65 60" />
+            <path d="M30 70 L 32 85 M 40 70 L 42 85 M 62 70 L 64 85 M 75 70 L 77 85" />
+            <path d="M82 55 Q 90 60 88 70 Q 86 78 78 75" />
+            <path d="M50 28 Q 48 20 52 18 Q 55 17 57 22 L 58 30" />
+            <path d="M65 32 Q 63 24 67 22 Q 70 22 72 27 L 73 34" />
+          </svg>
+        );
+      case 'megalodon':
+        return (
+          <svg {...common}>
+            <path d="M10 50 Q 15 42 25 45 L 40 48 Q 55 46 65 42 L 78 38 Q 85 36 90 40 L 94 45 Q 95 48 92 52 L 85 56 Q 78 58 70 55 L 55 52 Q 40 50 28 52 L 18 54 Q 12 56 10 50Z" />
+            <path d="M78 38 L 75 28 Q 73 25 70 28 L 68 38" />
+            <path d="M72 55 L 70 65 Q 68 70 65 68 L 62 56" />
+            <path d="M20 52 L 15 62 Q 12 66 10 62 L 8 53" />
+            <path d="M88 40 L 92 35 M 90 45 L 95 42" strokeWidth="0.8" />
+            <path d="M92 48 L 94 46 L 96 49 L 94 52 Z" fill={color} />
+            <path d="M40 48 L 42 52 L 44 48 L 46 52 L 48 48" />
+          </svg>
+        );
+      default:
+        return <svg {...common}><circle cx="50" cy="50" r="30" /></svg>;
+    }
+  }
+
+  // ── Icon system ──
+  const Icon = {
+    Home: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12L12 3l9 9" /><path d="M5 10v10h14V10" />
+      </svg>
+    ),
+    Book: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    ),
+    MapPin: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+      </svg>
+    ),
+    Camera: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" />
+      </svg>
+    ),
+    Archive: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" />
+      </svg>
+    ),
+    Search: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+    ),
+    Back: ({ size = 22, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+    ),
+    ChevronRight: ({ size = 18, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
+    ),
+    Plus: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    ),
+    Share: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      </svg>
+    ),
+    Heart: ({ size = 20, color = 'currentColor', filled = false }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      </svg>
+    ),
+    Settings: ({ size = 22, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    ),
+    Sparkle: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+        <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" />
+      </svg>
+    ),
+    Layers: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
+      </svg>
+    ),
+    Clock: ({ size = 18, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+    Filter: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+      </svg>
+    ),
+    Code: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+    Palette: ({ size = 20, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="13.5" cy="6.5" r=".5" /><circle cx="17.5" cy="10.5" r=".5" /><circle cx="8.5" cy="7.5" r=".5" /><circle cx="6.5" cy="12.5" r=".5" />
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+      </svg>
+    ),
+    Upload: ({ size = 24, color = 'currentColor' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+      </svg>
+    ),
+  };
+
+  // ── Status Bar (inline variant) ──
+  function StatusBar({ dark = false, time = '9:41' }) {
+    const c = dark ? C.bone : C.dark;
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '15px 28px 10px', position: 'relative', zIndex: 20,
+        height: 54,
+      }}>
+        <span style={{ fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590, fontSize: 16, color: c }}>{time}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <svg width="18" height="11" viewBox="0 0 19 12">
+            <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill={c}/>
+            <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill={c}/>
+            <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill={c}/>
+            <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill={c}/>
+          </svg>
+          <svg width="16" height="11" viewBox="0 0 17 12">
+            <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill={c}/>
+            <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill={c}/>
+            <circle cx="8.5" cy="10.5" r="1.5" fill={c}/>
+          </svg>
+          <svg width="26" height="12" viewBox="0 0 27 13">
+            <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke={c} strokeOpacity="0.35" fill="none"/>
+            <rect x="2" y="2" width="20" height="9" rx="2" fill={c}/>
+            <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill={c} fillOpacity="0.4"/>
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Device Frame ──
+  function DeviceFrame({ children, width = 390, height = 844 }) {
+    return (
+      <div style={{
+        width, height, borderRadius: 46, overflow: 'hidden',
+        position: 'relative', background: C.deeper,
+        border: '2px solid rgba(237,228,211,0.12)',
+        boxShadow: '0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(237,228,211,0.05)',
+        fontFamily: '"Inter", -apple-system, system-ui, sans-serif',
+        WebkitFontSmoothing: 'antialiased',
+      }}>
+        {/* dynamic island */}
+        <div style={{
+          position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+          width: 120, height: 35, borderRadius: 22, background: '#000', zIndex: 100,
+        }} />
+        {/* content */}
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          {children}
+        </div>
+        {/* home indicator */}
+        <div style={{
+          position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)',
+          width: 134, height: 4.5, borderRadius: 100,
+          background: 'rgba(237,228,211,0.55)',
+          zIndex: 100,
+        }} />
+      </div>
+    );
+  }
+
+  // ── Large Title Nav Bar (iOS native) ──
+  function LargeNavBar({ title, subtitle, onBack, rightIcon, onRight, dark = false }) {
+    const textColor = dark ? C.bone : C.dark;
+    return (
+      <div style={{
+        padding: '4px 20px 12px',
+        position: 'relative', zIndex: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 36 }}>
+          <div style={{ width: 36 }}>
+            {onBack && (
+              <div className="interactive" onClick={onBack} style={{
+                width: 36, height: 36, borderRadius: 18,
+                background: dark ? 'rgba(237,228,211,0.1)' : 'rgba(46,33,26,0.08)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon.Back size={20} color={textColor} />
+              </div>
+            )}
+          </div>
+          {rightIcon && (
+            <div className="interactive" onClick={onRight} style={{
+              width: 36, height: 36, borderRadius: 18,
+              background: dark ? 'rgba(237,228,211,0.1)' : 'rgba(46,33,26,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {rightIcon}
+            </div>
+          )}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <h1 className="serif" style={{
+            fontSize: 34, fontWeight: 700, letterSpacing: -0.5,
+            color: textColor, lineHeight: 1.1,
+          }}>{title}</h1>
+          {subtitle && (
+            <p style={{
+              fontSize: 14, color: dark ? C.boneSoft : C.earthSoft,
+              marginTop: 4, fontWeight: 400, letterSpacing: 0.2,
+            }}>{subtitle}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Standard Nav Bar (inline title) ──
+  function NavBar({ title, onBack, rightSlot, dark = false }) {
+    const textColor = dark ? C.bone : C.dark;
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 16px', height: 52, position: 'relative', zIndex: 10,
+      }}>
+        <div style={{ width: 40 }}>
+          {onBack && (
+            <div className="interactive" onClick={onBack} style={{
+              width: 36, height: 36, borderRadius: 18,
+              background: dark ? 'rgba(237,228,211,0.1)' : 'rgba(46,33,26,0.06)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Icon.Back size={20} color={textColor} />
+            </div>
+          )}
+        </div>
+        <div style={{
+          fontSize: 17, fontWeight: 600, color: textColor, letterSpacing: -0.3,
+          fontFamily: '-apple-system, "Inter", system-ui',
+        }}>{title}</div>
+        <div style={{ width: 40, display: 'flex', justifyContent: 'flex-end' }}>
+          {rightSlot}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Tab Bar (iOS native) ──
+  const TAB_ITEMS = [
+    { key: 'home', label: '图鉴', icon: Icon.Home },
+    { key: 'catalog', label: '分类', icon: Icon.Layers },
+    { key: 'camera', label: '鉴定', icon: Icon.Camera },
+    { key: 'map', label: '采集', icon: Icon.MapPin },
+    { key: 'collection', label: '收藏', icon: Icon.Archive },
+  ];
+
+  function TabBar({ active, onChange, dark = false }) {
+    return (
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 50,
+        paddingBottom: 22, paddingTop: 6,
+        background: dark
+          ? 'linear-gradient(to top, rgba(26,20,16,0.95), rgba(26,20,16,0.75))'
+          : 'linear-gradient(to top, rgba(237,228,211,0.95), rgba(237,228,211,0.75))',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        borderTop: `0.5px solid ${dark ? 'rgba(237,228,211,0.1)' : 'rgba(107,79,58,0.15)'}`,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around',
+          padding: '0 8px',
+        }}>
+          {TAB_ITEMS.map(item => {
+            const isActive = active === item.key;
+            const Ic = item.icon;
+            return (
+              <div
+                key={item.key}
+                className="interactive"
+                onClick={() => onChange(item.key)}
+                style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 3,
+                  padding: '6px 0 2px',
+                  position: 'relative',
+                }}
+              >
+                <div style={{
+                  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                  transition: 'transform 0.25s cubic-bezier(.2,.8,.2,1)',
+                }}>
+                  <Ic size={22} color={isActive ? C.rust : (dark ? 'rgba(237,228,211,0.5)' : 'rgba(107,79,58,0.5)')} />
+                </div>
+                <span style={{
+                  fontSize: 10, fontWeight: isActive ? 600 : 500,
+                  color: isActive ? C.rust : (dark ? 'rgba(237,228,211,0.5)' : 'rgba(107,79,58,0.5)'),
+                  letterSpacing: 0.1,
+                  transition: 'color 0.2s ease',
+                }}>{item.label}</span>
+                {item.key === 'camera' && (
+                  <div style={{
+                    position: 'absolute', top: -2, left: '50%', transform: 'translateX(-50%)',
+                    width: 48, height: 48, borderRadius: 24,
+                    background: `linear-gradient(135deg, ${C.rust}, ${C.earth})`,
+                    boxShadow: `0 4px 12px ${C.rustSoft}, 0 2px 4px rgba(0,0,0,0.2)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 10,
+                  }}>
+                    <Icon.Camera size={22} color={C.bone} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 1: Home (图鉴信息流)
+  // ================================================================
+  function HomePage({ onFossilTap, onNavigate }) {
+    const [refreshing, setRefreshing] = useState(false);
+    const scrollRef = useRef(null);
+    const pullStartY = useRef(0);
+    const pullDistance = useRef(0);
+    const [pullOffset, setPullOffset] = useState(0);
+
+    // ── pull to refresh (native-style) ──
+    const handleTouchStart = (e) => {
+      if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+        pullStartY.current = e.touches[0].clientY;
+      }
+    };
+    const handleTouchMove = (e) => {
+      if (scrollRef.current && scrollRef.current.scrollTop === 0 && pullStartY.current) {
+        const dy = e.touches[0].clientY - pullStartY.current;
+        if (dy > 0) {
+          pullDistance.current = Math.min(dy * 0.5, 100);
+          setPullOffset(pullDistance.current);
+        }
+      }
+    };
+    const handleTouchEnd = () => {
+      if (pullDistance.current > 60) {
+        setRefreshing(true);
+        setPullOffset(50);
+        setTimeout(() => {
+          setRefreshing(false);
+          setPullOffset(0);
+        }, 1500);
+      } else {
+        setPullOffset(0);
+      }
+      pullStartY.current = 0;
+      pullDistance.current = 0;
+    };
+
+    // desktop simulation: wheel up at top triggers refresh
+    useEffect(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const onWheel = (e) => {
+        if (el.scrollTop === 0 && e.deltaY < -30 && !refreshing) {
+          setRefreshing(true);
+          setPullOffset(50);
+          setTimeout(() => {
+            setRefreshing(false);
+            setPullOffset(0);
+          }, 1400);
+        }
+      };
+      el.addEventListener('wheel', onWheel, { passive: true });
+      return () => el.removeEventListener('wheel', onWheel);
+    }, [refreshing]);
+
+    const featured = FOSSILS[0];
+    const recent = FOSSILS.slice(1, 5);
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.deeper, color: C.bone }}>
+        <LargeNavBar
+          title="化石图鉴"
+          subtitle="探索 5.4 亿年的生命痕迹"
+          rightIcon={<Icon.Search size={20} color={C.bone} />}
+          dark
+        />
+        <div
+          ref={scrollRef}
+          style={{ flex: 1, overflowY: 'auto', position: 'relative' }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Pull to refresh indicator */}
+          <div style={{
+            height: pullOffset, overflow: 'hidden',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: refreshing ? 'none' : 'height 0.3s cubic-bezier(.2,.8,.2,1)',
+          }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              opacity: pullOffset > 20 ? 1 : 0,
+              transition: 'opacity 0.2s',
+            }}>
+              <FossilSVG kind="ammonite" color={C.rust} size={28} />
+              {refreshing ? (
+                <div style={{ fontSize: 11, color: C.boneSoft, letterSpacing: 0.5 }}>正在加载新化石…</div>
+              ) : (
+                <div style={{ fontSize: 11, color: C.boneSoft, letterSpacing: 0.5 }}>
+                  {pullOffset > 60 ? '松开刷新' : '下拉刷新'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Hero card — signature design: diagonal split + fossil portrait */}
+          <div className="slide-1 interactive" onClick={() => onFossilTap(featured)} style={{
+            margin: '8px 20px 20px',
+            borderRadius: 20, overflow: 'hidden', position: 'relative',
+            height: 220, cursor: 'pointer',
+            background: `linear-gradient(135deg, ${C.rust} 0%, ${C.earth} 60%, ${C.dark} 100%)`,
+            boxShadow: `0 8px 24px rgba(160,82,45,0.3), 0 2px 8px rgba(0,0,0,0.2)`,
+          }}>
+            {/* dust particles (signature animation 1) */}
+            <DustParticles count={8} />
+            {/* Diagonal split */}
+            <div style={{
+              position: 'absolute', top: 0, right: 0, bottom: 0,
+              width: '55%',
+              clipPath: 'polygon(20% 0, 100% 0, 100% 100%, 0% 100%)',
+              background: 'rgba(46, 33, 26, 0.4)',
+            }} />
+            <div style={{ position: 'relative', zIndex: 2, padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: 'uppercase',
+                color: C.bone, opacity: 0.7,
+              }}>本周精选</div>
+              <div style={{ flex: 1 }} />
+              <div>
+                <div className="serif" style={{ fontSize: 28, fontWeight: 700, color: C.bone, letterSpacing: -0.5, lineHeight: 1.15 }}>
+                  {featured.name}
+                </div>
+                <div className="serif" style={{ fontSize: 13, fontStyle: 'italic', color: C.bone, opacity: 0.75, marginTop: 2 }}>
+                  {featured.latin}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                  <div style={{
+                    fontSize: 11, padding: '3px 10px', borderRadius: 10,
+                    background: 'rgba(237,228,211,0.2)', color: C.bone, fontWeight: 500,
+                  }}>{featured.period}</div>
+                  <div style={{
+                    fontSize: 11, padding: '3px 10px', borderRadius: 10,
+                    background: 'rgba(237,228,211,0.25)', color: C.bone, fontWeight: 500,
+                  }}>珍稀度：{featured.rarity}</div>
+                </div>
+              </div>
+            </div>
+            {/* Fossil silhouette (large) */}
+            <div style={{
+              position: 'absolute', right: -10, bottom: 10,
+              opacity: 0.25, zIndex: 1,
+              transform: 'rotate(-5deg)',
+            }}>
+              <FossilSVG kind={featured.image} color={C.bone} size={200} />
+            </div>
+          </div>
+
+          {/* Section: 按地质年代 */}
+          <div className="slide-2" style={{ padding: '0 20px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h2 style={{
+                fontSize: 18, fontWeight: 600, color: C.bone, letterSpacing: -0.3,
+              }}>地质年代导航</h2>
+              <div className="interactive" onClick={() => onNavigate('catalog')} style={{
+                fontSize: 13, color: C.rust, fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: 2,
+              }}>
+                全部 <Icon.ChevronRight size={14} color={C.rust} />
+              </div>
+            </div>
+            {/* Horizontal scroll period chips */}
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {PERIODS.slice(0, 8).map((p, i) => (
+                <div key={p.name} className="interactive" style={{
+                  flexShrink: 0,
+                  padding: '10px 14px', borderRadius: 14,
+                  background: `linear-gradient(135deg, ${p.color}40, ${p.color}20)`,
+                  border: `1px solid ${p.color}60`,
+                  cursor: 'pointer',
+                  animation: `fadeUp 0.4s ease ${0.05 * i}s both`,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>{p.name}</div>
+                  <div style={{ fontSize: 10, color: C.boneSoft, marginTop: 2 }}>{p.count} 种</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section: 最新发现 — vertical card stack */}
+          <div className="slide-3" style={{ padding: '8px 20px 100px' }}>
+            <h2 style={{
+              fontSize: 18, fontWeight: 600, color: C.bone, letterSpacing: -0.3, marginBottom: 12,
+            }}>最新发现</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {recent.map((f, i) => (
+                <FossilCard key={f.id} fossil={f} index={i} onClick={() => onFossilTap(f)} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function FossilCard({ fossil, index, onClick }) {
+    const [liked, setLiked] = useState(false);
+    return (
+      <div
+        className="interactive"
+        onClick={onClick}
+        style={{
+          borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
+          background: C.dark,
+          border: `1px solid rgba(237,228,211,0.06)`,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          animation: `fadeUp 0.5s cubic-bezier(.2,.8,.2,1) ${0.05 * index}s both`,
+          display: 'flex', height: 108,
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.3)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)'; }}
+      >
+        {/* Left: fossil image area */}
+        <div style={{
+          width: 108, flexShrink: 0,
+          background: `linear-gradient(135deg, ${fossil.color}50, ${fossil.color}20)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+        }}>
+          <FossilSVG kind={fossil.image} color={C.bone} size={72} />
+          <div style={{
+            position: 'absolute', top: 8, left: 8,
+            fontSize: 9, padding: '2px 6px', borderRadius: 6,
+            background: 'rgba(46,33,26,0.7)', color: C.bone, fontWeight: 500,
+          }}>{fossil.rarity}</div>
+        </div>
+        {/* Right: info */}
+        <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: C.bone, letterSpacing: -0.2 }}>{fossil.name}</div>
+              <div className="serif" style={{ fontSize: 11, fontStyle: 'italic', color: C.boneSoft, marginTop: 1 }}>
+                {fossil.latin}
+              </div>
+            </div>
+            <div
+              className="interactive"
+              onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
+              style={{
+                transform: liked ? 'scale(1.2)' : 'scale(1)',
+                transition: 'transform 0.3s cubic-bezier(.2,.8,.2,1.2)',
+              }}
+            >
+              <Icon.Heart size={18} color={liked ? C.rust : C.boneFaint} filled={liked} />
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: 3,
+              background: fossil.color,
+            }} />
+            <span style={{ fontSize: 11, color: C.boneSoft, fontWeight: 400 }}>{fossil.period}</span>
+            <span style={{ color: C.boneFaint, fontSize: 11 }}>·</span>
+            <span style={{ fontSize: 11, color: C.boneSoft }}>{fossil.class.split(' ')[0]}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Dust particle animation (signature animation 1) ──
+  function DustParticles({ count = 6 }) {
+    const particles = useMemo(() =>
+      Array.from({ length: count }, (_, i) => ({
+        id: i,
+        left: Math.random() * 100,
+        top: 60 + Math.random() * 40,
+        size: 2 + Math.random() * 4,
+        delay: Math.random() * 3,
+        duration: 3 + Math.random() * 3,
+      })), [count]);
+    return (
+      <>
+        {particles.map(p => (
+          <div key={p.id} style={{
+            position: 'absolute',
+            left: `${p.left}%`, top: `${p.top}%`,
+            width: p.size, height: p.size,
+            borderRadius: '50%',
+            background: C.bone, opacity: 0.3,
+            animation: `dustFloat ${p.duration}s ease-in-out ${p.delay}s infinite`,
+            willChange: 'transform, opacity',
+          }} />
+        ))}
+      </>
+    );
+  }
+
+  // ================================================================
+  // PAGE 2: Catalog (图鉴分类页 — 地质年代瀑布流)
+  // ================================================================
+  function CatalogPage({ onFossilTap }) {
+    const [activePeriod, setActivePeriod] = useState('白垩纪');
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bone }}>
+        <LargeNavBar title="分类图鉴" subtitle="按地质年代浏览全部标本" dark={false} />
+
+        {/* Left-right split: period list + fossils */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Left sidebar — period list */}
+          <div style={{
+            width: 88, flexShrink: 0,
+            background: `linear-gradient(180deg, ${C.earth}15, transparent)`,
+            borderRight: `1px solid ${C.earth}20`,
+            overflowY: 'auto',
+            padding: '8px 0 100px',
+          }}>
+            {PERIODS.map((p, i) => {
+              const active = activePeriod === p.name;
+              return (
+                <div
+                  key={p.name}
+                  className="interactive"
+                  onClick={() => setActivePeriod(p.name)}
+                  style={{
+                    padding: '12px 8px',
+                    textAlign: 'center',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    animation: `slideUp 0.4s ease ${0.03 * i}s both`,
+                  }}
+                >
+                  {active && (
+                    <div style={{
+                      position: 'absolute', left: 0, top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 3, height: 28, borderRadius: '0 3px 3px 0',
+                      background: C.rust,
+                    }} />
+                  )}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 22,
+                    margin: '0 auto 6px',
+                    background: active ? p.color : `${p.color}30`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.3s cubic-bezier(.2,.8,.2,1)',
+                    boxShadow: active ? `0 4px 12px ${p.color}60` : 'none',
+                  }}>
+                    <span style={{
+                      color: active ? C.bone : p.color,
+                      fontSize: 11, fontWeight: 700, letterSpacing: -0.3,
+                    }}>{p.name.slice(0, 2)}</span>
+                  </div>
+                  <div style={{
+                    fontSize: 11, fontWeight: active ? 600 : 400,
+                    color: active ? C.dark : C.earth,
+                    letterSpacing: -0.2,
+                  }}>{p.name}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Right: fossil masonry grid */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 100px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px 10px' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>
+                {activePeriod} · {PERIODS.find(p => p.name === activePeriod)?.count || 0} 种
+              </span>
+              <div className="interactive" style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.earth, fontSize: 12 }}>
+                <Icon.Filter size={16} color={C.earth} />
+                筛选
+              </div>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 10,
+            }}>
+              {FOSSILS.map((f, i) => (
+                <MasonryCard key={f.id} fossil={f} index={i} onClick={() => onFossilTap(f)} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function MasonryCard({ fossil, index, onClick }) {
+    const h = 120 + (index % 3) * 35;
+    return (
+      <div
+        className="interactive"
+        onClick={onClick}
+        style={{
+          borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+          background: C.dark,
+          height: h,
+          position: 'relative',
+          animation: `fadeUp 0.5s cubic-bezier(.2,.8,.2,1) ${0.05 * index}s both`,
+          transition: 'transform 0.25s cubic-bezier(.2,.8,.2,1)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+      >
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: `linear-gradient(160deg, ${fossil.color}70 0%, ${fossil.color}30 40%, ${C.dark} 100%)`,
+        }} />
+        <div style={{
+          position: 'absolute', top: 10, right: 10,
+          fontSize: 9, padding: '2px 7px', borderRadius: 8,
+          background: 'rgba(237,228,211,0.85)', color: C.dark, fontWeight: 600,
+        }}>{fossil.rarity}</div>
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -55%)',
+          opacity: 0.9,
+        }}>
+          <FossilSVG kind={fossil.image} color={C.bone} size={56} />
+        </div>
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          padding: '10px 10px 12px',
+          background: 'linear-gradient(to top, rgba(26,20,16,0.95), transparent)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>{fossil.name}</div>
+          <div style={{ fontSize: 10, color: C.boneSoft, marginTop: 1 }}>{fossil.periodYears}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 3: Fossil Detail (全屏详情页)
+  // ================================================================
+  function DetailPage({ fossil, onBack }) {
+    const [activeTab, setActiveTab] = useState('overview');
+    const [liked, setLiked] = useState(false);
+    const [showLongPress, setShowLongPress] = useState(false);
+    const longPressTimer = useRef(null);
+
+    const handlePressStart = () => {
+      longPressTimer.current = setTimeout(() => {
+        setShowLongPress(true);
+      }, 600);
+    };
+    const handlePressEnd = () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+
+    useEffect(() => () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }, []);
+
+    const tabs = [
+      { key: 'overview', label: '概述' },
+      { key: 'facts', label: '标本' },
+      { key: 'locations', label: '产地' },
+    ];
+
+    return (
+      <div className="page-enter" style={{
+        position: 'absolute', inset: 0, zIndex: 200,
+        background: C.deeper, color: C.bone,
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <StatusBar dark />
+        {/* Nav bar overlay */}
+        <div style={{
+          position: 'absolute', top: 44, left: 0, right: 0, zIndex: 10,
+          padding: '0 16px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div className="interactive" onClick={onBack} style={{
+            width: 38, height: 38, borderRadius: 19,
+            background: 'rgba(26,20,16,0.6)', backdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '1px solid rgba(237,228,211,0.1)',
+          }}>
+            <Icon.Back size={20} color={C.bone} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div className="interactive" style={{
+              width: 38, height: 38, borderRadius: 19,
+              background: 'rgba(26,20,16,0.6)', backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '1px solid rgba(237,228,211,0.1)',
+            }}>
+              <Icon.Share size={18} color={C.bone} />
+            </div>
+            <div
+              className="interactive"
+              onClick={() => setLiked(!liked)}
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                background: liked ? C.rust : 'rgba(26,20,16,0.6)',
+                backdropFilter: 'blur(10px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: liked ? 'none' : '1px solid rgba(237,228,211,0.1)',
+                transition: 'all 0.3s cubic-bezier(.2,.8,.2,1.2)',
+                transform: liked ? 'scale(1.05)' : 'scale(1)',
+              }}
+            >
+              <Icon.Heart size={18} color={C.bone} filled={liked} />
+            </div>
+          </div>
+        </div>
+
+        {/* Hero section with floating panel layout */}
+        <div
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={handlePressEnd}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
+          style={{
+            position: 'relative',
+            height: 340,
+            background: `linear-gradient(180deg, ${fossil.color}40 0%, ${fossil.color}10 50%, ${C.deeper} 100%)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+            cursor: 'pointer',
+          }}
+        >
+          <DustParticles count={12} />
+          {/* Spinning ring (signature animation 2) */}
+          <div style={{
+            position: 'absolute', width: 260, height: 260,
+            borderRadius: '50%',
+            border: '1px dashed rgba(237,228,211,0.15)',
+            animation: 'spinSlow 20s linear infinite',
+          }} />
+          <div style={{
+            position: 'absolute', width: 200, height: 200,
+            borderRadius: '50%',
+            border: '1px solid rgba(237,228,211,0.1)',
+            animation: 'spinSlow 30s linear infinite reverse',
+          }} />
+          {/* Giant fossil */}
+          <div style={{
+            transform: 'scale(1.8)',
+            filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.4))',
+          }}>
+            <FossilSVG kind={fossil.image} color={C.bone} size={120} />
+          </div>
+          {/* Period badge floating */}
+          <div style={{
+            position: 'absolute', top: 100, left: 24,
+            padding: '6px 12px', borderRadius: 12,
+            background: 'rgba(237,228,211,0.12)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(237,228,211,0.15)',
+          }}>
+            <div style={{ fontSize: 10, color: C.boneSoft, letterSpacing: 0.5 }}>地质年代</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.bone, marginTop: 2 }}>{fossil.period}</div>
+          </div>
+          <div style={{
+            position: 'absolute', top: 100, right: 24,
+            padding: '6px 12px', borderRadius: 12,
+            background: 'rgba(237,228,211,0.12)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(237,228,211,0.15)',
+            textAlign: 'right',
+          }}>
+            <div style={{ fontSize: 10, color: C.boneSoft, letterSpacing: 0.5 }}>体型</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.bone, marginTop: 2 }}>
+              {fossil.id === 'tyrannosaurus' ? '12-13 米' :
+               fossil.id === 'triceratops' ? '9 米' :
+               fossil.id === 'stegosaurus' ? '9 米' :
+               fossil.id === 'mammoth' ? '3.5 米' :
+               fossil.id === 'megalodon' ? '18 米' : '多变'}
+            </div>
+          </div>
+        </div>
+
+        {/* Floating bottom panel — slide up content */}
+        <div style={{
+          flex: 1, marginTop: -20,
+          background: C.deeper,
+          borderRadius: '24px 24px 0 0',
+          position: 'relative', zIndex: 5,
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          {/* Grab bar */}
+          <div style={{
+            display: 'flex', justifyContent: 'center',
+            padding: '8px 0 4px',
+          }}>
+            <div style={{
+              width: 36, height: 4, borderRadius: 2,
+              background: 'rgba(237,228,211,0.2)',
+            }} />
+          </div>
+
+          {/* Title */}
+          <div style={{ padding: '4px 20px 12px' }}>
+            <h1 className="serif" style={{
+              fontSize: 28, fontWeight: 700, color: C.bone, letterSpacing: -0.5,
+            }}>{fossil.name}</h1>
+            <p className="serif" style={{
+              fontSize: 14, fontStyle: 'italic', color: C.boneSoft, marginTop: 2,
+            }}>{fossil.latin}</p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 11, padding: '4px 10px', borderRadius: 10,
+                background: `${fossil.color}30`, color: fossil.color,
+                border: `1px solid ${fossil.color}50`,
+                fontWeight: 500,
+              }}>{fossil.class}</span>
+              <span style={{
+                fontSize: 11, padding: '4px 10px', borderRadius: 10,
+                background: 'rgba(237,228,211,0.08)', color: C.boneSoft,
+                fontWeight: 500,
+              }}>
+                <Icon.Clock size={12} color={C.boneSoft} /> {fossil.periodYears}
+              </span>
+            </div>
+          </div>
+
+          {/* Segmented control */}
+          <div style={{
+            padding: '0 20px 12px',
+            display: 'flex', gap: 4,
+            background: C.deeper,
+          }}>
+            {tabs.map(tab => (
+              <div
+                key={tab.key}
+                className="interactive"
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  flex: 1, padding: '8px 0',
+                  textAlign: 'center',
+                  fontSize: 13, fontWeight: 500,
+                  color: activeTab === tab.key ? C.bone : C.boneSoft,
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'color 0.2s',
+                }}
+              >
+                {tab.label}
+                {activeTab === tab.key && (
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 24, height: 3, borderRadius: 2,
+                    background: fossil.color,
+                  }} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 100px' }}>
+            {activeTab === 'overview' && (
+              <div className="fade-up">
+                <p style={{ fontSize: 14, color: C.boneSoft, lineHeight: 1.6, marginBottom: 16 }}>
+                  {fossil.desc}
+                </p>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr',
+                  gap: 10, marginBottom: 16,
+                }}>
+                  <StatCard label="生存年代" value={fossil.periodYears} icon="⏱" />
+                  <StatCard label="主要产地" value={fossil.location.length > 12 ? fossil.location.slice(0, 12) + '…' : fossil.location} icon="📍" />
+                  <StatCard label="分类" value={fossil.class.split(' ')[0]} icon="📊" />
+                  <StatCard label="保护状况" value={fossil.rarity} icon="⭐" />
+                </div>
+              </div>
+            )}
+            {activeTab === 'facts' && (
+              <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {fossil.facts.map((fact, i) => (
+                  <div key={i} style={{
+                    padding: 14, borderRadius: 12,
+                    background: 'rgba(237,228,211,0.05)',
+                    border: '1px solid rgba(237,228,211,0.08)',
+                    display: 'flex', gap: 12,
+                    animation: `slideUp 0.4s ease ${0.08 * i}s both`,
+                  }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 14, flexShrink: 0,
+                      background: `${fossil.color}30`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, color: fossil.color,
+                    }}>{i + 1}</div>
+                    <p style={{ fontSize: 13, color: C.bone, lineHeight: 1.5 }}>{fact}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {activeTab === 'locations' && (
+              <div className="fade-up">
+                <div style={{
+                  height: 160, borderRadius: 14, marginBottom: 14,
+                  background: `linear-gradient(135deg, ${C.patina}30, ${C.dark})`,
+                  position: 'relative', overflow: 'hidden',
+                  border: '1px solid rgba(237,228,211,0.08)',
+                }}>
+                  <div style={{ position: 'absolute', top: 20, left: 20, fontSize: 12, color: C.boneSoft }}>主要化石产地</div>
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '40%',
+                    width: 10, height: 10, borderRadius: 5,
+                    background: C.rust,
+                    boxShadow: `0 0 0 0 ${C.rust}`,
+                    animation: 'pulseRing 2s ease-out infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '40%',
+                    width: 10, height: 10, borderRadius: 5, background: C.rust,
+                  }} />
+                  <div style={{
+                    position: 'absolute', top: 45, left: 70,
+                    fontSize: 11, color: C.bone, fontWeight: 500,
+                  }}>{fossil.location.split(' ')[0]}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2, 3].map(i => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 12px', borderRadius: 10,
+                      background: 'rgba(237,228,211,0.05)',
+                    }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: 4,
+                        background: fossil.color, flexShrink: 0,
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: C.bone, fontWeight: 500 }}>
+                          {i === 1 ? fossil.location : i === 2 ? '加拿大阿尔伯塔省' : '中国新疆准噶尔盆地'}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.boneSoft, marginTop: 2 }}>
+                          {i === 1 ? '模式产地 · 标本最丰富' : i === 2 ? '恐龙公园组 · 晚白垩世' : '少量牙齿化石记录'}
+                        </div>
+                      </div>
+                      <Icon.ChevronRight size={16} color={C.boneFaint} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Long press context menu (native interaction) */}
+        {showLongPress && (
+          <>
+            <div
+              className="modal-backdrop-enter"
+              onClick={() => setShowLongPress(false)}
+              style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300 }}
+            />
+            <div className="modal-enter" style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 301,
+              padding: '8px 12px 24px',
+              background: C.dark,
+              borderRadius: '20px 20px 0 0',
+            }}>
+              <div style={{
+                width: 36, height: 4, borderRadius: 2, margin: '6px auto 10px',
+                background: 'rgba(237,228,211,0.2)',
+              }} />
+              <div style={{
+                padding: '10px 14px', textAlign: 'center', color: C.boneSoft, fontSize: 12,
+              }}>{fossil.name} · {fossil.latin}</div>
+              {[
+                { label: '加入我的收藏', icon: '💎' },
+                { label: '分享图鉴卡片', icon: '📤' },
+                { label: '保存为壁纸', icon: '🖼' },
+                { label: '打印 3D 模型', icon: '🖨' },
+              ].map((item, i) => (
+                <div key={i} className="interactive" style={{
+                  padding: '14px 16px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  borderBottom: i < 3 ? '0.5px solid rgba(237,228,211,0.08)' : 'none',
+                  cursor: 'pointer',
+                }} onClick={() => setShowLongPress(false)}>
+                  <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  <span style={{ fontSize: 15, color: C.bone, flex: 1 }}>{item.label}</span>
+                  <Icon.ChevronRight size={16} color={C.boneFaint} />
+                </div>
+              ))}
+              <div className="interactive" onClick={() => setShowLongPress(false)} style={{
+                marginTop: 10, padding: '14px 16px',
+                textAlign: 'center', fontSize: 15, fontWeight: 600,
+                color: C.rust,
+                background: 'rgba(160,82,45,0.1)',
+                borderRadius: 12,
+                cursor: 'pointer',
+              }}>取消</div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  function StatCard({ label, value, icon }) {
+    return (
+      <div style={{
+        padding: 12, borderRadius: 12,
+        background: 'rgba(237,228,211,0.05)',
+        border: '1px solid rgba(237,228,211,0.08)',
+      }}>
+        <div style={{ fontSize: 11, color: C.boneSoft, marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 13, color: C.bone, fontWeight: 600, lineHeight: 1.3 }}>{value}</div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 4: Map (采集地图记录页)
+  // ================================================================
+  function MapPage({ onAddRecord }) {
+    const [activeRecord, setActiveRecord] = useState(null);
+
+    const records = [
+      { id: 1, name: '西藏菊石', location: '西藏聂拉木县', date: '2024.06.12', lat: 28.2, lng: 85.9, type: 'ammonite' },
+      { id: 2, name: '澄江三叶虫', location: '云南澄江县', date: '2024.03.08', lat: 24.6, lng: 102.9, type: 'trilobite' },
+      { id: 3, name: '猛犸象牙', location: '俄罗斯雅库特', date: '2023.08.20', lat: 62.0, lng: 130.0, type: 'mammoth' },
+      { id: 4, name: '三角龙骨骼碎片', location: '美国南达科他州', date: '2023.11.02', lat: 43.5, lng: -103.5, type: 'triceratops' },
+    ];
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.deeper, color: C.bone }}>
+        <LargeNavBar title="野外采集" subtitle="4 处采集点 · 12 件标本" rightIcon={<Icon.Filter size={20} color={C.bone} />} dark />
+
+        {/* Map area */}
+        <div style={{
+          flex: 1, position: 'relative', margin: '0 20px',
+          borderRadius: 20, overflow: 'hidden',
+          background: `
+            radial-gradient(circle at 30% 40%, rgba(74,124,111,0.2) 0%, transparent 50%),
+            radial-gradient(circle at 70% 60%, rgba(160,82,45,0.15) 0%, transparent 50%),
+            linear-gradient(180deg, #1F2A24 0%, #1A1814 100%)
+          `,
+          border: '1px solid rgba(237,228,211,0.08)',
+        }}>
+          {/* Map grid lines */}
+          <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.15 }}>
+            {[...Array(8)].map((_, i) => (
+              <line key={`h${i}`} x1="0" y1={`${(i + 1) * 12}%`} x2="100%" y2={`${(i + 1) * 12}%`} stroke={C.bone} strokeWidth="0.5" />
+            ))}
+            {[...Array(6)].map((_, i) => (
+              <line key={`v${i}`} x1={`${(i + 1) * 14}%`} y1="0" x2={`${(i + 1) * 14}%`} y2="100%" stroke={C.bone} strokeWidth="0.5" />
+            ))}
+          </svg>
+
+          {/* Continent-ish shapes */}
+          <svg viewBox="0 0 350 350" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.4 }}>
+            <path d="M60 80 Q 80 60 120 70 L 150 65 Q 180 70 190 90 L 185 120 Q 170 140 140 145 L 100 140 Q 70 130 60 110 Z"
+              fill={C.patina} fillOpacity="0.3" stroke={C.patina} strokeWidth="1" />
+            <path d="M200 100 Q 240 90 270 110 L 290 140 Q 300 170 280 190 L 250 200 Q 220 210 200 190 L 190 160 Q 185 130 200 100Z"
+              fill={C.earth} fillOpacity="0.35" stroke={C.earth} strokeWidth="1" />
+            <path d="M120 220 Q 150 210 170 230 L 165 260 Q 150 280 130 275 L 115 250 Q 110 235 120 220Z"
+              fill={C.rust} fillOpacity="0.3" stroke={C.rust} strokeWidth="1" />
+          </svg>
+
+          {/* Markers */}
+          {records.map((r, i) => {
+            // map lat/lng to roughly our 2D map
+            const x = 50 + ((r.lng + 120) / 250) * 250;
+            const y = 40 + ((70 - r.lat) / 90) * 240;
+            const isActive = activeRecord === r.id;
+            return (
+              <div
+                key={r.id}
+                className="interactive"
+                onClick={() => setActiveRecord(isActive ? null : r.id)}
+                style={{
+                  position: 'absolute',
+                  left: `${Math.min(Math.max(x, 20), 330)}px`,
+                  top: `${Math.min(Math.max(y, 20), 300)}px`,
+                  transform: `translate(-50%, -100%) scale(${isActive ? 1.2 : 1})`,
+                  transition: 'transform 0.3s cubic-bezier(.2,.8,.2,1.2)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ position: 'relative' }}>
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute', top: 8, left: 8,
+                      width: 12, height: 12, borderRadius: 6,
+                      background: C.rust,
+                      animation: 'pulseRing 1.5s ease-out infinite',
+                    }} />
+                  )}
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50% 50% 50% 0',
+                    background: `linear-gradient(135deg, ${C.rust}, ${C.earth})`,
+                    transform: 'rotate(-45deg)',
+                    boxShadow: '0 4px 10px rgba(160,82,45,0.5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '2px solid rgba(237,228,211,0.9)',
+                  }}>
+                    <div style={{ transform: 'rotate(45deg)' }}>
+                      <FossilSVG kind={r.type} color={C.bone} size={14} />
+                    </div>
+                  </div>
+                </div>
+                {isActive && (
+                  <div style={{
+                    position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)',
+                    padding: '4px 10px', borderRadius: 8,
+                    background: C.bone, color: C.dark,
+                    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  }}>
+                    {r.name}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom sheet: records list */}
+        <div style={{
+          margin: '16px 20px 100px',
+          borderRadius: 16,
+          background: C.dark,
+          border: '1px solid rgba(237,228,211,0.06)',
+          padding: '12px 4px 12px 16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.bone }}>采集记录</span>
+            <span style={{ fontSize: 12, color: C.boneSoft }}>共 {records.length} 条</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+            {records.map((r, i) => (
+              <div
+                key={r.id}
+                className="interactive"
+                onClick={() => setActiveRecord(r.id)}
+                style={{
+                  flexShrink: 0, width: 140,
+                  padding: 10, borderRadius: 12,
+                  background: activeRecord === r.id
+                    ? `${C.rust}25`
+                    : 'rgba(237,228,211,0.04)',
+                  border: `1px solid ${activeRecord === r.id ? C.rust + '60' : 'rgba(237,228,211,0.06)'}`,
+                  cursor: 'pointer',
+                  animation: `slideUp 0.4s ease ${0.05 * i}s both`,
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: 'rgba(237,228,211,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 8,
+                }}>
+                  <FossilSVG kind={r.type} color={C.rust} size={24} />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.bone, marginBottom: 2 }}>{r.name}</div>
+                <div style={{ fontSize: 10, color: C.boneSoft }}>{r.date}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FAB — floating action button (native interaction) */}
+        <div
+          className="interactive"
+          onClick={onAddRecord}
+          style={{
+            position: 'absolute', right: 20, bottom: 92, zIndex: 40,
+            width: 52, height: 52, borderRadius: 26,
+            background: `linear-gradient(135deg, ${C.rust}, ${C.earth})`,
+            boxShadow: `0 6px 20px ${C.rustSoft}, 0 2px 6px rgba(0,0,0,0.3)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'transform 0.3s cubic-bezier(.2,.8,.2,1.2)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1) rotate(0deg)'; }}
+        >
+          <Icon.Plus size={24} color={C.bone} />
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 5: AI Identify / Upload (鉴定上传页)
+  // ================================================================
+  function UploadPage() {
+    const [stage, setStage] = useState('idle'); // idle, scanning, result
+    const [scanProgress, setScanProgress] = useState(0);
+    const rafRef = useRef(null);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+      return () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
+    }, []);
+
+    const startScan = () => {
+      setStage('scanning');
+      setScanProgress(0);
+      const start = performance.now();
+      const duration = 2500;
+      const animate = (now) => {
+        const elapsed = now - start;
+        const p = Math.min(elapsed / duration, 1);
+        // ease out cubic
+        const eased = 1 - Math.pow(1 - p, 3);
+        setScanProgress(eased);
+        if (p < 1) {
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          timerRef.current = setTimeout(() => setStage('result'), 400);
+        }
+      };
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const identified = FOSSILS[4]; // ammonite
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.dark, color: C.bone }}>
+        <StatusBar dark />
+        <NavBar title="AI 鉴定" dark />
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 100px' }}>
+          {stage === 'idle' && (
+            <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {/* Upload zone */}
+              <div
+                className="interactive"
+                onClick={startScan}
+                style={{
+                  width: '100%', height: 260,
+                  borderRadius: 20,
+                  background: `
+                    repeating-linear-gradient(
+                      45deg,
+                      transparent,
+                      transparent 10px,
+                      rgba(237,228,211,0.02) 10px,
+                      rgba(237,228,211,0.02) 20px
+                    ),
+                    linear-gradient(135deg, rgba(160,82,45,0.1), rgba(74,124,111,0.1))
+                  `,
+                  border: `2px dashed ${C.boneFaint}`,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = C.rust + '80';
+                  e.currentTarget.style.background = `
+                    repeating-linear-gradient(
+                      45deg,
+                      transparent,
+                      transparent 10px,
+                      rgba(160,82,45,0.05) 10px,
+                      rgba(160,82,45,0.05) 20px
+                    ),
+                    linear-gradient(135deg, rgba(160,82,45,0.15), rgba(74,124,111,0.1))
+                  `;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = C.boneFaint;
+                  e.currentTarget.style.background = `
+                    repeating-linear-gradient(
+                      45deg,
+                      transparent,
+                      transparent 10px,
+                      rgba(237,228,211,0.02) 10px,
+                      rgba(237,228,211,0.02) 20px
+                    ),
+                    linear-gradient(135deg, rgba(160,82,45,0.1), rgba(74,124,111,0.1))
+                  `;
+                }}
+              >
+                <div style={{
+                  width: 64, height: 64, borderRadius: 32,
+                  background: 'rgba(237,228,211,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 14,
+                }}>
+                  <Icon.Upload size={28} color={C.rust} />
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: C.bone, marginBottom: 4 }}>
+                  点击上传化石照片
+                </div>
+                <div style={{ fontSize: 12, color: C.boneSoft }}>
+                  支持 JPG / PNG · 最大 10MB
+                </div>
+              </div>
+
+              {/* Recent scans */}
+              <div style={{ marginTop: 24, width: '100%' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: C.bone, marginBottom: 12 }}>最近鉴定</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {FOSSILS.slice(0, 3).map((f, i) => (
+                    <div key={f.id} className="interactive" style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: 12, borderRadius: 12,
+                      background: 'rgba(237,228,211,0.04)',
+                      border: '1px solid rgba(237,228,211,0.06)',
+                      cursor: 'pointer',
+                      animation: `slideUp 0.4s ease ${0.08 * i}s both`,
+                    }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: 10,
+                        background: `${f.color}30`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <FossilSVG kind={f.image} color={f.color} size={28} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: C.bone }}>{f.name}</div>
+                        <div style={{ fontSize: 11, color: C.boneSoft, marginTop: 2 }}>
+                          置信度 {90 + i * 3}% · 昨天
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: 11, padding: '3px 8px', borderRadius: 8,
+                        background: `${C.patina}25`, color: C.patina,
+                        fontWeight: 500,
+                      }}>已验证</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div style={{
+                marginTop: 20, width: '100%',
+                padding: 14, borderRadius: 12,
+                background: 'rgba(74,124,111,0.1)',
+                border: '1px solid rgba(74,124,111,0.2)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.patina, marginBottom: 6 }}>
+                  💡 鉴定小贴士
+                </div>
+                <div style={{ fontSize: 12, color: C.boneSoft, lineHeight: 1.5 }}>
+                  拍摄时保持光线均匀，化石主体占画面 70% 以上，附带比例尺可提高鉴定精度。
+                </div>
+              </div>
+            </div>
+          )}
+
+          {stage === 'scanning' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 60 }}>
+              {/* Scanning animation */}
+              <div style={{
+                width: 240, height: 240, borderRadius: 20,
+                background: `linear-gradient(135deg, ${C.earth}40, ${C.dark})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative', overflow: 'hidden',
+                border: `1px solid ${C.boneFaint}`,
+              }}>
+                <FossilSVG kind="ammonite" color={C.bone} size={120} />
+                {/* Scan line */}
+                <div style={{
+                  position: 'absolute', left: 0, right: 0,
+                  top: `${scanProgress * 100}%`,
+                  height: 2,
+                  background: `linear-gradient(90deg, transparent, ${C.rust}, transparent)`,
+                  boxShadow: `0 0 20px ${C.rust}`,
+                }} />
+                {/* Corner brackets */}
+                {['topLeft', 'topRight', 'bottomLeft', 'bottomRight'].map((pos, i) => (
+                  <div key={pos} style={{
+                    position: 'absolute',
+                    width: 20, height: 20,
+                    borderColor: C.rust,
+                    borderStyle: 'solid',
+                    borderWidth:
+                      pos === 'topLeft' ? '2px 0 0 2px' :
+                      pos === 'topRight' ? '2px 2px 0 0' :
+                      pos === 'bottomLeft' ? '0 0 2px 2px' :
+                      '0 2px 2px 0',
+                    borderRadius:
+                      pos === 'topLeft' ? '4px 0 0 0' :
+                      pos === 'topRight' ? '0 4px 0 0' :
+                      pos === 'bottomLeft' ? '0 0 0 4px' :
+                      '0 0 4px 0',
+                    top: pos.startsWith('top') ? 12 : 'auto',
+                    bottom: pos.startsWith('bottom') ? 12 : 'auto',
+                    left: pos.endsWith('Left') ? 12 : 'auto',
+                    right: pos.endsWith('Right') ? 12 : 'auto',
+                  }} />
+                ))}
+              </div>
+
+              <div style={{
+                marginTop: 24, fontSize: 16, fontWeight: 600,
+                color: C.bone, letterSpacing: 0.3,
+              }}>AI 正在鉴定中…</div>
+              <div style={{ marginTop: 4, fontSize: 12, color: C.boneSoft }}>
+                分析骨骼结构、纹理与形态特征
+              </div>
+
+              {/* Progress bar */}
+              <div style={{
+                marginTop: 20, width: 240, height: 4, borderRadius: 2,
+                background: 'rgba(237,228,211,0.1)',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${scanProgress * 100}%`,
+                  background: `linear-gradient(90deg, ${C.rust}, ${C.patina})`,
+                  borderRadius: 2,
+                  transition: 'width 0.1s linear',
+                }} />
+              </div>
+
+              {/* Scanning steps */}
+              <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8, width: 240 }}>
+                {['图像预处理', '特征提取', '数据库匹配', '置信度评估'].map((step, i) => (
+                  <div key={step} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    fontSize: 12,
+                    color: scanProgress > i * 0.25 ? C.bone : C.boneSoft,
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 8,
+                      background: scanProgress > i * 0.25 ? C.patina : 'rgba(237,228,211,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700,
+                    }}>
+                      {scanProgress > i * 0.25 ? '✓' : ''}
+                    </div>
+                    {step}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stage === 'result' && (
+            <div className="fade-up">
+              {/* Result header */}
+              <div style={{
+                background: `linear-gradient(135deg, ${identified.color}30, transparent)`,
+                borderRadius: 20, padding: 20, marginBottom: 16,
+                border: `1px solid ${identified.color}30`,
+                display: 'flex', gap: 16, alignItems: 'center',
+              }}>
+                <div style={{
+                  width: 72, height: 72, borderRadius: 16,
+                  background: `${identified.color}40`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <FossilSVG kind={identified.image} color={C.bone} size={48} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: C.patina, fontWeight: 600, marginBottom: 2 }}>
+                    ✓ 鉴定成功 · 置信度 96.8%
+                  </div>
+                  <div className="serif" style={{ fontSize: 22, fontWeight: 700, color: C.bone }}>
+                    {identified.name}
+                  </div>
+                  <div className="serif" style={{ fontSize: 12, fontStyle: 'italic', color: C.boneSoft }}>
+                    {identified.latin}
+                  </div>
+                </div>
+              </div>
+
+              {/* Result details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                <ResultRow label="地质年代" value={identified.period} />
+                <ResultRow label="生存时间" value={identified.periodYears} />
+                <ResultRow label="分类" value={identified.class} />
+                <ResultRow label="珍稀程度" value={identified.rarity} valueColor={C.rust} />
+              </div>
+
+              {/* AI analysis */}
+              <div style={{
+                padding: 14, borderRadius: 12,
+                background: 'rgba(237,228,211,0.04)',
+                border: '1px solid rgba(237,228,211,0.06)',
+                marginBottom: 16,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.bone, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon.Sparkle size={14} color={C.rust} />
+                  AI 分析摘要
+                </div>
+                <p style={{ fontSize: 12, color: C.boneSoft, lineHeight: 1.6 }}>
+                  根据标本螺旋壳结构、缝合线复杂度与尺寸比例，识别为中生代海洋头足类。
+                  壳体保存完整，建议进一步切片观察内部气室结构以确定具体种属。
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div className="interactive" style={{
+                  flex: 1, padding: '14px 0',
+                  borderRadius: 14, textAlign: 'center',
+                  background: `linear-gradient(135deg, ${C.rust}, ${C.earth})`,
+                  color: C.bone, fontWeight: 600, fontSize: 14,
+                  cursor: 'pointer',
+                  boxShadow: `0 4px 12px ${C.rustSoft}`,
+                }}>
+                  加入我的收藏
+                </div>
+                <div className="interactive" style={{
+                  flex: 1, padding: '14px 0',
+                  borderRadius: 14, textAlign: 'center',
+                  background: 'rgba(237,228,211,0.08)',
+                  color: C.bone, fontWeight: 600, fontSize: 14,
+                  border: '1px solid rgba(237,228,211,0.1)',
+                  cursor: 'pointer',
+                }}>
+                  重新鉴定
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function ResultRow({ label, value, valueColor }) {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px', borderRadius: 12,
+        background: 'rgba(237,228,211,0.04)',
+        border: '1px solid rgba(237,228,211,0.06)',
+      }}>
+        <span style={{ fontSize: 13, color: C.boneSoft }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: valueColor || C.bone }}>{value}</span>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 6: Collection (个人收藏馆 — grid gallery)
+  // ================================================================
+  function CollectionPage({ onFossilTap, onNavigate }) {
+    const [viewMode, setViewMode] = useState('grid'); // grid, list
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bone, color: C.dark }}>
+        <LargeNavBar title="我的收藏馆" subtitle="42 件标本 · 12 个物种" dark={false}
+          rightIcon={<Icon.Settings size={20} color={C.dark} />}
+        />
+
+        {/* Stats row */}
+        <div style={{ padding: '0 20px 16px', display: 'flex', gap: 10 }}>
+          {[
+            { label: '标本数', value: '42', color: C.rust },
+            { label: '物种数', value: '12', color: C.patina },
+            { label: '采集点', value: '8', color: C.earth },
+          ].map((s, i) => (
+            <div key={s.label} style={{
+              flex: 1, padding: '12px 10px', borderRadius: 14,
+              background: `${s.color}12`,
+              border: `1px solid ${s.color}25`,
+              textAlign: 'center',
+              animation: `slideUp 0.4s ease ${0.05 * i}s both`,
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: '"Playfair Display", serif' }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: 11, color: C.earthSoft, marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* View toggle + filter */}
+        <div style={{
+          padding: '0 20px 12px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[{ key: 'grid', label: '网格' }, { key: 'list', label: '列表' }].map(m => (
+              <div
+                key={m.key}
+                className="interactive"
+                onClick={() => setViewMode(m.key)}
+                style={{
+                  padding: '6px 14px', borderRadius: 10,
+                  fontSize: 12, fontWeight: 500,
+                  background: viewMode === m.key ? C.dark : 'transparent',
+                  color: viewMode === m.key ? C.bone : C.earth,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {m.label}
+              </div>
+            ))}
+          </div>
+          <div className="interactive" style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            fontSize: 12, color: C.earth,
+          }}>
+            <Icon.Filter size={14} color={C.earth} />
+            按年代排序
+          </div>
+        </div>
+
+        {/* Gallery */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 100px' }}>
+          {viewMode === 'grid' ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 10,
+            }}>
+              {COLLECTION_DATA.map((item, i) => {
+                const f = FOSSILS.find(ff => ff.id === item.fossil);
+                if (!f) return null;
+                return (
+                  <div
+                    key={item.id}
+                    className="interactive"
+                    onClick={() => onFossilTap(f)}
+                    style={{
+                      aspectRatio: '3/4',
+                      borderRadius: 14,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      background: `linear-gradient(160deg, ${f.color}50, ${C.dark})`,
+                      cursor: 'pointer',
+                      animation: `fadeUp 0.5s cubic-bezier(.2,.8,.2,1) ${0.06 * i}s both`,
+                      transition: 'transform 0.3s cubic-bezier(.2,.8,.2,1)',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  >
+                    <div style={{
+                      position: 'absolute', top: '50%', left: '50%',
+                      transform: 'translate(-50%, -55%)',
+                      opacity: 0.85,
+                    }}>
+                      <FossilSVG kind={f.image} color={C.bone} size={60} />
+                    </div>
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      padding: '10px 12px 12px',
+                      background: 'linear-gradient(to top, rgba(26,20,16,0.9), transparent)',
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>{f.name}</div>
+                      <div style={{ fontSize: 10, color: C.boneSoft, marginTop: 2 }}>{item.found}</div>
+                    </div>
+                    <div style={{
+                      position: 'absolute', top: 10, right: 10,
+                      fontSize: 10, padding: '2px 7px', borderRadius: 8,
+                      background: 'rgba(237,228,211,0.9)', color: C.dark, fontWeight: 600,
+                    }}>{item.condition}</div>
+                  </div>
+                );
+              })}
+              {/* Add new card */}
+              <div
+                className="interactive"
+                onClick={() => onNavigate('camera')}
+                style={{
+                  aspectRatio: '3/4',
+                  borderRadius: 14,
+                  border: `2px dashed ${C.earth}40`,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: 8, cursor: 'pointer',
+                  color: C.earth,
+                  animation: 'fadeUp 0.5s ease 0.3s both',
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: 18,
+                  background: `${C.earth}15`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon.Plus size={18} color={C.earth} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 500 }}>添加标本</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {COLLECTION_DATA.map((item, i) => {
+                const f = FOSSILS.find(ff => ff.id === item.fossil);
+                if (!f) return null;
+                return (
+                  <div key={item.id} className="interactive" style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: 12, borderRadius: 12,
+                    background: C.bone,
+                    border: '1px solid rgba(107,79,58,0.1)',
+                    cursor: 'pointer',
+                    animation: `slideUp 0.4s ease ${0.05 * i}s both`,
+                  }} onClick={() => onFossilTap(f)}>
+                    <div style={{
+                      width: 52, height: 52, borderRadius: 10,
+                      background: `${f.color}25`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      <FossilSVG kind={f.image} color={f.color} size={32} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.dark }}>{f.name}</div>
+                      <div style={{ fontSize: 11, color: C.earthSoft, marginTop: 2 }}>
+                        {item.location} · {item.found}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: 10, padding: '3px 8px', borderRadius: 8,
+                      background: `${C.patina}20`, color: C.patina, fontWeight: 500,
+                    }}>{item.condition}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 7: Design Spec (设计规范页)
+  // ================================================================
+  function DesignSpecPage({ onBack }) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bone, color: C.dark }}>
+        <StatusBar dark={false} />
+        <NavBar title="设计规范" onBack={onBack} dark={false} />
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 40px' }}>
+          {/* Brand header */}
+          <div className="slide-1" style={{
+            padding: 24, borderRadius: 20, marginBottom: 20,
+            background: `linear-gradient(135deg, ${C.dark} 0%, ${C.earth} 100%)`,
+            color: C.bone,
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <DustParticles count={5} />
+            <div className="serif" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
+              Fossil Archive
+            </div>
+            <div style={{ fontSize: 11, letterSpacing: 2, color: C.boneSoft, marginTop: 2, textTransform: 'uppercase' }}>
+              Design System v1.0
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: C.boneSoft, lineHeight: 1.5 }}>
+              化石档案 — 古生物爱好者的收藏与鉴定工具。以地质层色彩体系与标本质感为灵感，构建沉浸式探索体验。
+            </div>
+          </div>
+
+          {/* Color palette */}
+          <div className="slide-2" style={{ marginBottom: 24 }}>
+            <SectionTitle>色彩体系</SectionTitle>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
+              gap: 8, marginTop: 12,
+            }}>
+              {[
+                { name: '土褐', hex: C.earth, role: '主色' },
+                { name: '骨白', hex: C.bone, role: '表面' },
+                { name: '铜绿', hex: C.patina, role: '辅助' },
+                { name: '深褐', hex: C.dark, role: '基底' },
+                { name: '锈红', hex: C.rust, role: '强调' },
+              ].map((c, i) => (
+                <div key={c.hex} style={{
+                  display: 'flex', flexDirection: 'column',
+                  animation: `fadeUp 0.4s ease ${0.05 * i}s both`,
+                }}>
+                  <div style={{
+                    height: 60, borderRadius: 10,
+                    background: c.hex,
+                    border: c.hex === C.bone ? '1px solid rgba(107,79,58,0.15)' : 'none',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                    marginBottom: 6,
+                  }} />
+                  <div style={{ fontSize: 10, fontWeight: 600, color: C.dark }}>{c.name}</div>
+                  <div style={{ fontSize: 9, color: C.earthSoft, fontFamily: 'JetBrains Mono, monospace' }}>{c.hex}</div>
+                  <div style={{ fontSize: 9, color: C.rust, marginTop: 1 }}>{c.role}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Typography */}
+          <div className="slide-3" style={{ marginBottom: 24 }}>
+            <SectionTitle>字体排印</SectionTitle>
+            <div style={{
+              padding: 16, borderRadius: 14,
+              background: '#fff', border: '1px solid rgba(107,79,58,0.1)',
+              marginTop: 12,
+            }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: C.earthSoft, marginBottom: 4 }}>Display / Serif · 标题</div>
+                <div className="serif" style={{ fontSize: 26, fontWeight: 700, color: C.dark, letterSpacing: -0.5 }}>
+                  Playfair Display
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: C.earthSoft, marginBottom: 4 }}>Body / Sans · 正文</div>
+                <div style={{ fontSize: 15, color: C.dark, letterSpacing: -0.2 }}>
+                  Inter — 清晰理性的现代无衬线
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: C.earthSoft, marginBottom: 4 }}>Mono / Data · 数据</div>
+                <div className="mono" style={{ fontSize: 13, color: C.dark }}>
+                  JetBrains Mono 65.0 mya
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Components grid */}
+          <div className="slide-4" style={{ marginBottom: 24 }}>
+            <SectionTitle>组件规范</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+              {[
+                { title: '按钮', desc: '主按钮 14px / 52h / 14r' },
+                { title: '卡片', desc: '表面色 / 16r / 细边描' },
+                { title: '输入框', desc: '12r / 聚焦锈红描边' },
+                { title: '徽章', desc: '10r / 小字 11px' },
+              ].map((c, i) => (
+                <div key={i} style={{
+                  padding: 14, borderRadius: 12,
+                  background: '#fff', border: '1px solid rgba(107,79,58,0.1)',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.dark, marginBottom: 4 }}>{c.title}</div>
+                  <div style={{ fontSize: 11, color: C.earthSoft }}>{c.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Spacing */}
+          <div className="slide-5" style={{ marginBottom: 24 }}>
+            <SectionTitle>间距刻度</SectionTitle>
+            <div style={{
+              padding: 16, borderRadius: 14,
+              background: '#fff', border: '1px solid rgba(107,79,58,0.1)',
+              marginTop: 12,
+              display: 'flex', gap: 8, alignItems: 'flex-end',
+            }}>
+              {[4, 8, 12, 16, 24, 32].map((s, i) => (
+                <div key={s} style={{
+                  flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                }}>
+                  <div style={{
+                    height: s * 1.5, width: '100%',
+                    background: i < 3 ? `${C.earth}40` : i < 5 ? C.earth : C.rust,
+                    borderRadius: 4,
+                  }} />
+                  <div className="mono" style={{ fontSize: 10, color: C.earth }}>{s}px</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function SectionTitle({ children }) {
+    return (
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: C.dark,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <div style={{ width: 3, height: 14, borderRadius: 2, background: C.rust }} />
+        {children}
+      </div>
+    );
+  }
+
+  // ================================================================
+  // PAGE 8: API Documentation (接口文档页)
+  // ================================================================
+  function ApiDocPage({ onBack }) {
+    const [activeTab, setActiveTab] = useState('fossils');
+
+    const endpoints = {
+      fossils: [
+        { method: 'GET', path: '/api/v1/fossils', desc: '获取化石列表', params: ['period', 'rarity', 'page', 'limit'] },
+        { method: 'GET', path: '/api/v1/fossils/:id', desc: '获取单个化石详情', params: ['id'] },
+        { method: 'POST', path: '/api/v1/fossils/search', desc: '搜索化石', params: ['keyword', 'filters'] },
+      ],
+      identify: [
+        { method: 'POST', path: '/api/v1/identify/upload', desc: '上传图片进行 AI 鉴定', params: ['image', 'location'] },
+        { method: 'GET', path: '/api/v1/identify/:id/status', desc: '查询鉴定进度', params: ['id'] },
+        { method: 'GET', path: '/api/v1/identify/:id/result', desc: '获取鉴定结果', params: ['id'] },
+      ],
+      collection: [
+        { method: 'GET', path: '/api/v1/collection', desc: '获取用户收藏', params: ['user_id', 'sort'] },
+        { method: 'POST', path: '/api/v1/collection', desc: '添加收藏标本', params: ['fossil_id', 'notes', 'images'] },
+        { method: 'DELETE', path: '/api/v1/collection/:id', desc: '删除收藏', params: ['id'] },
+      ],
+    };
+
+    const tabs = [
+      { key: 'fossils', label: '化石图鉴' },
+      { key: 'identify', label: 'AI 鉴定' },
+      { key: 'collection', label: '收藏' },
+    ];
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.deeper, color: C.bone }}>
+        <StatusBar dark />
+        <NavBar title="接口文档" onBack={onBack} dark />
+
+        {/* Tabs */}
+        <div style={{
+          padding: '0 20px 12px',
+          display: 'flex', gap: 4,
+          borderBottom: '1px solid rgba(237,228,211,0.06)',
+        }}>
+          {tabs.map(tab => (
+            <div
+              key={tab.key}
+              className="interactive"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: '8px 14px',
+                fontSize: 12, fontWeight: 500,
+                color: activeTab === tab.key ? C.rust : C.boneSoft,
+                borderBottom: `2px solid ${activeTab === tab.key ? C.rust : 'transparent'}`,
+                cursor: 'pointer',
+                marginBottom: -12,
+                paddingBottom: 10,
+                transition: 'color 0.2s',
+              }}
+            >
+              {tab.label}
+            </div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px' }}>
+          {/* Base URL */}
+          <div className="fade-up" style={{
+            padding: 12, borderRadius: 10,
+            background: 'rgba(74,124,111,0.1)',
+            border: '1px solid rgba(74,124,111,0.2)',
+            marginBottom: 16,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, background: C.patina, color: C.bone, fontWeight: 600 }}>BASE</span>
+            <span className="mono" style={{ fontSize: 12, color: C.bone }}>https://api.fossilarchive.app</span>
+          </div>
+
+          {/* Endpoints list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {endpoints[activeTab].map((ep, i) => (
+              <div key={ep.path} className="slide-1" style={{
+                borderRadius: 12, overflow: 'hidden',
+                background: C.dark,
+                border: '1px solid rgba(237,228,211,0.06)',
+                animation: `slideUp 0.4s ease ${0.06 * i}s both`,
+              }}>
+                <div style={{
+                  padding: '12px 14px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  borderBottom: '1px solid rgba(237,228,211,0.04)',
+                }}>
+                  <span style={{
+                    fontSize: 10, padding: '3px 8px', borderRadius: 6,
+                    fontWeight: 700, letterSpacing: 0.5,
+                    background: ep.method === 'GET' ? `${C.patina}25` : ep.method === 'POST' ? `${C.rust}25` : `${C.earth}25`,
+                    color: ep.method === 'GET' ? C.patina : ep.method === 'POST' ? C.rust : C.earth,
+                  }}>{ep.method}</span>
+                  <span className="mono" style={{ fontSize: 12, color: C.bone, flex: 1 }}>{ep.path}</span>
+                </div>
+                <div style={{ padding: '10px 14px 14px' }}>
+                  <div style={{ fontSize: 12, color: C.boneSoft, marginBottom: 10 }}>{ep.desc}</div>
+                  <div style={{ fontSize: 10, color: C.boneFaint, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    参数
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {ep.params.map(p => (
+                      <span key={p} style={{
+                        fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                        background: 'rgba(237,228,211,0.06)',
+                        color: C.boneSoft, fontFamily: 'JetBrains Mono, monospace',
+                      }}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Response example */}
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.bone, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon.Code size={14} color={C.rust} />
+              响应示例
+            </div>
+            <div style={{
+              borderRadius: 12, overflow: 'hidden',
+              background: '#111111',
+              border: '1px solid rgba(237,228,211,0.06)',
+            }}>
+              <div style={{
+                padding: '8px 14px',
+                display: 'flex', gap: 6,
+                background: 'rgba(237,228,211,0.03)',
+                borderBottom: '1px solid rgba(237,228,211,0.04)',
+                alignItems: 'center',
+              }}>
+                <div style={{ width: 10, height: 10, borderRadius: 5, background: '#FF5F56' }} />
+                <div style={{ width: 10, height: 10, borderRadius: 5, background: '#FFBD2E' }} />
+                <div style={{ width: 10, height: 10, borderRadius: 5, background: '#27C93F' }} />
+                <span style={{ marginLeft: 10, fontSize: 11, color: C.boneFaint }}>response.json</span>
+              </div>
+              <pre style={{
+                padding: '14px 16px 16px',
+                fontSize: 11, lineHeight: 1.6,
+                fontFamily: 'JetBrains Mono, monospace',
+                color: C.boneSoft,
+                overflowX: 'auto',
+              }}>{`{
+  "id": "foss_001",
+  "name": "霸王龙",
+  "latin": "Tyrannosaurus rex",
+  "period": "白垩纪晚期",
+  "period_years": "6800-6600 万年前",
+  "class": "兽脚亚目 · 暴龙科",
+  "rarity": "珍稀",
+  "locations": [
+    "美国蒙大拿州",
+    "加拿大阿尔伯塔省"
+  ],
+  "confidence": 0.968,
+  "created_at": "2026-08-15T10:30:00Z"
+}`}</pre>
+            </div>
+          </div>
+
+          {/* Status codes */}
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.bone, marginBottom: 10 }}>状态码</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[
+                { code: '200', label: 'OK', desc: '请求成功', color: C.patina },
+                { code: '201', label: 'Created', desc: '资源创建成功', color: C.patina },
+                { code: '400', label: 'Bad Request', desc: '参数错误', color: C.rust },
+                { code: '401', label: 'Unauthorized', desc: '未授权', color: C.rust },
+                { code: '404', label: 'Not Found', desc: '资源不存在', color: C.earth },
+              ].map(s => (
+                <div key={s.code} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '8px 12px', borderRadius: 8,
+                  background: 'rgba(237,228,211,0.03)',
+                }}>
+                  <span className="mono" style={{
+                    fontSize: 11, fontWeight: 700, color: s.color,
+                    width: 36,
+                  }}>{s.code}</span>
+                  <span style={{ fontSize: 11, color: C.bone, width: 80 }}>{s.label}</span>
+                  <span style={{ fontSize: 11, color: C.boneSoft }}>{s.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // Root App
+  // ================================================================
+  function App() {
+    const [tab, setTab] = useState('home');
+    const [detailFossil, setDetailFossil] = useState(null);
+    const [showSpec, setShowSpec] = useState(false);
+    const [showApi, setShowApi] = useState(false);
+    const [pageTransition, setPageTransition] = useState(false);
+
+    const prevTabRef = useRef(tab);
+
+    // ── Page visibility / animation cleanup ──
+    useEffect(() => {
+      const onVisibility = () => {
+        if (document.hidden) {
+          // pause timers by dispatching custom event — components listen
+          document.dispatchEvent(new CustomEvent('app-pause'));
+        } else {
+          document.dispatchEvent(new CustomEvent('app-resume'));
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, []);
+
+    const handleFossilTap = (fossil) => {
+      setDetailFossil(fossil);
+    };
+
+    const handleBackFromDetail = () => {
+      setDetailFossil(null);
+    };
+
+    const handleTabChange = (newTab) => {
+      if (newTab === tab) return;
+      setPageTransition(true);
+      setTimeout(() => {
+        setTab(newTab);
+        prevTabRef.current = newTab;
+        setPageTransition(false);
+      }, 150);
+    };
+
+    const handleNavigate = (target) => {
+      if (target === 'catalog') setTab('catalog');
+      if (target === 'camera') setTab('camera');
+      if (target === 'spec') setShowSpec(true);
+      if (target === 'api') setShowApi(true);
+    };
+
+    const renderPage = () => {
+      switch (tab) {
+        case 'home':
+          return <HomePage key="home" onFossilTap={handleFossilTap} onNavigate={handleNavigate} />;
+        case 'catalog':
+          return <CatalogPage key="catalog" onFossilTap={handleFossilTap} />;
+        case 'camera':
+          return <UploadPage key="camera" />;
+        case 'map':
+          return <MapPage key="map" onAddRecord={() => setTab('camera')} />;
+        case 'collection':
+          return <CollectionPage key="collection" onFossilTap={handleFossilTap} onNavigate={handleNavigate} />;
+        default:
+          return null;
+      }
+    };
+
+    return (
+      <div style={{ position: 'relative' }}>
+        <DeviceFrame width={390} height={844}>
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            {/* Main content */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column',
+              transform: pageTransition ? 'translateX(-5%)' : 'translateX(0)',
+              opacity: pageTransition ? 0.5 : 1,
+              transition: 'transform 0.15s ease, opacity 0.15s ease',
+            }}>
+              {renderPage()}
+              <TabBar active={tab} onChange={handleTabChange} dark={tab === 'home' || tab === 'map' || tab === 'camera'} />
+            </div>
+
+            {/* Detail overlay */}
+            {detailFossil && (
+              <DetailPage fossil={detailFossil} onBack={handleBackFromDetail} />
+            )}
+
+            {/* Design Spec modal */}
+            {showSpec && (
+              <>
+                <div
+                  className="modal-backdrop-enter"
+                  onClick={() => setShowSpec(false)}
+                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 400 }}
+                />
+                <div className="modal-enter" style={{
+                  position: 'absolute', inset: 0, zIndex: 401,
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                  <DesignSpecPage onBack={() => setShowSpec(false)} />
+                </div>
+              </>
+            )}
+
+            {/* API Doc modal */}
+            {showApi && (
+              <>
+                <div
+                  className="modal-backdrop-enter"
+                  onClick={() => setShowApi(false)}
+                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 400 }}
+                />
+                <div className="modal-enter" style={{
+                  position: 'absolute', inset: 0, zIndex: 401,
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                  <ApiDocPage onBack={() => setShowApi(false)} />
+                </div>
+              </>
+            )}
+
+            {/* Design spec + API entry points in settings-like button */}
+            {tab === 'collection' && (
+              <div style={{
+                position: 'absolute', right: 16, top: 100, zIndex: 30,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div
+                  className="interactive"
+                  onClick={() => setShowSpec(true)}
+                  style={{
+                    width: 36, height: 36, borderRadius: 18,
+                    background: C.dark, color: C.bone,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                    cursor: 'pointer',
+                    border: '1px solid rgba(237,228,211,0.1)',
+                  }}
+                  title="设计规范"
+                >
+                  <Icon.Palette size={16} color={C.rust} />
+                </div>
+                <div
+                  className="interactive"
+                  onClick={() => setShowApi(true)}
+                  style={{
+                    width: 36, height: 36, borderRadius: 18,
+                    background: C.dark, color: C.bone,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                    cursor: 'pointer',
+                    border: '1px solid rgba(237,228,211,0.1)',
+                  }}
+                  title="接口文档"
+                >
+                  <Icon.Code size={16} color={C.patina} />
+                </div>
+              </div>
+            )}
+          </div>
+        </DeviceFrame>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // Custom cursor
+  // ================================================================
+  function initCustomCursor() {
+    const cursor = document.getElementById('cursor');
+    if (!cursor) return;
+
+    // Reduced motion: don't customize cursor
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      cursor.style.display = 'none';
+      return;
+    }
+
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let currentX = targetX;
+    let currentY = targetY;
+    let rafId = null;
+    let paused = false;
+
+    const animate = () => {
+      if (paused) return;
+      // smooth follow (lerp)
+      currentX += (targetX - currentX) * 0.18;
+      currentY += (targetY - currentY) * 0.18;
+      cursor.style.transform = `translate(${currentX}px, ${currentY}px) translate(-50%, -50%)`;
+      rafId = requestAnimationFrame(animate);
+    };
+
+    const onMove = (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    };
+
+    const onOver = (e) => {
+      const target = e.target.closest('.interactive');
+      if (target) {
+        cursor.classList.add('hover');
+      }
+    };
+
+    const onOut = (e) => {
+      const target = e.target.closest('.interactive');
+      if (target) {
+        cursor.classList.remove('hover');
+      }
+    };
+
+    const onClick = () => {
+      cursor.classList.remove('click');
+      void cursor.offsetWidth; // reflow
+      cursor.classList.add('click');
+      setTimeout(() => cursor.classList.remove('click'), 500);
+    };
+
+    const start = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      paused = false;
+      rafId = requestAnimationFrame(animate);
+    };
+    const stop = () => {
+      paused = true;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseover', onOver);
+    document.addEventListener('mouseout', onOut);
+    document.addEventListener('mousedown', onClick);
+
+    // Page visibility pauses the loop
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop();
+      else start();
+    });
+    document.addEventListener('app-pause', stop);
+    document.addEventListener('app-resume', start);
+
+    // cleanup on unload
+    window.addEventListener('beforeunload', () => {
+      stop();
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseover', onOver);
+      document.removeEventListener('mouseout', onOut);
+      document.removeEventListener('mousedown', onClick);
+    });
+
+    start();
+  }
+
+  // ================================================================
+  // Mount
+  // ================================================================
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<App />);
+
+  // Announce upgrade ability
+  function announceUpgrade() {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // Init custom cursor after React mounts
+  setTimeout(initCustomCursor, 100);
+  </script>
+</body>
+</html>
