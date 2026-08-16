@@ -1,0 +1,3650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="creative-medium" content="interactive-prototype" />
+  <title>旋盘 SPINN · 极限飞盘社群</title>
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: linear-gradient(135deg, #1A1D23 0%, #14161A 50%, #1E2420 100%);
+      font-family: -apple-system, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      cursor: none;
+    }
+    @media (max-height: 960px) { body { padding: 20px; } }
+    @media (max-width: 480px) { body { padding: 10px; } }
+
+    /* ===== CUSTOM CURSOR ===== */
+    .cursor-ring, .cursor-dot, .cursor-glow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      will-change: transform;
+    }
+    .cursor-ring {
+      width: 38px;
+      height: 38px;
+      border: 2.5px solid #fff;
+      border-radius: 50%;
+      transition: width 0.2s cubic-bezier(.2,.8,.2,1), height 0.2s cubic-bezier(.2,.8,.2,1),
+                  border-color 0.2s, background 0.2s, opacity 0.3s;
+      mix-blend-mode: difference;
+      opacity: 0.95;
+    }
+    .cursor-ring.hovering {
+      width: 54px;
+      height: 54px;
+      border-color: #C6F24E;
+      background: rgba(198, 242, 78, 0.15);
+    }
+    .cursor-dot {
+      width: 6px;
+      height: 6px;
+      background: #C6F24E;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #C6F24E, 0 0 16px rgba(198, 242, 78, 0.5);
+      transition: transform 0.1s ease-out;
+    }
+    .cursor-dot.clicking {
+      transform: translate(-50%, -50%) scale(0.5);
+    }
+    .cursor-glow {
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle, rgba(198,242,78,0.18) 0%, transparent 70%);
+      border-radius: 50%;
+      transition: opacity 0.3s;
+      opacity: 0.6;
+    }
+    .cursor-ripple {
+      position: fixed;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%) scale(0);
+      width: 20px;
+      height: 20px;
+      border: 2px solid #C6F24E;
+      border-radius: 50%;
+      opacity: 1;
+      animation: rippleExpand 0.6s cubic-bezier(.2,.8,.2,1) forwards;
+    }
+    @keyframes rippleExpand {
+      0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+    }
+
+    /* ===== STAGE ===== */
+    .stage {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .app-title {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+    .app-title span {
+      color: #C6F24E;
+      font-weight: 700;
+    }
+    .app-tagline {
+      color: #8A8F98;
+      font-size: 12px;
+      margin-top: -8px;
+    }
+
+    /* ===== PHONE APP INTERIOR ===== */
+    .screen-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    .page {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: #14161A;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .page::-webkit-scrollbar { display: none; }
+    .page.entering {
+      animation: pageSlideIn 0.4s cubic-bezier(.2,.8,.2,1) forwards;
+    }
+    .page.leaving {
+      animation: pageSlideOut 0.35s cubic-bezier(.2,.8,.2,1) forwards;
+    }
+    @keyframes pageSlideIn {
+      from { transform: translateX(30%); opacity: 0.5; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes pageSlideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(-30%); opacity: 0.5; }
+    }
+
+    /* ===== COLOR TOKENS ===== */
+    :root {
+      --lime: #C6F24E;
+      --lime-dim: #A8D935;
+      --charcoal: #14161A;
+      --surface-dark: #1C1F24;
+      --surface-card: #22252B;
+      --warm-white: #FAFAF7;
+      --gray-med: #8A8F98;
+      --gray-light: #E8EAED;
+      --accent-orange: #FF7A45;
+      --divider: rgba(255,255,255,0.08);
+    }
+
+    /* ===== TAB BAR ===== */
+    .tab-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 83px;
+      background: rgba(20, 22, 26, 0.85);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-top: 0.5px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-around;
+      padding-top: 8px;
+      z-index: 30;
+    }
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      width: 60px;
+      padding: 4px 0;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.15s ease;
+    }
+    .tab-item:active { transform: scale(0.92); }
+    .tab-item svg {
+      width: 26px;
+      height: 26px;
+      stroke: #8A8F98;
+      fill: none;
+      stroke-width: 1.8;
+      transition: stroke 0.2s, fill 0.2s;
+    }
+    .tab-item.active svg {
+      stroke: #C6F24E;
+    }
+    .tab-item.active.tab-disc svg {
+      animation: discSpin 2.4s cubic-bezier(.4,0,.2,1) infinite;
+    }
+    @keyframes discSpin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .tab-label {
+      font-size: 10px;
+      color: #8A8F98;
+      font-weight: 500;
+      transition: color 0.2s;
+      letter-spacing: -0.2px;
+    }
+    .tab-item.active .tab-label { color: #C6F24E; }
+
+    /* ===== NAV BAR (large title) ===== */
+    .nav-bar {
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      background: rgba(20, 22, 26, 0.85);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      padding: calc(var(--ios-safe-top) + 8px) 20px 12px;
+    }
+    .nav-bar.compact {
+      padding: calc(var(--ios-safe-top) + 8px) 20px 12px;
+    }
+    .nav-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .nav-back-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .nav-back-btn:active { transform: scale(0.9); }
+    .nav-back-btn:hover { background: rgba(255,255,255,0.18); }
+    .nav-back-btn svg {
+      width: 16px; height: 16px;
+      stroke: #fff;
+      stroke-width: 2.2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .nav-title-large {
+      font-size: 34px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -1px;
+      padding: 0 20px;
+    }
+    .nav-title-small {
+      font-size: 17px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: -0.4px;
+    }
+    .nav-actions { display: flex; gap: 12px; }
+    .nav-icon-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .nav-icon-btn:active { transform: scale(0.9); }
+    .nav-icon-btn:hover { background: rgba(255,255,255,0.18); }
+    .nav-icon-btn svg {
+      width: 18px; height: 18px;
+      stroke: #fff;
+      stroke-width: 1.8;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ===== HOME / FEED ===== */
+    .feed-content {
+      padding: 0 16px 100px;
+    }
+    .hero-orb {
+      position: relative;
+      height: 280px;
+      margin: 12px -16px 0;
+      overflow: hidden;
+      border-radius: 0 0 32px 32px;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 30% 30%, rgba(198,242,78,0.35) 0%, rgba(20,22,26,0) 60%),
+                  linear-gradient(160deg, #1E2815 0%, #14161A 70%);
+    }
+    .hero-disc {
+      position: absolute;
+      right: -30px;
+      top: 30px;
+      width: 200px;
+      height: 200px;
+      animation: heroDiscFloat 4s ease-in-out infinite;
+    }
+    @keyframes heroDiscFloat {
+      0%, 100% { transform: translateY(0) rotate(-12deg); }
+      50% { transform: translateY(-12px) rotate(8deg); }
+    }
+    .hero-disc-svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 20px 40px rgba(198,242,78,0.3));
+    }
+    .hero-text {
+      position: relative;
+      padding: 30px 24px 0;
+      z-index: 2;
+    }
+    .hero-tag {
+      display: inline-block;
+      padding: 5px 12px;
+      background: rgba(198, 242, 78, 0.18);
+      color: #C6F24E;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(198,242,78,0.3);
+    }
+    .hero-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.8px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+    .hero-sub {
+      font-size: 14px;
+      color: #8A8F98;
+      line-height: 1.5;
+    }
+    .hero-stats {
+      position: relative;
+      display: flex;
+      gap: 10px;
+      margin: 22px 24px 0;
+      z-index: 2;
+    }
+    .hero-stat {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 12px;
+      backdrop-filter: blur(10px);
+    }
+    .hero-stat-num {
+      font-size: 22px;
+      font-weight: 800;
+      color: #C6F24E;
+      letter-spacing: -0.5px;
+    }
+    .hero-stat-label {
+      font-size: 11px;
+      color: #8A8F98;
+      margin-top: 2px;
+    }
+
+    /* Section header */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 4px 12px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+    .section-more {
+      font-size: 13px;
+      color: #C6F24E;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    /* Activity card */
+    .activity-card {
+      background: #1C1F24;
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.05);
+      transition: transform 0.2s cubic-bezier(.2,.8,.2,1), box-shadow 0.2s, border-color 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .activity-card:active { transform: scale(0.98); }
+    .activity-card:hover {
+      border-color: rgba(198,242,78,0.3);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .activity-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .activity-date-badge {
+      width: 52px;
+      height: 52px;
+      background: rgba(198, 242, 78, 0.12);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(198,242,78,0.2);
+    }
+    .activity-date-day {
+      font-size: 20px;
+      font-weight: 800;
+      color: #C6F24E;
+      line-height: 1;
+    }
+    .activity-date-month {
+      font-size: 10px;
+      color: #C6F24E;
+      opacity: 0.7;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .activity-level {
+      padding: 4px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .level-beginner { background: rgba(198,242,78,0.15); color: #C6F24E; }
+    .level-intermediate { background: rgba(255,122,69,0.15); color: #FF7A45; }
+    .level-advanced { background: rgba(255,90,90,0.15); color: #ff5a5a; }
+
+    .activity-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+    .activity-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #8A8F98;
+      margin-bottom: 12px;
+    }
+    .activity-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .activity-meta-item svg {
+      width: 14px; height: 14px;
+      stroke: #8A8F98; stroke-width: 1.8;
+      fill: none; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .activity-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid var(--divider);
+    }
+    .activity-avatars {
+      display: flex;
+    }
+    .activity-avatar {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      border: 2px solid #1C1F24;
+      margin-left: -6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 600;
+      color: #fff;
+    }
+    .activity-avatar:first-child { margin-left: 0; }
+    .activity-join-btn {
+      padding: 7px 16px;
+      background: #C6F24E;
+      color: #14161A;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.15s, box-shadow 0.2s;
+    }
+    .activity-join-btn:active { transform: scale(0.92); }
+    .activity-join-btn:hover {
+      box-shadow: 0 4px 14px rgba(198,242,78,0.4);
+    }
+    .activity-join-btn.joined {
+      background: rgba(198,242,78,0.15);
+      color: #C6F24E;
+    }
+
+    /* FAB */
+    .fab {
+      position: absolute;
+      right: 20px;
+      bottom: 100px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #C6F24E;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 20;
+      box-shadow: 0 8px 24px rgba(198,242,78,0.4), 0 2px 6px rgba(0,0,0,0.3);
+      transition: transform 0.3s cubic-bezier(.2,.8,.2,1), box-shadow 0.3s;
+    }
+    .fab:active { transform: scale(0.9); }
+    .fab:hover {
+      transform: scale(1.08) rotate(90deg);
+      box-shadow: 0 12px 32px rgba(198,242,78,0.5);
+    }
+    .fab svg {
+      width: 24px; height: 24px;
+      stroke: #14161A; stroke-width: 2.5;
+      fill: none; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .fab-menu {
+      position: absolute;
+      right: 20px;
+      bottom: 170px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 20;
+    }
+    .fab-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: flex-end;
+      cursor: pointer;
+      animation: fabItemBounce 0.4s cubic-bezier(.2,.8,.2,1) backwards;
+    }
+    .fab-menu-item:nth-child(1) { animation-delay: 0.05s; }
+    .fab-menu-item:nth-child(2) { animation-delay: 0.1s; }
+    .fab-menu-item:nth-child(3) { animation-delay: 0.15s; }
+    @keyframes fabItemBounce {
+      0% { transform: translateY(20px) scale(0.8); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .fab-menu-label {
+      padding: 6px 12px;
+      background: rgba(28,31,36,0.95);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 100px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: blur(10px);
+    }
+    .fab-menu-icon {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: #22252B;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .fab-menu-icon svg {
+      width: 18px; height: 18px;
+      stroke: #C6F24E; stroke-width: 1.8;
+      fill: none; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* ===== ACTIVITY DETAIL ===== */
+    .detail-hero {
+      position: relative;
+      height: 320px;
+      overflow: hidden;
+    }
+    .detail-hero-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 80%, rgba(198,242,78,0.3) 0%, #14161A 75%),
+                  linear-gradient(180deg, #1E2815 0%, #14161A 100%);
+    }
+    .detail-hero-disc {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      transform: translate(-50%, -50%);
+      width: 220px;
+      height: 220px;
+      animation: detailDiscSpin 18s linear infinite;
+    }
+    @keyframes detailDiscSpin {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+    .detail-overlay-top {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: calc(var(--ios-safe-top) + 8px) 16px 0;
+      display: flex;
+      justify-content: space-between;
+      z-index: 5;
+    }
+    .detail-back-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .detail-back-btn svg {
+      width: 16px; height: 16px;
+      stroke: #fff; stroke-width: 2.2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .detail-body {
+      position: relative;
+      background: #14161A;
+      border-radius: 32px 32px 0 0;
+      margin-top: -32px;
+      padding: 24px 20px 120px;
+      z-index: 3;
+    }
+    .detail-tag-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .detail-pill {
+      padding: 5px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .detail-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.7px;
+      line-height: 1.2;
+      margin-bottom: 8px;
+    }
+    .detail-subtitle {
+      font-size: 14px;
+      color: #8A8F98;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .detail-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .detail-info-item {
+      background: #1C1F24;
+      border-radius: 14px;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .detail-info-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: rgba(198,242,78,0.15);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 8px;
+    }
+    .detail-info-icon svg {
+      width: 16px; height: 16px;
+      stroke: #C6F24E; stroke-width: 1.8; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .detail-info-label {
+      font-size: 11px;
+      color: #8A8F98;
+      margin-bottom: 2px;
+    }
+    .detail-info-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .detail-section-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      margin: 20px 0 12px;
+    }
+    .detail-desc {
+      font-size: 14px;
+      color: #B0B4BB;
+      line-height: 1.7;
+    }
+    .detail-participants {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .detail-participant {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      width: 52px;
+    }
+    .detail-part-avatar {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+      color: #14161A;
+    }
+    .detail-part-name {
+      font-size: 11px;
+      color: #B0B4BB;
+      text-align: center;
+      line-height: 1.2;
+      max-width: 52px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .detail-cta-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 90px;
+      background: rgba(20,22,26,0.9);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--divider);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      z-index: 4;
+    }
+    .detail-cta-price {
+      flex: 1;
+    }
+    .detail-cta-price-num {
+      font-size: 22px;
+      font-weight: 800;
+      color: #C6F24E;
+      letter-spacing: -0.5px;
+    }
+    .detail-cta-price-num small {
+      font-size: 13px;
+      color: #8A8F98;
+      font-weight: 500;
+    }
+    .detail-cta-btn {
+      padding: 14px 32px;
+      background: #C6F24E;
+      color: #14161A;
+      border: none;
+      border-radius: 100px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+    }
+    .detail-cta-btn:active { transform: scale(0.96); }
+    .detail-cta-btn:hover { box-shadow: 0 6px 20px rgba(198,242,78,0.4); }
+
+    /* ===== MAP PAGE ===== */
+    .map-container {
+      position: relative;
+      height: 100%;
+      background: #14161A;
+    }
+    .map-canvas {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 30% 40%, rgba(198,242,78,0.12) 0%, transparent 40%),
+        radial-gradient(circle at 70% 60%, rgba(255,122,69,0.1) 0%, transparent 35%),
+        linear-gradient(180deg, #181B20 0%, #14161A 100%);
+    }
+    .map-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .map-pin {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      cursor: pointer;
+      animation: pinBounce 2s ease-in-out infinite;
+    }
+    .map-pin:nth-child(2) { animation-delay: 0.3s; }
+    .map-pin:nth-child(3) { animation-delay: 0.6s; }
+    .map-pin:nth-child(4) { animation-delay: 0.9s; }
+    @keyframes pinBounce {
+      0%, 100% { transform: translate(-50%, -100%) translateY(0); }
+      50% { transform: translate(-50%, -100%) translateY(-6px); }
+    }
+    .map-pin-marker {
+      width: 36px; height: 36px;
+      border-radius: 50% 50% 50% 0;
+      background: #C6F24E;
+      transform: rotate(-45deg);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(198,242,78,0.5);
+      position: relative;
+    }
+    .map-pin-marker::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #14161A;
+      transform: rotate(45deg);
+    }
+    .map-pin.active .map-pin-marker {
+      background: #FF7A45;
+      box-shadow: 0 4px 20px rgba(255,122,69,0.6);
+    }
+    .map-bottom-sheet {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: #1C1F24;
+      border-radius: 24px 24px 0 0;
+      padding: 8px 20px 24px;
+      z-index: 10;
+      box-shadow: 0 -4px 30px rgba(0,0,0,0.4);
+      animation: sheetUp 0.4s cubic-bezier(.2,.8,.2,1);
+    }
+    @keyframes sheetUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .sheet-handle {
+      width: 40px;
+      height: 5px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 3px;
+      margin: 0 auto 12px;
+      cursor: grab;
+    }
+    .sheet-venue-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .sheet-venue-addr {
+      font-size: 13px;
+      color: #8A8F98;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .sheet-venue-addr svg {
+      width: 14px; height: 14px;
+      stroke: #8A8F98; stroke-width: 1.8; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .sheet-stats {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .sheet-stat {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .sheet-stat-num {
+      font-size: 16px;
+      font-weight: 700;
+      color: #C6F24E;
+    }
+    .sheet-stat-label {
+      font-size: 11px;
+      color: #8A8F98;
+    }
+    .sheet-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .sheet-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.15s;
+      border: none;
+    }
+    .sheet-btn:active { transform: scale(0.96); }
+    .sheet-btn-primary {
+      background: #C6F24E;
+      color: #14161A;
+    }
+    .sheet-btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    /* ===== TEAM / COMMUNITY ===== */
+    .team-header {
+      padding: 16px 20px 0;
+    }
+    .team-tabs {
+      display: flex;
+      gap: 0;
+      padding: 16px 20px 0;
+      position: relative;
+    }
+    .team-tab {
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: #8A8F98;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
+    .team-tab.active { color: #fff; }
+    .team-tab-indicator {
+      position: absolute;
+      bottom: 0;
+      height: 3px;
+      background: #C6F24E;
+      border-radius: 2px;
+      transition: left 0.3s cubic-bezier(.2,.8,.2,1), width 0.3s cubic-bezier(.2,.8,.2,1);
+    }
+    .team-divider {
+      height: 1px;
+      background: var(--divider);
+      margin: 0 20px;
+    }
+    .team-content {
+      padding: 16px 16px 100px;
+    }
+
+    .team-card {
+      background: #1C1F24;
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .team-card:active { transform: scale(0.98); }
+    .team-card:hover { border-color: rgba(198,242,78,0.3); }
+    .team-card-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .team-logo {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 800;
+      color: #14161A;
+    }
+    .team-info h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+    .team-info p {
+      font-size: 12px;
+      color: #8A8F98;
+    }
+    .team-members-mini {
+      display: flex;
+      margin-bottom: 10px;
+    }
+    .team-members-mini .activity-avatar {
+      border-color: #1C1F24;
+    }
+    .team-card-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 10px;
+      border-top: 1px solid var(--divider);
+    }
+    .team-rank {
+      font-size: 12px;
+      color: #C6F24E;
+      font-weight: 600;
+    }
+    .team-follow-btn {
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .team-follow-btn {
+      background: rgba(198,242,78,0.15);
+      color: #C6F24E;
+    }
+    .team-follow-btn.following {
+      background: #C6F24E;
+      color: #14161A;
+    }
+
+    /* Ranking tab */
+    .rank-list { padding: 0 4px; }
+    .rank-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .rank-num {
+      width: 28px;
+      font-size: 18px;
+      font-weight: 800;
+      text-align: center;
+    }
+    .rank-num.top1 { color: #C6F24E; }
+    .rank-num.top2 { color: #E8EAED; }
+    .rank-num.top3 { color: #FF7A45; }
+    .rank-num.normal { color: #8A8F98; font-size: 16px; font-weight: 600; }
+    .rank-team-logo {
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+      color: #14161A;
+    }
+    .rank-info { flex: 1; }
+    .rank-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .rank-sub {
+      font-size: 12px;
+      color: #8A8F98;
+      margin-top: 2px;
+    }
+    .rank-score {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* ===== TUTORIALS ===== */
+    .tutorial-carousel {
+      display: flex;
+      gap: 12px;
+      padding: 4px 16px 20px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tutorial-carousel::-webkit-scrollbar { display: none; }
+    .tutorial-card-featured {
+      flex-shrink: 0;
+      width: 260px;
+      height: 320px;
+      border-radius: 24px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(.2,.8,.2,1);
+    }
+    .tutorial-card-featured:active { transform: scale(0.97); }
+    .tutorial-card-bg {
+      position: absolute; inset: 0;
+    }
+    .tutorial-card-gradient {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.8) 100%);
+    }
+    .tutorial-card-content {
+      position: absolute;
+      bottom: 20px; left: 16px; right: 16px;
+    }
+    .tutorial-card-tag {
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(198,242,78,0.2);
+      color: #C6F24E;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      backdrop-filter: blur(5px);
+    }
+    .tutorial-card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+    .tutorial-card-meta {
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tutorial-list {
+      padding: 0 16px 100px;
+    }
+    .tutorial-item {
+      display: flex;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--divider);
+      cursor: pointer;
+      transition: padding-left 0.2s;
+    }
+    .tutorial-item:active { padding-left: 6px; }
+    .tutorial-thumb {
+      width: 90px; height: 68px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .tutorial-thumb .play-icon {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tutorial-thumb .play-icon svg {
+      width: 12px; height: 12px;
+      fill: #fff;
+      margin-left: 2px;
+    }
+    .tutorial-item-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .tutorial-item-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .tutorial-item-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #8A8F98;
+    }
+    .tutorial-duration {
+      padding: 2px 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* Progress ring for tutorial progress */
+    .progress-ring-container {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(198,242,78,0.12) 0%, rgba(255,122,69,0.08) 100%);
+      border-radius: 20px;
+      margin: 0 16px 16px;
+      border: 1px solid rgba(198,242,78,0.15);
+    }
+    .progress-ring {
+      position: relative;
+      width: 60px; height: 60px;
+      flex-shrink: 0;
+    }
+    .progress-ring-svg {
+      transform: rotate(-90deg);
+    }
+    .progress-ring-bg {
+      fill: none;
+      stroke: rgba(255,255,255,0.1);
+      stroke-width: 5;
+    }
+    .progress-ring-fill {
+      fill: none;
+      stroke: #C6F24E;
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-dasharray: 157;
+      stroke-dashoffset: 157;
+      transition: stroke-dashoffset 1.5s cubic-bezier(.2,.8,.2,1);
+    }
+    .progress-ring-text {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 14px;
+      font-weight: 700;
+      color: #C6F24E;
+    }
+    .progress-text h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .progress-text p {
+      font-size: 12px;
+      color: #8A8F98;
+      line-height: 1.5;
+    }
+
+    /* ===== PROFILE ===== */
+    .profile-hero {
+      position: relative;
+      padding: calc(var(--ios-safe-top) + 20px) 20px 24px;
+      background: radial-gradient(ellipse at top right, rgba(198,242,78,0.2) 0%, transparent 50%),
+                  linear-gradient(180deg, #1E2418 0%, #14161A 100%);
+    }
+    .profile-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .profile-avatar-wrap {
+      position: relative;
+      width: 80px; height: 80px;
+      margin-bottom: 12px;
+    }
+    .profile-avatar {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #C6F24E 0%, #A8D935 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px; font-weight: 800;
+      color: #14161A;
+      box-shadow: 0 8px 24px rgba(198,242,78,0.3);
+    }
+    .profile-level-badge {
+      position: absolute;
+      bottom: -2px; right: -2px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: #FF7A45;
+      border: 3px solid #14161A;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800;
+      color: #fff;
+    }
+    .profile-name {
+      font-size: 24px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+    .profile-handle {
+      font-size: 14px;
+      color: #8A8F98;
+      margin-bottom: 16px;
+    }
+    .profile-stats {
+      display: flex;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+    }
+    .profile-stat {
+      flex: 1;
+      padding: 14px 0;
+      text-align: center;
+      position: relative;
+    }
+    .profile-stat:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 20%;
+      height: 60%;
+      width: 1px;
+      background: rgba(255,255,255,0.08);
+    }
+    .profile-stat-num {
+      font-size: 22px;
+      font-weight: 800;
+      color: #C6F24E;
+      letter-spacing: -0.3px;
+    }
+    .profile-stat-label {
+      font-size: 11px;
+      color: #8A8F98;
+      margin-top: 3px;
+    }
+    .profile-list-section {
+      padding: 20px 16px 100px;
+    }
+    .profile-list {
+      background: #1C1F24;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .profile-list-item {
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-bottom: 1px solid var(--divider);
+    }
+    .profile-list-item:last-child { border-bottom: none; }
+    .profile-list-item:active { background: rgba(255,255,255,0.05); }
+    .profile-list-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+    .profile-list-icon svg {
+      width: 16px; height: 16px;
+      stroke: #fff; stroke-width: 1.8; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .profile-list-text { flex: 1; font-size: 15px; color: #fff; }
+    .profile-list-arrow {
+      color: #8A8F98;
+    }
+    .profile-list-arrow svg {
+      width: 14px; height: 14px;
+      stroke: #8A8F98; stroke-width: 2; fill: none;
+    }
+
+    /* Achievements section */
+    .achievement-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 12px 0 20px;
+    }
+    .achievement-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .achievement-item:active { transform: scale(0.92); }
+    .achievement-icon {
+      width: 52px; height: 52px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .achievement-icon.unlocked {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .achievement-icon.locked {
+      opacity: 0.3;
+      filter: grayscale(1);
+    }
+    .achievement-name {
+      font-size: 10px;
+      color: #B0B4BB;
+      text-align: center;
+      max-width: 60px;
+    }
+
+    /* ===== DESIGN SPECS ===== */
+    .spec-page {
+      padding: calc(var(--ios-safe-top) + 16px) 20px 100px;
+    }
+    .spec-hero {
+      text-align: center;
+      padding: 20px 0 24px;
+    }
+    .spec-logo {
+      width: 64px; height: 64px;
+      margin: 0 auto 14px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #C6F24E 0%, #A8D935 100%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 24px rgba(198,242,78,0.4);
+    }
+    .spec-logo svg {
+      width: 32px; height: 32px;
+      stroke: #14161A; stroke-width: 2.5; fill: none;
+    }
+    .spec-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.8px;
+    }
+    .spec-subtitle {
+      font-size: 13px;
+      color: #C6F24E;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    .spec-section {
+      margin-bottom: 28px;
+    }
+    .spec-section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #8A8F98;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--divider);
+    }
+    .spec-color-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .spec-color {
+      flex: 1;
+      min-width: 70px;
+    }
+    .spec-color-swatch {
+      height: 60px;
+      border-radius: 12px;
+      margin-bottom: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .spec-color-name {
+      font-size: 11px;
+      color: #fff;
+      font-weight: 600;
+    }
+    .spec-color-hex {
+      font-size: 10px;
+      color: #8A8F98;
+      font-family: 'SF Mono', Menlo, monospace;
+    }
+    .spec-typography-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .spec-typography-item:last-child { border-bottom: none; }
+    .spec-type-preview {
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .spec-type-label {
+      font-size: 11px;
+      color: #8A8F98;
+      font-family: 'SF Mono', Menlo, monospace;
+    }
+    .spec-spacing-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .spec-spacing-bar {
+      height: 20px;
+      background: linear-gradient(90deg, #C6F24E, #A8D935);
+      border-radius: 4px;
+    }
+    .spec-spacing-label {
+      font-size: 12px;
+      color: #8A8F98;
+      font-family: 'SF Mono', Menlo, monospace;
+      min-width: 60px;
+    }
+    .spec-component-card {
+      background: #1C1F24;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .spec-component-name {
+      font-size: 13px;
+      color: #8A8F98;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .spec-component-preview {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .spec-btn-primary {
+      padding: 10px 20px;
+      background: #C6F24E;
+      color: #14161A;
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .spec-btn-secondary {
+      padding: 10px 20px;
+      background: transparent;
+      color: #fff;
+      border: 1.5px solid rgba(255,255,255,0.2);
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .spec-badge {
+      padding: 4px 10px;
+      background: rgba(198,242,78,0.15);
+      color: #C6F24E;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .spec-card-sample {
+      width: 100%;
+      height: 60px;
+      background: #22252B;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .spec-note {
+      padding: 12px 14px;
+      background: rgba(198,242,78,0.08);
+      border: 1px solid rgba(198,242,78,0.2);
+      border-radius: 12px;
+      font-size: 12px;
+      color: #C6F24E;
+      line-height: 1.6;
+    }
+    .spec-note strong {
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* ===== API DOCS ===== */
+    .api-page {
+      padding: calc(var(--ios-safe-top) + 16px) 20px 100px;
+    }
+    .api-header {
+      margin-bottom: 24px;
+    }
+    .api-endpoint {
+      background: #1C1F24;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .api-endpoint:hover { border-color: rgba(198,242,78,0.3); }
+    .api-endpoint-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .api-method {
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      flex-shrink: 0;
+    }
+    .method-get { background: rgba(198,242,78,0.15); color: #C6F24E; }
+    .method-post { background: rgba(255,122,69,0.15); color: #FF7A45; }
+    .method-put { background: rgba(100,180,255,0.15); color: #64b4ff; }
+    .method-delete { background: rgba(255,90,90,0.15); color: #ff5a5a; }
+    .api-path {
+      font-size: 13px;
+      color: #fff;
+      font-family: 'SF Mono', Menlo, monospace;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .api-endpoint-desc {
+      font-size: 12px;
+      color: #8A8F98;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--divider);
+      line-height: 1.5;
+    }
+    .api-code-block {
+      background: #0D0F12;
+      border-radius: 12px;
+      padding: 14px;
+      margin: 12px 0;
+      border: 1px solid rgba(255,255,255,0.05);
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.7;
+      color: #B0B4BB;
+      overflow-x: auto;
+    }
+    .api-code-key { color: #C6F24E; }
+    .api-code-string { color: #FF7A45; }
+    .api-code-num { color: #ffd166; }
+    .api-code-comment { color: #5A6068; }
+    .api-param-table {
+      width: 100%;
+      font-size: 12px;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .api-param-table th, .api-param-table td {
+      padding: 8px 0;
+      text-align: left;
+      border-bottom: 1px solid var(--divider);
+    }
+    .api-param-table th {
+      color: #8A8F98;
+      font-weight: 500;
+      font-size: 11px;
+    }
+    .api-param-table td {
+      color: #fff;
+    }
+    .api-param-name {
+      color: #C6F24E !important;
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 11px;
+    }
+    .api-param-type {
+      color: #8A8F98 !important;
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 11px;
+    }
+    .api-param-desc {
+      font-size: 11px !important;
+      color: #B0B4BB !important;
+    }
+    .api-version-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(255,122,69,0.15);
+      color: #FF7A45;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .api-base-url {
+      padding: 10px 14px;
+      background: #0D0F12;
+      border-radius: 10px;
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 12px;
+      color: #C6F24E;
+      border: 1px solid rgba(255,255,255,0.05);
+      margin-bottom: 20px;
+      overflow-x: auto;
+    }
+
+    /* ===== Pull to refresh ===== */
+    .pull-indicator {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding-top: 10px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .pull-indicator.visible { opacity: 1; }
+    .pull-disc {
+      width: 28px; height: 28px;
+    }
+    .pull-text {
+      font-size: 11px;
+      color: #8A8F98;
+    }
+
+    /* ===== Modal ===== */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      z-index: 40;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal-sheet {
+      width: 100%;
+      background: #1C1F24;
+      border-radius: 24px 24px 0 0;
+      padding: 20px;
+      animation: slideUp 0.35s cubic-bezier(.2,.8,.2,1);
+      max-height: 80%;
+      overflow-y: auto;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .modal-desc {
+      font-size: 14px;
+      color: #8A8F98;
+      margin-bottom: 20px;
+    }
+    .modal-form-row {
+      margin-bottom: 16px;
+    }
+    .modal-label {
+      font-size: 13px;
+      color: #B0B4BB;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .modal-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #0D0F12;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .modal-input:focus { border-color: #C6F24E; }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .modal-btn {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .modal-btn:active { transform: scale(0.97); }
+    .modal-btn-primary { background: #C6F24E; color: #14161A; }
+    .modal-btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+
+    /* ===== Staggered entrance ===== */
+    .stagger-item {
+      opacity: 0;
+      transform: translateY(16px);
+      animation: staggerIn 0.5s cubic-bezier(.2,.8,.2,1) forwards;
+    }
+    @keyframes staggerIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .cursor-ring, .cursor-dot, .cursor-glow { display: none; }
+      body { cursor: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // ──────────────────────────────────────────────
+    // DATA
+    // ──────────────────────────────────────────────
+    const ACTIVITIES = [
+      {
+        id: 1, day: 21, month: 'AUG', weekday: '周六',
+        title: '夏日夜跑飞盘局 · 新手友好',
+        venue: '朝阳公园东7足球场',
+        time: '19:00 - 21:30',
+        level: 'beginner', levelText: '新手友好',
+        joined: 14, total: 20,
+        price: 48,
+        host: '飞盘社老周',
+        description: '每周六晚固定的欢乐局！无论你是第一次接触飞盘，还是想找个轻松的氛围出汗，都欢迎来玩。我们会安排教练做 15 分钟基础动作讲解，然后分两队打迷你场。装备免费提供，穿运动鞋就行。',
+        participants: [
+          { name: '老周', color: '#C6F24E' },
+          { name: '小美', color: '#FF7A45' },
+          { name: '阿凯', color: '#64b4ff' },
+          { name: '小鹿', color: '#ffd166' },
+          { name: '大飞', color: '#c77dff' },
+        ],
+      },
+      {
+        id: 2, day: 23, month: 'AUG', weekday: '周一',
+        title: '进阶战术训练 · Handler 专项',
+        venue: '奥林匹克森林公园',
+        time: '20:00 - 22:00',
+        level: 'advanced', levelText: '进阶挑战',
+        joined: 8, total: 12,
+        price: 68,
+        host: 'Leo Wang',
+        description: '面向有 3 个月以上经验的盘友，本期聚焦 Handler 出盘选择与战术跑位。包含：力线原理、假动作技巧、破防拆队策略。请自带飞盘和水壶。',
+        participants: [
+          { name: 'Leo', color: '#FF7A45' },
+          { name: 'Nina', color: '#C6F24E' },
+          { name: 'Kris', color: '#64b4ff' },
+        ],
+      },
+      {
+        id: 3, day: 25, month: 'AUG', weekday: '周三',
+        title: '女子飞盘专场 · She Can Fly',
+        venue: '海淀公园运动场',
+        time: '19:30 - 21:30',
+        level: 'intermediate', levelText: '女生专属',
+        joined: 16, total: 24,
+        price: 38,
+        host: 'She Can Fly 俱乐部',
+        description: '全女子飞盘局，安全、友好、专注。不管你是零基础还是想提升，都能在这里找到同频的伙伴。配备 2 名女教练，分基础组和进阶组训练。',
+        participants: [
+          { name: 'Luna', color: '#FF7A45' },
+          { name: 'Yoyo', color: '#C6F24E' },
+          { name: 'Mia', color: '#ffd166' },
+          { name: 'Jess', color: '#c77dff' },
+          { name: 'Amy', color: '#64b4ff' },
+        ],
+      },
+      {
+        id: 4, day: 27, month: 'AUG', weekday: '周五',
+        title: '城市公开赛 · 海选报名',
+        venue: '国家奥体中心体育场',
+        time: '09:00 - 18:00',
+        level: 'advanced', levelText: '赛事级别',
+        joined: 56, total: 96,
+        price: 128,
+        host: '北京飞盘协会',
+        description: '2026 旋盘城市公开赛海选正式开启！16 支队伍单败淘汰，前 4 名晋级总决赛。个人报名请注明队伍名称，或加入自由组队池。',
+        participants: [
+          { name: '协会', color: '#C6F24E' },
+          { name: 'Tom', color: '#FF7A45' },
+          { name: 'Zoe', color: '#ffd166' },
+        ],
+      },
+    ];
+
+    const VENUES = [
+      { id: 1, name: '朝阳公园东7足球场', addr: '朝阳区朝阳公园南路1号', x: 35, y: 45, courts: 4, activities: 12, rating: 4.8 },
+      { id: 2, name: '奥林匹克森林公园', addr: '朝阳区科荟路33号', x: 65, y: 25, courts: 6, activities: 18, rating: 4.9 },
+      { id: 3, name: '海淀公园运动场', addr: '海淀区新建宫门路2号', x: 20, y: 65, courts: 3, activities: 8, rating: 4.6 },
+      { id: 4, name: '国家奥体中心体育场', addr: '朝阳区国家体育场南路1号', x: 75, y: 70, courts: 8, activities: 24, rating: 4.9 },
+    ];
+
+    const TEAMS = [
+      { id: 1, name: '旋风少年队', tagline: '速度就是一切', members: 28, rank: 1, wins: 23, losses: 5, color: '#C6F24E', initial: '旋' },
+      { id: 2, name: 'Gravity 重力队', tagline: '技术流天花板', members: 32, rank: 2, wins: 21, losses: 7, color: '#FF7A45', initial: 'G' },
+      { id: 3, name: '白夜飞盘社', tagline: '夜空中最亮的盘', members: 45, rank: 3, wins: 19, losses: 9, color: '#64b4ff', initial: '白' },
+      { id: 4, name: 'Huck It 哈奇队', tagline: '能扔就别传', members: 22, rank: 4, wins: 17, losses: 11, color: '#ffd166', initial: 'H' },
+      { id: 5, name: 'Wind Cutter', tagline: '切风而行', members: 26, rank: 5, wins: 15, losses: 13, color: '#c77dff', initial: 'W' },
+    ];
+
+    const TUTORIALS_FEATURED = [
+      { id: 1, title: '反手出盘全解析', tag: '基础教学', duration: '12:30', views: '2.3万', level: 'beginner', color1: '#1E2815', color2: '#C6F24E' },
+      { id: 2, title: 'Handler 战术跑位', tag: '进阶技巧', duration: '18:45', views: '8.6千', level: 'intermediate', color1: '#2A1810', color2: '#FF7A45' },
+      { id: 3, title: 'Layout 鱼跃接盘', tag: '高阶挑战', duration: '9:20', views: '1.5万', level: 'advanced', color1: '#1A1A2E', color2: '#c77dff' },
+    ];
+
+    const TUTORIALS_LIST = [
+      { id: 4, title: '正手出盘 · 从入门到稳定', duration: '15:10', views: '1.8万', level: 'beginner', color: '#C6F24E' },
+      { id: 5, title: 'Cut 切位的 5 种经典路线', duration: '10:45', views: '9.2千', level: 'intermediate', color: '#FF7A45' },
+      { id: 6, title: '防守站位与身体对抗', duration: '13:20', views: '7.4千', level: 'intermediate', color: '#64b4ff' },
+      { id: 7, title: 'Force 防守策略深度剖析', duration: '20:05', views: '4.1千', level: 'advanced', color: '#ffd166' },
+      { id: 8, title: 'Endzone 进攻战术板', duration: '16:30', views: '5.6千', level: 'advanced', color: '#c77dff' },
+    ];
+
+    const ACHIEVEMENTS = [
+      { id: 1, name: '首次飞盘', icon: '🥏', color: '#C6F24E', unlocked: true },
+      { id: 2, name: '十场达成', icon: '🔥', color: '#FF7A45', unlocked: true },
+      { id: 3, name: 'MVP', icon: '🏆', color: '#ffd166', unlocked: true },
+      { id: 4, name: '全勤王', icon: '📅', color: '#64b4ff', unlocked: true },
+      { id: 5, name: '神级Huck', icon: '💨', color: '#c77dff', unlocked: true },
+      { id: 6, name: '钢铁防守', icon: '🛡️', color: '#06d6a0', unlocked: true },
+      { id: 7, name: '百场传说', icon: '💎', color: '#E8EAED', unlocked: false },
+      { id: 8, name: '城市冠军', icon: '👑', color: '#ffd700', unlocked: false },
+    ];
+
+    // ──────────────────────────────────────────────
+    // ICONS (inline SVG)
+    // ──────────────────────────────────────────────
+    const Icon = {
+      Home: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>),
+      Map: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16M15 5v16"/></svg>),
+      Team: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
+      Play: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/></svg>),
+      User: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>),
+      Back: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="15 18 9 12 15 6"/></svg>),
+      Plus: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>),
+      Search: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
+      Bell: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>),
+      Pin: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>),
+      Clock: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
+      Users: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>),
+      Disc: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 2.2 4.5 4 10 4s10-1.8 10-4"/><path d="M12 8v8"/></svg>),
+      ChevronRight: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="9 18 15 12 9 6"/></svg>),
+      Settings: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
+      Heart: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>),
+      Share: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>),
+      Calendar: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>),
+      Award: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>),
+      Book: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>),
+      LogOut: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>),
+      Eye: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>),
+      Zap: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>),
+      Message: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>),
+      Star: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
+      Grid: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>),
+      Dribbble: (p) => (<svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>),
+    };
+
+    // ──────────────────────────────────────────────
+    // Frisbee Disc SVG Component
+    // ──────────────────────────────────────────────
+    function DiscSvg({ size = 200, color = '#C6F24E', className = '' }) {
+      return (
+        <svg viewBox="0 0 200 200" className={className} width={size} height={size}>
+          <defs>
+            <radialGradient id="discGrad" cx="40%" cy="35%" r="60%">
+              <stop offset="0%" stopColor={color} stopOpacity="1"/>
+              <stop offset="60%" stopColor={color} stopOpacity="0.85"/>
+              <stop offset="100%" stopColor="#8AB82F" stopOpacity="1"/>
+            </radialGradient>
+          </defs>
+          <ellipse cx="100" cy="100" rx="90" ry="28" fill="url(#discGrad)"/>
+          <ellipse cx="100" cy="100" rx="70" ry="18" fill="rgba(255,255,255,0.15)"/>
+          <ellipse cx="100" cy="94" rx="78" ry="8" fill="rgba(255,255,255,0.3)"/>
+          <ellipse cx="100" cy="100" rx="90" ry="28" fill="none" stroke={color} strokeWidth="2" strokeOpacity="0.5"/>
+        </svg>
+      );
+    }
+
+    // ──────────────────────────────────────────────
+    // CUSTOM CURSOR
+    // ──────────────────────────────────────────────
+    function CustomCursor() {
+      const ringRef = useRef(null);
+      const dotRef = useRef(null);
+      const glowRef = useRef(null);
+      const rafRef = useRef(null);
+      const targetRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const currentRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const reducedMotion = useMemo(() =>
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
+
+      useEffect(() => {
+        if (reducedMotion) return;
+
+        const onMove = (e) => {
+          targetRef.current = { x: e.clientX, y: e.clientY };
+        };
+
+        const animate = () => {
+          const t = targetRef.current;
+          const c = currentRef.current;
+          // Ease toward target (damped follow)
+          c.x += (t.x - c.x) * 0.2;
+          c.y += (t.y - c.y) * 0.2;
+
+          if (ringRef.current) {
+            ringRef.current.style.transform = `translate(${c.x}px, ${c.y}px) translate(-50%, -50%)`;
+          }
+          if (dotRef.current) {
+            dotRef.current.style.transform = `translate(${t.x}px, ${t.y}px) translate(-50%, -50%)`;
+          }
+          if (glowRef.current) {
+            const gx = c.x + (t.x - c.x) * 0.3;
+            const gy = c.y + (t.y - c.y) * 0.3;
+            glowRef.current.style.transform = `translate(${gx}px, ${gy}px) translate(-50%, -50%)`;
+          }
+
+          rafRef.current = requestAnimationFrame(animate);
+        };
+
+        rafRef.current = requestAnimationFrame(animate);
+        window.addEventListener('mousemove', onMove);
+
+        // Hover detection
+        const onOver = (e) => {
+          const interactive = e.target.closest('button, .tab-item, .nav-icon-btn, .nav-back-btn, .activity-card, .team-card, .tutorial-card-featured, .tutorial-item, .fab, .fab-menu-item, .profile-list-item, .achievement-item, .rank-item, .api-endpoint, .map-pin, .sheet-btn, .detail-back-btn, .modal-btn');
+          if (interactive && ringRef.current) {
+            ringRef.current.classList.add('hovering');
+            document.body.style.cursor = 'none';
+          } else if (ringRef.current) {
+            ringRef.current.classList.remove('hovering');
+          }
+        };
+
+        const onClick = (e) => {
+          if (dotRef.current) {
+            dotRef.current.classList.add('clicking');
+            setTimeout(() => dotRef.current?.classList.remove('clicking'), 150);
+          }
+          // Ripple
+          const ripple = document.createElement('div');
+          ripple.className = 'cursor-ripple';
+          ripple.style.left = e.clientX + 'px';
+          ripple.style.top = e.clientY + 'px';
+          document.body.appendChild(ripple);
+          setTimeout(() => ripple.remove(), 600);
+        };
+
+        document.addEventListener('mouseover', onOver);
+        document.addEventListener('click', onClick);
+
+        // Pause on visibility change
+        const onVisibility = () => {
+          if (document.hidden) {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          } else {
+            rafRef.current = requestAnimationFrame(animate);
+          }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+
+        return () => {
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          window.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseover', onOver);
+          document.removeEventListener('click', onClick);
+          document.removeEventListener('visibilitychange', onVisibility);
+        };
+      }, [reducedMotion]);
+
+      if (reducedMotion) return null;
+
+      return (
+        <>
+          <div ref={glowRef} className="cursor-glow" />
+          <div ref={ringRef} className="cursor-ring" />
+          <div ref={dotRef} className="cursor-dot" />
+        </>
+      );
+    }
+
+    // ──────────────────────────────────────────────
+    // TAB BAR
+    // ──────────────────────────────────────────────
+    function TabBar({ active, onNavigate }) {
+      const tabs = [
+        { id: 'home', label: '首页', icon: Icon.Home },
+        { id: 'map', label: '场地', icon: Icon.Map },
+        { id: 'team', label: '队伍', icon: Icon.Team },
+        { id: 'tutorial', label: '教学', icon: Icon.Play },
+        { id: 'profile', label: '我的', icon: Icon.User },
+      ];
+
+      return (
+        <div className="tab-bar">
+          {tabs.map(tab => {
+            const I = tab.icon;
+            return (
+              <div
+                key={tab.id}
+                className={`tab-item ${active === tab.id ? 'active' : ''} ${tab.id === 'home' ? 'tab-disc' : ''}`}
+                onClick={() => onNavigate(tab.id)}
+              >
+                {tab.id === 'home' ? (
+                  <Icon.Disc />
+                ) : (
+                  <I />
+                )}
+                <span className="tab-label">{tab.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ──────────────────────────────────────────────
+    // PAGES
+    // ──────────────────────────────────────────────
+
+    // === HOME PAGE ===
+    function HomePage({ onOpenDetail, onNavigate }) {
+      const [fabOpen, setFabOpen] = useState(false);
+      const [joinedIds, setJoinedIds] = useState(new Set([1]));
+      const [showModal, setShowModal] = useState(false);
+      const [pullDistance, setPullDistance] = useState(0);
+      const [isRefreshing, setIsRefreshing] = useState(false);
+      const pageRef = useRef(null);
+      const startYRef = useRef(0);
+      const isDraggingRef = useRef(false);
+
+      const toggleJoin = (e, id) => {
+        e.stopPropagation();
+        setJoinedIds(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id); else next.add(id);
+          return next;
+        });
+      };
+
+      // Pull to refresh
+      const onTouchStart = (e) => {
+        if (pageRef.current && pageRef.current.scrollTop <= 0) {
+          isDraggingRef.current = true;
+          startYRef.current = e.touches ? e.touches[0].clientY : e.clientY;
+        }
+      };
+      const onTouchMove = (e) => {
+        if (!isDraggingRef.current) return;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        const dy = cy - startYRef.current;
+        if (dy > 0) {
+          // Damping
+          const damped = Math.min(dy * 0.5, 80);
+          setPullDistance(damped);
+        }
+      };
+      const onTouchEnd = () => {
+        if (!isDraggingRef.current) return;
+        isDraggingRef.current = false;
+        if (pullDistance > 50) {
+          setIsRefreshing(true);
+          setTimeout(() => {
+            setIsRefreshing(false);
+            setPullDistance(0);
+          }, 1500);
+        } else {
+          setPullDistance(0);
+        }
+      };
+
+      // Mouse drag for desktop demo
+      const onMouseDown = (e) => {
+        if (pageRef.current && pageRef.current.scrollTop <= 0) {
+          isDraggingRef.current = true;
+          startYRef.current = e.clientY;
+        }
+      };
+
+      useEffect(() => {
+        const up = () => {
+          if (!isDraggingRef.current) return;
+          isDraggingRef.current = false;
+          if (pullDistance > 50) {
+            setIsRefreshing(true);
+            setTimeout(() => {
+              setIsRefreshing(false);
+              setPullDistance(0);
+            }, 1500);
+          } else {
+            setPullDistance(0);
+          }
+        };
+        const move = (e) => {
+          if (!isDraggingRef.current) return;
+          const dy = e.clientY - startYRef.current;
+          if (dy > 0) {
+            const damped = Math.min(dy * 0.5, 80);
+            setPullDistance(damped);
+          }
+        };
+        window.addEventListener('mouseup', up);
+        window.addEventListener('mousemove', move);
+        return () => {
+          window.removeEventListener('mouseup', up);
+          window.removeEventListener('mousemove', move);
+        };
+      }, [pullDistance]);
+
+      return (
+        <div className="page" ref={pageRef} onMouseDown={onMouseDown}
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        >
+          {/* Pull indicator */}
+          <div className={`pull-indicator ${pullDistance > 10 ? 'visible' : ''}`}
+            style={{ top: 20 + pullDistance * 0.3 }}>
+            <div className="pull-disc" style={{
+              transform: `rotate(${pullDistance * 4}deg)`,
+              transition: isRefreshing ? 'none' : 'transform 0.1s',
+            }}>
+              <DiscSvg size={28} color="#C6F24E" />
+            </div>
+            <div className="pull-text">
+              {isRefreshing ? '刷新中...' : pullDistance > 50 ? '松开刷新' : '下拉刷新'}
+            </div>
+          </div>
+
+          <div style={{
+            transform: `translateY(${pullDistance}px)`,
+            transition: isRefreshing ? 'none' : 'transform 0.3s cubic-bezier(.2,.8,.2,1)',
+          }}>
+            {/* Large Title Nav */}
+            <div className="nav-bar">
+              <div className="nav-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 12,
+                    background: 'linear-gradient(135deg, #C6F24E, #A8D935)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(198,242,78,0.3)',
+                  }}>
+                    <Icon.Disc style={{ width: 20, height: 20, stroke: '#14161A', strokeWidth: 2.2, fill: 'none' }} />
+                  </div>
+                  <span style={{
+                    fontSize: 17, fontWeight: 700, color: '#fff',
+                    letterSpacing: -0.3,
+                  }}>旋盘 SPINN</span>
+                </div>
+                <div className="nav-actions">
+                  <div className="nav-icon-btn"><Icon.Search /></div>
+                  <div className="nav-icon-btn" style={{ position: 'relative' }}>
+                    <Icon.Bell />
+                    <div style={{
+                      position: 'absolute', top: 6, right: 6,
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: '#FF7A45',
+                    }} />
+                  </div>
+                </div>
+              </div>
+              <div className="nav-title-large" style={{ marginTop: 8 }}>
+                发现活动
+              </div>
+            </div>
+
+            {/* Hero orb */}
+            <div className="hero-orb stagger-item" style={{ animationDelay: '0.05s' }}>
+              <div className="hero-bg" />
+              <div className="hero-disc">
+                <DiscSvg size={200} color="#C6F24E" className="hero-disc-svg" />
+              </div>
+              <div className="hero-text">
+                <span className="hero-tag">⚡ 今日推荐</span>
+                <div className="hero-title">夏日夜跑<br/>飞盘季开启</div>
+                <div className="hero-sub">每周精选高质量活动<br/>和同好一起，把盘飞起来</div>
+              </div>
+              <div className="hero-stats">
+                <div className="hero-stat">
+                  <div className="hero-stat-num">128<span style={{ fontSize: 14 }}>场</span></div>
+                  <div className="hero-stat-label">本周活动</div>
+                </div>
+                <div className="hero-stat">
+                  <div className="hero-stat-num">2.4k</div>
+                  <div className="hero-stat-label">活跃盘友</div>
+                </div>
+                <div className="hero-stat">
+                  <div className="hero-stat-num">36</div>
+                  <div className="hero-stat-label">合作场地</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feed content */}
+            <div className="feed-content">
+              <div className="section-header stagger-item" style={{ animationDelay: '0.2s' }}>
+                <span className="section-title">近期活动</span>
+                <span className="section-more">全部 ›</span>
+              </div>
+
+              {ACTIVITIES.map((a, i) => (
+                <div key={a.id}
+                  className="activity-card stagger-item"
+                  style={{ animationDelay: `${0.25 + i * 0.08}s` }}
+                  onClick={() => onOpenDetail(a)}
+                >
+                  <div className="activity-card-top">
+                    <div className="activity-date-badge">
+                      <div className="activity-date-day">{a.day}</div>
+                      <div className="activity-date-month">{a.month} · {a.weekday}</div>
+                    </div>
+                    <span className={`activity-level level-${a.level}`}>{a.levelText}</span>
+                  </div>
+                  <div className="activity-title">{a.title}</div>
+                  <div className="activity-meta">
+                    <span className="activity-meta-item">
+                      <Icon.Pin />{a.venue}
+                    </span>
+                    <span className="activity-meta-item">
+                      <Icon.Clock />{a.time}
+                    </span>
+                  </div>
+                  <div className="activity-bottom">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="activity-avatars">
+                        {a.participants.slice(0, 4).map((p, pi) => (
+                          <div key={pi} className="activity-avatar"
+                            style={{ background: p.color, color: '#14161A' }}>
+                            {p.name[0]}
+                          </div>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 12, color: '#8A8F98' }}>
+                        {a.joined}/{a.total}人
+                      </span>
+                    </div>
+                    <button
+                      className={`activity-join-btn ${joinedIds.has(a.id) ? 'joined' : ''}`}
+                      onClick={(e) => toggleJoin(e, a.id)}
+                    >
+                      {joinedIds.has(a.id) ? '已报名' : '报名'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* FAB */}
+          <button
+            className="fab"
+            onClick={() => setFabOpen(!fabOpen)}
+            style={{ transform: fabOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+          >
+            <Icon.Plus />
+          </button>
+          {fabOpen && (
+            <div className="fab-menu">
+              <div className="fab-menu-item" onClick={() => { setFabOpen(false); setShowModal(true); }}>
+                <span className="fab-menu-label">发布活动</span>
+                <div className="fab-menu-icon"><Icon.Calendar /></div>
+              </div>
+              <div className="fab-menu-item" onClick={() => setFabOpen(false)}>
+                <span className="fab-menu-label">创建队伍</span>
+                <div className="fab-menu-icon"><Icon.Users /></div>
+              </div>
+              <div className="fab-menu-item" onClick={() => setFabOpen(false)}>
+                <span className="fab-menu-label">扫码加入</span>
+                <div className="fab-menu-icon"><Icon.Zap /></div>
+              </div>
+            </div>
+          )}
+          {fabOpen && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(0,0,0,0.3)',
+              zIndex: 15,
+              animation: 'fadeIn 0.25s ease',
+            }} onClick={() => setFabOpen(false)} />
+          )}
+
+          {/* Create Activity Modal */}
+          {showModal && (
+            <div className="modal-overlay" onClick={() => setShowModal(false)}>
+              <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+                <div style={{ width: 40, height: 5, background: 'rgba(255,255,255,0.2)', borderRadius: 3, margin: '0 auto 16px' }} />
+                <div className="modal-title">发布新活动</div>
+                <div className="modal-desc">填写活动信息，邀请盘友一起来玩</div>
+                <div className="modal-form-row">
+                  <div className="modal-label">活动名称</div>
+                  <input className="modal-input" placeholder="例如：周末欢乐飞盘局" />
+                </div>
+                <div className="modal-form-row">
+                  <div className="modal-label">场地</div>
+                  <input className="modal-input" placeholder="选择活动场地" />
+                </div>
+                <div className="modal-form-row">
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div className="modal-label">日期</div>
+                      <input className="modal-input" placeholder="选择日期" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div className="modal-label">时间</div>
+                      <input className="modal-input" placeholder="选择时间" />
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="modal-btn modal-btn-secondary" onClick={() => setShowModal(false)}>取消</button>
+                  <button className="modal-btn modal-btn-primary" onClick={() => setShowModal(false)}>发布</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // === ACTIVITY DETAIL PAGE ===
+    function DetailPage({ activity, onBack }) {
+      const [joined, setJoined] = useState(false);
+      const [scrollY, setScrollY] = useState(0);
+      const pageRef = useRef(null);
+      const rafRef = useRef(null);
+      const tickingRef = useRef(false);
+
+      const onScroll = useCallback(() => {
+        if (!tickingRef.current) {
+          tickingRef.current = true;
+          rafRef.current = requestAnimationFrame(() => {
+            if (pageRef.current) {
+              setScrollY(pageRef.current.scrollTop);
+            }
+            tickingRef.current = false;
+          });
+        }
+      }, []);
+
+      useEffect(() => {
+        const el = pageRef.current;
+        if (el) {
+          el.addEventListener('scroll', onScroll, { passive: true });
+        }
+        return () => {
+          if (el) el.removeEventListener('scroll', onScroll);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        };
+      }, [onScroll]);
+
+      const heroScale = 1 + Math.min(Math.max(-scrollY, 0) / 400, 0.15);
+      const heroOpacity = Math.max(0, 1 - scrollY / 200);
+
+      return (
+        <div className="page" ref={pageRef}>
+          {/* Hero with parallax disc */}
+          <div className="detail-hero">
+            <div className="detail-hero-bg" style={{ opacity: heroOpacity }} />
+            <div className="detail-hero-disc"
+              style={{ transform: `translate(-50%, calc(-50% + ${scrollY * 0.3}px)) scale(${heroScale})` }}>
+              <DiscSvg size={220} color="#C6F24E" />
+            </div>
+            <div className="detail-overlay-top">
+              <div className="detail-back-btn" onClick={onBack}>
+                <Icon.Back />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div className="detail-back-btn"><Icon.Share /></div>
+                <div className="detail-back-btn"><Icon.Heart /></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="detail-body">
+            <div className="detail-tag-row">
+              <span className={`detail-pill level-${activity.level}`} style={{ background: `rgba(198,242,78,0.15)`, color: '#C6F24E' }}>
+                {activity.levelText}
+              </span>
+              <span className="detail-pill" style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
+                {activity.day} {activity.month} · {activity.weekday}
+              </span>
+            </div>
+            <div className="detail-title">{activity.title}</div>
+            <div className="detail-subtitle">
+              主办：{activity.host}
+            </div>
+
+            <div className="detail-info-grid">
+              <div className="detail-info-item">
+                <div className="detail-info-icon"><Icon.Pin /></div>
+                <div className="detail-info-label">场地</div>
+                <div className="detail-info-value">{activity.venue}</div>
+              </div>
+              <div className="detail-info-item">
+                <div className="detail-info-icon"><Icon.Clock /></div>
+                <div className="detail-info-label">时间</div>
+                <div className="detail-info-value">{activity.time}</div>
+              </div>
+              <div className="detail-info-item">
+                <div className="detail-info-icon"><Icon.Users /></div>
+                <div className="detail-info-label">已报名</div>
+                <div className="detail-info-value">{activity.joined} / {activity.total}人</div>
+              </div>
+              <div className="detail-info-item">
+                <div className="detail-info-icon"><Icon.Award /></div>
+                <div className="detail-info-label">装备</div>
+                <div className="detail-info-value">免费提供</div>
+              </div>
+            </div>
+
+            <div className="detail-section-title">活动介绍</div>
+            <div className="detail-desc">{activity.description}</div>
+
+            <div className="detail-section-title">已报名 ({activity.participants.length})</div>
+            <div className="detail-participants">
+              {activity.participants.map((p, i) => (
+                <div key={i} className="detail-participant" style={{ animation: `staggerIn 0.4s ease ${0.1 + i * 0.05}s both` }}>
+                  <div className="detail-part-avatar" style={{ background: p.color }}>
+                    {p.name[0]}
+                  </div>
+                  <span className="detail-part-name">{p.name}</span>
+                </div>
+              ))}
+              <div className="detail-participant">
+                <div className="detail-part-avatar" style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#C6F24E',
+                  border: '2px dashed rgba(198,242,78,0.3)',
+                }}>+</div>
+                <span className="detail-part-name">邀请</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA bar */}
+          <div className="detail-cta-bar">
+            <div className="detail-cta-price">
+              <div className="detail-cta-price-num">¥{activity.price} <small>/人</small></div>
+            </div>
+            <button
+              className="detail-cta-btn"
+              onClick={() => setJoined(!joined)}
+            >
+              {joined ? '已报名 ✓' : '立即报名'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // === MAP PAGE ===
+    function MapPage() {
+      const [selectedVenue, setSelectedVenue] = useState(VENUES[1]);
+      const [sheetVisible, setSheetVisible] = useState(true);
+
+      return (
+        <div className="page">
+          <div className="nav-bar compact">
+            <div className="nav-header">
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>附近场地</div>
+              <div className="nav-actions">
+                <div className="nav-icon-btn"><Icon.Search /></div>
+                <div className="nav-icon-btn"><Icon.Grid /></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="map-container" style={{ height: 'calc(100% - 110px)' }}>
+            <div className="map-canvas" />
+            <div className="map-grid" />
+            {/* Pins */}
+            {VENUES.map((v, i) => (
+              <div
+                key={v.id}
+                className={`map-pin ${selectedVenue?.id === v.id ? 'active' : ''}`}
+                style={{ left: `${v.x}%`, top: `${v.y}%` }}
+                onClick={() => { setSelectedVenue(v); setSheetVisible(true); }}
+              >
+                <div className="map-pin-marker" />
+              </div>
+            ))}
+
+            {/* Floating filter chips */}
+            <div style={{
+              position: 'absolute', top: 16, left: 16, right: 16,
+              display: 'flex', gap: 8, zIndex: 5, flexWrap: 'wrap',
+            }}>
+              {['全部', '五人制', '七人制', '夜间照明', '新手友好'].map((chip, i) => (
+                <div key={i} style={{
+                  padding: '7px 14px',
+                  background: i === 0 ? '#C6F24E' : 'rgba(28,31,36,0.9)',
+                  color: i === 0 ? '#14161A' : '#fff',
+                  borderRadius: 100,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  backdropFilter: 'blur(10px)',
+                  border: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                  cursor: 'pointer',
+                }}>{chip}</div>
+              ))}
+            </div>
+
+            {/* Bottom Sheet */}
+            {sheetVisible && selectedVenue && (
+              <div className="map-bottom-sheet">
+                <div className="sheet-handle" />
+                <div className="sheet-venue-name">{selectedVenue.name}</div>
+                <div className="sheet-venue-addr">
+                  <Icon.Pin />{selectedVenue.addr}
+                </div>
+                <div className="sheet-stats">
+                  <div className="sheet-stat">
+                    <div className="sheet-stat-num">{selectedVenue.courts}</div>
+                    <div className="sheet-stat-label">场地数</div>
+                  </div>
+                  <div className="sheet-stat">
+                    <div className="sheet-stat-num">{selectedVenue.activities}</div>
+                    <div className="sheet-stat-label">本周活动</div>
+                  </div>
+                  <div className="sheet-stat">
+                    <div className="sheet-stat-num">{selectedVenue.rating} ★</div>
+                    <div className="sheet-stat-label">评分</div>
+                  </div>
+                </div>
+                <div className="sheet-actions">
+                  <button className="sheet-btn sheet-btn-secondary">查看详情</button>
+                  <button className="sheet-btn sheet-btn-primary">导航前往</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // === TEAM PAGE ===
+    function TeamPage() {
+      const [activeTab, setActiveTab] = useState('teams');
+      const [following, setFollowing] = useState(new Set([1, 2]));
+      const tabRef = useRef(null);
+      const indicatorRef = useRef(null);
+
+      const toggleFollow = (e, id) => {
+        e.stopPropagation();
+        setFollowing(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id); else next.add(id);
+          return next;
+        });
+      };
+
+      useEffect(() => {
+        // Update indicator position
+        if (tabRef.current && indicatorRef.current) {
+          const tabs = tabRef.current.querySelectorAll('.team-tab');
+          let targetTab = null;
+          tabs.forEach(t => {
+            if (t.dataset.tab === activeTab) targetTab = t;
+          });
+          if (targetTab) {
+            const rect = targetTab.getBoundingClientRect();
+            const parentRect = tabRef.current.getBoundingClientRect();
+            indicatorRef.current.style.left = (rect.left - parentRect.left) + 'px';
+            indicatorRef.current.style.width = rect.width + 'px';
+          }
+        }
+      }, [activeTab]);
+
+      return (
+        <div className="page">
+          <div className="nav-bar">
+            <div className="nav-header">
+              <span style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>队伍 & 社区</span>
+              <div className="nav-actions">
+                <div className="nav-icon-btn"><Icon.Search /></div>
+                <div className="nav-icon-btn"><Icon.Plus /></div>
+              </div>
+            </div>
+            <div className="nav-title-large" style={{ marginTop: 8 }}>社区广场</div>
+          </div>
+
+          <div className="team-tabs" ref={tabRef}>
+            <div
+              className={`team-tab ${activeTab === 'teams' ? 'active' : ''}`}
+              data-tab="teams"
+              onClick={() => setActiveTab('teams')}
+            >热门队伍</div>
+            <div
+              className={`team-tab ${activeTab === 'rank' ? 'active' : ''}`}
+              data-tab="rank"
+              onClick={() => setActiveTab('rank')}
+            >排行榜</div>
+            <div
+              className={`team-tab ${activeTab === 'nearby' ? 'active' : ''}`}
+              data-tab="nearby"
+              onClick={() => setActiveTab('nearby')}
+            >附近的盘友</div>
+            <div className="team-tab-indicator" ref={indicatorRef}
+              style={{ left: 0, width: '33.33%' }} />
+          </div>
+          <div className="team-divider" />
+
+          <div className="team-content">
+            {activeTab === 'teams' && TEAMS.map((t, i) => (
+              <div key={t.id} className="team-card stagger-item"
+                style={{ animationDelay: `${0.05 + i * 0.06}s` }}>
+                <div className="team-card-top">
+                  <div className="team-logo" style={{ background: t.color }}>{t.initial}</div>
+                  <div className="team-info">
+                    <h3>{t.name}</h3>
+                    <p>{t.tagline} · {t.members}人</p>
+                  </div>
+                </div>
+                <div className="team-members-mini">
+                  {[0,1,2,3].map(j => (
+                    <div key={j} className="activity-avatar"
+                      style={{ background: `hsl(${j * 60 + i * 30}, 70%, 60%)`, color: '#14161A' }}>
+                      {String.fromCharCode(65 + j)}
+                    </div>
+                  ))}
+                </div>
+                <div className="team-card-bottom">
+                  <span className="team-rank">积分榜 # {t.rank}</span>
+                  <button
+                    className={`team-follow-btn ${following.has(t.id) ? 'following' : ''}`}
+                    onClick={(e) => toggleFollow(e, t.id)}
+                  >
+                    {following.has(t.id) ? '已关注' : '+ 关注'}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {activeTab === 'rank' && (
+              <div className="rank-list">
+                {TEAMS.map((t, i) => (
+                  <div key={t.id} className="rank-item stagger-item"
+                    style={{ animationDelay: `${0.05 + i * 0.06}s` }}>
+                    <div className={`rank-num ${i < 3 ? 'top' + (i+1) : 'normal'}`}>
+                      {i < 3 ? ['🥇','🥈','🥉'][i] : i + 1}
+                    </div>
+                    <div className="rank-team-logo" style={{ background: t.color }}>{t.initial}</div>
+                    <div className="rank-info">
+                      <div className="rank-name">{t.name}</div>
+                      <div className="rank-sub">{t.wins}胜 {t.losses}负</div>
+                    </div>
+                    <div className="rank-score">{(t.wins * 3).toString().padStart(2, '0')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'nearby' && (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
+              }}>
+                {[...Array(9)].map((_, i) => (
+                  <div key={i} className="stagger-item"
+                    style={{ animationDelay: `${0.05 + i * 0.05}s` }}>
+                    <div style={{
+                      width: '100%', aspectRatio: '1', borderRadius: 16,
+                      background: `linear-gradient(135deg, hsl(${i * 40}, 70%, 55%), hsl(${i * 40 + 30}, 70%, 45%))`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 22, fontWeight: 800, color: '#fff',
+                      marginBottom: 6, cursor: 'pointer',
+                      transition: 'transform 0.2s',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#fff', textAlign: 'center', fontWeight: 500 }}>
+                      用户 {String.fromCharCode(65 + i)}{i + 1}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#8A8F98', textAlign: 'center' }}>
+                      {0.5 + (i % 5) * 0.7}km · {8 + i * 2}场
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // === TUTORIAL PAGE ===
+    function TutorialPage() {
+      const [progress, setProgress] = useState(0);
+      const carouselRef = useRef(null);
+
+      useEffect(() => {
+        // Animate progress ring on mount
+        const timer = setTimeout(() => setProgress(65), 300);
+        return () => clearTimeout(timer);
+      }, []);
+
+      const circumference = 2 * Math.PI * 25; // r=25
+      const offset = circumference - (progress / 100) * circumference;
+
+      return (
+        <div className="page">
+          <div className="nav-bar">
+            <div className="nav-header">
+              <span style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>技巧教学</span>
+              <div className="nav-actions">
+                <div className="nav-icon-btn"><Icon.Search /></div>
+                <div className="nav-icon-btn"><Icon.Book /></div>
+              </div>
+            </div>
+            <div className="nav-title-large" style={{ marginTop: 8 }}>飞盘学院</div>
+          </div>
+
+          {/* Progress Ring Card */}
+          <div className="progress-ring-container stagger-item" style={{ animationDelay: '0.1s' }}>
+            <div className="progress-ring">
+              <svg className="progress-ring-svg" width="60" height="60">
+                <circle className="progress-ring-bg" cx="30" cy="30" r="25" />
+                <circle className="progress-ring-fill" cx="30" cy="30" r="25"
+                  style={{ strokeDasharray: circumference, strokeDashoffset: offset }} />
+              </svg>
+              <div className="progress-ring-text">{progress}%</div>
+            </div>
+            <div className="progress-text">
+              <h4>新手成长计划</h4>
+              <p>已完成 13/20 课，继续加油！</p>
+            </div>
+          </div>
+
+          {/* Featured carousel */}
+          <div style={{ padding: '0 16px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="section-title" style={{ fontSize: 18 }}>精选课程</span>
+            <span className="section-more">更多 ›</span>
+          </div>
+          <div className="tutorial-carousel" ref={carouselRef}>
+            {TUTORIALS_FEATURED.map((t, i) => (
+              <div key={t.id} className="tutorial-card-featured stagger-item"
+                style={{ animationDelay: `${0.15 + i * 0.08}s` }}>
+                <div className="tutorial-card-bg" style={{
+                  background: `linear-gradient(145deg, ${t.color1} 0%, ${t.color2}30 100%)`,
+                }}>
+                  <div style={{
+                    position: 'absolute', right: -20, top: 30,
+                    width: 140, height: 140, opacity: 0.7,
+                    transform: `rotate(${i * 20 - 20}deg)`,
+                  }}>
+                    <DiscSvg size={140} color={t.color2} />
+                  </div>
+                </div>
+                <div className="tutorial-card-gradient" />
+                <div className="tutorial-card-content">
+                  <span className="tutorial-card-tag">{t.tag}</span>
+                  <div className="tutorial-card-title">{t.title}</div>
+                  <div className="tutorial-card-meta">
+                    <span>⏱ {t.duration}</span>
+                    <span>👁 {t.views}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tutorial list */}
+          <div style={{ padding: '16px 16px 8px' }}>
+            <span className="section-title" style={{ fontSize: 18 }}>全部课程</span>
+          </div>
+          <div className="tutorial-list">
+            {TUTORIALS_LIST.map((t, i) => (
+              <div key={t.id} className="tutorial-item stagger-item"
+                style={{ animationDelay: `${0.3 + i * 0.06}s` }}>
+                <div className="tutorial-thumb" style={{
+                  background: `linear-gradient(135deg, ${t.color}30, ${t.color}10)`,
+                }}>
+                  <div style={{
+                    position: 'absolute', right: -10, top: 5, width: 50, height: 50,
+                    transform: 'rotate(15deg)', opacity: 0.5,
+                  }}>
+                    <DiscSvg size={50} color={t.color} />
+                  </div>
+                  <div className="play-icon">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                  </div>
+                </div>
+                <div className="tutorial-item-info">
+                  <div className="tutorial-item-title">{t.title}</div>
+                  <div className="tutorial-item-meta">
+                    <span className="tutorial-duration">{t.duration}</span>
+                    <span>{t.views} 次观看</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // === PROFILE PAGE ===
+    function ProfilePage({ onNavigate }) {
+      const [tabVisible, setTabVisible] = useState(true);
+
+      const listSections = [
+        {
+          title: '我的活动',
+          items: [
+            { label: '已报名', icon: Icon.Calendar, color: '#C6F24E' },
+            { label: '我的收藏', icon: Icon.Heart, color: '#FF7A45' },
+            { label: '历史战绩', icon: Icon.Award, color: '#ffd166' },
+          ],
+        },
+        {
+          title: '设置',
+          items: [
+            { label: '账号与安全', icon: Icon.User, color: '#64b4ff' },
+            { label: '消息通知', icon: Icon.Bell, color: '#c77dff' },
+            { label: '通用设置', icon: Icon.Settings, color: '#8A8F98' },
+            { label: '设计规范', icon: Icon.Grid, color: '#C6F24E', action: () => onNavigate('spec') },
+            { label: '接口文档', icon: Icon.Book, color: '#FF7A45', action: () => onNavigate('api') },
+            { label: '退出登录', icon: Icon.LogOut, color: '#ff5a5a' },
+          ],
+        },
+      ];
+
+      return (
+        <div className="page">
+          {/* Hero */}
+          <div className="profile-hero">
+            <div className="profile-top-row">
+              <div />
+              <div className="nav-actions">
+                <div className="nav-icon-btn"><Icon.Settings /></div>
+                <div className="nav-icon-btn"><Icon.Message /></div>
+              </div>
+            </div>
+            <div className="profile-avatar-wrap">
+              <div className="profile-avatar">阿</div>
+              <div className="profile-level-badge">V6</div>
+            </div>
+            <div className="profile-name">阿飞爱飞盘</div>
+            <div className="profile-handle">@feipan_ah_fei · 北京</div>
+
+            <div className="profile-stats">
+              <div className="profile-stat">
+                <div className="profile-stat-num">47</div>
+                <div className="profile-stat-label">参与场次</div>
+              </div>
+              <div className="profile-stat">
+                <div className="profile-stat-num">12</div>
+                <div className="profile-stat-label">获得MVP</div>
+              </div>
+              <div className="profile-stat">
+                <div className="profile-stat-num">368</div>
+                <div className="profile-stat-label">飞盘好友</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="profile-list-section">
+            {/* Achievements */}
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#8A8F98', marginBottom: 4, letterSpacing: 0.3 }}>
+              我的成就
+            </div>
+            <div className="achievement-grid">
+              {ACHIEVEMENTS.map((a, i) => (
+                <div key={a.id} className="achievement-item stagger-item"
+                  style={{ animationDelay: `${0.05 + i * 0.05}s` }}>
+                  <div className={`achievement-icon ${a.unlocked ? 'unlocked' : 'locked'}`}
+                    style={{
+                      background: `linear-gradient(135deg, ${a.color}60, ${a.color}20)`,
+                      fontSize: 22,
+                    }}>
+                    {a.icon}
+                  </div>
+                  <span className="achievement-name">{a.name}</span>
+                </div>
+              ))}
+            </div>
+
+            {listSections.map((section, si) => (
+              <div key={si} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#8A8F98', marginBottom: 8, paddingLeft: 4, letterSpacing: 0.3 }}>
+                  {section.title}
+                </div>
+                <div className="profile-list">
+                  {section.items.map((item, ii) => {
+                    const I = item.icon;
+                    return (
+                      <div key={ii} className="profile-list-item"
+                        onClick={() => item.action && item.action()}>
+                        <div className="profile-list-icon" style={{ background: `${item.color}20` }}>
+                          <I style={{ stroke: item.color }} />
+                        </div>
+                        <span className="profile-list-text">{item.label}</span>
+                        <span className="profile-list-arrow">
+                          <Icon.ChevronRight />
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // === DESIGN SPEC PAGE ===
+    function SpecPage({ onBack }) {
+      return (
+        <div className="page spec-page">
+          <div className="nav-bar compact" style={{
+            position: 'sticky', top: 0, zIndex: 25,
+            padding: 'calc(var(--ios-safe-top) + 8px) 0 12px',
+            background: 'transparent', backdropFilter: 'none',
+          }}>
+            <div className="nav-header" style={{ marginBottom: 0 }}>
+              <div className="nav-back-btn" onClick={onBack}><Icon.Back /></div>
+              <span className="nav-title-small">设计规范</span>
+              <div style={{ width: 32 }} />
+            </div>
+          </div>
+
+          <div className="spec-hero">
+            <div className="spec-logo">
+              <Icon.Disc />
+            </div>
+            <div className="spec-title">旋盘 SPINN</div>
+            <div className="spec-subtitle">Design System · v2.0 · 形态：原生 App</div>
+          </div>
+
+          <div className="spec-section">
+            <div className="spec-section-title">色彩系统</div>
+            <div className="spec-color-row">
+              {[
+                { name: '主色青柠', hex: '#C6F24E', bg: '#C6F24E' },
+                { name: '点缀橙', hex: '#FF7A45', bg: '#FF7A45' },
+                { name: '炭黑底', hex: '#14161A', bg: '#14161A' },
+                { name: '暖白', hex: '#FAFAF7', bg: '#FAFAF7' },
+              ].map(c => (
+                <div key={c.hex} className="spec-color">
+                  <div className="spec-color-swatch" style={{ background: c.bg }} />
+                  <div className="spec-color-name">{c.name}</div>
+                  <div className="spec-color-hex">{c.hex}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+              {[
+                { name: '中灰', hex: '#8A8F98' },
+                { name: '浅灰', hex: '#E8EAED' },
+                { name: '表面卡', hex: '#1C1F24' },
+                { name: '分隔线', hex: 'rgba(255,255,255,0.08)' },
+              ].map(c => (
+                <div key={c.hex} className="spec-color">
+                  <div className="spec-color-swatch" style={{ background: c.hex }} />
+                  <div className="spec-color-name" style={{ fontSize: 10 }}>{c.name}</div>
+                  <div className="spec-color-hex" style={{ fontSize: 9 }}>{c.hex}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="spec-section">
+            <div className="spec-section-title">字体排版</div>
+            <div className="spec-typography-item">
+              <div className="spec-type-preview" style={{ fontSize: 34, fontWeight: 800, letterSpacing: -1 }}>大标题 34</div>
+              <div className="spec-type-label">Large Title · 34 / Bold</div>
+            </div>
+            <div className="spec-typography-item">
+              <div className="spec-type-preview" style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>标题 24</div>
+              <div className="spec-type-label">Title 1 · 24 / ExtraBold</div>
+            </div>
+            <div className="spec-typography-item">
+              <div className="spec-type-preview" style={{ fontSize: 17, fontWeight: 600 }}>正文 17</div>
+              <div className="spec-type-label">Body · 17 / Semibold</div>
+            </div>
+            <div className="spec-typography-item">
+              <div className="spec-type-preview" style={{ fontSize: 13, color: '#8A8F98' }}>辅助文字 13</div>
+              <div className="spec-type-label">Caption · 13 / Regular</div>
+            </div>
+            <div className="spec-typography-item">
+              <div className="spec-type-preview" style={{ fontSize: 11, color: '#8A8F98' }}>标签 11</div>
+              <div className="spec-type-label">Footnote · 11 / Medium</div>
+            </div>
+          </div>
+
+          <div className="spec-section">
+            <div className="spec-section-title">间距系统</div>
+            {[
+              { label: 'xs · 4px', w: 16 },
+              { label: 'sm · 8px', w: 32 },
+              { label: 'md · 16px', w: 56 },
+              { label: 'lg · 24px', w: 80 },
+              { label: 'xl · 32px', w: 100 },
+            ].map((s, i) => (
+              <div key={i} className="spec-spacing-row">
+                <div className="spec-spacing-label">{s.label}</div>
+                <div className="spec-spacing-bar" style={{ width: s.w }} />
+              </div>
+            ))}
+          </div>
+
+          <div className="spec-section">
+            <div className="spec-section-title">组件样式</div>
+            <div className="spec-component-card">
+              <div className="spec-component-name">按钮 Buttons</div>
+              <div className="spec-component-preview">
+                <div className="spec-btn-primary">主要按钮</div>
+                <div className="spec-btn-secondary">次要按钮</div>
+              </div>
+            </div>
+            <div className="spec-component-card">
+              <div className="spec-component-name">标签 Badges</div>
+              <div className="spec-component-preview">
+                <span className="spec-badge">新手友好</span>
+                <span className="spec-badge" style={{ background: 'rgba(255,122,69,0.15)', color: '#FF7A45' }}>进阶挑战</span>
+                <span className="spec-badge" style={{ background: 'rgba(100,180,255,0.15)', color: '#64b4ff' }}>赛事级别</span>
+              </div>
+            </div>
+            <div className="spec-component-card">
+              <div className="spec-component-name">卡片 Card</div>
+              <div className="spec-component-preview">
+                <div className="spec-card-sample" />
+              </div>
+            </div>
+          </div>
+
+          <div className="spec-section">
+            <div className="spec-section-title">设计原则</div>
+            <div className="spec-note">
+              <strong>运动感 · 速度感</strong><br />
+              所有动效遵循飞盘物理模型：旋转、滑翔、回弹。<br />
+              主色青柠荧光代表活力与夜间辨识度，炭黑底模拟夜场氛围。
+            </div>
+            <div style={{ height: 10 }} />
+            <div className="spec-note" style={{ background: 'rgba(255,122,69,0.08)', borderColor: 'rgba(255,122,69,0.2)', color: '#FF7A45' }}>
+              <strong>形态说明：原生 App</strong><br />
+              本设计遵循 iOS 原生设计语言，包含 TabBar、大标题导航、底部操作栏、模态底部面板等原生交互模式。
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // === API DOCS PAGE ===
+    function ApiPage({ onBack }) {
+      const [expanded, setExpanded] = useState(1);
+
+      const endpoints = [
+        {
+          id: 1,
+          method: 'GET',
+          path: '/api/v2/activities',
+          desc: '获取活动列表，支持分页、按场地/级别/日期筛选。',
+          params: [
+            { name: 'page', type: 'number', desc: '页码，默认 1' },
+            { name: 'limit', type: 'number', desc: '每页数量，默认 20' },
+            { name: 'level', type: 'string', desc: '难度级别：beginner/intermediate/advanced' },
+            { name: 'venue_id', type: 'number', desc: '场地 ID' },
+            { name: 'date', type: 'string', desc: '日期 YYYY-MM-DD' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"data"</span>: {
+    <span class="api-code-key">"list"</span>: [
+      {
+        <span class="api-code-key">"id"</span>: <span class="api-code-num">1</span>,
+        <span class="api-code-key">"title"</span>: <span class="api-code-string">"夏日夜跑飞盘局"</span>,
+        <span class="api-code-key">"venue"</span>: <span class="api-code-string">"朝阳公园"</span>,
+        <span class="api-code-key">"level"</span>: <span class="api-code-string">"beginner"</span>,
+        <span class="api-code-key">"joined"</span>: <span class="api-code-num">14</span>,
+        <span class="api-code-key">"total"</span>: <span class="api-code-num">20</span>,
+        <span class="api-code-key">"price"</span>: <span class="api-code-num">48</span>
+      }
+    ],
+    <span class="api-code-key">"total"</span>: <span class="api-code-num">128</span>
+  }
+}`,
+        },
+        {
+          id: 2,
+          method: 'POST',
+          path: '/api/v2/activities/:id/join',
+          desc: '报名参加指定活动，需要用户已登录且未达到人数上限。',
+          params: [
+            { name: 'id', type: 'number', desc: '活动 ID（路径参数）' },
+            { name: 'remark', type: 'string', desc: '备注信息，可选' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"message"</span>: <span class="api-code-string">"报名成功"</span>,
+  <span class="api-code-key">"data"</span>: {
+    <span class="api-code-key">"order_id"</span>: <span class="api-code-string">"ORD202608210001"</span>,
+    <span class="api-code-key">"status"</span>: <span class="api-code-string">"confirmed"</span>
+  }
+}`,
+        },
+        {
+          id: 3,
+          method: 'GET',
+          path: '/api/v2/venues',
+          desc: '获取场地列表，支持按位置、评分筛选。',
+          params: [
+            { name: 'lat', type: 'number', desc: '纬度' },
+            { name: 'lng', type: 'number', desc: '经度' },
+            { name: 'radius', type: 'number', desc: '搜索半径（km），默认 5' },
+            { name: 'sort', type: 'string', desc: '排序方式：distance/rating/activity_count' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"data"</span>: [
+    {
+      <span class="api-code-key">"id"</span>: <span class="api-code-num">1</span>,
+      <span class="api-code-key">"name"</span>: <span class="api-code-string">"朝阳公园东7足球场"</span>,
+      <span class="api-code-key">"address"</span>: <span class="api-code-string">"朝阳区朝阳公园南路1号"</span>,
+      <span class="api-code-key">"distance"</span>: <span class="api-code-num">2.3</span>,
+      <span class="api-code-key">"rating"</span>: <span class="api-code-num">4.8</span>
+    }
+  ]
+}`,
+        },
+        {
+          id: 4,
+          method: 'GET',
+          path: '/api/v2/teams/:id',
+          desc: '获取队伍详情，包含成员列表、战绩、排名等信息。',
+          params: [
+            { name: 'id', type: 'number', desc: '队伍 ID' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"data"</span>: {
+    <span class="api-code-key">"id"</span>: <span class="api-code-num">1</span>,
+    <span class="api-code-key">"name"</span>: <span class="api-code-string">"旋风少年队"</span>,
+    <span class="api-code-key">"members"</span>: <span class="api-code-num">28</span>,
+    <span class="api-code-key">"rank"</span>: <span class="api-code-num">1</span>,
+    <span class="api-code-key">"wins"</span>: <span class="api-code-num">23</span>,
+    <span class="api-code-key">"losses"</span>: <span class="api-code-num">5</span>
+  }
+}`,
+        },
+        {
+          id: 5,
+          method: 'POST',
+          path: '/api/v2/user/login',
+          desc: '用户登录，支持手机号验证码和微信授权登录。',
+          params: [
+            { name: 'phone', type: 'string', desc: '手机号' },
+            { name: 'code', type: 'string', desc: '验证码' },
+            { name: 'wx_code', type: 'string', desc: '微信登录 code（二选一）' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"data"</span>: {
+    <span class="api-code-key">"token"</span>: <span class="api-code-string">"eyJhbGciOiJIUzI1NiIs..."</span>,
+    <span class="api-code-key">"user"</span>: {
+      <span class="api-code-key">"id"</span>: <span class="api-code-num">10086</span>,
+      <span class="api-code-key">"nickname"</span>: <span class="api-code-string">"阿飞爱飞盘"</span>,
+      <span class="api-code-key">"level"</span>: <span class="api-code-num">6</span>
+    }
+  }
+}`,
+        },
+        {
+          id: 6,
+          method: 'GET',
+          path: '/api/v2/tutorials',
+          desc: '获取教学视频列表，支持分类和难度筛选。',
+          params: [
+            { name: 'category', type: 'string', desc: '分类：basic/advance/strategy' },
+            { name: 'level', type: 'string', desc: '难度级别' },
+            { name: 'page', type: 'number', desc: '页码' },
+          ],
+          response: `{
+  <span class="api-code-key">"code"</span>: <span class="api-code-num">200</span>,
+  <span class="api-code-key">"data"</span>: {
+    <span class="api-code-key">"list"</span>: [
+      {
+        <span class="api-code-key">"id"</span>: <span class="api-code-num">1</span>,
+        <span class="api-code-key">"title"</span>: <span class="api-code-string">"反手出盘全解析"</span>,
+        <span class="api-code-key">"duration"</span>: <span class="api-code-string">"12:30"</span>,
+        <span class="api-code-key">"views"</span>: <span class="api-code-num">23000</span>
+      }
+    ]
+  }
+}`,
+        },
+      ];
+
+      return (
+        <div className="page api-page">
+          <div className="nav-bar compact" style={{
+            position: 'sticky', top: 0, zIndex: 25,
+            padding: 'calc(var(--ios-safe-top) + 8px) 0 12px',
+            background: 'transparent', backdropFilter: 'none',
+          }}>
+            <div className="nav-header" style={{ marginBottom: 0 }}>
+              <div className="nav-back-btn" onClick={onBack}><Icon.Back /></div>
+              <span className="nav-title-small">接口文档</span>
+              <div style={{ width: 32 }} />
+            </div>
+          </div>
+
+          <div className="api-header">
+            <div className="api-version-badge">API v2.0 · 原生 App</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 6 }}>
+              旋盘 SPINN API
+            </div>
+            <div style={{ fontSize: 13, color: '#8A8F98', lineHeight: 1.6 }}>
+              极限飞盘社群平台后端接口文档，包含活动、场地、队伍、教学等模块。
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#8A8F98', marginBottom: 6, fontWeight: 500 }}>
+            Base URL
+          </div>
+          <div className="api-base-url">
+            https://api.spinn.frisbee/v2
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', margin: '20px 0 12px' }}>
+            接口列表
+          </div>
+
+          {endpoints.map(ep => (
+            <div key={ep.id} className="api-endpoint stagger-item"
+              style={{ animationDelay: `${0.05 + ep.id * 0.04}s` }}
+              onClick={() => setExpanded(expanded === ep.id ? 0 : ep.id)}
+            >
+              <div className="api-endpoint-top">
+                <span className={`api-method method-${ep.method.toLowerCase()}`}>{ep.method}</span>
+                <span className="api-path">{ep.path}</span>
+              </div>
+              {expanded === ep.id && (
+                <>
+                  <div className="api-endpoint-desc">{ep.desc}</div>
+                  <div style={{ fontSize: 12, color: '#C6F24E', marginTop: 10, fontWeight: 600 }}>
+                    请求参数
+                  </div>
+                  <table className="api-param-table">
+                    <thead>
+                      <tr>
+                        <th>参数名</th>
+                        <th>类型</th>
+                        <th>说明</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ep.params.map((p, i) => (
+                        <tr key={i}>
+                          <td className="api-param-name">{p.name}</td>
+                          <td className="api-param-type">{p.type}</td>
+                          <td className="api-param-desc">{p.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ fontSize: 12, color: '#C6F24E', marginTop: 12, fontWeight: 600 }}>
+                    返回示例
+                  </div>
+                  <div className="api-code-block"
+                    dangerouslySetInnerHTML={{ __html: ep.response }} />
+                </>
+              )}
+            </div>
+          ))}
+
+          <div style={{ marginTop: 24 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 12 }}>
+              错误码
+            </div>
+            <div className="api-code-block">
+{`  <span class="api-code-comment">// 通用错误码</span>
+  <span class="api-code-key">200</span>  <span class="api-code-string">成功</span>
+  <span class="api-code-key">400</span>  <span class="api-code-string">参数错误</span>
+  <span class="api-code-key">401</span>  <span class="api-code-string">未授权</span>
+  <span class="api-code-key">403</span>  <span class="api-code-string">权限不足</span>
+  <span class="api-code-key">404</span>  <span class="api-code-string">资源不存在</span>
+  <span class="api-code-key">429</span>  <span class="api-code-string">请求过于频繁</span>
+  <span class="api-code-key">500</span>  <span class="api-code-string">服务器错误</span>
+
+  <span class="api-code-comment">// 业务错误码</span>
+  <span class="api-code-key">1001</span>  <span class="api-code-string">活动名额已满</span>
+  <span class="api-code-key">1002</span>  <span class="api-code-string">已报名该活动</span>
+  <span class="api-code-key">2001</span>  <span class="api-code-string">验证码错误</span>
+  <span class="api-code-key">2002</span>  <span class="api-code-string">账号已被封禁</span>`}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ──────────────────────────────────────────────
+    // MAIN APP
+    // ──────────────────────────────────────────────
+    function App() {
+      const [currentPage, setCurrentPage] = useState('home');
+      const [prevPage, setPrevPage] = useState(null);
+      const [direction, setDirection] = useState('forward');
+      const [detailActivity, setDetailActivity] = useState(null);
+      const [isTransitioning, setIsTransitioning] = useState(false);
+      const timerRef = useRef(null);
+
+      const navigate = useCallback((page) => {
+        if (page === currentPage || isTransitioning) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+
+        setDirection(currentPage === 'detail' || currentPage === 'spec' || currentPage === 'api' ? 'back' : 'forward');
+        setPrevPage(currentPage);
+        setIsTransitioning(true);
+
+        // If navigating to detail, we handle differently
+        timerRef.current = setTimeout(() => {
+          setCurrentPage(page);
+          setIsTransitioning(false);
+          setPrevPage(null);
+        }, 350);
+      }, [currentPage, isTransitioning]);
+
+      const openDetail = useCallback((activity) => {
+        if (isTransitioning) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setDetailActivity(activity);
+        setDirection('forward');
+        setPrevPage(currentPage);
+        setIsTransitioning(true);
+        timerRef.current = setTimeout(() => {
+          setCurrentPage('detail');
+          setIsTransitioning(false);
+          setPrevPage(null);
+        }, 350);
+      }, [currentPage, isTransitioning]);
+
+      const goBack = useCallback(() => {
+        if (isTransitioning) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setDirection('back');
+        setPrevPage(currentPage);
+        setIsTransitioning(true);
+        timerRef.current = setTimeout(() => {
+          // Determine which tab to go back to
+          if (currentPage === 'detail') {
+            setCurrentPage('home');
+          } else if (currentPage === 'spec' || currentPage === 'api') {
+            setCurrentPage('profile');
+          } else {
+            setCurrentPage('home');
+          }
+          setIsTransitioning(false);
+          setPrevPage(null);
+        }, 350);
+      }, [currentPage, isTransitioning]);
+
+      // Cleanup on unmount
+      useEffect(() => {
+        return () => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+        };
+      }, []);
+
+      // Pause animations on visibility change
+      useEffect(() => {
+        const onVisibility = () => {
+          if (document.hidden) {
+            if (timerRef.current) clearTimeout(timerRef.current);
+          }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+      }, []);
+
+      const isTabPage = ['home', 'map', 'team', 'tutorial', 'profile'].includes(currentPage);
+      const prevIsTabPage = prevPage && ['home', 'map', 'team', 'tutorial', 'profile'].includes(prevPage);
+
+      const renderPage = (pageKey) => {
+        switch (pageKey) {
+          case 'home':
+            return <HomePage key="home" onOpenDetail={openDetail} onNavigate={navigate} />;
+          case 'map':
+            return <MapPage key="map" />;
+          case 'team':
+            return <TeamPage key="team" />;
+          case 'tutorial':
+            return <TutorialPage key="tutorial" />;
+          case 'profile':
+            return <ProfilePage key="profile" onNavigate={navigate} />;
+          case 'detail':
+            return detailActivity ? <DetailPage key="detail" activity={detailActivity} onBack={goBack} /> : null;
+          case 'spec':
+            return <SpecPage key="spec" onBack={goBack} />;
+          case 'api':
+            return <ApiPage key="api" onBack={goBack} />;
+          default:
+            return null;
+        }
+      };
+
+      return (
+        <div className="stage">
+          <div className="app-title"><span>SPINN</span> · 旋盘</div>
+          <div className="app-tagline">极限飞盘社群 · 原生 App 设计</div>
+
+          <div style={{
+            width: 402, height: 874, borderRadius: 48, overflow: 'hidden',
+            position: 'relative', background: '#000',
+            border: '1px solid #DEE0E3',
+            fontFamily: '-apple-system, system-ui, sans-serif',
+            '--ios-safe-top': '62px',
+            '--ios-safe-bottom': '34px',
+          }}>
+            {/* Dynamic island */}
+            <div style={{
+              position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+              width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 100,
+            }} />
+            {/* Status bar */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90,
+              display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+              padding: '21px 24px 19px', boxSizing: 'border-box',
+            }}>
+              <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+                <span style={{
+                  fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590,
+                  fontSize: 17, lineHeight: '22px', color: '#fff',
+                }}>9:41</span>
+              </div>
+              <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+                <svg width="19" height="12" viewBox="0 0 19 12">
+                  <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill="#fff"/>
+                  <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill="#fff"/>
+                  <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill="#fff"/>
+                  <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill="#fff"/>
+                </svg>
+                <svg width="17" height="12" viewBox="0 0 17 12">
+                  <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill="#fff"/>
+                  <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill="#fff"/>
+                  <circle cx="8.5" cy="10.5" r="1.5" fill="#fff"/>
+                </svg>
+                <svg width="27" height="13" viewBox="0 0 27 13">
+                  <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="rgba(255,255,255,0.35)" fill="none"/>
+                  <rect x="2" y="2" width="20" height="9" rx="2" fill="#fff"/>
+                  <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill="rgba(255,255,255,0.4)"/>
+                </svg>
+              </div>
+            </div>
+
+            {/* Screen content */}
+            <div style={{
+              height: '100%',
+              position: 'relative',
+              isolation: 'isolate',
+            }}>
+              {/* Current page */}
+              <div className="screen-container" style={{
+                transform: isTransitioning ? (direction === 'forward' ? 'translateX(0)' : 'translateX(0)') : 'translateX(0)',
+                animation: isTransitioning ? (direction === 'forward' ? 'pageSlideIn 0.35s cubic-bezier(.2,.8,.2,1)' : 'pageSlideIn 0.35s cubic-bezier(.2,.8,.2,1) reverse') : 'none',
+              }}>
+                {renderPage(currentPage)}
+              </div>
+
+              {/* Tab bar */}
+              {isTabPage && (
+                <TabBar active={currentPage} onNavigate={navigate} />
+              )}
+            </div>
+
+            {/* Home indicator */}
+            <div style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 110,
+              height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+              paddingBottom: 8, pointerEvents: 'none',
+            }}>
+              <div style={{
+                width: 139, height: 5, borderRadius: 100,
+                background: 'rgba(255,255,255,0.7)',
+              }} />
+            </div>
+          </div>
+
+          <div style={{
+            fontSize: 11, color: '#6B7280', marginTop: 4,
+            display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center',
+          }}>
+            <span>V2 · 形态：原生 App</span>
+            <span>8 页 · 12+ 动效</span>
+            <span style={{ color: '#C6F24E' }}>荧光运动系</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ──────────────────────────────────────────────
+    // RENDER
+    // ──────────────────────────────────────────────
+    function Root() {
+      return (
+        <>
+          <CustomCursor />
+          <App />
+        </>
+      );
+    }
+
+    // Announce upgrade capability
+    function announceUpgrade() {
+      try {
+        window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+      } catch (e) {}
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Root />);
+  </script>
+</body>
+</html>
