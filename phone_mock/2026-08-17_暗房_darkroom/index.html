@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>暗房 Darkroom · 胶片摄影原生 App</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; min-height: 100vh;
+    background: #1A1715;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #E8E4DA;
+    overflow: hidden;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 20px;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(199, 62, 29, 0.08), transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(217, 164, 65, 0.06), transparent 50%),
+      #1A1715;
+  }
+  .stage {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  .credit {
+    font-family: 'DM Serif Display', serif;
+    font-size: 13px; color: rgba(232, 228, 218, 0.5);
+    letter-spacing: 0.08em;
+  }
+  .credit span { color: #D9A441; font-style: italic; }
+  .morph-tag {
+    position: fixed; top: 12px; left: 12px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: rgba(232, 228, 218, 0.4); letter-spacing: 0.1em;
+    z-index: 1000;
+  }
+</style>
+</head>
+<body>
+<div class="morph-tag">形态：原生 App</div>
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ============================================================
+   暗房 Darkroom — 胶片摄影原生 App
+   形态：原生 App (iOS)
+   ============================================================ */
+
+// ------- 素材 -------
+const IMG = {
+  portrait: '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh6rmtwbs_ve_miaoda',
+  darkroom: '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqijaucmgu_ve_miaoda',
+  camera:   '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh26quu2s_ve_miaoda',
+  mountain: '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh546cshs_ve_miaoda',
+  street:   '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh2zwa4js_ve_miaoda',
+  filmroll: '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqhyycrmdu_ve_miaoda',
+  ocean:    '/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh3rdmqgw_ve_miaoda',
+  bookstore:'/spark/app/app_17c8jr09ksx/runtime/api/v1/storage/object/bucket_aadkqiswqdebw_static/static%2Faadkqh2ausshs_ve_miaoda',
+};
+
+// ------- 色板 -------
+const TOKENS = {
+  ink:      '#0E0E10',
+  surface:  '#1A1715',
+  surface2: '#23201D',
+  surface3: '#2E2A26',
+  paper:    '#E8E4DA',
+  paperDim: '#A8A297',
+  silver:   '#8A8A8A',
+  safelight:'#C73E1D',
+  amber:    '#D9A441',
+  fixer:    '#2D4A6B',
+  mint:     '#7BA08A',
+  film1:    '#3A2A26',
+  film2:    '#2B2024',
+};
+
+// ============================================================
+// iOS Device Frame (内联简化版)
+// ============================================================
+function IOSDevice({ children, dark = true, width = 390, height = 844 }) {
+  return (
+    <div style={{
+      position: 'relative',
+      width: width,
+      height: height,
+      borderRadius: 50,
+      background: '#0a0a0a',
+      padding: 12,
+      boxShadow: `
+        0 0 0 1px rgba(255,255,255,0.08),
+        0 30px 60px -15px rgba(0,0,0,0.6),
+        0 10px 20px -10px rgba(0,0,0,0.4)
+      `,
+    }}>
+      {/* 侧按钮 */}
+      <div style={{ position: 'absolute', left: -2, top: 120, width: 3, height: 32, borderRadius: '2px 0 0 2px', background: '#1a1a1a' }} />
+      <div style={{ position: 'absolute', left: -2, top: 170, width: 3, height: 60, borderRadius: '2px 0 0 2px', background: '#1a1a1a' }} />
+      <div style={{ position: 'absolute', left: -2, top: 240, width: 3, height: 60, borderRadius: '2px 0 0 2px', background: '#1a1a1a' }} />
+      <div style={{ position: 'absolute', right: -2, top: 180, width: 3, height: 90, borderRadius: '0 2px 2px 0', background: '#1a1a1a' }} />
+
+      {/* 屏幕 */}
+      <div style={{
+        position: 'relative',
+        width: '100%', height: '100%',
+        borderRadius: 40,
+        overflow: 'hidden',
+        background: dark ? '#0E0E10' : '#F7F7F7',
+      }}>
+        {/* 灵动岛 */}
+        <div style={{
+          position: 'absolute', top: 10, left: '50%',
+          transform: 'translateX(-50%)',
+          width: 110, height: 32, borderRadius: 20,
+          background: '#000',
+          zIndex: 999,
+        }} />
+
+        {/* 状态栏 */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          height: 50, zIndex: 998,
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '18px 28px 0',
+          pointerEvents: 'none',
+        }}>
+          <span style={{
+            color: dark ? '#fff' : '#000',
+            fontSize: 15, fontWeight: 600,
+            fontFamily: 'Inter, -apple-system, sans-serif',
+          }}>9:41</span>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 12 }}>
+              {[4,7,10,12].map((h,i) => (
+                <div key={i} style={{
+                  width: 3, height: h, borderRadius: 1,
+                  background: dark ? '#fff' : '#000',
+                }} />
+              ))}
+            </div>
+            <div style={{ width: 14, height: 10 }}>
+              <div style={{ width:'100%', height:'100%', background: `linear-gradient(135deg, ${dark?'#fff':'#000'} 50%, transparent 50%)`, clipPath: 'polygon(0 100%, 50% 50%, 100% 100%)' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <div style={{
+                width: 22, height: 10, borderRadius: 2.5,
+                border: `1px solid ${dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)'}`,
+                padding: 1, position: 'relative',
+              }}>
+                <div style={{
+                  width: '80%', height: '100%', borderRadius: 1,
+                  background: dark ? '#fff' : '#000',
+                }} />
+              </div>
+              <div style={{
+                width: 1.5, height: 4, borderRadius: '0 1px 1px 0',
+                background: dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
+              }} />
+            </div>
+          </div>
+        </div>
+
+        {/* 内容区 */}
+        <div style={{
+          width: '100%', height: '100%',
+          '--ios-safe-top': '50px',
+          '--ios-safe-bottom': '34px',
+        }}>
+          {children}
+        </div>
+
+        {/* Home indicator */}
+        <div style={{
+          position: 'absolute', bottom: 8, left: '50%',
+          transform: 'translateX(-50%)',
+          width: 134, height: 5, borderRadius: 3,
+          background: dark ? '#fff' : '#000',
+          opacity: 0.5,
+          zIndex: 999,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ------- 数据 -------
+const feedData = [
+  { id: 1, title: '窗光', author: '林深', camera: 'Leica M6', film: 'Kodak Portra 400', iso: '400', aperture: 'f/2.0', shutter: '1/125', likes: 342, comments: 28, img: IMG.portrait, tag: '人像' },
+  { id: 2, title: '黄金山脊', author: '周野', camera: 'Nikon FM2', film: 'Fuji Velvia 50', iso: '50', aperture: 'f/8', shutter: '1/60', likes: 519, comments: 47, img: IMG.mountain, tag: '风光' },
+  { id: 3, title: '雨后巷', author: '陈留白', camera: 'Ricoh GR1', film: 'Cinestill 800T', iso: '800', aperture: 'f/2.8', shutter: '1/30', likes: 276, comments: 19, img: IMG.street, tag: '街头' },
+  { id: 4, title: '静谧书阁', author: '苏也', camera: 'Hasselblad 500C/M', film: 'Ilford HP5', iso: '400', aperture: 'f/4', shutter: '1/125', likes: 433, comments: 35, img: IMG.bookstore, tag: '静物' },
+];
+
+const filmRolls = [
+  { id: 1, name: 'Kodak Portra 400', type: '彩色负片', iso: 400, count: 36, shot: 22, color: '#D9A441' },
+  { id: 2, name: 'Ilford HP5 Plus', type: '黑白胶片', iso: 400, count: 36, shot: 36, color: '#8A8A8A' },
+  { id: 3, name: 'Cinestill 800T', type: '彩色负片 · 钨灯', iso: 800, count: 36, shot: 14, color: '#2D4A6B' },
+  { id: 4, name: 'Fuji Velvia 50', type: '彩色反转片', iso: 50, count: 36, shot: 8, color: '#7BA08A' },
+];
+
+const workshops = [
+  { id: 1, title: '暗房基础课 · 黑白冲印第一卷', date: '8月24日 周六 14:00', price: 280, seats: 3, img: IMG.darkroom },
+  { id: 2, title: '大画幅人像工作坊', date: '9月1日 周日 10:00', price: 580, seats: 6, img: IMG.portrait },
+];
+
+// ============================================================
+// 通用：工具 hooks
+// ============================================================
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const handler = (e) => setReduced(e.matches);
+    mq.addEventListener?.('change', handler);
+    return () => mq.removeEventListener?.('change', handler);
+  }, []);
+  return reduced;
+}
+
+function useVisibility() {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const onVisibility = () => setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  return visible;
+}
+
+// requestAnimationFrame 循环，随可见性暂停、卸载时取消
+function useRafLoop(callback, active = true) {
+  const rafRef = useRef(null);
+  const cbRef = useRef(callback);
+  cbRef.current = callback;
+  const visible = useVisibility();
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    if (!active || !visible || reduced) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      return;
+    }
+    let last = performance.now();
+    const loop = (t) => {
+      const dt = (t - last) / 1000;
+      last = t;
+      cbRef.current(dt, t);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+  }, [active, visible, reduced]);
+}
+
+// ============================================================
+// 胶片颗粒层（CSS 动效，组件级特效 ①）
+// ============================================================
+function FilmGrain({ opacity = 0.08, blend = 'overlay' }) {
+  const reduced = useReducedMotion();
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, pointerEvents: 'none',
+      backgroundImage: `url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`,
+      backgroundSize: '200px 200px',
+      opacity, mixBlendMode: blend,
+      animation: reduced ? 'none' : 'grainShift 0.6s steps(6) infinite',
+      zIndex: 1,
+    }} />
+  );
+}
+
+// ============================================================
+// 显影动画照片（签名动效 ①）
+// 灰度 + 高对比 → 彩色 + 低噪
+// ============================================================
+function DevelopingPhoto({ src, alt, delay = 0, style = {} }) {
+  const reduced = useReducedMotion();
+  const [phase, setPhase] = useState(reduced ? 'ready' : 'latent');
+
+  useEffect(() => {
+    if (reduced) return;
+    const t1 = setTimeout(() => setPhase('developing'), delay);
+    const t2 = setTimeout(() => setPhase('fixing'), delay + 900);
+    const t3 = setTimeout(() => setPhase('ready'), delay + 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [delay, reduced, src]);
+
+  const filter = {
+    latent:     'grayscale(1) contrast(0.3) brightness(0.6) blur(2px)',
+    developing: 'grayscale(0.6) contrast(0.8) brightness(0.85) blur(0.5px)',
+    fixing:     'grayscale(0.2) contrast(1) brightness(0.95) blur(0)',
+    ready:      'grayscale(0) contrast(1.05) brightness(1) blur(0)',
+  }[phase];
+
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', ...style }}>
+      <img src={src} alt={alt} style={{
+        width: '100%', height: '100%', objectFit: 'cover',
+        filter, transition: reduced ? 'none' : 'filter 1.2s cubic-bezier(.2,.8,.2,1)',
+      }} />
+      <FilmGrain opacity={phase === 'latent' ? 0.4 : phase === 'developing' ? 0.25 : 0.1} />
+      {phase !== 'ready' && (
+        <div style={{
+          position: 'absolute', bottom: 10, right: 10,
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+          color: 'rgba(232,228,218,0.7)', letterSpacing: '0.15em',
+        }}>
+          {phase === 'latent' ? 'LATENT' : phase === 'developing' ? 'DEVELOPING…' : 'FIXING…'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 底部 TabBar（原生质感）
+// ============================================================
+function TabBar({ active, onChange }) {
+  const tabs = [
+    { key: 'feed',   label: '发现', icon: '◇' },
+    { key: 'rolls',  label: '胶卷', icon: '◉' },
+    { key: 'lab',    label: '暗房', icon: '✦' },
+    { key: 'me',     label: '我的', icon: '◐' },
+  ];
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, bottom: 0,
+      height: 83, paddingBottom: 28,
+      background: 'rgba(14,14,16,0.85)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      borderTop: `0.5px solid rgba(232,228,218,0.08)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+      zIndex: 50,
+    }}>
+      {tabs.map((t) => {
+        const isActive = active === t.key;
+        return (
+          <button
+            key={t.key}
+            onClick={() => onChange(t.key)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              padding: '4px 12px', color: isActive ? TOKENS.amber : TOKENS.paperDim,
+              fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500,
+              letterSpacing: '0.02em',
+              transition: 'color 0.2s ease',
+            }}
+          >
+            <span style={{
+              fontSize: 18,
+              transform: isActive ? 'scale(1.1)' : 'scale(1)',
+              transition: 'transform 0.3s cubic-bezier(.34,1.56,.64,1)',
+            }}>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================
+// 导航栏（大标题 + 返回栈）
+// ============================================================
+function NavBar({ title, onBack, subtitle, right, large = false }) {
+  return (
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 40,
+      background: 'rgba(14,14,16,0.85)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      borderBottom: '0.5px solid rgba(232,228,218,0.06)',
+    }}>
+      <div style={{
+        paddingTop: 'var(--ios-safe-top, 50px)',
+        paddingLeft: 16, paddingRight: 16,
+        minHeight: 44, display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {onBack && (
+            <button onClick={onBack} style={{
+              background: 'none', border: 'none', color: TOKENS.amber,
+              fontSize: 18, padding: '4px 8px', cursor: 'pointer', marginLeft: -8,
+            }}>‹</button>
+          )}
+          {!large && <span style={{ fontWeight: 600, fontSize: 17, color: TOKENS.paper }}>{title}</span>}
+        </div>
+        {right}
+      </div>
+      {large && (
+        <div style={{ padding: '4px 20px 14px' }}>
+          <h1 style={{
+            fontFamily: "'DM Serif Display', serif",
+            fontSize: 34, fontWeight: 400, color: TOKENS.paper,
+            letterSpacing: '-0.01em',
+          }}>{title}</h1>
+          {subtitle && <p style={{
+            fontFamily: 'Inter, sans-serif', fontSize: 13,
+            color: TOKENS.paperDim, marginTop: 2,
+          }}>{subtitle}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 1：发现页（瀑布流 + 胶片卷轴 + 显影入场）
+// 布局：Hero + 横向胶片卷轴 + 瀑布流
+// ============================================================
+function FeedPage({ onOpenPhoto }) {
+  const reduced = useReducedMotion();
+  const scrollRef = useRef(null);
+
+  // 胶片卷轴滚动（签名动效 ②）
+  const filmXRef = useRef(0);
+  const filmElRef = useRef(null);
+  useRafLoop((dt) => {
+    filmXRef.current -= dt * 18;
+    if (filmXRef.current <= -220) filmXRef.current += 220;
+    if (filmElRef.current) {
+      filmElRef.current.style.transform = `translateX(${filmXRef.current}px)`;
+    }
+  }, true);
+
+  // 下拉刷新
+  const [refreshing, setRefreshing] = useState(false);
+  const [pullY, setPullY] = useState(0);
+  const startYRef = useRef(0);
+  const pullingRef = useRef(false);
+
+  const onTouchStart = (e) => {
+    if (scrollRef.current?.scrollTop <= 0) {
+      startYRef.current = e.touches[0].clientY;
+      pullingRef.current = true;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (!pullingRef.current) return;
+    const dy = e.touches[0].clientY - startYRef.current;
+    if (dy > 0) {
+      setPullY(Math.min(dy * 0.5, 80));
+    }
+  };
+  const onTouchEnd = () => {
+    if (pullingRef.current && pullY > 50) {
+      setRefreshing(true);
+      setPullY(0);
+      setTimeout(() => setRefreshing(false), 1200);
+    } else {
+      setPullY(0);
+    }
+    pullingRef.current = false;
+  };
+
+  return (
+    <div style={{
+      flex: 1, overflowY: 'auto', overflowX: 'hidden',
+      background: TOKENS.ink,
+    }}
+      ref={scrollRef}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* 下拉刷新指示器 */}
+      <div style={{
+        height: refreshing ? 40 : pullY,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: reduced ? 'none' : 'height 0.3s cubic-bezier(.34,1.56,.64,1)',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          width: 20, height: 20, borderRadius: '50%',
+          border: `2px solid ${TOKENS.amber}`,
+          borderTopColor: 'transparent',
+          animation: refreshing ? 'spin 0.8s linear infinite' : 'none',
+          transform: `rotate(${pullY * 3}deg)`,
+          opacity: refreshing ? 1 : pullY / 60,
+        }} />
+      </div>
+
+      {/* Hero 大标题 */}
+      <div style={{ padding: '8px 20px 20px', position: 'relative' }}>
+        <p style={{
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+          color: TOKENS.amber, letterSpacing: '0.2em', marginBottom: 6,
+        }}>DAILY · 2026/08/17</p>
+        <h1 style={{
+          fontFamily: "'DM Serif Display', serif", fontWeight: 400,
+          fontSize: 40, lineHeight: 1.05, color: TOKENS.paper,
+          letterSpacing: '-0.02em',
+        }}>
+          在银盐里<br/>
+          <span style={{ fontStyle: 'italic', color: TOKENS.amber }}>慢慢显影</span>
+        </h1>
+        <p style={{
+          marginTop: 10, fontSize: 13, color: TOKENS.paperDim,
+          lineHeight: 1.6, maxWidth: 260,
+        }}>
+          今天 128 位摄影师上传了他们的第一卷胶片。挑一卷，慢慢看。
+        </p>
+      </div>
+
+      {/* 横向胶片卷轴（组件级特效 ②） */}
+      <div style={{
+        position: 'relative', height: 110, marginBottom: 20,
+        overflow: 'hidden',
+      }}>
+        {/* 胶片齿孔 */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 14,
+          background: '#111',
+          backgroundImage: 'repeating-linear-gradient(90deg, transparent 0, transparent 10px, #2a2520 10px, #2a2520 16px, transparent 16px, transparent 22px)',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 14,
+          background: '#111',
+          backgroundImage: 'repeating-linear-gradient(90deg, transparent 0, transparent 10px, #2a2520 10px, #2a2520 16px, transparent 16px, transparent 22px)',
+        }} />
+        {/* 胶片内容轨道 */}
+        <div ref={filmElRef} style={{
+          position: 'absolute', top: 14, bottom: 14,
+          display: 'flex', gap: 6, padding: '0 6px',
+          willChange: 'transform',
+        }}>
+          {[...feedData, ...feedData, ...feedData].map((p, i) => (
+            <div key={i} style={{
+              width: 80, height: '100%', flexShrink: 0,
+              overflow: 'hidden', border: '1px solid #0a0a0a',
+              cursor: 'pointer',
+            }} onClick={() => onOpenPhoto(p)}>
+              <img src={p.img} alt="" style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                filter: 'grayscale(0.3) contrast(0.9) sepia(0.2)',
+              }} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 分类标签 */}
+      <div style={{
+        display: 'flex', gap: 10, padding: '0 20px 16px',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
+        {['全部', '人像', '风光', '街头', '静物', '建筑'].map((tag, i) => (
+          <button key={tag} style={{
+            flexShrink: 0, padding: '6px 14px', borderRadius: 999,
+            border: `0.5px solid ${i === 0 ? TOKENS.amber : 'rgba(232,228,218,0.12)'}`,
+            background: i === 0 ? `${TOKENS.amber}15` : 'transparent',
+            color: i === 0 ? TOKENS.amber : TOKENS.paperDim,
+            fontSize: 12, fontWeight: 500, cursor: 'pointer',
+            fontFamily: 'Inter, sans-serif',
+            transition: 'all 0.2s',
+          }}>{tag}</button>
+        ))}
+      </div>
+
+      {/* 瀑布流 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
+        padding: '0 6px 100px',
+      }}>
+        {feedData.map((p, i) => (
+          <div
+            key={p.id}
+            onClick={() => onOpenPhoto(p)}
+            style={{
+              gridRow: i % 2 === 0 ? 'span 2' : 'span 2',
+              position: 'relative', borderRadius: 8,
+              overflow: 'hidden', cursor: 'pointer',
+              aspectRatio: i % 2 === 0 ? '3/4' : '3/5',
+            }}
+          >
+            <DevelopingPhoto src={p.img} alt={p.title} delay={200 + i * 150} style={{ width: '100%', height: '100%' }} />
+            <div style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              padding: '24px 12px 10px',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
+              zIndex: 2,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{p.title}</div>
+              <div style={{
+                fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                {p.camera} · {p.film}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 2：照片详情页（全屏转场 + 视差滚动 + EXIF 信息）
+// ============================================================
+function PhotoDetailPage({ photo, onClose }) {
+  const reduced = useReducedMotion();
+  const scrollRef = useRef(null);
+  const heroRef = useRef(null);
+  const [scrollY, setScrollY] = useState(0);
+
+  const onScroll = () => {
+    const y = scrollRef.current?.scrollTop || 0;
+    setScrollY(y);
+    if (heroRef.current) {
+      // 直接操作 transform，避免 setState 重渲染（健壮性红线 ④）
+      const scale = Math.max(1, 1 + y / -400);
+      const translateY = Math.max(0, y * 0.3);
+      heroRef.current.style.transform = `scale(${scale}) translateY(${translateY}px)`;
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 100,
+      background: TOKENS.ink,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      {/* 全屏 Hero + 视差 */}
+      <div style={{
+        position: 'relative', height: 420, overflow: 'hidden', flexShrink: 0,
+      }}>
+        <div ref={heroRef} style={{
+          position: 'absolute', inset: 0,
+          transformOrigin: 'center top',
+          willChange: 'transform',
+        }}>
+          <img src={photo.img} alt={photo.title} style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+          }} />
+          <FilmGrain opacity={0.12} />
+        </div>
+
+        {/* 顶部返回 */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          paddingTop: 'var(--ios-safe-top, 50px)',
+          paddingLeft: 12, paddingRight: 12,
+          display: 'flex', justifyContent: 'space-between',
+          zIndex: 5,
+        }}>
+          <button onClick={onClose} style={{
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(10px)',
+            border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>‹</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(10px)',
+              border: 'none', color: '#fff', fontSize: 14, cursor: 'pointer',
+            }}>♡</button>
+            <button style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(10px)',
+              border: 'none', color: '#fff', fontSize: 14, cursor: 'pointer',
+            }}>↗</button>
+          </div>
+        </div>
+
+        {/* EXIF 悬浮条 */}
+        <div style={{
+          position: 'absolute', bottom: 16, left: 16, right: 16,
+          padding: '12px 14px', borderRadius: 12,
+          background: 'rgba(0,0,0,0.45)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '0.5px solid rgba(255,255,255,0.1)',
+          display: 'flex', justifyContent: 'space-between',
+          zIndex: 5,
+        }}>
+          {[
+            ['ISO', photo.iso],
+            ['光圈', photo.aperture],
+            ['快门', photo.shutter],
+            ['胶卷', photo.film.slice(0, 5) + '…'],
+          ].map(([k, v]) => (
+            <div key={k} style={{ textAlign: 'center' }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+                color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em',
+              }}>{k}</div>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: '#fff', marginTop: 2,
+              }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 内容区 */}
+      <div ref={scrollRef} onScroll={onScroll} style={{
+        flex: 1, overflowY: 'auto',
+        background: TOKENS.ink,
+      }}>
+        <div style={{ padding: '20px 20px 100px' }}>
+          <h2 style={{
+            fontFamily: "'DM Serif Display', serif", fontWeight: 400,
+            fontSize: 28, color: TOKENS.paper, marginBottom: 4,
+          }}>{photo.title}</h2>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            marginBottom: 16,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%',
+              background: `linear-gradient(135deg, ${TOKENS.amber}, ${TOKENS.safelight})`,
+            }} />
+            <div>
+              <div style={{ fontSize: 13, color: TOKENS.paper, fontWeight: 500 }}>
+                {photo.author}
+              </div>
+              <div style={{ fontSize: 11, color: TOKENS.paperDim }}>
+                {photo.camera}
+              </div>
+            </div>
+            <button style={{
+              marginLeft: 'auto', padding: '6px 14px', borderRadius: 999,
+              background: TOKENS.amber, color: TOKENS.ink,
+              border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}>关注</button>
+          </div>
+
+          <p style={{
+            fontSize: 14, color: TOKENS.paperDim, lineHeight: 1.7,
+            marginBottom: 20,
+          }}>
+            雨后的老巷子里，光从墙的另一边漏过来。Cinestill 800T 自带的光晕让路灯像融化的黄油，
+            空气里的水汽把一切都柔化了。这是我用这台 Ricoh GR1 拍的第一卷。
+          </p>
+
+          {/* 互动数据 */}
+          <div style={{
+            display: 'flex', gap: 24, padding: '16px 0',
+            borderTop: `0.5px solid ${TOKENS.surface3}`,
+            borderBottom: `0.5px solid ${TOKENS.surface3}`,
+            marginBottom: 20,
+          }}>
+            {[
+              { icon: '♡', label: '喜欢', value: photo.likes },
+              { icon: '💬', label: '评论', value: photo.comments },
+              { icon: '↗', label: '分享', value: 12 },
+            ].map((s) => (
+              <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ fontSize: 16, color: TOKENS.paper, fontWeight: 600 }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: TOKENS.paperDim }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 评论区（3 条） */}
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, color: TOKENS.paper, marginBottom: 12 }}>
+              评论 <span style={{ color: TOKENS.paperDim, fontWeight: 400 }}>({photo.comments})</span>
+            </h3>
+            {[
+              { name: '胶片少年', text: '光晕太美了，800T 夜拍的灵魂。' },
+              { name: '老周说', text: 'GR1 扫街真的轻便，我也有一台。' },
+              { name: '安井', text: '这个色调好温柔，请问冲扫店是哪家？' },
+            ].map((c, i) => (
+              <div key={i} style={{
+                display: 'flex', gap: 10, padding: '10px 0',
+                borderBottom: i < 2 ? `0.5px solid ${TOKENS.surface3}` : 'none',
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: TOKENS.surface3, flexShrink: 0,
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: TOKENS.paper, fontWeight: 500 }}>{c.name}</div>
+                  <div style={{ fontSize: 12, color: TOKENS.paperDim, marginTop: 2, lineHeight: 1.5 }}>{c.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 底部输入栏 */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0,
+        padding: '10px 16px 28px',
+        background: 'rgba(14,14,16,0.9)',
+        backdropFilter: 'blur(20px)',
+        borderTop: '0.5px solid rgba(232,228,218,0.06)',
+        display: 'flex', gap: 10, alignItems: 'center',
+      }}>
+        <input placeholder="说点什么…" style={{
+          flex: 1, padding: '10px 14px', borderRadius: 999,
+          background: TOKENS.surface2, border: 'none',
+          color: TOKENS.paper, fontSize: 13, outline: 'none',
+        }} />
+        <button style={{
+          padding: '10px 16px', borderRadius: 999,
+          background: TOKENS.amber, color: TOKENS.ink,
+          border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+        }}>发送</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 3：胶卷库（环形进度 + 卡片堆叠）
+// 布局：左右分栏 / 卡片堆叠
+// ============================================================
+function RollsPage() {
+  const reduced = useReducedMotion();
+  const [selected, setSelected] = useState(0);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: TOKENS.ink, overflow: 'hidden' }}>
+      <NavBar title="我的胶卷" large subtitle="4 卷在拍 · 12 卷已冲扫 · 3 卷待冲" />
+
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '8px 16px 100px',
+      }}>
+        {/* 环形进度汇总（签名动效 ③） */}
+        <div style={{
+          padding: 20, borderRadius: 20, marginBottom: 20,
+          background: `linear-gradient(145deg, ${TOKENS.surface2}, ${TOKENS.surface})`,
+          border: `0.5px solid ${TOKENS.surface3}`,
+          display: 'flex', alignItems: 'center', gap: 20,
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <RingProgress value={72} size={100} stroke={8} color={TOKENS.amber} bg={TOKENS.surface3} />
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontFamily: "'DM Serif Display', serif", fontSize: 28,
+              color: TOKENS.paper,
+            }}>72%</div>
+            <div style={{ fontSize: 12, color: TOKENS.paperDim, marginTop: 2 }}>
+              本月拍摄进度
+            </div>
+            <div style={{
+              display: 'flex', gap: 12, marginTop: 10,
+              fontSize: 11, color: TOKENS.paperDim,
+            }}>
+              <span><span style={{ color: TOKENS.amber }}>4</span> 卷在拍</span>
+              <span><span style={{ color: TOKENS.paper }}>3</span> 卷待冲</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 胶卷卡片堆叠 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {filmRolls.map((roll, i) => (
+            <FilmRollCard
+              key={roll.id}
+              roll={roll}
+              index={i}
+              expanded={selected === i}
+              onClick={() => setSelected(selected === i ? -1 : i)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* FAB 悬浮按钮（组件级特效 ③） */}
+      <button style={{
+        position: 'absolute', right: 18, bottom: 95,
+        width: 52, height: 52, borderRadius: '50%',
+        background: `linear-gradient(135deg, ${TOKENS.safelight}, ${TOKENS.amber})`,
+        color: TOKENS.ink, border: 'none', fontSize: 24,
+        boxShadow: '0 8px 24px rgba(199,62,29,0.4)',
+        cursor: 'pointer', zIndex: 45,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: reduced ? 'none' : 'transform 0.2s, box-shadow 0.2s',
+      }} onMouseEnter={(e) => {
+        if (reduced) return;
+        e.currentTarget.style.transform = 'scale(1.08) rotate(90deg)';
+      }} onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'scale(1) rotate(0)';
+      }}>+</button>
+    </div>
+  );
+}
+
+// 环形进度（组件级特效 ④）
+function RingProgress({ value, size = 80, stroke = 6, color = '#D9A441', bg = '#2E2A26' }) {
+  const reduced = useReducedMotion();
+  const [animVal, setAnimVal] = useState(reduced ? value : 0);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (animVal / 100) * c;
+
+  useEffect(() => {
+    if (reduced) return;
+    const t = setTimeout(() => setAnimVal(value), 200);
+    return () => clearTimeout(t);
+  }, [value, reduced]);
+
+  return (
+    <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={r} stroke={bg} strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size/2} cy={size/2} r={r}
+          stroke={color} strokeWidth={stroke} fill="none"
+          strokeDasharray={c} strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size/2} ${size/2})`}
+          style={{
+            transition: reduced ? 'none' : 'stroke-dashoffset 1.5s cubic-bezier(.2,.8,.2,1)',
+          }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column',
+      }}>
+        <span style={{
+          fontFamily: "'DM Serif Display', serif", fontSize: size * 0.28,
+          color: TOKENS.paper,
+        }}>{Math.round(animVal)}</span>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+          color: TOKENS.paperDim, letterSpacing: '0.1em',
+        }}>SHOTS</span>
+      </div>
+    </div>
+  );
+}
+
+function FilmRollCard({ roll, expanded, onClick }) {
+  const reduced = useReducedMotion();
+  const pct = Math.round((roll.shot / roll.count) * 100);
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 16, padding: 16,
+        background: TOKENS.surface2,
+        border: `0.5px solid ${TOKENS.surface3}`,
+        cursor: 'pointer',
+        transition: reduced ? 'none' : 'all 0.3s cubic-bezier(.2,.8,.2,1)',
+        transform: expanded ? 'scale(1.02)' : 'scale(1)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {/* 胶卷罐视觉 */}
+        <div style={{
+          width: 48, height: 48, borderRadius: 8,
+          background: `linear-gradient(135deg, ${roll.color}, ${roll.color}88)`,
+          flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+          boxShadow: `inset 0 -2px 6px rgba(0,0,0,0.3)`,
+        }}>
+          <div style={{
+            width: 16, height: 16, borderRadius: '50%',
+            background: TOKENS.ink, border: `2px solid ${roll.color}`,
+          }} />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: TOKENS.paper }}>
+            {roll.name}
+          </div>
+          <div style={{
+            fontSize: 11, color: TOKENS.paperDim, marginTop: 2,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            ISO {roll.iso} · {roll.type}
+          </div>
+        </div>
+
+        <RingProgress value={pct} size={44} stroke={4} color={roll.color} bg={TOKENS.surface3} />
+      </div>
+
+      {expanded && (
+        <div style={{
+          marginTop: 14, paddingTop: 14,
+          borderTop: `0.5px solid ${TOKENS.surface3}`,
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+        }}>
+          {[
+            { k: '已拍', v: roll.shot + ' 张' },
+            { k: '剩余', v: (roll.count - roll.shot) + ' 张' },
+            { k: '相机', v: 'FM2' },
+          ].map((s) => (
+            <div key={s.k}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9, color: TOKENS.paperDim, letterSpacing: '0.1em',
+              }}>{s.k}</div>
+              <div style={{ fontSize: 13, color: TOKENS.paper, marginTop: 2 }}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 4：暗房 Lab（浮动面板 + 冲印流程）
+// 布局：对角分割 + 浮动卡片
+// ============================================================
+function LabPage({ onOpenWorkshop }) {
+  const reduced = useReducedMotion();
+  const [tab, setTab] = useState('develop');
+
+  // 显影计时动画
+  const timerRef = useRef(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    if (!running || reduced) return;
+    const start = performance.now() - elapsed * 1000;
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((performance.now() - start) / 1000));
+    }, 100);
+    return () => { clearInterval(timerRef.current); timerRef.current = null; };
+  }, [running, reduced]);
+
+  // 随 visibility 暂停（健壮性红线 ②）
+  const visible = useVisibility();
+  useEffect(() => {
+    if (!visible && timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    } else if (visible && running && !reduced) {
+      const start = performance.now() - elapsed * 1000;
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((performance.now() - start) / 1000));
+      }, 100);
+    }
+  }, [visible]);
+
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      background: TOKENS.ink, position: 'relative', overflow: 'hidden',
+    }}>
+      {/* 对角 Hero 背景 */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          linear-gradient(135deg,
+            ${TOKENS.safelight}22 0%,
+            ${TOKENS.safelight}22 45%,
+            transparent 45%,
+            transparent 100%)
+        `,
+        pointerEvents: 'none',
+      }} />
+
+      <NavBar title="暗房" large subtitle="显影 · 定影 · 放大" />
+
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '4px 16px 100px', position: 'relative', zIndex: 1,
+      }}>
+        {/* 暗房计时器（签名动效 ④） */}
+        <div style={{
+          borderRadius: 20, padding: 24,
+          background: `linear-gradient(160deg, #3a1208, ${TOKENS.surface2})`,
+          border: `0.5px solid ${TOKENS.safelight}44`,
+          marginBottom: 20,
+          boxShadow: `0 0 40px ${TOKENS.safelight}22`,
+        }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+            color: TOKENS.safelight, letterSpacing: '0.2em', marginBottom: 6,
+          }}>DARKROOM TIMER</div>
+          <div style={{
+            fontFamily: "'DM Serif Display', serif",
+            fontSize: 64, fontWeight: 400,
+            color: TOKENS.safelight, lineHeight: 1,
+            textShadow: `0 0 20px ${TOKENS.safelight}66`,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {fmt(elapsed)}
+          </div>
+          <div style={{
+            fontSize: 12, color: TOKENS.paperDim, marginTop: 4,
+          }}>显影液 D-76 · 20°C</div>
+
+          {/* 进度条 */}
+          <div style={{
+            marginTop: 16, height: 4, borderRadius: 2,
+            background: 'rgba(255,255,255,0.1)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              height: '100%', width: `${Math.min(100, (elapsed / 480) * 100)}%`,
+              background: TOKENS.safelight,
+              boxShadow: `0 0 8px ${TOKENS.safelight}`,
+              transition: 'width 0.1s linear',
+            }} />
+          </div>
+          <div style={{
+            fontSize: 10, color: TOKENS.paperDim, marginTop: 6,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            TOTAL 08:00 · 当前显影阶段
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button
+              onClick={() => setRunning(!running)}
+              style={{
+                flex: 1, padding: '12px 0', borderRadius: 12,
+                background: running ? TOKENS.surface3 : TOKENS.safelight,
+                color: running ? TOKENS.paper : TOKENS.ink,
+                border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >{running ? '暂停' : '开始显影'}</button>
+            <button
+              onClick={() => { setElapsed(0); setRunning(false); }}
+              style={{
+                padding: '12px 20px', borderRadius: 12,
+                background: 'transparent',
+                border: `0.5px solid ${TOKENS.safelight}66`,
+                color: TOKENS.safelight, fontSize: 14, fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >重置</button>
+          </div>
+        </div>
+
+        {/* 分段 Tabs */}
+        <div style={{
+          display: 'flex', gap: 4, padding: 4, marginBottom: 16,
+          background: TOKENS.surface2, borderRadius: 12,
+        }}>
+          {[
+            { k: 'develop', label: '显影' },
+            { k: 'fix',     label: '定影' },
+            { k: 'wash',    label: '水洗' },
+          ].map((t) => (
+            <button
+              key={t.k}
+              onClick={() => setTab(t.k)}
+              style={{
+                flex: 1, padding: '8px 0', borderRadius: 8,
+                background: tab === t.k ? TOKENS.surface3 : 'transparent',
+                color: tab === t.k ? TOKENS.paper : TOKENS.paperDim,
+                border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >{t.label}</button>
+          ))}
+        </div>
+
+        {/* 配方卡片列表 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            { name: 'D-76 标准显影液', time: '8 分钟', temp: '20°C', dilution: '1:1' },
+            { name: 'HC-110 稀释 B', time: '6 分 30 秒', temp: '20°C', dilution: '1:31' },
+            { name: 'Rodinal 罗丁纳尔', time: '10 分钟', temp: '20°C', dilution: '1:25' },
+          ].map((r, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              padding: 14, borderRadius: 12,
+              background: TOKENS.surface2,
+              border: `0.5px solid ${TOKENS.surface3}`,
+            }}>
+              <div style={{
+                width: 8, height: 40, borderRadius: 4,
+                background: TOKENS.safelight,
+              }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: TOKENS.paper }}>
+                  {r.name}
+                </div>
+                <div style={{
+                  fontSize: 11, color: TOKENS.paperDim, marginTop: 3,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  display: 'flex', gap: 12,
+                }}>
+                  <span>{r.time}</span>
+                  <span>{r.temp}</span>
+                  <span>{r.dilution}</span>
+                </div>
+              </div>
+              <button style={{
+                padding: '6px 12px', borderRadius: 999,
+                background: 'transparent',
+                border: `0.5px solid ${TOKENS.safelight}66`,
+                color: TOKENS.safelight,
+                fontSize: 12, cursor: 'pointer',
+              }}>使用</button>
+            </div>
+          ))}
+        </div>
+
+        {/* 线下工作坊 */}
+        <h3 style={{
+          fontFamily: "'DM Serif Display', serif",
+          fontSize: 22, fontWeight: 400,
+          color: TOKENS.paper, marginTop: 28, marginBottom: 12,
+        }}>线下工作坊</h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {workshops.map((w) => (
+            <div
+              key={w.id}
+              onClick={() => onOpenWorkshop(w)}
+              style={{
+                borderRadius: 14, overflow: 'hidden',
+                background: TOKENS.surface2,
+                border: `0.5px solid ${TOKENS.surface3}`,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ height: 140, position: 'relative' }}>
+                <img src={w.img} alt={w.title} style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  filter: 'brightness(0.7)',
+                }} />
+                <div style={{
+                  position: 'absolute', top: 10, right: 10,
+                  padding: '4px 10px', borderRadius: 999,
+                  background: `${TOKENS.amber}`,
+                  color: TOKENS.ink,
+                  fontSize: 11, fontWeight: 600,
+                }}>¥{w.price}</div>
+              </div>
+              <div style={{ padding: 14 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: TOKENS.paper }}>
+                  {w.title}
+                </div>
+                <div style={{
+                  fontSize: 11, color: TOKENS.paperDim, marginTop: 4,
+                  display: 'flex', gap: 10,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  <span>{w.date}</span>
+                  <span>剩 {w.seats} 位</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 5：我的（个人主页 + 成就徽章）
+// 布局：头像大卡 + 数据网格
+// ============================================================
+function MePage() {
+  const reduced = useReducedMotion();
+
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      background: TOKENS.ink, overflow: 'hidden',
+    }}>
+      {/* 自定义头部（非标准 NavBar） */}
+      <div style={{
+        paddingTop: 'var(--ios-safe-top, 50px)',
+        paddingBottom: 20,
+        background: `linear-gradient(180deg, ${TOKENS.safelight}15, transparent)`,
+        position: 'relative',
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          padding: '0 16px 16px',
+        }}>
+          <button style={{
+            background: 'none', border: 'none', color: TOKENS.paperDim,
+            fontSize: 18, cursor: 'pointer',
+          }}>⚙</button>
+          <button style={{
+            background: 'none', border: 'none', color: TOKENS.paperDim,
+            fontSize: 18, cursor: 'pointer',
+          }}>✉</button>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 16,
+          padding: '0 20px',
+        }}>
+          {/* 头像光环（组件级特效 ⑤） */}
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%',
+            position: 'relative', flexShrink: 0,
+          }}>
+            <div style={{
+              position: 'absolute', inset: -3,
+              borderRadius: '50%',
+              background: `conic-gradient(${TOKENS.amber}, ${TOKENS.safelight}, ${TOKENS.fixer}, ${TOKENS.amber})`,
+              animation: reduced ? 'none' : 'spin 8s linear infinite',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 3, borderRadius: '50%',
+              background: TOKENS.ink,
+              padding: 3,
+            }}>
+              <img src={IMG.portrait} alt="avatar" style={{
+                width: '100%', height: '100%', borderRadius: '50%',
+                objectFit: 'cover', filter: 'sepia(0.2)',
+              }} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <h2 style={{
+              fontFamily: "'DM Serif Display', serif",
+              fontSize: 26, fontWeight: 400,
+              color: TOKENS.paper,
+            }}>林深</h2>
+            <p style={{ fontSize: 12, color: TOKENS.paperDim, marginTop: 2 }}>
+              @linshen_film · 加入 2 年
+            </p>
+            <p style={{ fontSize: 12, color: TOKENS.amber, marginTop: 4 }}>
+              Silver Member · 银盐会员
+            </p>
+          </div>
+        </div>
+
+        {/* 数据条 */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+          marginTop: 20, padding: '0 16px',
+        }}>
+          {[
+            { v: '128', k: '作品' },
+            { v: '24',  k: '胶卷' },
+            { v: '3.2k',k: '粉丝' },
+            { v: '186', k: '关注' },
+          ].map((s) => (
+            <div key={s.k} style={{ textAlign: 'center' }}>
+              <div style={{
+                fontFamily: "'DM Serif Display', serif",
+                fontSize: 22, color: TOKENS.paper,
+              }}>{s.v}</div>
+              <div style={{ fontSize: 11, color: TOKENS.paperDim, marginTop: 2 }}>
+                {s.k}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '0 16px 100px',
+      }}>
+        {/* 成就徽章 */}
+        <h3 style={{
+          fontSize: 15, fontWeight: 600, color: TOKENS.paper,
+          marginBottom: 12, marginTop: 8,
+        }}>成就徽章</h3>
+
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 10, marginBottom: 24,
+        }}>
+          {[
+            { icon: '◉', label: '第一卷', color: TOKENS.amber, on: true },
+            { icon: '✦', label: '暗房学徒', color: TOKENS.safelight, on: true },
+            { icon: '◆', label: '大画幅', color: TOKENS.silver, on: true },
+            { icon: '○', label: '百胶', color: TOKENS.paperDim, on: false },
+          ].map((b, i) => (
+            <div key={i} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: b.on ? `${b.color}20` : TOKENS.surface2,
+                border: `0.5px solid ${b.on ? b.color + '66' : TOKENS.surface3}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, color: b.on ? b.color : TOKENS.surface3,
+                filter: b.on ? 'none' : 'grayscale(1)',
+              }}>{b.icon}</div>
+              <span style={{
+                fontSize: 10, color: b.on ? TOKENS.paper : TOKENS.surface3,
+              }}>{b.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* 设置列表 */}
+        <div style={{
+          borderRadius: 14, overflow: 'hidden',
+          background: TOKENS.surface2,
+          border: `0.5px solid ${TOKENS.surface3}`,
+        }}>
+          {[
+            { icon: '📷', label: '我的相机', value: '5 台' },
+            { icon: '◉', label: '胶卷库存', value: '12 卷' },
+            { icon: '❤', label: '收藏', value: '86' },
+            { icon: '☰', label: '冲印订单', value: '' },
+            { icon: '⚙', label: '设置', value: '' },
+          ].map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 16px',
+              borderBottom: i < 4 ? `0.5px solid ${TOKENS.surface3}` : 'none',
+              cursor: 'pointer',
+            }}>
+              <span style={{ fontSize: 16, width: 24 }}>{item.icon}</span>
+              <span style={{ flex: 1, fontSize: 14, color: TOKENS.paper }}>
+                {item.label}
+              </span>
+              <span style={{ fontSize: 13, color: TOKENS.paperDim }}>
+                {item.value}
+              </span>
+              <span style={{ color: TOKENS.silver, fontSize: 14 }}>›</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 6：工作坊详情模态（模态弹窗）
+// ============================================================
+function WorkshopModal({ workshop, onClose }) {
+  const reduced = useReducedMotion();
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (reduced) { setShow(true); return; }
+    const t = setTimeout(() => setShow(true), 10);
+    return () => clearTimeout(t);
+  }, [reduced]);
+
+  if (!workshop) return null;
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 200,
+      background: 'rgba(0,0,0,0.6)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'flex-end',
+      transition: reduced ? 'none' : 'opacity 0.3s',
+      opacity: show ? 1 : 0,
+    }} onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxHeight: '85%',
+          background: TOKENS.surface,
+          borderRadius: '20px 20px 0 0',
+          paddingBottom: 32,
+          transform: show ? 'translateY(0)' : 'translateY(100%)',
+          transition: reduced ? 'none' : 'transform 0.4s cubic-bezier(.2,.8,.2,1)',
+          overflowY: 'auto',
+        }}
+      >
+        <div style={{
+          width: 36, height: 5, borderRadius: 3,
+          background: TOKENS.surface3,
+          margin: '10px auto 16px',
+        }} />
+
+        <div style={{ height: 200, position: 'relative' }}>
+          <img src={workshop.img} alt="" style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            filter: 'brightness(0.8)',
+          }} />
+          <FilmGrain opacity={0.15} />
+        </div>
+
+        <div style={{ padding: '20px 20px 0' }}>
+          <h2 style={{
+            fontFamily: "'DM Serif Display', serif",
+            fontSize: 26, fontWeight: 400,
+            color: TOKENS.paper, marginBottom: 8,
+          }}>{workshop.title}</h2>
+
+          <div style={{
+            display: 'flex', gap: 16, marginBottom: 16,
+            fontSize: 12, color: TOKENS.paperDim,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            <span>{workshop.date}</span>
+            <span>剩 {workshop.seats} 位</span>
+          </div>
+
+          <p style={{
+            fontSize: 14, color: TOKENS.paperDim,
+            lineHeight: 1.7, marginBottom: 20,
+          }}>
+            从装片、显影到定影，完整的黑白胶卷冲洗流程。资深暗房师手把手教学，
+            完成后带走属于自己的第一卷底片和一张放大样片。提供所有器材与耗材。
+          </p>
+
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 12, padding: '16px 0',
+            borderTop: `0.5px solid ${TOKENS.surface3}`,
+            borderBottom: `0.5px solid ${TOKENS.surface3}`,
+            marginBottom: 20,
+          }}>
+            {[
+              { k: '时长', v: '3 小时' },
+              { k: '人数', v: '最多 6 人' },
+              { k: '级别', v: '入门' },
+            ].map((s) => (
+              <div key={s.k}>
+                <div style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9, color: TOKENS.paperDim, letterSpacing: '0.1em',
+                }}>{s.k}</div>
+                <div style={{ fontSize: 13, color: TOKENS.paper, marginTop: 2 }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+
+          <button style={{
+            width: '100%', padding: '16px 0', borderRadius: 14,
+            background: `linear-gradient(135deg, ${TOKENS.amber}, ${TOKENS.safelight})`,
+            color: TOKENS.ink,
+            border: 'none', fontSize: 15, fontWeight: 600,
+            cursor: 'pointer', marginBottom: 16,
+          }}>立即报名 · ¥{workshop.price}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 页面 7：设计规范页
+// ============================================================
+function DesignSpecPage({ onBack }) {
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      background: TOKENS.ink, overflow: 'hidden',
+    }}>
+      <NavBar title="设计规范" onBack={onBack} />
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '16px 20px 100px',
+      }}>
+        <h1 style={{
+          fontFamily: "'DM Serif Display', serif",
+          fontSize: 32, fontWeight: 400, color: TOKENS.paper,
+          marginBottom: 4,
+        }}>暗房 Design System</h1>
+        <p style={{ fontSize: 12, color: TOKENS.paperDim, marginBottom: 24 }}>
+          v1.0 · 胶片摄影原生 App 视觉规范
+        </p>
+
+        {/* 色板 */}
+        <SectionTitle>色彩系统</SectionTitle>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 10, marginBottom: 24,
+        }}>
+          {[
+            { name: 'Ink 墨黑', hex: '#0E0E10', role: '背景基底' },
+            { name: 'Safelight 暗房红', hex: '#C73E1D', role: '强调 / 主题' },
+            { name: 'Amber 琥珀黄', hex: '#D9A441', role: '主交互' },
+            { name: 'Fixer 定影蓝', hex: '#2D4A6B', role: '辅助' },
+            { name: 'Silver 银盐灰', hex: '#8A8A8A', role: '次要信息' },
+            { name: 'Paper 相纸米白', hex: '#E8E4DA', role: '正文' },
+          ].map((c) => (
+            <div key={c.hex} style={{
+              borderRadius: 10, overflow: 'hidden',
+              background: TOKENS.surface2,
+              border: `0.5px solid ${TOKENS.surface3}`,
+            }}>
+              <div style={{
+                height: 48, background: c.hex,
+                borderBottom: `0.5px solid ${TOKENS.surface3}`,
+              }} />
+              <div style={{ padding: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: TOKENS.paper }}>
+                  {c.name}
+                </div>
+                <div style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10, color: TOKENS.paperDim, marginTop: 2,
+                }}>
+                  {c.hex} · {c.role}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 字体 */}
+        <SectionTitle>字体层级</SectionTitle>
+        <div style={{
+          borderRadius: 12, padding: 16, marginBottom: 24,
+          background: TOKENS.surface2,
+          border: `0.5px solid ${TOKENS.surface3}`,
+        }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9, color: TOKENS.paperDim, letterSpacing: '0.15em',
+              marginBottom: 6,
+            }}>DISPLAY · DM Serif Display</div>
+            <div style={{
+              fontFamily: "'DM Serif Display', serif",
+              fontSize: 34, color: TOKENS.paper,
+            }}>银盐里的光</div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9, color: TOKENS.paperDim, letterSpacing: '0.15em',
+              marginBottom: 6,
+            }}>BODY · Inter</div>
+            <div style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 14, color: TOKENS.paperDim, lineHeight: 1.6,
+            }}>
+              正文使用 Inter，字重 Regular (400) 与 Medium (500) 用于内容层级区分。
+              行高 1.6 保证移动端阅读舒适度。
+            </div>
+          </div>
+          <div>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9, color: TOKENS.paperDim, letterSpacing: '0.15em',
+              marginBottom: 6,
+            }}>MONO · JetBrains Mono</div>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 12, color: TOKENS.amber,
+            }}>
+              ISO 400 · f/2.0 · 1/125s
+            </div>
+          </div>
+        </div>
+
+        {/* 圆角 */}
+        <SectionTitle>圆角与间距</SectionTitle>
+        <div style={{
+          display: 'flex', gap: 12, marginBottom: 24,
+          alignItems: 'flex-end',
+        }}>
+          {[
+            { r: 8,  label: '8px / 小卡片' },
+            { r: 12, label: '12px / 列表项' },
+            { r: 16, label: '16px / 大卡片' },
+            { r: 20, label: '20px / 面板' },
+          ].map((s) => (
+            <div key={s.r} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              flex: 1,
+            }}>
+              <div style={{
+                width: 44, height: 44,
+                borderRadius: s.r,
+                background: `linear-gradient(135deg, ${TOKENS.amber}, ${TOKENS.safelight})`,
+              }} />
+              <span style={{ fontSize: 10, color: TOKENS.paperDim, textAlign: 'center' }}>
+                {s.label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* 组件清单 */}
+        <SectionTitle>组件清单</SectionTitle>
+        <div style={{
+          borderRadius: 12, padding: 14, marginBottom: 16,
+          background: TOKENS.surface2,
+          border: `0.5px solid ${TOKENS.surface3}`,
+          fontSize: 13, color: TOKENS.paperDim, lineHeight: 1.8,
+        }}>
+          底部 TabBar · 大标题导航栏 · 返回栈导航 · 瀑布流卡片<br/>
+          环形进度 · 分段控制 · 胶片卷轴 · 暗房计时器<br/>
+          FAB 悬浮按钮 · 模态底部弹窗 · 下拉刷新 · 毛玻璃导航<br/>
+          显影动效照片 · 胶片颗粒层 · EXIF 悬浮条
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <h3 style={{
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 11, fontWeight: 500,
+      color: TOKENS.amber, letterSpacing: '0.15em',
+      marginBottom: 12, textTransform: 'uppercase',
+    }}>{children}</h3>
+  );
+}
+
+// ============================================================
+// 页面 8：接口文档页
+// ============================================================
+function ApiDocPage({ onBack }) {
+  const [tab, setTab] = useState('feed');
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      background: TOKENS.ink, overflow: 'hidden',
+    }}>
+      <NavBar title="接口文档" onBack={onBack} />
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '16px 20px 100px',
+      }}>
+        <h1 style={{
+          fontFamily: "'DM Serif Display', serif",
+          fontSize: 28, fontWeight: 400, color: TOKENS.paper,
+          marginBottom: 4,
+        }}>API Reference</h1>
+        <p style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11, color: TOKENS.paperDim, marginBottom: 20,
+        }}>
+          Darkroom App · v1.0 / base URL: <span style={{ color: TOKENS.amber }}>api.darkroom.app/v1</span>
+        </p>
+
+        {/* Tabs */}
+        <div style={{
+          display: 'flex', gap: 2, marginBottom: 16,
+          overflowX: 'auto', scrollbarWidth: 'none',
+        }}>
+          {[
+            { k: 'feed',  label: 'Photos' },
+            { k: 'rolls', label: 'Film Rolls' },
+            { k: 'auth',  label: 'Auth' },
+          ].map((t) => (
+            <button key={t.k} onClick={() => setTab(t.k)} style={{
+              padding: '7px 14px', borderRadius: 8,
+              background: tab === t.k ? TOKENS.surface3 : 'transparent',
+              color: tab === t.k ? TOKENS.paper : TOKENS.paperDim,
+              border: 'none', fontSize: 12, fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: "'JetBrains Mono', monospace",
+              whiteSpace: 'nowrap',
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        {tab === 'feed' && (
+          <>
+            <EndpointBlock
+              method="GET"
+              path="/photos/feed"
+              desc="获取发现页照片流，支持按标签筛选与分页"
+              params={[
+                { name: 'tag',       type: 'string',  desc: '筛选标签：portrait / street / landscape' },
+                { name: 'page',      type: 'integer', desc: '页码，默认 1' },
+                { name: 'page_size', type: 'integer', desc: '每页数量，默认 20' },
+              ]}
+              response={`{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "title": "窗光",
+        "author": "林深",
+        "camera": "Leica M6",
+        "film": "Kodak Portra 400",
+        "iso": 400,
+        "aperture": "f/2.0",
+        "shutter": "1/125s",
+        "image_url": "https://...",
+        "likes": 342,
+        "comments": 28,
+        "created_at": "2026-08-15T10:32:00Z"
+      }
+    ],
+    "total": 1280
+  }
+}`}
+            />
+            <EndpointBlock
+              method="POST"
+              path="/photos/:id/like"
+              desc="点赞一张照片"
+              params={[
+                { name: 'id', type: 'integer (path)', desc: '照片 ID' },
+              ]}
+              response={`{
+  "code": 0,
+  "data": { "liked": true, "likes": 343 }
+}`}
+            />
+            <EndpointBlock
+              method="GET"
+              path="/photos/:id"
+              desc="获取照片详情与 EXIF 信息"
+              params={[
+                { name: 'id', type: 'integer (path)', desc: '照片 ID' },
+              ]}
+              response={`{
+  "code": 0,
+  "data": {
+    "id": 1,
+    "title": "窗光",
+    "author": { "id": 42, "name": "林深", "avatar": "..." },
+    "exif": {
+      "camera": "Leica M6",
+      "lens": "Summicron 35mm f/2",
+      "film": "Kodak Portra 400",
+      "iso": 400,
+      "aperture": "f/2.0",
+      "shutter": "1/125s",
+      "focal_length": "35mm"
+    },
+    "likes": 342,
+    "comments_count": 28
+  }
+}`}
+            />
+          </>
+        )}
+
+        {tab === 'rolls' && (
+          <>
+            <EndpointBlock
+              method="GET"
+              path="/film-rolls"
+              desc="获取用户胶卷库列表"
+              params={[
+                { name: 'status', type: 'string', desc: '状态筛选：shooting / developed / pending' },
+              ]}
+              response={`{
+  "code": 0,
+  "data": [
+    {
+      "id": 1,
+      "name": "Kodak Portra 400",
+      "type": "color_negative",
+      "iso": 400,
+      "total_shots": 36,
+      "shots_taken": 22,
+      "status": "shooting",
+      "camera": "Nikon FM2"
+    }
+  ]
+}`}
+            />
+            <EndpointBlock
+              method="POST"
+              path="/film-rolls"
+              desc="创建一卷新胶卷"
+              params={[
+                { name: 'name',    type: 'string',  desc: '胶卷名称' },
+                { name: 'type',    type: 'string',  desc: '胶卷类型' },
+                { name: 'iso',     type: 'integer', desc: 'ISO 感光度' },
+                { name: 'camera_id', type: 'integer', desc: '关联相机 ID' },
+              ]}
+              response={`{ "code": 0, "data": { "id": 5, "status": "shooting" } }`}
+            />
+          </>
+        )}
+
+        {tab === 'auth' && (
+          <>
+            <EndpointBlock
+              method="POST"
+              path="/auth/login"
+              desc="手机号 + 验证码登录"
+              params={[
+                { name: 'phone', type: 'string', desc: '手机号' },
+                { name: 'code',  type: 'string', desc: '短信验证码' },
+              ]}
+              response={`{
+  "code": 0,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "expires_at": "2026-09-17T04:42:00Z",
+    "user": { "id": 42, "name": "林深" }
+  }
+}`}
+            />
+            <EndpointBlock
+              method="POST"
+              path="/auth/send-code"
+              desc="发送短信验证码"
+              params={[
+                { name: 'phone', type: 'string', desc: '手机号' },
+              ]}
+              response={`{ "code": 0, "data": { "expires_in": 60 } }`}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EndpointBlock({ method, path, desc, params, response }) {
+  const methodColor = {
+    GET: TOKENS.mint,
+    POST: TOKENS.amber,
+    PUT: TOKENS.fixer,
+    DELETE: TOKENS.safelight,
+  }[method] || TOKENS.silver;
+
+  return (
+    <div style={{
+      marginBottom: 16,
+      borderRadius: 12, overflow: 'hidden',
+      background: TOKENS.surface2,
+      border: `0.5px solid ${TOKENS.surface3}`,
+    }}>
+      <div style={{
+        padding: '12px 14px',
+        background: TOKENS.surface,
+        borderBottom: `0.5px solid ${TOKENS.surface3}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 10, fontWeight: 700,
+          padding: '3px 8px', borderRadius: 4,
+          background: `${methodColor}20`,
+          color: methodColor,
+          letterSpacing: '0.05em',
+        }}>{method}</span>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 12, color: TOKENS.paper,
+        }}>{path}</span>
+      </div>
+      <div style={{ padding: 14 }}>
+        <p style={{ fontSize: 12, color: TOKENS.paperDim, marginBottom: 12 }}>{desc}</p>
+
+        <div style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 10, color: TOKENS.amber,
+          letterSpacing: '0.1em', marginBottom: 6,
+        }}>PARAMETERS</div>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 6,
+          marginBottom: 12,
+        }}>
+          {params.map((p) => (
+            <div key={p.name} style={{
+              display: 'flex', gap: 10, fontSize: 11,
+            }}>
+              <span style={{
+                color: TOKENS.paper, minWidth: 80,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>{p.name}</span>
+              <span style={{
+                color: TOKENS.mint, minWidth: 90,
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 10,
+              }}>{p.type}</span>
+              <span style={{ color: TOKENS.paperDim, flex: 1 }}>{p.desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 10, color: TOKENS.amber,
+          letterSpacing: '0.1em', marginBottom: 6,
+        }}>RESPONSE</div>
+        <pre style={{
+          padding: 12, borderRadius: 8,
+          background: TOKENS.ink,
+          fontSize: 11, color: TOKENS.paperDim,
+          fontFamily: "'JetBrains Mono', monospace",
+          lineHeight: 1.6,
+          overflowX: 'auto',
+          border: `0.5px solid ${TOKENS.surface3}`,
+        }}>{response}</pre>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 主应用
+// ============================================================
+function App() {
+  const [activeTab, setActiveTab] = useState('feed');
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [selectedWorkshop, setSelectedWorkshop] = useState(null);
+  const [showSpec, setShowSpec] = useState(false);
+  const [showApi, setShowApi] = useState(false);
+  const reduced = useReducedMotion();
+
+  // 进入详情页的转场
+  const openPhoto = (photo) => {
+    setSelectedPhoto(photo);
+  };
+  const closePhoto = () => setSelectedPhoto(null);
+
+  const openWorkshop = (w) => setSelectedWorkshop(w);
+  const closeWorkshop = () => setSelectedWorkshop(null);
+
+  // 页面转场 key
+  const pageKey = activeTab + (showSpec ? '-spec' : '') + (showApi ? '-api' : '');
+
+  const renderPage = () => {
+    if (showSpec) return <DesignSpecPage onBack={() => setShowSpec(false)} />;
+    if (showApi)  return <ApiDocPage onBack={() => setShowApi(false)} />;
+
+    switch (activeTab) {
+      case 'feed':  return <FeedPage onOpenPhoto={openPhoto} />;
+      case 'rolls': return <RollsPage />;
+      case 'lab':   return <LabPage onOpenWorkshop={openWorkshop} />;
+      case 'me':    return <MePage />;
+      default:      return <FeedPage onOpenPhoto={openPhoto} />;
+    }
+  };
+
+  return (
+    <div className="stage">
+      <div className="credit">
+        DARKROOM <span>·</span> 胶片摄影原生 App <span>·</span> 2026
+      </div>
+      <IOSDevice dark width={390} height={844}>
+        <div style={{
+          position: 'relative', width: '100%', height: '100%',
+          background: TOKENS.ink, overflow: 'hidden',
+        }}>
+          {/* 主页面内容 */}
+          <div key={pageKey} style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column',
+            animation: reduced ? 'none' : 'fadeSlideUp 0.35s cubic-bezier(.2,.8,.2,1)',
+          }}>
+            {renderPage()}
+          </div>
+
+          {/* TabBar（仅功能页显示） */}
+          {!showSpec && !showApi && (
+            <TabBar active={activeTab} onChange={setActiveTab} />
+          )}
+
+          {/* 照片详情全屏页（转场覆盖） */}
+          {selectedPhoto && (
+            <PhotoDetailPage photo={selectedPhoto} onClose={closePhoto} />
+          )}
+
+          {/* 工作坊模态 */}
+          {selectedWorkshop && (
+            <WorkshopModal workshop={selectedWorkshop} onClose={closeWorkshop} />
+          )}
+
+          {/* 右上角：规范 / 接口入口 */}
+          {!showSpec && !showApi && !selectedPhoto && (
+            <div style={{
+              position: 'absolute', top: 60, right: 12,
+              zIndex: 60, display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <button
+                onClick={() => setShowSpec(true)}
+                style={{
+                  padding: '6px 10px', borderRadius: 999,
+                  background: 'rgba(14,14,16,0.8)',
+                  backdropFilter: 'blur(10px)',
+                  border: `0.5px solid ${TOKENS.surface3}`,
+                  color: TOKENS.amber,
+                  fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >◆ 规范</button>
+              <button
+                onClick={() => setShowApi(true)}
+                style={{
+                  padding: '6px 10px', borderRadius: 999,
+                  background: 'rgba(14,14,16,0.8)',
+                  backdropFilter: 'blur(10px)',
+                  border: `0.5px solid ${TOKENS.surface3}`,
+                  color: TOKENS.paperDim,
+                  fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >{`</>`} API</button>
+            </div>
+          )}
+        </div>
+      </IOSDevice>
+      <div className="credit" style={{ fontSize: 11 }}>
+        形态：原生 App · iOS · 暗房红灯主题
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 全局样式（keyframes 等）
+// ============================================================
+const GlobalStyles = () => (
+  <style>{`
+    @keyframes grainShift {
+      0%   { background-position: 0 0; }
+      100% { background-position: 200px 200px; }
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 12px currentColor; opacity: 1; }
+      50%      { box-shadow: 0 0 24px currentColor; opacity: 0.7; }
+    }
+    ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    * { scrollbar-width: none; }
+  `}</style>
+);
+
+// ============================================================
+// 宣告可升级为全栈应用
+// ============================================================
+function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) {}
+}
+announceUpgrade();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', announceUpgrade, { once: true });
+}
+
+// ============================================================
+// 渲染
+// ============================================================
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <>
+    <GlobalStyles />
+    <App />
+  </>
+);
+</script>
+
+<!-- IOSDevice 已在主 babel 脚本中内联定义；root div 已在 script 之前 -->
+
+</body>
+</html>

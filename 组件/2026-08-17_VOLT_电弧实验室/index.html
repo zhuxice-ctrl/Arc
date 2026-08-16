@@ -1,0 +1,3162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>ARC LAB · 高压电弧特效实验室</title>
+<style>
+/* ===================== RESET & BASE ===================== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --char:#0E0E10;
+  --char-2:#15151A;
+  --char-3:#1E1E24;
+  --arc:#FFE93C;
+  --arc-dim:#bbae28;
+  --porcelain:#F5F2EA;
+  --porcelain-dim:#b0ada5;
+  --copper:#FF7A1A;
+  --copper-dim:#a84d0c;
+  --line:rgba(245,242,234,0.08);
+  --line-strong:rgba(245,242,234,0.16);
+  --glow-arc:0 0 8px #FFE93C, 0 0 24px rgba(255,233,60,0.5), 0 0 64px rgba(255,233,60,0.25);
+  --glow-copper:0 0 8px #FF7A1A, 0 0 24px rgba(255,122,26,0.45), 0 0 64px rgba(255,122,26,0.2);
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+html,body{height:100%}
+body{
+  font-family:"SF Mono","Menlo","Consolas","PingFang SC","Microsoft YaHei",monospace;
+  background:var(--char);
+  color:var(--porcelain);
+  overflow-x:hidden;
+  cursor:none;
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:none;outline:none}
+canvas{display:block}
+
+/* ===================== CUSTOM CURSOR ===================== */
+.cursor-wrap{
+  position:fixed;inset:0;pointer-events:none;z-index:9999;
+  mix-blend-mode:difference;
+}
+.cursor-dot{
+  position:fixed;left:50%;top:50%;width:6px;height:6px;
+  margin:-3px 0 0 -3px;
+  border-radius:50%;
+  background:var(--arc);
+  box-shadow:var(--glow-arc);
+  transform:translate3d(0,0,0);
+  transition:background .2s var(--ease), box-shadow .2s var(--ease), width .25s var(--ease), height .25s var(--ease), margin .25s var(--ease);
+}
+.cursor-ring{
+  position:fixed;left:50%;top:50%;width:36px;height:36px;
+  margin:-18px 0 0 -18px;
+  border:2px solid var(--porcelain);
+  border-radius:50%;
+  transform:translate3d(0,0,0);
+  transition:width .25s var(--ease), height .25s var(--ease), margin .25s var(--ease), border-color .2s var(--ease), border-width .2s var(--ease), opacity .2s var(--ease);
+}
+.cursor-trail{
+  position:fixed;left:50%;top:50%;width:60px;height:60px;
+  margin:-30px 0 0 -30px;
+  border:1px solid var(--porcelain);
+  border-radius:50%;
+  opacity:.3;
+  transform:translate3d(0,0,0) scale(1);
+  transition:opacity .3s var(--ease), border-color .3s var(--ease);
+}
+.cursor-ripple{
+  position:fixed;width:0;height:0;border-radius:50%;
+  border:2px solid var(--arc);
+  transform:translate(-50%,-50%) scale(0);
+  pointer-events:none;
+  animation:rippleOut .6s var(--ease) forwards;
+  box-shadow:var(--glow-arc);
+}
+@keyframes rippleOut{
+  0%{width:0;height:0;opacity:1;transform:translate(-50%,-50%) scale(0)}
+  100%{width:80px;height:80px;opacity:0;transform:translate(-50%,-50%) scale(1)}
+}
+.cursor-hover .cursor-dot{
+  width:12px;height:12px;margin:-6px 0 0 -6px;
+  background:var(--copper);
+  box-shadow:var(--glow-copper);
+}
+.cursor-hover .cursor-ring{
+  width:56px;height:56px;margin:-28px 0 0 -28px;
+  border-color:var(--copper);
+  border-width:1.5px;
+}
+.cursor-hover .cursor-trail{
+  border-color:var(--copper);opacity:.5;
+}
+.cursor-click .cursor-ring{
+  width:24px;height:24px;margin:-12px 0 0 -12px;
+  border-color:var(--arc);
+}
+.cursor-hidden .cursor-dot,
+.cursor-hidden .cursor-ring,
+.cursor-hidden .cursor-trail{opacity:0}
+
+@media (prefers-reduced-motion: reduce){
+  .cursor-dot,.cursor-ring,.cursor-trail{transition:none}
+}
+
+/* ===================== LAYOUT ===================== */
+.app{
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  position:relative;
+}
+.bg-texture{
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,233,60,0.04), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(255,122,26,0.03), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0, transparent 39px, rgba(245,242,234,0.015) 40px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 39px, rgba(245,242,234,0.015) 40px);
+}
+
+/* ===================== HEADER ===================== */
+.header{
+  position:relative;z-index:10;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 32px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(to bottom, rgba(14,14,16,0.95), rgba(14,14,16,0.6));
+  backdrop-filter:blur(12px);
+}
+.brand{
+  display:flex;align-items:center;gap:14px;
+  font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+}
+.brand-mark{
+  width:28px;height:28px;position:relative;
+  display:flex;align-items:center;justify-content:center;
+}
+.brand-mark svg{width:100%;height:100%}
+.brand-title{font-weight:600;color:var(--porcelain)}
+.brand-sub{color:var(--porcelain-dim);font-size:11px}
+.nav{display:flex;align-items:center;gap:2px}
+.nav-btn{
+  padding:8px 16px;font-size:12px;letter-spacing:.06em;
+  color:var(--porcelain-dim);text-transform:uppercase;
+  border:1px solid transparent;border-radius:2px;
+  transition:color .2s var(--ease), border-color .2s var(--ease), background .2s var(--ease);
+  position:relative;
+}
+.nav-btn:hover{color:var(--arc);border-color:var(--line-strong)}
+.nav-btn.active{
+  color:var(--char);
+  background:var(--arc);
+  border-color:var(--arc);
+  box-shadow:var(--glow-arc);
+}
+.header-meta{
+  display:flex;align-items:center;gap:20px;
+  font-size:11px;color:var(--porcelain-dim);
+  letter-spacing:.08em;text-transform:uppercase;
+}
+.live-dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--copper);
+  box-shadow:0 0 8px var(--copper);
+  margin-right:6px;vertical-align:middle;
+  animation:pulseLive 1.8s ease-in-out infinite;
+}
+@keyframes pulseLive{
+  0%,100%{opacity:1}
+  50%{opacity:.4}
+}
+
+/* ===================== HERO ===================== */
+.hero{
+  position:relative;z-index:1;
+  padding:48px 32px 32px;
+  display:grid;grid-template-columns:1fr auto 1fr;gap:40px;align-items:end;
+  border-bottom:1px solid var(--line);
+}
+.hero-left h1{
+  font-size:52px;font-weight:700;
+  letter-spacing:-.02em;line-height:1;
+  color:var(--porcelain);
+}
+.hero-left h1 .hl{color:var(--arc);text-shadow:var(--glow-arc)}
+.hero-left h1 .hl2{color:var(--copper);text-shadow:var(--glow-copper)}
+.hero-left p{
+  margin-top:16px;max-width:460px;
+  color:var(--porcelain-dim);font-size:13px;line-height:1.7;
+}
+.hero-tagline{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:4px 12px;border:1px solid var(--line-strong);
+  border-radius:2px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--arc);margin-bottom:20px;
+}
+.hero-center{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  font-size:11px;color:var(--porcelain-dim);letter-spacing:.1em;text-transform:uppercase;
+}
+.hero-voltage{
+  font-size:72px;font-weight:700;color:var(--arc);
+  text-shadow:var(--glow-arc);
+  line-height:1;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+}
+.hero-voltage small{font-size:20px;color:var(--porcelain-dim);margin-left:4px;text-shadow:none}
+.hero-right{text-align:right}
+.hero-stats{
+  display:inline-grid;grid-template-columns:repeat(3,auto);gap:24px;
+  font-size:11px;color:var(--porcelain-dim);
+  letter-spacing:.08em;text-transform:uppercase;
+  text-align:center;
+}
+.hero-stats b{
+  display:block;font-size:22px;font-weight:600;
+  color:var(--porcelain);letter-spacing:-.01em;
+  margin-bottom:2px;
+}
+.hero-stats b.arc{color:var(--arc);text-shadow:0 0 12px rgba(255,233,60,.4)}
+.hero-stats b.copper{color:var(--copper);text-shadow:0 0 12px rgba(255,122,26,.4)}
+
+/* ===================== LABEL ROW ===================== */
+.section-label{
+  position:relative;z-index:1;
+  padding:16px 32px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--line);
+  font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--porcelain-dim);
+}
+.section-label .sl-left{display:flex;align-items:center;gap:16px}
+.section-label .sl-index{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border:1px solid var(--line-strong);
+  color:var(--arc);font-weight:600;
+}
+.section-label .sl-right{display:flex;gap:20px;align-items:center}
+.sl-filter{
+  display:flex;gap:2px;
+}
+.sl-filter button{
+  padding:4px 10px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--porcelain-dim);border:1px solid var(--line);border-radius:2px;
+  transition:all .2s var(--ease);
+}
+.sl-filter button:hover{color:var(--porcelain);border-color:var(--line-strong)}
+.sl-filter button.active{color:var(--char);background:var(--arc);border-color:var(--arc)}
+
+/* ===================== GRID ===================== */
+.grid{
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  grid-auto-rows:280px;
+  gap:1px;
+  background:var(--line);
+  border-bottom:1px solid var(--line);
+}
+.cell{
+  position:relative;
+  background:var(--char);
+  overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.cell:hover{background:var(--char-2)}
+.cell.big{grid-column:span 2;grid-row:span 2}
+.cell.tall{grid-row:span 2}
+.cell.wide{grid-column:span 2}
+.cell-head{
+  position:absolute;top:0;left:0;right:0;z-index:3;
+  padding:14px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  pointer-events:none;
+  background:linear-gradient(to bottom, rgba(14,14,16,0.7), transparent);
+}
+.cell-id{color:var(--arc);font-weight:600;opacity:.8}
+.cell-name{color:var(--porcelain);font-weight:500}
+.cell-type{color:var(--porcelain-dim);font-size:9px}
+.cell-canvas{
+  position:absolute;inset:0;z-index:1;
+}
+.cell-foot{
+  position:absolute;bottom:0;left:0;right:0;z-index:3;
+  padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:10px;
+  pointer-events:none;
+  background:linear-gradient(to top, rgba(14,14,16,0.8), transparent);
+}
+.cell-status{
+  display:flex;align-items:center;gap:6px;
+  color:var(--porcelain-dim);letter-spacing:.08em;text-transform:uppercase;
+}
+.cell-status .dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--arc);box-shadow:0 0 6px var(--arc);
+  animation:pulseLive 1.8s ease-in-out infinite;
+}
+.cell-status.off .dot{background:var(--porcelain-dim);box-shadow:none;animation:none}
+.cell-open{
+  pointer-events:auto;
+  padding:6px 12px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--porcelain);border:1px solid var(--line-strong);border-radius:2px;
+  transition:all .2s var(--ease);
+}
+.cell:hover .cell-open{
+  color:var(--char);background:var(--arc);border-color:var(--arc);
+}
+
+/* ===================== FULLSCREEN PANEL ===================== */
+.panel{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(14,14,16,0.92);
+  backdrop-filter:blur(20px);
+  display:none;
+  opacity:0;
+  transition:opacity .35s var(--ease);
+}
+.panel.open{display:flex;opacity:1}
+.panel-inner{
+  position:relative;
+  width:100%;height:100%;
+  display:grid;grid-template-columns:1fr 320px;
+}
+.panel-stage{
+  position:relative;
+  border-right:1px solid var(--line);
+  overflow:hidden;
+}
+.panel-canvas{
+  position:absolute;inset:0;
+}
+.panel-close{
+  position:absolute;top:20px;right:20px;z-index:10;
+  width:36px;height:36px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--line-strong);border-radius:50%;
+  color:var(--porcelain);
+  transition:all .2s var(--ease);
+}
+.panel-close:hover{
+  border-color:var(--copper);color:var(--copper);
+  box-shadow:var(--glow-copper);
+  transform:rotate(90deg);
+}
+.panel-title{
+  position:absolute;top:20px;left:24px;z-index:10;
+}
+.panel-title h2{
+  font-size:20px;font-weight:600;color:var(--porcelain);
+  letter-spacing:-.01em;
+}
+.panel-title .pt-meta{
+  margin-top:4px;
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--arc);
+  display:flex;gap:16px;align-items:center;
+}
+
+.panel-side{
+  padding:24px 20px;
+  display:flex;flex-direction:column;gap:24px;
+  overflow-y:auto;
+  background:rgba(21,21,26,0.6);
+}
+.side-section h3{
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--arc);margin-bottom:14px;font-weight:600;
+  padding-bottom:8px;border-bottom:1px solid var(--line);
+}
+.param-row{
+  display:flex;flex-direction:column;gap:6px;
+  margin-bottom:14px;
+}
+.param-row:last-child{margin-bottom:0}
+.param-head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11px;
+}
+.param-name{color:var(--porcelain);letter-spacing:.04em}
+.param-val{color:var(--arc);font-variant-numeric:tabular-nums;font-size:10px}
+.slider-track{
+  position:relative;
+  height:24px;display:flex;align-items:center;
+}
+.slider-track input[type="range"]{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:2px;
+  background:var(--line-strong);
+  outline:none;
+  cursor:none;
+}
+.slider-track input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--arc);
+  box-shadow:var(--glow-arc);
+  border:2px solid var(--char);
+  cursor:none;
+  transition:all .15s var(--ease);
+}
+.slider-track input[type="range"]:hover::-webkit-slider-thumb{
+  transform:scale(1.2);
+}
+.slider-track input[type="range"]::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--arc);
+  box-shadow:var(--glow-arc);
+  border:2px solid var(--char);
+  cursor:none;
+}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+.side-btn{
+  flex:1;min-width:0;
+  padding:8px 10px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--porcelain);border:1px solid var(--line-strong);border-radius:2px;
+  transition:all .15s var(--ease);
+  text-align:center;
+}
+.side-btn:hover{
+  color:var(--char);background:var(--arc);border-color:var(--arc);
+}
+.side-btn.primary{
+  color:var(--char);background:var(--arc);border-color:var(--arc);
+}
+.side-btn.primary:hover{background:var(--porcelain);border-color:var(--porcelain)}
+.side-btn.danger:hover{
+  color:var(--char);background:var(--copper);border-color:var(--copper);
+}
+
+/* ===================== FOOTER ===================== */
+.footer{
+  position:relative;z-index:1;
+  padding:24px 32px;
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--porcelain-dim);
+  border-top:1px solid var(--line);
+}
+.footer .f-left{display:flex;gap:24px;align-items:center}
+.footer .f-right{display:flex;gap:24px;align-items:center}
+
+/* ===================== UTIL ===================== */
+.hidden{display:none !important}
+
+/* ===================== REDUCED MOTION ===================== */
+@media (prefers-reduced-motion: reduce){
+  .cursor-dot,.cursor-ring,.cursor-trail{transition:none}
+  .live-dot,.cell-status .dot{animation:none}
+  .panel{transition:none}
+}
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width: 1200px){
+  .grid{grid-template-columns:repeat(3,1fr)}
+  .hero-left h1{font-size:40px}
+  .hero-voltage{font-size:56px}
+}
+@media (max-width: 900px){
+  .grid{grid-template-columns:repeat(2,1fr);grid-auto-rows:240px}
+  .cell.big{grid-column:span 2;grid-row:span 1}
+  .cell.tall{grid-row:span 1}
+  .panel-inner{grid-template-columns:1fr;grid-template-rows:1fr auto}
+  .panel-stage{border-right:none;border-bottom:1px solid var(--line)}
+  .panel-side{max-height:40vh;flex-direction:row;overflow-x:auto;padding:16px}
+  .side-section{min-width:240px}
+}
+@media (max-width: 600px){
+  .header{padding:14px 16px;flex-wrap:wrap;gap:12px}
+  .nav{order:3;width:100%;justify-content:center}
+  .hero{grid-template-columns:1fr;padding:32px 16px 24px;gap:24px}
+  .hero-left h1{font-size:32px}
+  .hero-right{text-align:left}
+  .hero-stats{grid-template-columns:repeat(3,1fr)}
+  .hero-voltage{font-size:48px}
+  .section-label{padding:12px 16px;flex-wrap:wrap;gap:10px}
+  .grid{grid-template-columns:1fr;grid-auto-rows:220px}
+  .cell.big,.cell.wide{grid-column:span 1}
+  .footer{padding:16px;flex-direction:column;gap:10px;text-align:center}
+}
+</style>
+</head>
+<body class="app">
+
+<!-- Background Texture -->
+<div class="bg-texture"></div>
+
+<!-- Custom Cursor -->
+<div class="cursor-wrap" id="cursorWrap">
+  <div class="cursor-trail" id="cursorTrail"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="cursor-dot" id="cursorDot"></div>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2 L18 12 L14 14 L16 26 L10 14 L14 12 L10 2 Z" fill="#FFE93C" stroke="#FFE93C" stroke-width="0.5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-title">ARC LAB / 电弧实验室</div>
+      <div class="brand-sub">高压特效 · 实时演示 · V3.0</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <button class="nav-btn active" data-nav="grid">展区</button>
+    <button class="nav-btn" data-nav="featured">精选</button>
+    <button class="nav-btn" data-nav="about">关于</button>
+  </nav>
+  <div class="header-meta">
+    <span><span class="live-dot"></span>LIVE</span>
+    <span>220V · 50Hz</span>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-left">
+    <span class="hero-tagline">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1 L7 4 L5 5 L6 9 L4 5 L5 4 L3 1 Z" fill="#FFE93C"/></svg>
+      HIGH VOLTAGE EFFECTS LABORATORY
+    </span>
+    <h1>
+      触摸 <span class="hl">100万伏</span><br/>
+      <span class="hl2">电弧</span> 的视觉<span class="hl">炸裂</span>
+    </h1>
+    <p>
+      14 件独立的组件级特效装置，每一件都需要你亲手操作才有意义。
+      从粒子系统到噪波流场，从磁力形变到频谱可视化——
+      调节参数，拖动光标，感受高压电的视觉冲击。
+    </p>
+  </div>
+  <div class="hero-center">
+    <div class="hero-voltage" id="voltageMeter">0.00<small>kV</small></div>
+    <div>主回路电压 · 实时</div>
+  </div>
+  <div class="hero-right">
+    <div class="hero-stats">
+      <div><b class="arc">14</b>件装置</div>
+      <div><b class="copper">∞</b>参数组合</div>
+      <div><b>60</b>FPS</div>
+    </div>
+  </div>
+</section>
+
+<!-- Section Label -->
+<div class="section-label">
+  <div class="sl-left">
+    <span class="sl-index">01</span>
+    <span>展区总览 · EXHIBITION HALL</span>
+  </div>
+  <div class="sl-right">
+    <span>点击卡片进入操控台</span>
+    <div class="sl-filter">
+      <button class="active" data-filter="all">全部</button>
+      <button data-filter="particle">粒子</button>
+      <button data-filter="shader">光影</button>
+      <button data-filter="magnetic">电磁</button>
+      <button data-filter="data">数据</button>
+    </div>
+  </div>
+</div>
+
+<!-- Grid of Effects -->
+<main class="grid" id="grid">
+  <!-- Cells will be generated by JS -->
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="f-left">
+    <span>© 2026 ARC LAB</span>
+    <span>V3.0.0 / build 20260817</span>
+  </div>
+  <div class="f-right">
+    <span>纯前端 · 无依赖 · 60fps</span>
+    <span>按 ESC 关闭操控台</span>
+  </div>
+</footer>
+
+<!-- Fullscreen Panel -->
+<div class="panel" id="panel">
+  <div class="panel-inner">
+    <div class="panel-stage">
+      <canvas class="panel-canvas" id="panelCanvas"></canvas>
+      <div class="panel-title">
+        <h2 id="panelTitle">电弧</h2>
+        <div class="pt-meta">
+          <span id="panelId">EX-01</span>
+          <span id="panelCategory">电磁类</span>
+        </div>
+      </div>
+      <button class="panel-close" id="panelClose" aria-label="关闭">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 2 L12 12 M12 2 L2 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="panel-side" id="panelSide">
+      <!-- Controls injected by JS -->
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== ANIMATION LIFECYCLE MANAGER ===================== */
+const Anim = (() => {
+  const loops = new Map();    // id -> {fn, rafId, active}
+  const timers = new Map();   // id -> timeoutId
+  let visible = true;
+  let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function addLoop(id, fn) {
+    cancelLoop(id);
+    const entry = { fn, rafId: null, active: false, last: 0 };
+    loops.set(id, entry);
+    if (visible && !reducedMotion) startLoop(id);
+    return id;
+  }
+  function startLoop(id) {
+    const e = loops.get(id);
+    if (!e || e.active) return;
+    e.active = true;
+    e.last = performance.now();
+    const tick = (t) => {
+      if (!e.active) return;
+      const dt = t - e.last;
+      e.last = t;
+      e.fn(dt, t);
+      e.rafId = requestAnimationFrame(tick);
+    };
+    e.rafId = requestAnimationFrame(tick);
+  }
+  function cancelLoop(id) {
+    const e = loops.get(id);
+    if (e && e.rafId) {
+      e.active = false;
+      cancelAnimationFrame(e.rafId);
+      e.rafId = null;
+    }
+    loops.delete(id);
+  }
+  function pauseAll() {
+    visible = false;
+    loops.forEach((_, id) => {
+      const e = loops.get(id);
+      if (e && e.active) {
+        e.active = false;
+        if (e.rafId) cancelAnimationFrame(e.rafId);
+        e.rafId = null;
+      }
+    });
+  }
+  function resumeAll() {
+    visible = true;
+    if (reducedMotion) return;
+    loops.forEach((_, id) => startLoop(id));
+  }
+  function setTimer(id, fn, ms) {
+    clearTimer(id);
+    const t = setTimeout(() => {
+      timers.delete(id);
+      fn();
+    }, ms);
+    timers.set(id, t);
+    return id;
+  }
+  function clearTimer(id) {
+    if (timers.has(id)) {
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+    }
+  }
+  function clearAllTimers() {
+    timers.forEach((_, id) => clearTimer(id));
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pauseAll();
+    else resumeAll();
+  });
+  window.addEventListener('beforeunload', () => {
+    loops.forEach((_, id) => cancelLoop(id));
+    clearAllTimers();
+  });
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (e) => {
+    reducedMotion = e.matches;
+    if (reducedMotion) pauseAll();
+    else if (visible) resumeAll();
+  });
+
+  return { addLoop, cancelLoop, setTimer, clearTimer, pauseAll, resumeAll,
+    get reduced(){ return reducedMotion; },
+    get visible(){ return visible; } };
+})();
+
+/* ===================== CUSTOM CURSOR ===================== */
+const Cursor = (() => {
+  const wrap = document.getElementById('cursorWrap');
+  const dot = document.getElementById('cursorDot');
+  const ring = document.getElementById('cursorRing');
+  const trail = document.getElementById('cursorTrail');
+
+  let tx = window.innerWidth / 2;
+  let ty = window.innerHeight / 2;
+  let dx = tx, dy = ty;   // dot position
+  let rx = tx, ry = ty;   // ring position
+  let trx = tx, _try = ty; // trail position
+  let inside = true;
+
+  function setPos(el, x, y) {
+    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  }
+
+  function tick() {
+    // dot: direct follow
+    dx = tx; dy = ty;
+    setPos(dot, dx, dy);
+    // ring: ease
+    rx += (tx - rx) * 0.18;
+    ry += (ty - ry) * 0.18;
+    setPos(ring, rx, ry);
+    // trail: slower ease
+    trx += (tx - trx) * 0.08;
+    _try += (ty - _try) * 0.08;
+    setPos(trail, trx, _try);
+  }
+  Anim.addLoop('cursor', tick);
+
+  document.addEventListener('mousemove', (e) => {
+    tx = e.clientX;
+    ty = e.clientY;
+    if (!inside) {
+      wrap.classList.remove('cursor-hidden');
+      inside = true;
+    }
+  });
+
+  document.addEventListener('mouseleave', () => {
+    wrap.classList.add('cursor-hidden');
+    inside = false;
+  });
+  document.addEventListener('mouseenter', () => {
+    wrap.classList.remove('cursor-hidden');
+    inside = true;
+  });
+
+  // hover detection via mouseover delegation
+  document.addEventListener('mouseover', (e) => {
+    if (e.target.closest('button, a, input, .cell, .interactive, [role="button"]')) {
+      wrap.classList.add('cursor-hover');
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('button, a, input, .cell, .interactive, [role="button"]')) {
+      wrap.classList.remove('cursor-hover');
+    }
+  });
+
+  // click ripple
+  document.addEventListener('mousedown', (e) => {
+    wrap.classList.add('cursor-click');
+    const r = document.createElement('div');
+    r.className = 'cursor-ripple';
+    r.style.left = e.clientX + 'px';
+    r.style.top = e.clientY + 'px';
+    wrap.appendChild(r);
+    setTimeout(() => r.remove(), 650);
+  });
+  document.addEventListener('mouseup', () => {
+    wrap.classList.remove('cursor-click');
+  });
+
+  // for range sliders, ensure hover state
+  function pos() { return { x: tx, y: ty }; }
+  return { pos };
+})();
+
+/* ===================== UTILITIES ===================== */
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function map(v, a, b, c, d) { return c + (v - a) / (b - a) * (d - c); }
+
+// simple value noise (no external deps)
+const Noise = (() => {
+  const p = new Uint8Array(512);
+  function seed(s) {
+    const rng = mulberry32(s);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    for (let i = 0; i < 256; i++) p[i + 256] = p[i];
+  }
+  function mulberry32(a) {
+    return function() {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = a;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  seed(42);
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  }
+  function perlin2(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = fade(x), v = fade(y);
+    const A = p[X] + Y, B = p[X + 1] + Y;
+    return lerp(
+      lerp(grad(p[A], x, y), grad(p[B], x - 1, y), u),
+      lerp(grad(p[A + 1], x, y - 1), grad(p[B + 1], x - 1, y - 1), u),
+      v
+    );
+  }
+  return { perlin2, seed };
+})();
+
+/* ===================== EFFECTS DEFINITIONS ===================== */
+const EFFECTS = [
+  {
+    id: 'arc', name: '高压电弧', idx: '01', category: '电磁类',
+    tags: ['electromagnetic'], size: 'big',
+    params: [
+      { key: 'intensity', label: '强度', min: 1, max: 10, val: 5, step: 0.5 },
+      { key: 'branches', label: '分支数', min: 1, max: 8, val: 3, step: 1 },
+      { key: 'speed', label: '闪烁速度', min: 0.5, max: 5, val: 2, step: 0.1 },
+    ],
+    init: initArc, update: drawArc,
+    desc: '经典高压电弧放电。上下电极间产生随机闪烁的电弧路径，可调节强度与分支。'
+  },
+  {
+    id: 'flowfield', name: '噪波流场', idx: '02', category: '粒子类',
+    tags: ['particle'], size: 'tall',
+    params: [
+      { key: 'count', label: '粒子数', min: 100, max: 800, val: 300, step: 50 },
+      { key: 'scale', label: '噪波尺度', min: 0.002, max: 0.02, val: 0.008, step: 0.001 },
+      { key: 'speed', label: '流速', min: 0.5, max: 4, val: 1.5, step: 0.1 },
+    ],
+    init: initFlowField, update: drawFlowField,
+    desc: 'Perlin 噪波驱动的粒子流场。每个粒子沿噪声梯度方向流动，形成流体般的轨迹。'
+  },
+  {
+    id: 'textshatter', name: '文字解构', idx: '03', category: '粒子类',
+    tags: ['particle'], size: 'wide',
+    params: [
+      { key: 'text', label: '文字', type: 'text', val: 'ARC' },
+      { key: 'chaos', label: '混乱度', min: 0, max: 1, val: 0.3, step: 0.01 },
+      { key: 'size', label: '粒子大小', min: 1, max: 6, val: 2, step: 0.5 },
+    ],
+    init: initTextShatter, update: drawTextShatter,
+    desc: '把文字拆成数千个发光粒子。鼠标靠近时粒子被排斥散开，远离时重新凝聚。'
+  },
+  {
+    id: 'magnetic', name: '磁力网格', idx: '04', category: '电磁类',
+    tags: ['magnetic'], size: 'normal',
+    params: [
+      { key: 'cols', label: '列数', min: 10, max: 40, val: 20, step: 1 },
+      { key: 'strength', label: '磁力强度', min: 10, max: 200, val: 60, step: 5 },
+      { key: 'radius', label: '作用半径', min: 50, max: 300, val: 120, step: 10 },
+    ],
+    init: initMagneticGrid, update: drawMagneticGrid,
+    desc: '网格点阵受光标磁力影响而形变。越靠近中心，偏移越大，呈反平方衰减。'
+  },
+  {
+    id: 'spectrum', name: '频谱可视化', idx: '05', category: '数据类',
+    tags: ['data'], size: 'normal',
+    params: [
+      { key: 'bars', label: '频段数', min: 16, max: 128, val: 48, step: 8 },
+      { key: 'speed', label: '波动速度', min: 0.2, max: 3, val: 1, step: 0.1 },
+      { key: 'style', label: '样式', type: 'select', options: ['柱状', '波形', '圆环'], val: '柱状' },
+    ],
+    init: initSpectrum, update: drawSpectrum,
+    desc: '模拟音频频谱的实时可视化。三种展示样式，频段高度受伪随机波形驱动。'
+  },
+  {
+    id: 'trail', name: '光标拖尾', idx: '06', category: '粒子类',
+    tags: ['particle'], size: 'normal',
+    params: [
+      { key: 'length', label: '拖尾长度', min: 10, max: 100, val: 40, step: 5 },
+      { key: 'thickness', label: '粗细', min: 1, max: 12, val: 4, step: 0.5 },
+      { key: 'glow', label: '辉光', min: 0, max: 1, val: 0.7, step: 0.05 },
+    ],
+    init: initTrail, update: drawTrail,
+    desc: '跟随光标移动的等离子拖尾。速度越快拖尾越长，停下时逐渐消散。'
+  },
+  {
+    id: 'metaball', name: '流体粒子', idx: '07', category: '粒子类',
+    tags: ['particle'], size: 'normal',
+    params: [
+      { key: 'count', label: '球数', min: 3, max: 20, val: 8, step: 1 },
+      { key: 'threshold', label: '融合阈值', min: 0.5, max: 2, val: 1, step: 0.05 },
+      { key: 'speed', label: '速度', min: 0.2, max: 2, val: 0.8, step: 0.1 },
+    ],
+    init: initMetaball, update: drawMetaball,
+    desc: 'Metaball 流体效果。球与球相遇时表面融合，呈现液态金属般的质感。'
+  },
+  {
+    id: 'crt', name: 'CRT 扫描线', idx: '08', category: '光影类',
+    tags: ['shader'], size: 'normal',
+    params: [
+      { key: 'density', label: '扫描线密度', min: 2, max: 8, val: 4, step: 0.5 },
+      { key: 'glitch', label: '故障强度', min: 0, max: 1, val: 0.2, step: 0.05 },
+      { key: 'vignette', label: '暗角', min: 0, max: 1, val: 0.5, step: 0.05 },
+    ],
+    init: initCRT, update: drawCRT,
+    desc: '老式阴极射线管效果。扫描线、RGB 错位、随机故障条与暗角营造复古显示质感。'
+  },
+  {
+    id: 'lightrays', name: '神光散射', idx: '09', category: '光影类',
+    tags: ['shader'], size: 'tall',
+    params: [
+      { key: 'beams', label: '光束数', min: 3, max: 20, val: 10, step: 1 },
+      { key: 'spread', label: '扩散角度', min: 10, max: 120, val: 60, step: 5 },
+      { key: 'speed', label: '转动速度', min: 0, max: 2, val: 0.3, step: 0.05 },
+    ],
+    init: initLightRays, update: drawLightRays,
+    desc: '从圆心向外辐射的光束。光束边缘柔和衰减，整体缓慢旋转并带有呼吸感。'
+  },
+  {
+    id: 'parallax', name: '视差星层', idx: '10', category: '光影类',
+    tags: ['shader'], size: 'normal',
+    params: [
+      { key: 'layers', label: '层数', min: 2, max: 6, val: 4, step: 1 },
+      { key: 'stars', label: '每层星数', min: 20, max: 200, val: 80, step: 10 },
+      { key: 'depth', label: '深度差', min: 0.2, max: 2, val: 0.8, step: 0.1 },
+    ],
+    init: initParallax, update: drawParallax,
+    desc: '多层视差星空。每层星点以不同速度跟随光标偏移，模拟真实的纵深空间感。'
+  },
+  {
+    id: 'voltmeter', name: '模拟电压表', idx: '11', category: '数据类',
+    tags: ['data'], size: 'normal',
+    params: [
+      { key: 'value', label: '电压', min: 0, max: 100, val: 65, step: 1 },
+      { key: 'flicker', label: '指针抖动', min: 0, max: 1, val: 0.4, step: 0.05 },
+      { key: 'scale', label: '刻度数', min: 5, max: 20, val: 10, step: 1 },
+    ],
+    init: initVoltmeter, update: drawVoltmeter,
+    desc: '复古模拟电压表。指针随电压值摆动，带轻微机械抖动与阻尼感。'
+  },
+  {
+    id: 'plasmaorb', name: '等离子球', idx: '12', category: '电磁类',
+    tags: ['magnetic', 'particle'], size: 'normal',
+    params: [
+      { key: 'bolts', label: '电弧条数', min: 3, max: 20, val: 8, step: 1 },
+      { key: 'reach', label: '延伸距离', min: 0.3, max: 0.95, val: 0.7, step: 0.05 },
+      { key: 'speed', label: '活跃速度', min: 0.3, max: 3, val: 1.2, step: 0.1 },
+    ],
+    init: initPlasmaOrb, update: drawPlasmaOrb,
+    desc: '玻璃球内的等离子放电。从中心球核向外延伸多条电弧，随机游走并重新生成。'
+  },
+  {
+    id: 'sparkmatrix', name: '火花矩阵', idx: '13', category: '电磁类',
+    tags: ['electromagnetic'], size: 'wide',
+    params: [
+      { key: 'density', label: '节点密度', min: 5, max: 20, val: 12, step: 1 },
+      { key: 'sparks', label: '同时火花数', min: 1, max: 20, val: 6, step: 1 },
+      { key: 'speed', label: '闪烁频率', min: 0.5, max: 4, val: 1.5, step: 0.1 },
+    ],
+    init: initSparkMatrix, update: drawSparkMatrix,
+    desc: '节点矩阵中随机跳跃的电火花。相邻节点间随机击穿，形成闪烁的电网图案。'
+  },
+  {
+    id: 'magnetoscope', name: '磁力示波器', idx: '14', category: '数据类',
+    tags: ['data', 'magnetic'], size: 'normal',
+    params: [
+      { key: 'waves', label: '波形数', min: 1, max: 6, val: 3, step: 1 },
+      { key: 'amp', label: '振幅', min: 10, max: 100, val: 40, step: 5 },
+      { key: 'freq', label: '频率', min: 0.5, max: 4, val: 1.5, step: 0.1 },
+    ],
+    init: initMagnetoscope, update: drawMagnetoscope,
+    desc: '模拟示波器显示的多道电磁波形。不同颜色、不同频率的波形在屏幕上叠加。'
+  },
+];
+
+/* ===================== GRID SETUP ===================== */
+const gridEl = document.getElementById('grid');
+
+function buildGrid() {
+  EFFECTS.forEach((ef) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (ef.size && ef.size !== 'normal' ? ' ' + ef.size : '');
+    cell.dataset.id = ef.id;
+    cell.innerHTML = `
+      <div class="cell-head">
+        <span class="cell-id">EX-${ef.idx}</span>
+        <span class="cell-type">${ef.category}</span>
+      </div>
+      <canvas class="cell-canvas" data-effect="${ef.id}"></canvas>
+      <div class="cell-foot">
+        <div class="cell-status"><span class="dot"></span><span>运行中</span></div>
+        <button class="cell-open interactive">进入操控 →</button>
+      </div>
+      <div style="position:absolute;bottom:40px;left:16px;z-index:3;font-size:14px;font-weight:600;pointer-events:none;color:var(--porcelain);text-shadow:0 1px 4px rgba(0,0,0,0.8)">${ef.name}</div>
+    `;
+    gridEl.appendChild(cell);
+
+    cell.addEventListener('click', () => openPanel(ef.id));
+  });
+}
+buildGrid();
+
+/* ===================== CELL ANIMATIONS (auto-scaled preview) ===================== */
+const cellStates = new Map();  // effectId -> state
+
+function initCell(effectId) {
+  if (cellStates.has(effectId)) return;
+  const canvas = document.querySelector(`.cell-canvas[data-effect="${effectId}"]`);
+  if (!canvas) return;
+  const ef = EFFECTS.find(e => e.id === effectId);
+  if (!ef) return;
+
+  // setup size for cell preview
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // state
+  const state = {
+    canvas, ctx, w: rect.width, h: rect.height, dpr,
+    params: {},
+    mouse: { x: rect.width / 2, y: rect.height / 2, inside: false },
+    time: 0,
+    data: {},
+  };
+  // default params
+  ef.params.forEach(p => { state.params[p.key] = p.val; });
+
+  // initial mouse position for preview (gentle wandering)
+  state.mouseWander = { x: rand(0.3, 0.7), y: rand(0.3, 0.7), tx: rand(0.3, 0.7), ty: rand(0.3, 0.7), t: 0 };
+
+  ef.init(state);
+  cellStates.set(effectId, state);
+
+  // track mouse over cell
+  const cell = canvas.closest('.cell');
+  cell.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    state.mouse.x = e.clientX - r.left;
+    state.mouse.y = e.clientY - r.top;
+    state.mouse.inside = true;
+  });
+  cell.addEventListener('mouseleave', () => {
+    state.mouse.inside = false;
+  });
+}
+
+function updateCell(effectId, dt, t) {
+  const state = cellStates.get(effectId);
+  if (!state) return;
+  const ef = EFFECTS.find(e => e.id === effectId);
+  if (!ef) return;
+
+  state.time += dt / 1000;
+
+  // wander mouse if not inside
+  if (!state.mouse.inside && state.mouseWander) {
+    state.mouseWander.t += dt / 1000;
+    if (state.mouseWander.t > 3) {
+      state.mouseWander.t = 0;
+      state.mouseWander.tx = rand(0.2, 0.8);
+      state.mouseWander.ty = rand(0.2, 0.8);
+    }
+    state.mouseWander.x = lerp(state.mouseWander.x, state.mouseWander.tx, 0.01);
+    state.mouseWander.y = lerp(state.mouseWander.y, state.mouseWander.ty, 0.01);
+    state.mouse.x = state.mouseWander.x * state.w;
+    state.mouse.y = state.mouseWander.y * state.h;
+  }
+
+  ef.update(state, dt, t);
+}
+
+// initialize all cells after layout settles
+requestAnimationFrame(() => {
+  // wait a frame for DOM
+  setTimeout(() => {
+    EFFECTS.forEach(ef => initCell(ef.id));
+    // main grid loop
+    Anim.addLoop('grid-main', (dt, t) => {
+      cellStates.forEach((_, id) => updateCell(id, dt, t));
+    });
+  }, 50);
+});
+
+/* ===================== HERO VOLTAGE METER ===================== */
+(() => {
+  const el = document.getElementById('voltageMeter');
+  let v = 0;
+  let target = 890;
+  Anim.addLoop('voltage-meter', (dt) => {
+    // wobble
+    target = 880 + Math.sin(performance.now() / 700) * 15 + Math.random() * 4;
+    v = lerp(v, target, 0.05);
+    el.innerHTML = v.toFixed(2) + '<small>kV</small>';
+  });
+})();
+
+/* ===================== FULLSCREEN PANEL ===================== */
+const panelEl = document.getElementById('panel');
+const panelCanvas = document.getElementById('panelCanvas');
+const panelTitle = document.getElementById('panelTitle');
+const panelId = document.getElementById('panelId');
+const panelCategory = document.getElementById('panelCategory');
+const panelSide = document.getElementById('panelSide');
+const panelClose = document.getElementById('panelClose');
+
+let panelState = null;
+let panelEffect = null;
+let panelPctx = null;
+
+function resizePanelCanvas() {
+  if (!panelCanvas) return;
+  const rect = panelCanvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  panelCanvas.width = rect.width * dpr;
+  panelCanvas.height = rect.height * dpr;
+  if (panelPctx) {
+    panelPctx.setTransform(1, 0, 0, 1, 0, 0);
+    panelPctx.scale(dpr, dpr);
+  }
+  if (panelState) {
+    panelState.w = rect.width;
+    panelState.h = rect.height;
+    panelState.dpr = dpr;
+    // re-init effect for new size
+    if (panelEffect && panelEffect.init) {
+      // preserve params & mouse
+      const params = panelState.params;
+      const mouse = panelState.mouse;
+      const data = panelState.data;
+      panelEffect.init(panelState);
+      panelState.params = params;
+      panelState.mouse = mouse;
+      panelState.data = data;
+    }
+  }
+}
+
+function buildSideControls(ef) {
+  panelSide.innerHTML = '';
+  // description section
+  const desc = document.createElement('div');
+  desc.className = 'side-section';
+  desc.innerHTML = `
+    <h3>装置说明</h3>
+    <p style="font-size:11px;color:var(--porcelain-dim);line-height:1.7">${ef.desc}</p>
+  `;
+  panelSide.appendChild(desc);
+
+  // params section
+  const params = document.createElement('div');
+  params.className = 'side-section';
+  params.innerHTML = `<h3>参数调节</h3>`;
+  ef.params.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    if (p.type === 'text') {
+      row.innerHTML = `
+        <div class="param-head"><span class="param-name">${p.label}</span></div>
+        <input type="text" class="interactive" value="${p.val}" data-pkey="${p.key}" 
+               style="padding:6px 10px;background:var(--char-2);border:1px solid var(--line-strong);
+                      color:var(--porcelain);font-family:inherit;font-size:12px;
+                      border-radius:2px;outline:none;letter-spacing:.1em;text-transform:uppercase;cursor:none"/>
+      `;
+      const input = row.querySelector('input');
+      input.addEventListener('input', () => {
+        if (panelState) {
+          panelState.params[p.key] = input.value;
+          if (panelEffect.id === 'textshatter') {
+            // rebuild text particles
+            panelEffect.init(panelState);
+          }
+        }
+      });
+    } else if (p.type === 'select') {
+      row.innerHTML = `
+        <div class="param-head"><span class="param-name">${p.label}</span></div>
+        <div class="btn-row">
+          ${p.options.map(o => `<button class="side-btn interactive ${o === p.val ? 'primary' : ''}" data-pkey="${p.key}" data-val="${o}">${o}</button>`).join('')}
+        </div>
+      `;
+      row.querySelectorAll('.side-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const val = btn.dataset.val;
+          if (panelState) panelState.params[p.key] = val;
+          row.querySelectorAll('.side-btn').forEach(b => b.classList.remove('primary'));
+          btn.classList.add('primary');
+        });
+      });
+    } else {
+      row.innerHTML = `
+        <div class="param-head">
+          <span class="param-name">${p.label}</span>
+          <span class="param-val" data-val="${p.key}">${p.val}</span>
+        </div>
+        <div class="slider-track">
+          <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}" data-pkey="${p.key}" class="interactive"/>
+        </div>
+      `;
+      const input = row.querySelector('input');
+      const valEl = row.querySelector('.param-val');
+      input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        valEl.textContent = v;
+        if (panelState) {
+          panelState.params[p.key] = v;
+          // some effects need re-init on structural changes
+          if (p.structural && panelEffect.init) {
+            const prevParams = panelState.params;
+            const prevMouse = panelState.mouse;
+            const prevData = panelState.data;
+            panelEffect.init(panelState);
+            panelState.params = prevParams;
+            panelState.mouse = prevMouse;
+            panelState.data = prevData;
+          }
+        }
+      });
+    }
+    params.appendChild(row);
+  });
+  panelSide.appendChild(params);
+
+  // actions section
+  const actions = document.createElement('div');
+  actions.className = 'side-section';
+  actions.innerHTML = `
+    <h3>操作</h3>
+    <div class="btn-row">
+      <button class="side-btn primary interactive" id="btnRandomize">随机参数</button>
+      <button class="side-btn danger interactive" id="btnReset">重置</button>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:var(--porcelain-dim);letter-spacing:.05em">
+      💡 在画布上拖动光标与装置交互
+    </div>
+  `;
+  panelSide.appendChild(actions);
+
+  document.getElementById('btnRandomize').addEventListener('click', () => {
+    if (!panelState || !panelEffect) return;
+    panelEffect.params.forEach(p => {
+      if (p.type === 'select') {
+        panelState.params[p.key] = p.options[randInt(0, p.options.length - 1)];
+      } else if (p.type !== 'text') {
+        const v = rand(p.min, p.max);
+        panelState.params[p.key] = Math.round(v / p.step) * p.step;
+      }
+    });
+    // update UI
+    panelSide.querySelectorAll('.param-row').forEach(row => {
+      const input = row.querySelector('input[type="range"]');
+      if (input) {
+        const pkey = input.dataset.pkey;
+        const v = panelState.params[pkey];
+        input.value = v;
+        const valEl = row.querySelector('.param-val');
+        if (valEl) valEl.textContent = v;
+      }
+    });
+    if (panelEffect.id === 'textshatter') panelEffect.init(panelState);
+  });
+
+  document.getElementById('btnReset').addEventListener('click', () => {
+    if (!panelState || !panelEffect) return;
+    panelEffect.params.forEach(p => { panelState.params[p.key] = p.val; });
+    panelSide.querySelectorAll('.param-row').forEach(row => {
+      const input = row.querySelector('input[type="range"]');
+      if (input) {
+        const pkey = input.dataset.pkey;
+        input.value = panelState.params[pkey];
+        const valEl = row.querySelector('.param-val');
+        if (valEl) valEl.textContent = panelState.params[pkey];
+      }
+    });
+    if (panelEffect.id === 'textshatter') panelEffect.init(panelState);
+  });
+}
+
+function openPanel(effectId) {
+  const ef = EFFECTS.find(e => e.id === effectId);
+  if (!ef) return;
+
+  panelEffect = ef;
+  panelTitle.textContent = ef.name;
+  panelId.textContent = 'EX-' + ef.idx;
+  panelCategory.textContent = ef.category;
+
+  buildSideControls(ef);
+
+  panelEl.classList.add('open');
+
+  // init canvas
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = panelCanvas.getBoundingClientRect();
+  panelCanvas.width = rect.width * dpr;
+  panelCanvas.height = rect.height * dpr;
+  const ctx = panelCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  panelPctx = ctx;
+
+  panelState = {
+    canvas: panelCanvas,
+    ctx,
+    w: rect.width,
+    h: rect.height,
+    dpr,
+    params: {},
+    mouse: { x: rect.width / 2, y: rect.height / 2, inside: false, down: false },
+    time: 0,
+    data: {},
+  };
+  ef.params.forEach(p => { panelState.params[p.key] = p.val; });
+  ef.init(panelState);
+
+  // pause cell animations for performance (optional - keep running)
+  Anim.cancelLoop('panel-main');
+  Anim.addLoop('panel-main', (dt, t) => {
+    if (!panelState || !panelEffect) return;
+    panelState.time += dt / 1000;
+    panelEffect.update(panelState, dt, t);
+  });
+
+  // mouse tracking
+  panelCanvas.addEventListener('mousemove', onPanelMouseMove);
+  panelCanvas.addEventListener('mousedown', onPanelMouseDown);
+  panelCanvas.addEventListener('mouseup', onPanelMouseUp);
+  panelCanvas.addEventListener('mouseleave', onPanelMouseLeave);
+  panelCanvas.addEventListener('mouseenter', onPanelMouseEnter);
+}
+
+function closePanel() {
+  panelEl.classList.remove('open');
+  Anim.cancelLoop('panel-main');
+  panelState = null;
+  panelEffect = null;
+  panelPctx = null;
+  panelCanvas.removeEventListener('mousemove', onPanelMouseMove);
+  panelCanvas.removeEventListener('mousedown', onPanelMouseDown);
+  panelCanvas.removeEventListener('mouseup', onPanelMouseUp);
+  panelCanvas.removeEventListener('mouseleave', onPanelMouseLeave);
+  panelCanvas.removeEventListener('mouseenter', onPanelMouseEnter);
+}
+
+function onPanelMouseMove(e) {
+  if (!panelState) return;
+  const r = panelCanvas.getBoundingClientRect();
+  panelState.mouse.x = e.clientX - r.left;
+  panelState.mouse.y = e.clientY - r.top;
+}
+function onPanelMouseDown() { if (panelState) panelState.mouse.down = true; }
+function onPanelMouseUp() { if (panelState) panelState.mouse.down = false; }
+function onPanelMouseLeave() { if (panelState) panelState.mouse.inside = false; }
+function onPanelMouseEnter() { if (panelState) panelState.mouse.inside = true; }
+
+panelClose.addEventListener('click', closePanel);
+panelEl.addEventListener('click', (e) => {
+  if (e.target === panelEl) closePanel();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && panelEl.classList.contains('open')) closePanel();
+});
+
+// resize handler
+let resizeTimer;
+window.addEventListener('resize', () => {
+  Anim.clearTimer('resize');
+  Anim.setTimer('resize', () => {
+    // re-init cells
+    cellStates.forEach((state, id) => {
+      const canvas = state.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      state.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      state.ctx.scale(dpr, dpr);
+      state.w = rect.width;
+      state.h = rect.height;
+      state.dpr = dpr;
+      const ef = EFFECTS.find(e => e.id === id);
+      if (ef && ef.init) {
+        const params = state.params;
+        const data = state.data;
+        ef.init(state);
+        state.params = params;
+        state.data = data;
+      }
+    });
+    // panel
+    if (panelEl.classList.contains('open')) {
+      resizePanelCanvas();
+    }
+  }, 150);
+});
+
+/* ===================== NAV FILTER ===================== */
+document.querySelectorAll('.sl-filter button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sl-filter button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filter = btn.dataset.filter;
+    document.querySelectorAll('.cell').forEach(cell => {
+      const ef = EFFECTS.find(e => e.id === cell.dataset.id);
+      if (!ef) return;
+      if (filter === 'all' || ef.tags.includes(filter)) {
+        cell.style.display = '';
+      } else {
+        cell.style.display = 'none';
+      }
+    });
+  });
+});
+
+/* ===================== EFFECT: ARC (高压电弧) ===================== */
+function initArc(s) {
+  // nothing persistent needed beyond state; arcs generated each frame
+  s.data.arcs = [];
+}
+function generateArcPath(x1, y1, x2, y2, displacement, depth) {
+  if (depth <= 0 || displacement < 1) {
+    return [{x: x2, y: y2}];
+  }
+  const midx = (x1 + x2) / 2 + rand(-displacement, displacement);
+  const midy = (y1 + y2) / 2 + rand(-displacement * 0.6, displacement * 0.6);
+  return [
+    ...generateArcPath(x1, y1, midx, midy, displacement / 2, depth - 1),
+    ...generateArcPath(midx, midy, x2, y2, displacement / 2, depth - 1)
+  ];
+}
+function drawArc(s, dt) {
+  const { ctx, w, h, params } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // dark background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#0a0a0c');
+  bg.addColorStop(1, '#15151a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  // electrodes
+  const topX = w / 2;
+  const topY = h * 0.15;
+  const botX = w / 2;
+  const botY = h * 0.85;
+
+  // electrode glow
+  ctx.save();
+  const eg = ctx.createRadialGradient(topX, topY, 0, topX, topY, 40);
+  eg.addColorStop(0, 'rgba(255,233,60,0.6)');
+  eg.addColorStop(1, 'rgba(255,233,60,0)');
+  ctx.fillStyle = eg;
+  ctx.fillRect(topX - 40, topY - 40, 80, 80);
+  ctx.restore();
+
+  // draw electrode tips
+  ctx.fillStyle = '#F5F2EA';
+  ctx.beginPath();
+  ctx.moveTo(topX - 8, topY - 20);
+  ctx.lineTo(topX + 8, topY - 20);
+  ctx.lineTo(topX, topY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(botX - 8, botY + 20);
+  ctx.lineTo(botX + 8, botY + 20);
+  ctx.lineTo(botX, botY);
+  ctx.closePath();
+  ctx.fill();
+
+  const intensity = params.intensity || 5;
+  const branches = params.branches || 3;
+  const speed = params.speed || 2;
+
+  // generate arcs
+  const sparkCount = Math.floor(1 + intensity * 0.8);
+  const totalLen = dist(topX, topY, botX, botY);
+  const disp = totalLen * 0.25 * (intensity / 5);
+
+  for (let i = 0; i < sparkCount; i++) {
+    const offsetX = rand(-10, 10) * (intensity / 3);
+    const points = generateArcPath(
+      topX + offsetX * 0.3, topY,
+      botX + offsetX, botY,
+      disp, 7
+    );
+    // main arc
+    ctx.beginPath();
+    ctx.moveTo(topX + offsetX * 0.3, topY);
+    points.forEach(p => ctx.lineTo(p.x, p.y));
+    // glow
+    ctx.strokeStyle = 'rgba(255,233,60,0.15)';
+    ctx.lineWidth = 8 + intensity;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,233,60,0.5)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = '#FFE93C';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // branches
+    for (let b = 0; b < branches; b++) {
+      const startIdx = randInt(2, points.length - 3);
+      const endProgress = startIdx / points.length + rand(0.1, 0.4);
+      if (endProgress >= 1) continue;
+      const endIdx = Math.floor(endProgress * points.length);
+      const branchStart = points[startIdx];
+      const branchEnd = {
+        x: botX + rand(-disp, disp) * 0.6,
+        y: botY - rand(0, totalLen * 0.3)
+      };
+      const branchPts = generateArcPath(
+        branchStart.x, branchStart.y,
+        branchEnd.x, branchEnd.y,
+        disp * 0.4, 5
+      );
+      ctx.beginPath();
+      ctx.moveTo(branchStart.x, branchStart.y);
+      branchPts.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = 'rgba(255,122,26,0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = '#FF7A1A';
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    }
+  }
+
+  // bottom flash
+  const flashAlpha = 0.05 + Math.random() * 0.1 * (intensity / 5);
+  const fg = ctx.createRadialGradient(botX, botY, 0, botX, botY, w * 0.6);
+  fg.addColorStop(0, `rgba(255,233,60,${flashAlpha})`);
+  fg.addColorStop(1, 'rgba(255,233,60,0)');
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/* ===================== EFFECT: FLOW FIELD (噪波流场) ===================== */
+function initFlowField(s) {
+  const count = Math.floor(s.params.count || 300);
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: rand(0, s.w),
+      y: rand(0, s.h),
+      px: 0, py: 0,
+      speed: rand(0.3, 1),
+      life: rand(0, 1),
+      maxLife: rand(80, 200),
+    });
+  }
+  s.data.particles = particles;
+  s.data.zOff = rand(0, 1000);
+}
+function drawFlowField(s, dt) {
+  const { ctx, w, h, params, data } = s;
+  // fade trail
+  ctx.fillStyle = 'rgba(14,14,16,0.08)';
+  ctx.fillRect(0, 0, w, h);
+
+  const scale = params.scale || 0.008;
+  const speed = (params.speed || 1.5) * 0.5;
+  data.zOff += dt * 0.00015 * speed;
+
+  const particles = data.particles;
+  const targetCount = Math.floor(params.count || 300);
+
+  // adjust particle count
+  while (particles.length < targetCount) {
+    particles.push({
+      x: rand(0, w), y: rand(0, h),
+      px: 0, py: 0, speed: rand(0.3, 1),
+      life: rand(0, 1), maxLife: rand(80, 200),
+    });
+  }
+  if (particles.length > targetCount) particles.length = targetCount;
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.px = p.x;
+    p.py = p.y;
+
+    const angle = Noise.perlin2(p.x * scale, p.y * scale + data.zOff * 100) * Math.PI * 4;
+    p.vx = Math.cos(angle) * speed * p.speed;
+    p.vy = Math.sin(angle) * speed * p.speed;
+    p.x += p.vx * dt * 0.1;
+    p.y += p.vy * dt * 0.1;
+
+    p.life += dt * 0.05;
+    if (p.life > p.maxLife || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
+      p.x = rand(0, w);
+      p.y = rand(0, h);
+      p.px = p.x;
+      p.py = p.y;
+      p.life = 0;
+    }
+
+    const alpha = Math.min(1, p.life / 30) * Math.min(1, (p.maxLife - p.life) / 30);
+    ctx.strokeStyle = `rgba(255,233,60,${alpha * 0.6})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.px, p.py);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+
+  // occasional copper highlights
+  ctx.fillStyle = 'rgba(255,122,26,0.6)';
+  for (let i = 0; i < 3; i++) {
+    const idx = randInt(0, particles.length - 1);
+    const p = particles[idx];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/* ===================== EFFECT: TEXT SHATTER (文字解构) ===================== */
+function initTextShatter(s) {
+  const { ctx, w, h, params } = s;
+  const text = (params.text || 'ARC').toUpperCase();
+  const fontSize = Math.min(w * 0.4, h * 0.6);
+
+  // render text to offscreen
+  const off = document.createElement('canvas');
+  off.width = w;
+  off.height = h;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#fff';
+  octx.font = `900 ${fontSize}px "SF Mono", monospace`;
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  octx.fillText(text, w / 2, h / 2);
+
+  const imgData = octx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  const psize = params.size || 2;
+  const points = [];
+  const step = Math.max(2, Math.floor(psize * 2));
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const idx = (y * w + x) * 4;
+      if (data[idx + 3] > 128) {
+        points.push({
+          ox: x, oy: y,  // original position
+          x: x + rand(-20, 20), y: y + rand(-20, 20),  // current position
+          vx: 0, vy: 0,
+          hue: rand(-10, 20),
+          size: psize * rand(0.6, 1.2),
+          delay: rand(0, 1),
+        });
+      }
+    }
+  }
+  s.data.points = points;
+}
+function drawTextShatter(s, dt) {
+  const { ctx, w, h, params, mouse, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // background
+  const bg = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w*0.7);
+  bg.addColorStop(0, '#16161a');
+  bg.addColorStop(1, '#0a0a0c');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const chaos = params.chaos || 0.3;
+  const points = data.points;
+  if (!points) return;
+
+  const mx = mouse.x, my = mouse.y;
+  const repelRadius = 100;
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+
+    // base attraction to origin
+    let ax = (p.ox - p.x) * 0.08;
+    let ay = (p.oy - p.y) * 0.08;
+
+    // chaos / jitter
+    ax += rand(-1, 1) * chaos;
+    ay += rand(-1, 1) * chaos;
+
+    // mouse repulsion
+    const dx = p.x - mx;
+    const dy = p.y - my;
+    const d = Math.hypot(dx, dy);
+    if (d < repelRadius) {
+      const force = (1 - d / repelRadius) * 15;
+      ax += (dx / d) * force;
+      ay += (dy / d) * force;
+    }
+
+    p.vx = p.vx * 0.8 + ax;
+    p.vy = p.vy * 0.8 + ay;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // draw
+    const distFromMouse = d;
+    const glow = d < repelRadius ? (1 - d / repelRadius) * 0.8 : 0;
+    ctx.fillStyle = `rgba(255, ${200 + p.hue}, 60, ${0.7 + glow * 0.3})`;
+    if (glow > 0.3) {
+      ctx.shadowColor = '#FFE93C';
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.shadowBlur = 0;
+}
+
+/* ===================== EFFECT: MAGNETIC GRID (磁力网格) ===================== */
+function initMagneticGrid(s) {
+  const cols = s.params.cols || 20;
+  const rows = Math.round(cols * (s.h / s.w));
+  const points = [];
+  for (let j = 0; j <= rows; j++) {
+    for (let i = 0; i <= cols; i++) {
+      points.push({
+        ox: (i / cols) * s.w,
+        oy: (j / rows) * s.h,
+        x: (i / cols) * s.w,
+        y: (j / rows) * s.h,
+      });
+    }
+  }
+  s.data.points = points;
+  s.data.cols = cols + 1;
+  s.data.rows = rows + 1;
+}
+function drawMagneticGrid(s, dt) {
+  const { ctx, w, h, params, mouse, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // bg
+  ctx.fillStyle = '#0f0f12';
+  ctx.fillRect(0, 0, w, h);
+
+  const strength = params.strength || 60;
+  const radius = params.radius || 120;
+  const points = data.points;
+  const cols = data.cols;
+
+  const mx = mouse.x, my = mouse.y;
+
+  // update positions
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const dx = p.ox - mx;
+    const dy = p.oy - my;
+    const d = Math.hypot(dx, dy);
+    if (d < radius && d > 0.1) {
+      const force = (1 - d / radius) * (1 - d / radius) * strength;
+      p.x = p.ox + (dx / d) * force;
+      p.y = p.oy + (dy / d) * force;
+    } else {
+      p.x += (p.ox - p.x) * 0.1;
+      p.y += (p.oy - p.y) * 0.1;
+    }
+  }
+
+  // draw lines
+  ctx.strokeStyle = 'rgba(245,242,234,0.08)';
+  ctx.lineWidth = 0.5;
+  // horizontal
+  for (let j = 0; j < data.rows; j++) {
+    ctx.beginPath();
+    for (let i = 0; i < cols; i++) {
+      const p = points[j * cols + i];
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  // vertical
+  for (let i = 0; i < cols; i++) {
+    ctx.beginPath();
+    for (let j = 0; j < data.rows; j++) {
+      const p = points[j * cols + i];
+      if (j === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+
+  // draw points
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const dx = p.x - mx;
+    const dy = p.y - my;
+    const d = Math.hypot(dx, dy);
+    const close = d < radius;
+    ctx.fillStyle = close ? `rgba(255,233,60,${0.9 * (1 - d/radius)})` : 'rgba(245,242,234,0.4)';
+    const size = close ? 2 + (1 - d/radius) * 2 : 1.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // magnetic field ring
+  if (mouse.inside !== false) {
+    ctx.strokeStyle = 'rgba(255,122,26,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(mx, my, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,122,26,0.8)';
+    ctx.beginPath();
+    ctx.arc(mx, my, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/* ===================== EFFECT: SPECTRUM (频谱可视化) ===================== */
+function initSpectrum(s) {
+  s.data.phases = [];
+  const bars = s.params.bars || 48;
+  for (let i = 0; i < bars; i++) {
+    s.data.phases.push(rand(0, Math.PI * 2));
+  }
+}
+function drawSpectrum(s, dt) {
+  const { ctx, w, h, params, time, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#0c0c0f';
+  ctx.fillRect(0, 0, w, h);
+
+  const bars = Math.floor(params.bars || 48);
+  const speed = params.speed || 1;
+  const style = params.style || '柱状';
+
+  // adjust phases array
+  while (data.phases.length < bars) data.phases.push(rand(0, Math.PI * 2));
+  if (data.phases.length > bars) data.phases.length = bars;
+
+  const values = [];
+  for (let i = 0; i < bars; i++) {
+    const t = time * speed;
+    // multiple sine layers for organic look
+    let v = 0;
+    v += Math.sin(t * 1.3 + i * 0.3 + data.phases[i]) * 0.3;
+    v += Math.sin(t * 2.1 + i * 0.5 + data.phases[i] * 1.7) * 0.25;
+    v += Math.sin(t * 0.7 + i * 0.15) * 0.2;
+    v += Math.sin(t * 3.5 + i * 0.8) * 0.15;
+    v = (v + 0.9) / 1.8; // normalize to ~0-1
+    v = clamp(v, 0, 1);
+    // emphasize lower freqs
+    const freqBoost = 1 - (i / bars) * 0.4;
+    v *= freqBoost;
+    values.push(v);
+  }
+
+  if (style === '柱状') {
+    const gap = 3;
+    const barW = (w - gap * (bars + 1)) / bars;
+    for (let i = 0; i < bars; i++) {
+      const v = values[i];
+      const barH = v * h * 0.8;
+      const x = gap + i * (barW + gap);
+      const y = h - barH - 10;
+
+      // gradient bar
+      const g = ctx.createLinearGradient(0, y, 0, h - 10);
+      g.addColorStop(0, '#FFE93C');
+      g.addColorStop(0.6, '#FF7A1A');
+      g.addColorStop(1, 'rgba(255,122,26,0.3)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, barW, barH);
+
+      // glow top
+      ctx.fillStyle = 'rgba(255,233,60,0.8)';
+      ctx.fillRect(x, y - 2, barW, 2);
+    }
+    // baseline
+    ctx.strokeStyle = 'rgba(255,233,60,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h - 10);
+    ctx.lineTo(w, h - 10);
+    ctx.stroke();
+
+  } else if (style === '波形') {
+    const centerY = h / 2;
+    ctx.strokeStyle = '#FFE93C';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#FFE93C';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (let i = 0; i < bars; i++) {
+      const x = (i / (bars - 1)) * w;
+      const v = values[i];
+      const y = centerY + (v - 0.5) * h * 0.6;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // second wave
+    ctx.strokeStyle = '#FF7A1A';
+    ctx.shadowColor = '#FF7A1A';
+    ctx.beginPath();
+    for (let i = 0; i < bars; i++) {
+      const x = (i / (bars - 1)) * w;
+      const v = values[(i + 5) % bars];
+      const y = centerY + (v - 0.4) * h * 0.5;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // center line
+    ctx.strokeStyle = 'rgba(245,242,234,0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(w, centerY);
+    ctx.stroke();
+
+  } else if (style === '圆环') {
+    const cx = w / 2, cy = h / 2;
+    const r = Math.min(w, h) * 0.3;
+    // outer ring
+    ctx.strokeStyle = 'rgba(255,233,60,0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // bars radiating
+    for (let i = 0; i < bars; i++) {
+      const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+      const v = values[i];
+      const barLen = v * r * 0.6 + 4;
+      const x1 = cx + Math.cos(angle) * r;
+      const y1 = cy + Math.sin(angle) * r;
+      const x2 = cx + Math.cos(angle) * (r + barLen);
+      const y2 = cy + Math.sin(angle) * (r + barLen);
+
+      const g = ctx.createLinearGradient(x1, y1, x2, y2);
+      g.addColorStop(0, 'rgba(255,233,60,0.3)');
+      g.addColorStop(1, '#FF7A1A');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    // inner dot
+    ctx.fillStyle = '#FFE93C';
+    ctx.shadowColor = '#FFE93C';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+/* ===================== EFFECT: TRAIL (光标拖尾) ===================== */
+function initTrail(s) {
+  s.data.points = [];
+  s.data.prevX = s.w / 2;
+  s.data.prevY = s.h / 2;
+}
+function drawTrail(s, dt) {
+  const { ctx, w, h, params, mouse, data, time } = s;
+  // fade
+  ctx.fillStyle = 'rgba(14,14,16,0.15)';
+  ctx.fillRect(0, 0, w, h);
+
+  // background grid hint
+  ctx.strokeStyle = 'rgba(245,242,234,0.03)';
+  ctx.lineWidth = 1;
+  const gs = 40;
+  for (let x = 0; x < w; x += gs) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y < h; y += gs) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  const length = Math.floor(params.length || 40);
+  const thickness = params.thickness || 4;
+  const glow = params.glow || 0.7;
+
+  const mx = mouse.x, my = mouse.y;
+  const dx = mx - data.prevX;
+  const dy = my - data.prevY;
+  const speed = Math.hypot(dx, dy);
+  data.prevX = mx;
+  data.prevY = my;
+
+  // add point
+  data.points.push({ x: mx, y: my, age: 0, speed });
+  if (data.points.length > length) data.points.shift();
+
+  // age points
+  for (let i = 0; i < data.points.length; i++) {
+    data.points[i].age += dt / 1000;
+  }
+
+  // draw trail as polyline with variable width
+  const pts = data.points;
+  if (pts.length < 2) return;
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // outer glow
+  if (glow > 0) {
+    ctx.strokeStyle = `rgba(255,233,60,${0.15 * glow})`;
+    ctx.lineWidth = thickness * 4;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+  }
+
+  // mid glow
+  ctx.strokeStyle = 'rgba(255,233,60,0.4)';
+  ctx.lineWidth = thickness * 2;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+
+  // core
+  ctx.strokeStyle = '#F5F2EA';
+  ctx.lineWidth = thickness * 0.6;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+
+  // head spark
+  const head = pts[pts.length - 1];
+  ctx.fillStyle = '#FFE93C';
+  ctx.shadowColor = '#FFE93C';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(head.x, head.y, thickness * 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // copper accent at tip when moving fast
+  if (speed > 5) {
+    ctx.fillStyle = '#FF7A1A';
+    ctx.shadowColor = '#FF7A1A';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, thickness * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+/* ===================== EFFECT: METABALL (流体粒子) ===================== */
+function initMetaball(s) {
+  const count = Math.floor(s.params.count || 8);
+  const balls = [];
+  for (let i = 0; i < count; i++) {
+    balls.push({
+      x: rand(0, s.w),
+      y: rand(0, s.h),
+      vx: rand(-0.5, 0.5),
+      vy: rand(-0.5, 0.5),
+      r: rand(30, 60),
+    });
+  }
+  s.data.balls = balls;
+}
+function drawMetaball(s, dt) {
+  const { ctx, w, h, params, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, w, h);
+
+  const count = Math.floor(params.count || 8);
+  const threshold = params.threshold || 1;
+  const speed = params.speed || 0.8;
+
+  const balls = data.balls;
+  while (balls.length < count) {
+    balls.push({
+      x: rand(0, w), y: rand(0, h),
+      vx: rand(-0.5, 0.5), vy: rand(-0.5, 0.5),
+      r: rand(30, 60),
+    });
+  }
+  if (balls.length > count) balls.length = count;
+
+  // update positions
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    b.x += b.vx * speed * dt * 0.05;
+    b.y += b.vy * speed * dt * 0.05;
+    if (b.x < b.r) { b.x = b.r; b.vx *= -1; }
+    if (b.x > w - b.r) { b.x = w - b.r; b.vx *= -1; }
+    if (b.y < b.r) { b.y = b.r; b.vy *= -1; }
+    if (b.y > h - b.r) { b.y = h - b.r; b.vy *= -1; }
+  }
+
+  // render using pixel sampling (low-res for perf)
+  const step = 4;
+  const imgData = ctx.createImageData(w, h);
+  const d = imgData.data;
+
+  // For performance, use a grid-based approach with radial gradients in canvas
+  // Instead of per-pixel, draw the balls with radial gradients and use compositing
+  // Actually, let's use a faster approach: draw each ball as a radial gradient on an offscreen
+  // then threshold. But for simplicity and perf, use the marching squares low-res approach.
+
+  // Faster: draw each ball with radial gradient (white = center) then threshold with getImageData
+  const off = document.createElement('canvas');
+  off.width = w;
+  off.height = h;
+  const octx = off.getContext('2d');
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const g = octx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 1.5);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    octx.fillStyle = g;
+    octx.fillRect(b.x - b.r * 1.5, b.y - b.r * 1.5, b.r * 3, b.r * 3);
+  }
+  // threshold
+  const src = octx.getImageData(0, 0, w, h).data;
+  const threshVal = 128 * threshold;
+  for (let i = 0; i < src.length; i += 4) {
+    if (src[i] > threshVal) {
+      // inside metaball
+      const v = (src[i] - threshVal) / (255 - threshVal);
+      d[i] = 255;       // R
+      d[i + 1] = 220 + v * 35;  // G -> yellow to white
+      d[i + 2] = 60 + v * 60;   // B
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // glow overlay
+  ctx.globalCompositeOperation = 'screen';
+  ctx.fillStyle = 'rgba(255,233,60,0.1)';
+  ctx.filter = 'blur(10px)';
+  ctx.drawImage(off, 0, 0);
+  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ===================== EFFECT: CRT (扫描线) ===================== */
+function initCRT(s) {
+  s.data.glitchLines = [];
+  s.data.glitchTimer = 0;
+  s.data.scanOffset = 0;
+}
+function drawCRT(s, dt) {
+  const { ctx, w, h, params, time, data } = s;
+
+  // scene: a simple animated arc background to apply CRT filter to
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, w, h);
+
+  // sample content - concentric arcs / pulse rings
+  const cx = w / 2, cy = h / 2;
+  for (let i = 0; i < 5; i++) {
+    const r = ((time * 30 + i * 60) % 200) + 20;
+    const alpha = 1 - r / 220;
+    ctx.strokeStyle = `rgba(255,233,60,${alpha * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // center dot
+  ctx.fillStyle = '#FFE93C';
+  ctx.shadowColor = '#FFE93C';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // copper ring
+  ctx.strokeStyle = '#FF7A1A';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 30 + Math.sin(time * 2) * 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // ---- apply CRT filter ----
+  const density = params.density || 4;
+  const glitch = params.glitch || 0.2;
+  const vignette = params.vignette || 0.5;
+
+  // scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  const lineHeight = density;
+  for (let y = 0; y < h; y += lineHeight * 2) {
+    ctx.fillRect(0, y, w, lineHeight);
+  }
+
+  // moving scan line
+  data.scanOffset = (data.scanOffset + dt * 0.2) % h;
+  const scanY = data.scanOffset;
+  const scanGrad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+  scanGrad.addColorStop(0, 'rgba(255,255,255,0)');
+  scanGrad.addColorStop(0.5, 'rgba(255,255,255,0.08)');
+  scanGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = scanGrad;
+  ctx.fillRect(0, scanY - 30, w, 60);
+
+  // horizontal glitch lines
+  data.glitchTimer -= dt;
+  if (data.glitchTimer <= 0 && glitch > 0.05) {
+    data.glitchTimer = rand(200, 1500) / glitch;
+    const gy = rand(0, h);
+    const gh = rand(2, 20);
+    const gxShift = rand(-30, 30) * glitch;
+    // draw displaced strip
+    const strip = ctx.getImageData(0, gy, w, gh);
+    ctx.putImageData(strip, gxShift, gy);
+
+    // add some color offset
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = `rgba(255,60,60,${glitch * 0.3})`;
+    ctx.fillRect(gxShift + 2, gy, w, gh);
+    ctx.fillStyle = `rgba(60,255,60,${glitch * 0.2})`;
+    ctx.fillRect(gxShift - 2, gy, w, gh);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // RGB color shift at edges
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 0.15;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  // We'll do a simpler approach - just overlay shifted red/blue tints at corners
+  ctx.fillStyle = 'rgba(255,50,50,0.5)';
+  ctx.fillRect(0, 0, 3, h);
+  ctx.fillStyle = 'rgba(50,50,255,0.5)';
+  ctx.fillRect(w - 3, 0, 3, h);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  // vignette
+  if (vignette > 0) {
+    const vg = ctx.createRadialGradient(cx, cy, h * 0.3, cx, cy, h * 0.8);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, `rgba(0,0,0,${vignette * 0.9})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // curved edges (simulate CRT bulge with dark corner arcs)
+  ctx.fillStyle = '#000';
+  const curveR = 40;
+  // top-left
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(curveR, curveR, curveR, Math.PI, Math.PI * 1.5);
+  ctx.closePath();
+  ctx.fill();
+  // top-right
+  ctx.beginPath();
+  ctx.moveTo(w, 0);
+  ctx.arc(w - curveR, curveR, curveR, Math.PI * 1.5, 0);
+  ctx.closePath();
+  ctx.fill();
+  // bottom-left
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.arc(curveR, h - curveR, curveR, Math.PI * 0.5, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  // bottom-right
+  ctx.beginPath();
+  ctx.moveTo(w, h);
+  ctx.arc(w - curveR, h - curveR, curveR, 0, Math.PI * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* ===================== EFFECT: LIGHT RAYS (神光散射) ===================== */
+function initLightRays(s) {
+  // nothing to init
+}
+function drawLightRays(s, dt) {
+  const { ctx, w, h, params, time, mouse } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, w, h);
+
+  const beams = Math.floor(params.beams || 10);
+  const spread = params.spread || 60;
+  const speed = params.speed || 0.3;
+
+  const cx = w / 2 + (mouse.x - w/2) * 0.05;
+  const cy = h / 2 + (mouse.y - h/2) * 0.05;
+
+  // background ambient
+  const amb = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.5);
+  amb.addColorStop(0, 'rgba(255,233,60,0.08)');
+  amb.addColorStop(1, 'rgba(255,233,60,0)');
+  ctx.fillStyle = amb;
+  ctx.fillRect(0, 0, w, h);
+
+  const baseAngle = time * speed;
+  const spreadRad = (spread / 2) * Math.PI / 180;
+
+  // outer ring glow
+  const ringG = ctx.createRadialGradient(cx, cy, 0, cx, cy, 60);
+  ringG.addColorStop(0, 'rgba(255,233,60,0.8)');
+  ringG.addColorStop(0.5, 'rgba(255,233,60,0.3)');
+  ringG.addColorStop(1, 'rgba(255,233,60,0)');
+  ctx.fillStyle = ringG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+  ctx.fill();
+
+  // draw beams
+  ctx.globalCompositeOperation = 'screen';
+  const rayLen = Math.hypot(w, h);
+
+  for (let i = 0; i < beams; i++) {
+    const t = i / beams;
+    const angleOffset = t * Math.PI * 2 - Math.PI + Math.sin(time * 1.5 + i) * 0.1;
+    const breath = 0.7 + Math.sin(time * 2 + i * 0.7) * 0.3;
+    const beamSpread = spreadRad * breath * 0.5;
+
+    const startA = baseAngle + angleOffset - beamSpread;
+    const endA = baseAngle + angleOffset + beamSpread;
+
+    // create gradient beam as polygon wedge
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, rayLen, startA, endA);
+    ctx.closePath();
+
+    const beamGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rayLen);
+    beamGrad.addColorStop(0, `rgba(255,233,60,${0.4 * breath})`);
+    beamGrad.addColorStop(0.3, `rgba(255,122,26,${0.2 * breath})`);
+    beamGrad.addColorStop(1, 'rgba(255,233,60,0)');
+    ctx.fillStyle = beamGrad;
+    ctx.fill();
+  }
+
+  // add thin sharp rays
+  for (let i = 0; i < beams * 2; i++) {
+    const angle = baseAngle + (i / (beams * 2)) * Math.PI * 2 + Math.sin(time + i) * 0.05;
+    ctx.strokeStyle = `rgba(255,245,200,${0.15 + Math.sin(time * 3 + i) * 0.1})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * rayLen, cy + Math.sin(angle) * rayLen);
+    ctx.stroke();
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+
+  // center core
+  ctx.fillStyle = '#FFE93C';
+  ctx.shadowColor = '#FFE93C';
+  ctx.shadowBlur = 30;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#F5F2EA';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+/* ===================== EFFECT: PARALLAX (视差星层) ===================== */
+function initParallax(s) {
+  const layers = Math.floor(s.params.layers || 4);
+  const stars = Math.floor(s.params.stars || 80);
+  const layerData = [];
+  for (let l = 0; l < layers; l++) {
+    const arr = [];
+    for (let i = 0; i < stars; i++) {
+      arr.push({
+        x: rand(0, s.w),
+        y: rand(0, s.h),
+        size: rand(0.5, 2) * (l + 1) * 0.5 + 0.5,
+        twinkle: rand(0, Math.PI * 2),
+      });
+    }
+    layerData.push(arr);
+  }
+  s.data.layers = layerData;
+}
+function drawParallax(s, dt) {
+  const { ctx, w, h, params, mouse, time, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // bg
+  const bg = ctx.createRadialGradient(w*0.7, h*0.3, 0, w/2, h/2, w*0.8);
+  bg.addColorStop(0, '#1a1510');
+  bg.addColorStop(0.5, '#0e0e12');
+  bg.addColorStop(1, '#050507');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const layers = Math.floor(params.layers || 4);
+  const depth = params.depth || 0.8;
+  const starsCount = Math.floor(params.stars || 80);
+  const mx = (mouse.x - w / 2) / w;
+  const my = (mouse.y - h / 2) / h;
+
+  const layerData = data.layers;
+  // adjust layer count
+  while (layerData.length < layers) {
+    const arr = [];
+    for (let i = 0; i < starsCount; i++) {
+      arr.push({
+        x: rand(0, w), y: rand(0, h),
+        size: rand(0.5, 2) * (layerData.length + 1) * 0.5 + 0.5,
+        twinkle: rand(0, Math.PI * 2),
+      });
+    }
+    layerData.push(arr);
+  }
+  if (layerData.length > layers) layerData.length = layers;
+
+  // draw each layer
+  for (let l = 0; l < layerData.length; l++) {
+    const layer = layerData[l];
+    const layerDepth = (l + 1) / layers; // 0..1
+    const offsetX = -mx * depth * 30 * layerDepth;
+    const offsetY = -my * depth * 30 * layerDepth;
+
+    // adjust star count
+    while (layer.length < starsCount) {
+      layer.push({
+        x: rand(0, w), y: rand(0, h),
+        size: rand(0.5, 2) * layerDepth + 0.5,
+        twinkle: rand(0, Math.PI * 2),
+      });
+    }
+    if (layer.length > starsCount) layer.length = starsCount;
+
+    // color: copper for far, arc for near
+    const colorMix = layerDepth;
+    const r = Math.floor(lerp(255, 255, colorMix));
+    const g = Math.floor(lerp(122, 233, colorMix));
+    const b = Math.floor(lerp(26, 60, colorMix));
+
+    for (let i = 0; i < layer.length; i++) {
+      const star = layer[i];
+      const tw = 0.6 + Math.sin(time * 2 + star.twinkle) * 0.4;
+      const alpha = tw * (0.4 + layerDepth * 0.6);
+
+      const sx = star.x + offsetX;
+      const sy = star.y + offsetY;
+
+      // wrap around
+      const wx = ((sx % w) + w) % w;
+      const wy = ((sy % h) + h) % h;
+
+      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+      ctx.beginPath();
+      ctx.arc(wx, wy, star.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // larger stars get glow
+      if (star.size > 1.5) {
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(wx, wy, star.size * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // occasional shooting star
+  if (Math.random() < 0.003) {
+    if (!data.shootingStar) {
+      data.shootingStar = {
+        x: rand(0, w),
+        y: rand(0, h * 0.3),
+        vx: rand(3, 6),
+        vy: rand(1, 3),
+        life: 0,
+        maxLife: rand(40, 80),
+      };
+    }
+  }
+  if (data.shootingStar) {
+    const ss = data.shootingStar;
+    ss.life += dt * 0.05;
+    ss.x += ss.vx;
+    ss.y += ss.vy;
+    const alpha = 1 - ss.life / ss.maxLife;
+    ctx.strokeStyle = `rgba(255,233,60,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ss.x, ss.y);
+    ctx.lineTo(ss.x - ss.vx * 10, ss.y - ss.vy * 10);
+    ctx.stroke();
+    if (ss.life > ss.maxLife) data.shootingStar = null;
+  }
+}
+
+/* ===================== EFFECT: VOLTMETER (模拟电压表) ===================== */
+function initVoltmeter(s) {
+  // nothing
+}
+function drawVoltmeter(s, dt) {
+  const { ctx, w, h, params, time } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // background
+  const bg = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w*0.7);
+  bg.addColorStop(0, '#1a1a1e');
+  bg.addColorStop(1, '#0a0a0c');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const value = params.value || 65;
+  const flicker = params.flicker || 0.4;
+  const scaleCount = Math.floor(params.scale || 10);
+
+  const cx = w / 2;
+  const cy = h * 0.55;
+  const r = Math.min(w, h) * 0.38;
+
+  // meter body
+  ctx.save();
+  // outer ring
+  ctx.strokeStyle = 'rgba(245,242,234,0.2)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 10, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // bezel
+  const bezelG = ctx.createRadialGradient(cx, cy, r - 5, cx, cy, r + 15);
+  bezelG.addColorStop(0, '#2a2a30');
+  bezelG.addColorStop(0.5, '#18181c');
+  bezelG.addColorStop(1, '#0a0a0c');
+  ctx.fillStyle = bezelG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // face
+  ctx.fillStyle = '#0d0d10';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // arc angle range
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+  const totalAngle = endAngle - startAngle;
+
+  // arc track
+  ctx.strokeStyle = 'rgba(255,233,60,0.15)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 15, startAngle, endAngle);
+  ctx.stroke();
+
+  // scale marks
+  ctx.font = '10px "SF Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(245,242,234,0.6)';
+  for (let i = 0; i <= scaleCount; i++) {
+    const t = i / scaleCount;
+    const angle = startAngle + t * totalAngle;
+    const inner = r - 25;
+    const outer = r - 10;
+    const x1 = cx + Math.cos(angle) * inner;
+    const y1 = cy + Math.sin(angle) * inner;
+    const x2 = cx + Math.cos(angle) * outer;
+    const y2 = cy + Math.sin(angle) * outer;
+
+    // major every 5
+    const isMajor = i % Math.ceil(scaleCount / 5) === 0;
+    ctx.strokeStyle = isMajor ? 'rgba(255,233,60,0.8)' : 'rgba(245,242,234,0.4)';
+    ctx.lineWidth = isMajor ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    if (isMajor) {
+      const tx = cx + Math.cos(angle) * (r - 38);
+      const ty = cy + Math.sin(angle) * (r - 38);
+      ctx.fillStyle = 'rgba(245,242,234,0.7)';
+      ctx.font = '9px "SF Mono", monospace';
+      ctx.fillText(Math.round(t * 100), tx, ty + 3);
+    }
+  }
+
+  // danger zone (red arc)
+  const dangerStart = startAngle + 0.75 * totalAngle;
+  ctx.strokeStyle = 'rgba(255,122,26,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 15, dangerStart, endAngle);
+  ctx.stroke();
+
+  // needle
+  // smooth value with flicker
+  if (s.data.smoothVal === undefined) s.data.smoothVal = value;
+  s.data.smoothVal = lerp(s.data.smoothVal, value, 0.08);
+  const flickVal = s.data.smoothVal + (Math.random() - 0.5) * flicker * 5;
+  const valT = clamp(flickVal / 100, 0, 1);
+  const needleAngle = startAngle + valT * totalAngle;
+
+  const needleLen = r - 20;
+  const nx = cx + Math.cos(needleAngle) * needleLen;
+  const ny = cy + Math.sin(needleAngle) * needleLen;
+
+  // needle glow
+  ctx.strokeStyle = 'rgba(255,233,60,0.3)';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.stroke();
+
+  // needle core
+  ctx.strokeStyle = '#FFE93C';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#FFE93C';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // center cap
+  ctx.fillStyle = '#F5F2EA';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#FFE93C';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // value display
+  ctx.fillStyle = '#FFE93C';
+  ctx.font = 'bold 18px "SF Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#FFE93C';
+  ctx.shadowBlur = 10;
+  ctx.fillText(s.data.smoothVal.toFixed(1) + ' kV', cx, cy + r * 0.5);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '9px "SF Mono", monospace';
+  ctx.fillStyle = 'rgba(245,242,234,0.5)';
+  ctx.fillText('DC · 高压回路', cx, cy + r * 0.5 + 14);
+
+  ctx.restore();
+}
+
+/* ===================== EFFECT: PLASMA ORB (等离子球) ===================== */
+function initPlasmaOrb(s) {
+  s.data.bolts = [];
+  const count = Math.floor(s.params.bolts || 8);
+  for (let i = 0; i < count; i++) {
+    s.data.bolts.push(makeBolt(s));
+  }
+}
+function makeBolt(s) {
+  const angle = rand(0, Math.PI * 2);
+  return {
+    angle,
+    angleSpeed: rand(-0.3, 0.3),
+    targetAngle: angle + rand(-0.5, 0.5),
+    retargetIn: rand(0.5, 2),
+    reach: rand(0.4, 0.8),
+    targetReach: rand(0.4, 0.8),
+    life: 0,
+    maxLife: rand(1, 4),
+    points: [],
+    seed: rand(0, 1000),
+  };
+}
+function drawPlasmaOrb(s, dt) {
+  const { ctx, w, h, params, mouse, time, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#07070a';
+  ctx.fillRect(0, 0, w, h);
+
+  const boltsCount = Math.floor(params.bolts || 8);
+  const reach = params.reach || 0.7;
+  const speed = params.speed || 1.2;
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.4;
+
+  // adjust bolt count
+  while (data.bolts.length < boltsCount) data.bolts.push(makeBolt(s));
+  if (data.bolts.length > boltsCount) data.bolts.length = boltsCount;
+
+  // glass sphere glow
+  const glassG = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
+  glassG.addColorStop(0, 'rgba(255,233,60,0.02)');
+  glassG.addColorStop(0.8, 'rgba(255,122,26,0.05)');
+  glassG.addColorStop(1, 'rgba(255,233,60,0.08)');
+  ctx.fillStyle = glassG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // glass sphere outline
+  ctx.strokeStyle = 'rgba(245,242,234,0.1)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // inner core
+  const coreG = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.25);
+  coreG.addColorStop(0, 'rgba(255,245,200,0.9)');
+  coreG.addColorStop(0.3, 'rgba(255,233,60,0.6)');
+  coreG.addColorStop(1, 'rgba(255,122,26,0)');
+  ctx.fillStyle = coreG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  // draw bolts
+  for (let i = 0; i < data.bolts.length; i++) {
+    const b = data.bolts[i];
+    b.life += dt * 0.001 * speed;
+    b.retargetIn -= dt * 0.001 * speed;
+
+    if (b.retargetIn <= 0) {
+      b.targetAngle = b.angle + rand(-0.8, 0.8);
+      b.targetReach = rand(0.3, reach);
+      b.retargetIn = rand(0.3, 1.5);
+    }
+
+    b.angle = lerp(b.angle, b.targetAngle, 0.05);
+    b.reach = lerp(b.reach, b.targetReach, 0.03);
+
+    if (b.life > b.maxLife) {
+      // regenerate
+      const nb = makeBolt(s);
+      nb.angle = b.angle;
+      data.bolts[i] = nb;
+      continue;
+    }
+
+    // generate jagged bolt from core to edge
+    const endR = r * b.reach;
+    const segments = 8 + Math.floor(b.reach * 8);
+    const pts = [];
+    for (let j = 0; j <= segments; j++) {
+      const t = j / segments;
+      const rad = r * 0.2 + t * (endR - r * 0.2);
+      const angleJitter = (1 - t) * 0 + t * rand(-0.15, 0.15) * b.reach * 2;
+      const a = b.angle + angleJitter + Math.sin(t * 6 + b.seed + time * speed) * 0.05;
+      pts.push({
+        x: cx + Math.cos(a) * rad,
+        y: cy + Math.sin(a) * rad,
+      });
+    }
+
+    // draw bolt
+    const lifeT = b.life / b.maxLife;
+    const alpha = Math.sin(lifeT * Math.PI); // fade in-out
+
+    ctx.strokeStyle = `rgba(255,122,26,${0.2 * alpha})`;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255,233,60,${0.7 * alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.stroke();
+  }
+
+  // mouse attraction - bolts lean toward mouse
+  if (mouse.inside) {
+    const dx = mouse.x - cx;
+    const dy = mouse.y - cy;
+    const d = Math.hypot(dx, dy);
+    if (d < r) {
+      // add extra bolt going to mouse from core
+      const mouseAngle = Math.atan2(dy, dx);
+      const mouseReach = d / r;
+      const segments = 10;
+      const pts = [];
+      for (let j = 0; j <= segments; j++) {
+        const t = j / segments;
+        const rad = r * 0.2 + t * (d - r * 0.2);
+        const a = mouseAngle + rand(-0.08, 0.08) * (1 - t * 0.5);
+        pts.push({
+          x: cx + Math.cos(a) * rad,
+          y: cy + Math.sin(a) * rad,
+        });
+      }
+      ctx.strokeStyle = 'rgba(255,122,26,0.4)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+      ctx.stroke();
+      ctx.strokeStyle = '#FFE93C';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+      ctx.stroke();
+    }
+  }
+
+  // glass highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.2, cy - r * 0.2, r * 0.9, Math.PI * 1.2, Math.PI * 1.6);
+  ctx.stroke();
+}
+
+/* ===================== EFFECT: SPARK MATRIX (火花矩阵) ===================== */
+function initSparkMatrix(s) {
+  s.data.sparks = [];
+}
+function drawSparkMatrix(s, dt) {
+  const { ctx, w, h, params, time, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, w, h);
+
+  const density = Math.floor(params.density || 12);
+  const sparkCount = Math.floor(params.sparks || 6);
+  const speed = params.speed || 1.5;
+
+  const cols = density;
+  const rows = Math.round(density * (h / w));
+  const margin = 30;
+  const gridW = w - margin * 2;
+  const gridH = h - margin * 2;
+
+  // draw nodes
+  ctx.fillStyle = 'rgba(245,242,234,0.2)';
+  const nodePositions = [];
+  for (let j = 0; j <= rows; j++) {
+    for (let i = 0; i <= cols; i++) {
+      const x = margin + (i / cols) * gridW;
+      const y = margin + (j / rows) * gridH;
+      nodePositions.push({ x, y, i, j });
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const nPerRow = cols + 1;
+
+  // fade sparks
+  data.sparks = data.sparks.filter(sp => {
+    sp.life += dt * 0.002 * speed;
+    return sp.life < sp.maxLife;
+  });
+
+  // spawn sparks
+  while (data.sparks.length < sparkCount) {
+    // pick random node, then pick neighbor
+    const idx = randInt(0, nodePositions.length - 1);
+    const node = nodePositions[idx];
+    const neighbors = [];
+    if (node.i > 0) neighbors.push(idx - 1);
+    if (node.i < cols) neighbors.push(idx + 1);
+    if (node.j > 0) neighbors.push(idx - nPerRow);
+    if (node.j < rows) neighbors.push(idx + nPerRow);
+    if (neighbors.length === 0) continue;
+    const nIdx = neighbors[randInt(0, neighbors.length - 1)];
+    // sometimes chain further
+    const chain = [idx];
+    let cur = idx;
+    const chainLen = randInt(1, 4);
+    for (let c = 0; c < chainLen; c++) {
+      const cn = nodePositions[cur];
+      const nbs = [];
+      if (cn.i > 0 && chain[chain.length - 2] !== cur - 1) nbs.push(cur - 1);
+      if (cn.i < cols && chain[chain.length - 2] !== cur + 1) nbs.push(cur + 1);
+      if (cn.j > 0 && chain[chain.length - 2] !== cur - nPerRow) nbs.push(cur - nPerRow);
+      if (cn.j < rows && chain[chain.length - 2] !== cur + nPerRow) nbs.push(cur + nPerRow);
+      if (nbs.length === 0) break;
+      cur = nbs[randInt(0, nbs.length - 1)];
+      chain.push(cur);
+    }
+
+    data.sparks.push({
+      chain,
+      life: 0,
+      maxLife: rand(0.15, 0.6),
+      delay: rand(0, 0.3),
+      color: Math.random() < 0.7 ? 'arc' : 'copper',
+    });
+  }
+
+  // draw sparks
+  for (let sp of data.sparks) {
+    if (sp.life < sp.delay) continue;
+    const t = (sp.life - sp.delay) / (sp.maxLife - sp.delay);
+    if (t > 1) continue;
+    const alpha = Math.sin(t * Math.PI);
+
+    const color = sp.color === 'arc' ? [255, 233, 60] : [255, 122, 26];
+
+    // draw chain segments with progress
+    const totalSegs = sp.chain.length - 1;
+    const progress = t * totalSegs;
+    for (let seg = 0; seg < totalSegs; seg++) {
+      const segT = progress - seg;
+      if (segT <= 0) break;
+      const a = nodePositions[sp.chain[seg]];
+      const b = nodePositions[sp.chain[seg + 1]];
+      const endT = Math.min(1, segT);
+      const ex = lerp(a.x, b.x, endT);
+      const ey = lerp(a.y, b.y, endT);
+
+      // glow
+      ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${0.2 * alpha})`;
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      // head dot
+      ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+      ctx.shadowColor = `rgb(${color[0]},${color[1]},${color[2]})`;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // corner terminal labels
+  ctx.font = '10px "SF Mono", monospace';
+  ctx.fillStyle = 'rgba(255,233,60,0.5)';
+  ctx.textAlign = 'left';
+  ctx.fillText('+ HV', margin - 5, margin - 12);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,122,26,0.5)';
+  ctx.fillText('GND −', w - margin + 5, h - margin + 18);
+}
+
+/* ===================== EFFECT: MAGNETOSCOPE (磁力示波器) ===================== */
+function initMagnetoscope(s) {
+  // nothing
+}
+function drawMagnetoscope(s, dt) {
+  const { ctx, w, h, params, time, data } = s;
+  ctx.clearRect(0, 0, w, h);
+
+  // bg
+  ctx.fillStyle = '#0a0a0d';
+  ctx.fillRect(0, 0, w, h);
+
+  // CRT grid
+  ctx.strokeStyle = 'rgba(255,233,60,0.06)';
+  ctx.lineWidth = 1;
+  const gridSize = 30;
+  ctx.beginPath();
+  for (let x = 0; x < w; x += gridSize) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+  }
+  for (let y = 0; y < h; y += gridSize) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+
+  // center axis
+  ctx.strokeStyle = 'rgba(255,233,60,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.stroke();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgba(245,242,234,0.1)';
+  ctx.beginPath();
+  ctx.moveTo(w * 0.25, 0);
+  ctx.lineTo(w * 0.25, h);
+  ctx.moveTo(w * 0.75, 0);
+  ctx.lineTo(w * 0.75, h);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const waves = Math.floor(params.waves || 3);
+  const amp = params.amp || 40;
+  const freq = params.freq || 1.5;
+  const cy = h / 2;
+
+  const colors = [
+    [255, 233, 60],   // arc
+    [255, 122, 26],   // copper
+    [245, 242, 234],  // porcelain
+    [255, 200, 100],  // warm yellow
+    [200, 255, 200],  // mint
+    [255, 150, 100],  // orange peach
+  ];
+
+  for (let wi = 0; wi < waves; wi++) {
+    const c = colors[wi % colors.length];
+    const phaseOffset = wi * 0.7;
+    const ampMul = 1 - wi * 0.15;
+    const freqMul = 1 + wi * 0.3;
+
+    // trail fade
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.1)`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const t = x / w * Math.PI * 2 * freq * freqMul + time * freq + phaseOffset;
+      let y = Math.sin(t) * amp * ampMul;
+      y += Math.sin(t * 2.3 + phaseOffset) * amp * 0.2 * ampMul;
+      y += Math.sin(t * 0.7) * amp * 0.15 * ampMul;
+      if (x === 0) ctx.moveTo(x, cy + y);
+      else ctx.lineTo(x, cy + y);
+    }
+    ctx.stroke();
+
+    // main line
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.9)`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const t = x / w * Math.PI * 2 * freq * freqMul + time * freq + phaseOffset;
+      let y = Math.sin(t) * amp * ampMul;
+      y += Math.sin(t * 2.3 + phaseOffset) * amp * 0.2 * ampMul;
+      y += Math.sin(t * 0.7) * amp * 0.15 * ampMul;
+      if (x === 0) ctx.moveTo(x, cy + y);
+      else ctx.lineTo(x, cy + y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // scan dot
+    const dotX = (time * 80) % w;
+    const dotT = dotX / w * Math.PI * 2 * freq * freqMul + time * freq + phaseOffset;
+    let dotY = Math.sin(dotT) * amp * ampMul;
+    dotY += Math.sin(dotT * 2.3 + phaseOffset) * amp * 0.2 * ampMul;
+    dotY += Math.sin(dotT * 0.7) * amp * 0.15 * ampMul;
+
+    ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.9)`;
+    ctx.shadowColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(dotX, cy + dotY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // scope label
+  ctx.font = '9px "SF Mono", monospace';
+  ctx.fillStyle = 'rgba(255,233,60,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('CH1 CH2 CH3  EXT TRIG', 10, 18);
+  ctx.fillText('TIME/DIV  1ms', 10, h - 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('VOLTS/DIV  5V', w - 10, h - 10);
+
+  // moving scan line flicker
+  const scanX = (time * 100) % w;
+  ctx.strokeStyle = 'rgba(255,233,60,0.1)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(scanX, 0);
+  ctx.lineTo(scanX, h);
+  ctx.stroke();
+}
+
+/* ===================== UPGRADE ANNOUNCEMENT ===================== */
+(function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) {}
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+})();
+
+/* ===================== INIT LOG ===================== */
+console.log('%c ARC LAB V3.0 ', 'background:#FFE93C;color:#0E0E10;font-weight:bold;padding:4px 8px;', '14 effects loaded');
+</script>
+</body>
+</html>
