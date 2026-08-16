@@ -1,0 +1,2055 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>FLUXA · 墨流光影炫技实验室</title>
+<style>
+  /* ========== RESET & BASE ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #0a0a0a;
+    color: #e8e4d8;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: none; }
+  canvas { display: block; }
+
+  /* ========== COLOR TOKENS ========== */
+  :root {
+    --ink-0: #050505;
+    --ink-1: #0c0c0c;
+    --ink-2: #151514;
+    --ink-3: #1f1e1b;
+    --ink-4: #2a2824;
+    --gold: #d4a853;
+    --gold-bright: #f0d080;
+    --gold-deep: #9a7a32;
+    --cyan: #4ac6c0;
+    --cyan-bright: #7ee8e3;
+    --cyan-deep: #1f6b68;
+    --text: #e8e4d8;
+    --text-dim: #9a9484;
+    --text-faint: #5a564a;
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  .cursor-ring, .cursor-dot, .cursor-glow {
+    position: fixed;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    will-change: transform;
+  }
+  .cursor-ring {
+    width: 28px; height: 28px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255,255,255,0.4), inset 0 0 6px rgba(255,255,255,0.2);
+    transition: width .25s cubic-bezier(.2,.8,.2,1), height .25s cubic-bezier(.2,.8,.2,1),
+                border-color .25s, background .25s, border-width .25s;
+  }
+  .cursor-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--gold-bright);
+    box-shadow: 0 0 10px var(--gold), 0 0 20px rgba(212,168,83,.5);
+    transition: background .2s, width .2s, height .2s, box-shadow .2s;
+  }
+  .cursor-glow {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(74,198,192,.12) 0%, transparent 70%);
+    transition: width .4s, height .4s, opacity .4s;
+    opacity: .6;
+  }
+  .cursor-hover .cursor-ring {
+    width: 44px; height: 44px;
+    border-color: var(--gold-bright);
+    background: rgba(212,168,83,.08);
+  }
+  .cursor-hover .cursor-dot {
+    background: var(--cyan-bright);
+    box-shadow: 0 0 12px var(--cyan), 0 0 24px rgba(74,198,192,.6);
+  }
+  .cursor-click .cursor-ring {
+    width: 56px; height: 56px;
+    border-color: var(--cyan-bright);
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 10px; height: 10px;
+    border: 1.5px solid var(--gold-bright);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+    animation: ripple .6s cubic-bezier(.15,.85,.3,1) forwards;
+  }
+  @keyframes ripple {
+    0%   { width: 10px; height: 10px; opacity: .9; border-width: 2px; }
+    100% { width: 80px; height: 80px; opacity: 0; border-width: .5px; }
+  }
+
+  /* ========== APP LAYOUT ========== */
+  .app {
+    position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: var(--ink-0);
+  }
+
+  /* grain overlay */
+  .grain {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    opacity: .04;
+    z-index: 100;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  /* ========== HEADER ========== */
+  .header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 68px;
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 50;
+    border-bottom: 1px solid rgba(212,168,83,.08);
+  }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 300; letter-spacing: .25em;
+  }
+  .logo-mark {
+    width: 32px; height: 32px;
+    border: 1.5px solid var(--gold);
+    border-radius: 50%;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark::after {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--cyan-bright);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan);
+  }
+  .logo-text { font-size: 18px; color: var(--text); }
+  .logo-text em { font-style: normal; color: var(--gold); font-weight: 500; }
+  .logo-sub { font-size: 11px; color: var(--text-dim); letter-spacing: .3em; }
+
+  .header-stats {
+    display: flex; gap: 32px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .1em;
+  }
+  .stat { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .stat-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; }
+  .stat-value { color: var(--gold-bright); font-family: "JetBrains Mono", "SF Mono", monospace; font-size: 13px; }
+
+  /* ========== ZONE NAV (left rail) ========== */
+  .zone-nav {
+    position: absolute;
+    left: 40px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 50;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .zone-btn {
+    width: 160px;
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+    text-align: left;
+    border-left: 2px solid transparent;
+    color: var(--text-dim);
+    transition: color .3s, border-color .3s, background .3s;
+    position: relative;
+  }
+  .zone-btn:hover { color: var(--text); border-left-color: var(--gold-deep); }
+  .zone-btn.active { color: var(--gold-bright); border-left-color: var(--gold); }
+  .zone-num {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    width: 28px;
+    transition: color .3s;
+  }
+  .zone-btn.active .zone-num { color: var(--cyan); }
+  .zone-name { font-size: 13px; letter-spacing: .05em; }
+
+  /* ========== ZONE CONTAINER ========== */
+  .zone-stage {
+    position: absolute;
+    left: 220px;
+    right: 0;
+    top: 68px;
+    bottom: 60px;
+    overflow: hidden;
+  }
+  .zone {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .6s cubic-bezier(.2,.8,.2,1);
+  }
+  .zone.active { opacity: 1; pointer-events: auto; }
+  .zone-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* zone title plate */
+  .zone-plate {
+    position: absolute;
+    top: 32px; right: 32px;
+    text-align: right;
+    z-index: 5;
+  }
+  .zone-plate h2 {
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: .2em;
+    color: var(--text);
+  }
+  .zone-plate h2 em { font-style: normal; color: var(--gold); }
+  .zone-plate .zone-tag {
+    font-size: 11px;
+    letter-spacing: .3em;
+    color: var(--cyan);
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+  .zone-plate .zone-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 12px;
+    max-width: 260px;
+    margin-left: auto;
+    line-height: 1.7;
+  }
+
+  /* ========== BOTTOM BAR ========== */
+  .bottom-bar {
+    position: absolute;
+    bottom: 0; left: 220px; right: 0;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    border-top: 1px solid rgba(212,168,83,.06);
+    z-index: 50;
+  }
+  .hint {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--text-dim);
+    letter-spacing: .05em;
+  }
+  .hint-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .3; }
+  }
+  .controls-group {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .ctrl-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--ink-4);
+    border-radius: 2px;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: .1em;
+    transition: all .3s;
+  }
+  .ctrl-btn:hover { border-color: var(--gold-deep); color: var(--gold-bright); }
+  .ctrl-btn.active { border-color: var(--gold); color: var(--gold-bright); background: rgba(212,168,83,.05); }
+
+  /* ========== ZONE 1: INK FLOW ========== */
+  .ink-info {
+    position: absolute;
+    bottom: 32px; left: 32px;
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: "JetBrains Mono", monospace;
+    letter-spacing: .08em;
+    z-index: 5;
+    line-height: 2;
+  }
+  .ink-info span { color: var(--gold); }
+
+  /* ========== ZONE 2: MAGNETIC TEXT ========== */
+  .mag-text-wrap {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .mag-letter {
+    display: inline-block;
+    font-size: clamp(60px, 12vw, 180px);
+    font-weight: 200;
+    letter-spacing: .05em;
+    color: var(--text);
+    will-change: transform;
+    transition: none;
+  }
+  .mag-letter.gold { color: var(--gold); text-shadow: 0 0 30px rgba(212,168,83,.3); }
+  .mag-letter.cyan { color: var(--cyan); text-shadow: 0 0 30px rgba(74,198,192,.3); }
+
+  /* ========== ZONE 3: LIGHT RIBBON ========== */
+  .ribbon-preset {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 8px;
+    z-index: 5;
+  }
+  .preset-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--ink-4);
+    transition: transform .3s, border-color .3s;
+  }
+  .preset-dot:hover { transform: scale(1.2); border-color: var(--gold); }
+  .preset-dot.active { border-color: var(--gold-bright); }
+
+  /* ========== ZONE 4: AUDIO SPECTRUM ========== */
+  .audio-controls {
+    position: absolute;
+    top: 32px; left: 32px;
+    display: flex; flex-direction: column; gap: 16px;
+    z-index: 5;
+  }
+  .audio-track-btn {
+    padding: 12px 20px;
+    border: 1px solid var(--ink-4);
+    border-left: 2px solid var(--gold-deep);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: .1em;
+    text-align: left;
+    min-width: 160px;
+    transition: all .3s;
+  }
+  .audio-track-btn:hover { border-color: var(--gold); color: var(--text); }
+  .audio-track-btn.playing { border-color: var(--gold); color: var(--gold-bright); background: rgba(212,168,83,.05); }
+  .audio-track-btn small {
+    display: block;
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 3px;
+    letter-spacing: .15em;
+  }
+
+  /* ========== ZONE 5: PARALLAX ========== */
+  .parallax-scene {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    perspective: 1000px;
+  }
+  .parallax-layer {
+    position: absolute; inset: -20px;
+    will-change: transform;
+  }
+  .parallax-stars {
+    position: absolute;
+    width: 100%; height: 100%;
+  }
+  .pstar {
+    position: absolute;
+    background: #fff;
+    border-radius: 50%;
+    opacity: .8;
+  }
+  .parallax-mountain {
+    position: absolute;
+    bottom: 0;
+    width: 120%; left: -10%;
+    height: 45%;
+  }
+  .parallax-mountain svg { width: 100%; height: 100%; }
+  .parallax-pavilion {
+    position: absolute;
+    bottom: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 160px;
+  }
+  .parallax-moon {
+    position: absolute;
+    top: 15%; right: 18%;
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--gold-bright), var(--gold-deep) 60%, #5a4520);
+    box-shadow: 0 0 60px rgba(212,168,83,.4), 0 0 120px rgba(212,168,83,.15);
+  }
+
+  /* ========== ZONE 6: CRT FRAME ========== */
+  .crt-stage {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 60px;
+  }
+  .crt-frame {
+    position: relative;
+    width: 100%; max-width: 900px;
+    aspect-ratio: 4 / 3;
+    background: var(--ink-1);
+    border: 3px solid var(--ink-3);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(212,168,83,.1),
+      0 30px 80px rgba(0,0,0,.6),
+      inset 0 0 80px rgba(0,0,0,.8);
+  }
+  .crt-screen {
+    position: absolute; inset: 0;
+    overflow: hidden;
+  }
+  .crt-content {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    background: radial-gradient(ellipse at center, #0a1a1a 0%, #030808 100%);
+  }
+  .crt-title {
+    font-size: 52px;
+    font-weight: 200;
+    letter-spacing: .3em;
+    color: var(--cyan-bright);
+    text-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(74,198,192,.5);
+  }
+  .crt-sub {
+    font-size: 13px;
+    color: var(--gold);
+    letter-spacing: .4em;
+  }
+  .crt-osc {
+    width: 70%; height: 80px;
+    margin-top: 20px;
+  }
+  .crt-scanlines {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,.25) 3px,
+      rgba(0,0,0,0) 4px
+    );
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 3;
+  }
+  .crt-flicker {
+    position: absolute; inset: 0;
+    background: rgba(74,198,192,.03);
+    pointer-events: none;
+    z-index: 4;
+    animation: crt-flicker 4s steps(60) infinite;
+  }
+  @keyframes crt-flicker {
+    0%, 100% { opacity: .3; }
+    50% { opacity: .8; }
+    52% { opacity: .2; }
+    54% { opacity: .6; }
+  }
+  .crt-vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.8) 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .crt-glow {
+    position: absolute; inset: -2px;
+    border-radius: 12px;
+    border: 1px solid rgba(74,198,192,.2);
+    box-shadow: inset 0 0 30px rgba(74,198,192,.1);
+    pointer-events: none;
+    z-index: 6;
+  }
+  .crt-knobs {
+    position: absolute;
+    bottom: 16px; right: 20px;
+    display: flex; gap: 12px;
+    z-index: 7;
+  }
+  .crt-knob {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--ink-4);
+    background: var(--ink-2);
+    position: relative;
+    transition: border-color .3s;
+    cursor: none;
+  }
+  .crt-knob:hover { border-color: var(--gold); }
+  .crt-knob::after {
+    content: "";
+    position: absolute;
+    top: 4px; left: 50%;
+    width: 2px; height: 8px;
+    background: var(--gold);
+    transform: translateX(-50%);
+  }
+  .crt-knob.active { border-color: var(--gold-bright); }
+  .crt-brand {
+    position: absolute;
+    bottom: 20px; left: 24px;
+    font-size: 10px;
+    letter-spacing: .4em;
+    color: var(--text-faint);
+    z-index: 7;
+  }
+
+  /* ========== ZONE 7: PARTICLE NEBULA ========== */
+  .particle-info {
+    position: absolute;
+    bottom: 32px; left: 32px;
+    font-size: 11px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--text-faint);
+    letter-spacing: .08em;
+    z-index: 5;
+    line-height: 2;
+  }
+  .particle-info span { color: var(--cyan); }
+
+  /* ========== REDUCED MOTION ========== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    .cursor-glow { display: none; }
+    .zone { transition: none; }
+  }
+
+  /* ========== SCROLL BAR (none) ========== */
+  ::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- grain overlay -->
+  <div class="grain"></div>
+
+  <!-- custom cursor -->
+  <div class="cursor-glow" id="cursorGlow"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="cursor-dot" id="cursorDot"></div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <div>
+        <div class="logo-text"><em>FLUX</em>A</div>
+        <div class="logo-sub">墨流光影实验室 · V3</div>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat">
+        <span class="stat-label">FPS</span>
+        <span class="stat-value" id="fpsValue">60</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">EXHIBITS</span>
+        <span class="stat-value" id="zoneCount">07</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">SESSION</span>
+        <span class="stat-value" id="sessionTime">00:00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- LEFT ZONE NAV -->
+  <nav class="zone-nav" id="zoneNav">
+    <button class="zone-btn active" data-zone="0">
+      <span class="zone-num">01</span>
+      <span class="zone-name">墨流流体场</span>
+    </button>
+    <button class="zone-btn" data-zone="1">
+      <span class="zone-num">02</span>
+      <span class="zone-name">磁力文字解构</span>
+    </button>
+    <button class="zone-btn" data-zone="2">
+      <span class="zone-num">03</span>
+      <span class="zone-name">光绘丝带拖尾</span>
+    </button>
+    <button class="zone-btn" data-zone="3">
+      <span class="zone-num">04</span>
+      <span class="zone-name">音频频谱可视化</span>
+    </button>
+    <button class="zone-btn" data-zone="4">
+      <span class="zone-num">05</span>
+      <span class="zone-name">多层视差幻境</span>
+    </button>
+    <button class="zone-btn" data-zone="5">
+      <span class="zone-num">06</span>
+      <span class="zone-name">CRT 扫描线画框</span>
+    </button>
+    <button class="zone-btn" data-zone="6">
+      <span class="zone-num">07</span>
+      <span class="zone-name">粒子星云引力</span>
+    </button>
+  </nav>
+
+  <!-- ZONE STAGE -->
+  <main class="zone-stage" id="zoneStage">
+
+    <!-- ZONE 1: INK FLOW -->
+    <section class="zone active" id="zone-0">
+      <canvas class="zone-canvas" id="inkCanvas"></canvas>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 01</div>
+        <h2>墨流<em>流体场</em></h2>
+        <p class="zone-desc">移动鼠标搅动墨色流体，感受鎏金与冷青在暗夜中的交融与弥散。点击可注入新的墨滴。</p>
+      </div>
+      <div class="ink-info">
+        PARTICLES: <span id="inkCount">0</span><br/>
+        VELOCITY: <span id="inkVel">0.00</span>
+      </div>
+    </section>
+
+    <!-- ZONE 2: MAGNETIC TEXT -->
+    <section class="zone" id="zone-1">
+      <canvas class="zone-canvas" id="magCanvas"></canvas>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 02</div>
+        <h2>磁力<em>文字解构</em></h2>
+        <p class="zone-desc">文字粒子在磁场中漂移、重组。鼠标靠近时斥力推开，远离时弹性归位。</p>
+      </div>
+      <div class="ink-info" style="bottom:32px;left:32px;">
+        PARTICLES: <span id="magCount">0</span><br/>
+        REPEL FORCE: <span id="magForce">6000</span>
+      </div>
+    </section>
+
+    <!-- ZONE 3: LIGHT RIBBON -->
+    <section class="zone" id="zone-2">
+      <canvas class="zone-canvas" id="ribbonCanvas"></canvas>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 03</div>
+        <h2>光绘<em>丝带拖尾</em></h2>
+        <p class="zone-desc">以光标为笔，在暗夜中绘出鎏金与冷青交织的光带。选不同预设看色带变化。</p>
+      </div>
+      <div class="ribbon-preset" id="ribbonPresets">
+        <button class="preset-dot active" data-preset="0" style="background: linear-gradient(135deg,#d4a853,#f0d080)"></button>
+        <button class="preset-dot" data-preset="1" style="background: linear-gradient(135deg,#4ac6c0,#7ee8e3)"></button>
+        <button class="preset-dot" data-preset="2" style="background: linear-gradient(135deg,#d4a853,#4ac6c0)"></button>
+        <button class="preset-dot" data-preset="3" style="background: linear-gradient(135deg,#fff,#d4a853)"></button>
+      </div>
+    </section>
+
+    <!-- ZONE 4: AUDIO SPECTRUM -->
+    <section class="zone" id="zone-3">
+      <canvas class="zone-canvas" id="specCanvas"></canvas>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 04</div>
+        <h2>音频<em>频谱可视化</em></h2>
+        <p class="zone-desc">选择音轨，聆听鎏金之声在频谱柱上起伏跳动。也可直接对麦克风发声。</p>
+      </div>
+      <div class="audio-controls">
+        <button class="audio-track-btn" data-track="0">
+          脉冲节律
+          <small>PULSE RHYTHM</small>
+        </button>
+        <button class="audio-track-btn" data-track="1">
+          墨流夜曲
+          <small>INK NOCTURNE</small>
+        </button>
+        <button class="audio-track-btn" data-track="2">
+          金属共鸣
+          <small>METAL RESONANCE</small>
+        </button>
+        <button class="audio-track-btn" data-track="mic">
+          麦克风输入
+          <small>MIC INPUT</small>
+        </button>
+      </div>
+    </section>
+
+    <!-- ZONE 5: PARALLAX -->
+    <section class="zone" id="zone-4">
+      <div class="parallax-scene" id="parallaxScene">
+        <div class="parallax-layer" data-depth="0.05">
+          <div class="parallax-moon"></div>
+        </div>
+        <div class="parallax-layer" data-depth="0.15">
+          <div class="parallax-stars" id="starsFar"></div>
+        </div>
+        <div class="parallax-layer" data-depth="0.3">
+          <div class="parallax-stars" id="starsMid"></div>
+        </div>
+        <div class="parallax-layer" data-depth="0.5">
+          <div class="parallax-mountain" style="opacity:.4">
+            <svg viewBox="0 0 1200 300" preserveAspectRatio="none">
+              <path d="M0,300 L0,180 L120,80 L220,140 L340,40 L460,130 L580,60 L700,150 L820,70 L940,160 L1060,90 L1200,170 L1200,300 Z"
+                fill="rgba(20,22,24,0.9)" stroke="rgba(212,168,83,0.15)" stroke-width="1"/>
+            </svg>
+          </div>
+        </div>
+        <div class="parallax-layer" data-depth="0.7">
+          <div class="parallax-mountain" style="height:35%; bottom:0; opacity:.7">
+            <svg viewBox="0 0 1200 250" preserveAspectRatio="none">
+              <path d="M0,250 L0,160 L80,100 L180,130 L280,50 L400,120 L520,70 L640,140 L760,80 L880,150 L1000,100 L1120,160 L1200,120 L1200,250 Z"
+                fill="rgba(12,14,16,0.95)" stroke="rgba(74,198,192,0.12)" stroke-width="1"/>
+            </svg>
+          </div>
+        </div>
+        <div class="parallax-layer" data-depth="0.9">
+          <div class="parallax-pavilion">
+            <svg viewBox="0 0 200 160" fill="none">
+              <!-- pagoda silhouette -->
+              <path d="M100 10 L60 40 L140 40 Z" fill="#d4a853" opacity=".8"/>
+              <path d="M50 40 L150 40 L140 50 L60 50 Z" fill="#d4a853" opacity=".7"/>
+              <path d="M70 50 L130 50 L120 60 L80 60 Z" fill="#9a7a32"/>
+              <path d="M60 60 L140 60 L140 68 L60 68 Z" fill="#d4a853" opacity=".6"/>
+              <path d="M75 68 L125 68 L125 110 L75 110 Z" fill="#1a1a1a" stroke="#d4a853" stroke-width=".5"/>
+              <rect x="90" y="80" width="20" height="30" fill="#f0d080" opacity=".3"/>
+              <path d="M55 110 L145 110 L150 120 L50 120 Z" fill="#d4a853" opacity=".5"/>
+              <path d="M70 120 L130 120 L130 150 L70 150 Z" fill="#151514" stroke="#4ac6c0" stroke-width=".5" opacity=".5"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 05</div>
+        <h2>多层<em>视差幻境</em></h2>
+        <p class="zone-desc">七层视差叠构的东方夜境。移动鼠标，看山峦、星空与孤亭在景深中错落流动。</p>
+      </div>
+    </section>
+
+    <!-- ZONE 6: CRT -->
+    <section class="zone" id="zone-5">
+      <div class="crt-stage">
+        <div class="crt-frame">
+          <div class="crt-screen">
+            <div class="crt-content" id="crtContent">
+              <div class="crt-title">FLUXA</div>
+              <div class="crt-sub">墨流光影实验室</div>
+              <canvas class="crt-osc" id="crtOsc"></canvas>
+            </div>
+            <div class="crt-scanlines" id="crtScanlines"></div>
+            <div class="crt-flicker" id="crtFlicker"></div>
+            <div class="crt-vignette"></div>
+            <div class="crt-glow"></div>
+            <div class="crt-brand">FLUXA · CRT-2077</div>
+            <div class="crt-knobs">
+              <div class="crt-knob active" id="crtKnob1" title="对比度"></div>
+              <div class="crt-knob" id="crtKnob2" title="扫描线"></div>
+              <div class="crt-knob" id="crtKnob3" title="辉光"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 06</div>
+        <h2>CRT<em>扫描线画框</em></h2>
+        <p class="zone-desc">复古显像管滤镜。调节旋钮改变扫描线密度、辉光与对比度，感受旧时代的荧光质感。</p>
+      </div>
+    </section>
+
+    <!-- ZONE 7: PARTICLE NEBULA -->
+    <section class="zone" id="zone-6">
+      <canvas class="zone-canvas" id="nebCanvas"></canvas>
+      <div class="zone-plate">
+        <div class="zone-tag">Exhibit · 07</div>
+        <h2>粒子<em>星云引力</em></h2>
+        <p class="zone-desc">数千个粒子在引力井与斥力场间漂浮。鼠标吸附粒子形成星云，点击产生冲击波。</p>
+      </div>
+      <div class="particle-info">
+        PARTICLES: <span id="nebCount">0</span><br/>
+        ATTRACTORS: <span id="nebAttr">01</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTTOM BAR -->
+  <footer class="bottom-bar">
+    <div class="hint">
+      <span class="hint-dot"></span>
+      <span id="zoneHint">移动鼠标搅动墨流 · 点击注入墨滴</span>
+    </div>
+    <div class="controls-group">
+      <button class="ctrl-btn" id="btnPrev">← 上一区</button>
+      <button class="ctrl-btn" id="btnNext">下一区 →</button>
+      <button class="ctrl-btn" id="btnPause">⏸ 暂停</button>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+/* ============================================================
+   FLUXA · 墨流光影炫技实验室
+   Single-file vanilla JS. All RAF loops respect visibilitychange.
+   ============================================================ */
+(function() {
+  'use strict';
+
+  // ---- utilities ----
+  const $ = (s, el=document) => el.querySelector(s);
+  const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const TAU = Math.PI * 2;
+
+  // ---- reduced motion ----
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- global RAF management ----
+  const rafRegistry = new Set();
+  let globalPaused = false;
+  let lastTime = performance.now();
+
+  function registerRAF(fn) {
+    rafRegistry.add(fn);
+  }
+  function unregisterRAF(fn) {
+    rafRegistry.delete(fn);
+  }
+
+  function tick(now) {
+    const dt = Math.min(50, now - lastTime); // clamp at 50ms to avoid jumps
+    lastTime = now;
+    if (!globalPaused && !document.hidden) {
+      rafRegistry.forEach(fn => fn(dt, now));
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // visibility change: pause all animation work
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      globalPaused = true;
+    } else {
+      globalPaused = false;
+      lastTime = performance.now();
+    }
+  });
+
+  // ---- FPS counter ----
+  let fpsFrames = 0, fpsLast = performance.now(), fpsVal = 60;
+  registerRAF((dt, now) => {
+    fpsFrames++;
+    if (now - fpsLast > 500) {
+      fpsVal = Math.round(fpsFrames * 1000 / (now - fpsLast));
+      const el = document.getElementById('fpsValue');
+      if (el) el.textContent = String(fpsVal).padStart(2, '0');
+      fpsFrames = 0;
+      fpsLast = now;
+    }
+  });
+
+  // ---- session timer ----
+  let sessionSec = 0;
+  setInterval(() => {
+    if (document.hidden) return;
+    sessionSec++;
+    const m = String(Math.floor(sessionSec / 60)).padStart(2, '0');
+    const s = String(sessionSec % 60).padStart(2, '0');
+    const el = document.getElementById('sessionTime');
+    if (el) el.textContent = `${m}:${s}`;
+  }, 1000);
+
+  /* ============================================================
+     CUSTOM CURSOR
+     ============================================================ */
+  const cursorRing = document.getElementById('cursorRing');
+  const cursorDot = document.getElementById('cursorDot');
+  const cursorGlow = document.getElementById('cursorGlow');
+  const app = document.getElementById('app');
+
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let curRingX = mouseX, curRingY = mouseY;
+  let curGlowX = mouseX, curGlowY = mouseY;
+  let curDotX = mouseX, curDotY = mouseY;
+
+  // show cursor in center immediately
+  updateCursorDom(mouseX, mouseY, mouseX, mouseY, mouseX, mouseY);
+
+  document.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  });
+
+  // cursor physics: ring has lag (inertia), dot follows tighter, glow slowest
+  registerRAF((dt) => {
+    if (reduced) {
+      curRingX = curRingY = mouseX; curRingY = mouseY;
+      curDotX = mouseX; curDotY = mouseY;
+      curGlowX = mouseX; curGlowY = mouseY;
+    } else {
+      const k = dt / 16; // normalize to 60fps
+      curRingX = lerp(curRingX, mouseX, 0.18 * k);
+      curRingY = lerp(curRingY, mouseY, 0.18 * k);
+      curDotX = lerp(curDotX, mouseX, 0.35 * k);
+      curDotY = lerp(curDotY, mouseY, 0.35 * k);
+      curGlowX = lerp(curGlowX, mouseX, 0.06 * k);
+      curGlowY = lerp(curGlowY, mouseY, 0.06 * k);
+    }
+    updateCursorDom(curRingX, curRingY, curDotX, curDotY, curGlowX, curGlowY);
+  });
+
+  function updateCursorDom(rx, ry, dx, dy, gx, gy) {
+    cursorRing.style.transform = `translate(${rx}px, ${ry}px) translate(-50%, -50%)`;
+    cursorDot.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
+    cursorGlow.style.transform = `translate(${gx}px, ${gy}px) translate(-50%, -50%)`;
+  }
+
+  // hover state via event delegation
+  const HOVER_SEL = 'button, .crt-knob, .zone-btn, .preset-dot, .audio-track-btn, .ctrl-btn';
+  document.addEventListener('mouseover', (e) => {
+    if (e.target.closest(HOVER_SEL)) {
+      document.body.classList.add('cursor-hover');
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest(HOVER_SEL)) {
+      document.body.classList.remove('cursor-hover');
+    }
+  });
+
+  // click ripple
+  document.addEventListener('mousedown', (e) => {
+    document.body.classList.add('cursor-click');
+    const r = document.createElement('div');
+    r.className = 'cursor-ripple';
+    r.style.left = e.clientX + 'px';
+    r.style.top = e.clientY + 'px';
+    document.body.appendChild(r);
+    setTimeout(() => r.remove(), 650);
+  });
+  document.addEventListener('mouseup', () => {
+    setTimeout(() => document.body.classList.remove('cursor-click'), 200);
+  });
+
+  // hide native cursor already set via CSS; also handle touch
+  document.addEventListener('touchstart', () => {
+    document.body.style.cursor = 'auto';
+    cursorRing.style.display = 'none';
+    cursorDot.style.display = 'none';
+    cursorGlow.style.display = 'none';
+  }, { passive: true });
+
+  /* ============================================================
+     ZONE SWITCHING
+     ============================================================ */
+  const zones = $$('.zone');
+  const zoneBtns = $$('.zone-btn');
+  let currentZone = 0;
+  const zoneHints = [
+    '移动鼠标搅动墨流 · 点击注入墨滴',
+    '移动鼠标靠近文字感受磁力斥力',
+    '拖动鼠标绘出光带 · 选择下方预设',
+    '点击音轨播放 · 观察频谱柱跳动',
+    '移动鼠标探索多层视差幻境',
+    '调节旋钮改变扫描线与辉光效果',
+    '移动鼠标吸附粒子 · 点击释放冲击波'
+  ];
+
+  function setZone(idx) {
+    idx = clamp(idx, 0, zones.length - 1);
+    if (idx === currentZone) return;
+    zones[currentZone].classList.remove('active');
+    zoneBtns[currentZone].classList.remove('active');
+    currentZone = idx;
+    zones[currentZone].classList.add('active');
+    zoneBtns[currentZone].classList.add('active');
+    $('#zoneHint').textContent = zoneHints[idx];
+    // notify zone modules
+    window.dispatchEvent(new CustomEvent('zonechange', { detail: { index: idx } }));
+  }
+
+  zoneBtns.forEach(btn => {
+    btn.addEventListener('click', () => setZone(+btn.dataset.zone));
+  });
+  $('#btnPrev').addEventListener('click', () => setZone(currentZone - 1));
+  $('#btnNext').addEventListener('click', () => setZone(currentZone + 1));
+
+  // keyboard
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') setZone(currentZone - 1);
+    else if (e.key === 'ArrowRight') setZone(currentZone + 1);
+    else if (e.key === ' ') { e.preventDefault(); togglePause(); }
+  });
+
+  let paused = false;
+  function togglePause() {
+    paused = !paused;
+    globalPaused = paused;
+    $('#btnPause').textContent = paused ? '▶ 继续' : '⏸ 暂停';
+  }
+  $('#btnPause').addEventListener('click', togglePause);
+
+  /* ============================================================
+     ZONE 1: INK FLOW FLUID FIELD
+     Particles flowing on a simplex-ish noise field,
+     mouse adds velocity disturbance (inverse-square repulsion + swirl).
+     ============================================================ */
+  (function inkFlow() {
+    const canvas = document.getElementById('inkCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // particle pool
+    const PARTICLE_COUNT = reduced ? 200 : 600;
+    const particles = [];
+    const COLORS = [
+      'rgba(212, 168, 83, ',   // gold
+      'rgba(74, 198, 192, ',   // cyan
+      'rgba(240, 208, 128, ',  // gold bright
+      'rgba(126, 232, 227, ',  // cyan bright
+      'rgba(255, 255, 255, ',  // white
+    ];
+
+    class InkParticle {
+      constructor() { this.reset(true); }
+      reset(initial=false) {
+        this.x = Math.random() * W;
+        this.y = Math.random() * H;
+        this.vx = 0; this.vy = 0;
+        this.life = initial ? Math.random() * 200 : 0;
+        this.maxLife = 150 + Math.random() * 250;
+        this.size = 1 + Math.random() * 3;
+        this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        this.speed = 0.2 + Math.random() * 0.6;
+      }
+    }
+    for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new InkParticle());
+
+    // noise field (cheap pseudo-noise from layered sines)
+    function noise2D(x, y, t) {
+      const s = 0.004;
+      let v = 0;
+      v += Math.sin(x * s + t * 0.0003) * Math.cos(y * s * 0.8 + t * 0.0002);
+      v += Math.sin(x * s * 2.1 + t * 0.0005) * Math.cos(y * s * 1.7 + t * 0.0004) * 0.5;
+      v += Math.sin(x * s * 0.5 + 1.3) * Math.cos(y * s * 0.6 + 2.1) * 0.3;
+      return v;
+    }
+
+    let mouseInZone = false;
+    let mx = W/2, my = H/2;
+    let prevMx = mx, prevMy = my;
+    const zoneEl = document.getElementById('zone-0');
+    zoneEl.addEventListener('mousemove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      prevMx = mx; prevMy = my;
+      mx = e.clientX - r.left;
+      my = e.clientY - r.top;
+      mouseInZone = true;
+    });
+    zoneEl.addEventListener('mouseleave', () => { mouseInZone = false; });
+    zoneEl.addEventListener('mousedown', (e) => {
+      const r = canvas.getBoundingClientRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top;
+      // burst of particles
+      for (let i = 0; i < 40; i++) {
+        const p = particles[i % particles.length];
+        const ang = Math.random() * TAU;
+        const d = Math.random() * 30;
+        p.x = x + Math.cos(ang) * d;
+        p.y = y + Math.sin(ang) * d;
+        p.vx = Math.cos(ang) * (1 + Math.random() * 2);
+        p.vy = Math.sin(ang) * (1 + Math.random() * 2);
+        p.life = 0;
+        p.maxLife = 100 + Math.random() * 200;
+        p.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        p.size = 2 + Math.random() * 4;
+      }
+    });
+
+    const countEl = document.getElementById('inkCount');
+    const velEl = document.getElementById('inkVel');
+    let avgVel = 0;
+
+    registerRAF((dt, now) => {
+      if (!zones[0].classList.contains('active')) return;
+      // fade trail
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.08)';
+      ctx.fillRect(0, 0, W, H);
+
+      // mouse velocity (for swirl direction)
+      const mdx = (mx - prevMx) / Math.max(1, dt);
+      const mdy = (my - prevMy) / Math.max(1, dt);
+      prevMx = mx; prevMy = my;
+
+      let totalSpeed = 0;
+      const count = reduced ? 200 : particles.length;
+
+      for (let i = 0; i < count; i++) {
+        const p = particles[i];
+        p.life += dt * 0.06;
+
+        // noise-based flow
+        const n = noise2D(p.x, p.y, now);
+        const angle = n * Math.PI * 2;
+        let ax = Math.cos(angle) * p.speed * 0.1;
+        let ay = Math.sin(angle) * p.speed * 0.1;
+
+        // mouse repulsion + swirl (inverse-square)
+        if (mouseInZone) {
+          const dx = p.x - mx;
+          const dy = p.y - my;
+          const dist2 = dx * dx + dy * dy;
+          const minD = 20;
+          if (dist2 < 150 * 150 && dist2 > minD * minD) {
+            const dist = Math.sqrt(dist2);
+            const force = 800 / dist2;
+            ax += (dx / dist) * force;
+            ay += (dy / dist) * force;
+            // swirl from mouse movement tangential
+            const tx = -dy / dist;
+            const ty = dx / dist;
+            ax += tx * (mdx * 0.05 + mdy * 0.02);
+            ay += ty * (mdy * 0.05 + mdx * 0.02);
+          }
+        }
+
+        // integrate with damping
+        p.vx += ax * dt * 0.06;
+        p.vy += ay * dt * 0.06;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.x += p.vx * dt * 0.1;
+        p.y += p.vy * dt * 0.1;
+
+        totalSpeed += Math.hypot(p.vx, p.vy);
+
+        // wrap
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+        if (p.y < -10) p.y = H + 10;
+        if (p.y > H + 10) p.y = -10;
+
+        // draw
+        const lifeT = p.life / p.maxLife;
+        const alpha = Math.sin(lifeT * Math.PI) * 0.6;
+        if (alpha > 0.01) {
+          ctx.beginPath();
+          ctx.fillStyle = p.color + alpha.toFixed(3) + ')';
+          ctx.arc(p.x, p.y, p.size * (0.5 + lifeT * 0.5), 0, TAU);
+          ctx.fill();
+        }
+
+        if (p.life > p.maxLife) p.reset();
+      }
+
+      avgVel = lerp(avgVel, totalSpeed / count, 0.05);
+      countEl.textContent = count;
+      velEl.textContent = avgVel.toFixed(2);
+    });
+  })();
+
+  /* ============================================================
+     ZONE 2: MAGNETIC TEXT DECONSTRUCTION
+     Text rendered to canvas as particles, mouse repels them.
+     Particles spring back to origin (Hooke's law).
+     ============================================================ */
+  (function magneticText() {
+    const canvas = document.getElementById('magCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+
+    const texts = ['墨', '流', '光', '影'];
+    const COLORS = ['#d4a853', '#4ac6c0', '#f0d080', '#7ee8e3'];
+
+    let particles = [];
+    let mouseInZone = false;
+    let mx = 0, my = 0;
+    const zoneEl = document.getElementById('zone-1');
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildText();
+    }
+
+    function buildText() {
+      particles = [];
+      const fontSize = Math.min(W * 0.22, H * 0.55);
+      ctx.clearRect(0, 0, W, H);
+      ctx.font = `300 ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const totalWidth = fontSize * texts.length * 0.8;
+      const startX = (W - totalWidth) / 2 + fontSize * 0.4;
+
+      texts.forEach((ch, ci) => {
+        const cx = startX + ci * fontSize * 0.8;
+        const cy = H / 2;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(ch, cx, cy);
+
+        // sample pixels
+        const sampleW = Math.ceil(fontSize * 0.9);
+        const sampleH = Math.ceil(fontSize * 1.0);
+        const sx = Math.floor(cx - sampleW / 2);
+        const sy = Math.floor(cy - sampleH / 2);
+        const img = ctx.getImageData(sx, sy, sampleW, sampleH);
+        const data = img.data;
+        const step = reduced ? 5 : 3;
+
+        for (let y = 0; y < sampleH; y += step) {
+          for (let x = 0; x < sampleW; x += step) {
+            const idx = (y * sampleW + x) * 4;
+            if (data[idx + 3] > 128) {
+              particles.push({
+                ox: sx + x, oy: sy + y,  // origin
+                x: sx + x + rand(-30, 30),
+                y: sy + y + rand(-30, 30),
+                vx: 0, vy: 0,
+                color: COLORS[ci % COLORS.length],
+                size: rand(0.8, 2)
+              });
+            }
+          }
+        }
+        ctx.clearRect(sx - 2, sy - 2, sampleW + 4, sampleH + 4);
+      });
+
+      const el = document.getElementById('magCount');
+      if (el) el.textContent = particles.length;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    zoneEl.addEventListener('mousemove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      mx = e.clientX - r.left;
+      my = e.clientY - r.top;
+      mouseInZone = true;
+    });
+    zoneEl.addEventListener('mouseleave', () => { mouseInZone = false; });
+
+    registerRAF((dt) => {
+      if (!zones[1].classList.contains('active')) return;
+      ctx.clearRect(0, 0, W, H);
+
+      const dtN = dt / 16;
+      // hooke spring + mouse repulsion (inverse square)
+      const k = 0.04;    // spring constant
+      const damp = 0.88; // damping
+      const repelRadius = 100;
+      const repelStrength = 6000;
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // spring force toward origin
+        let fx = -k * (p.x - p.ox);
+        let fy = -k * (p.y - p.oy);
+
+        // mouse repulsion
+        if (mouseInZone) {
+          const dx = p.x - mx;
+          const dy = p.y - my;
+          const dist2 = dx * dx + dy * dy;
+          if (dist2 < repelRadius * repelRadius && dist2 > 1) {
+            const dist = Math.sqrt(dist2);
+            const f = repelStrength / dist2;
+            fx += (dx / dist) * f;
+            fy += (dy / dist) * f;
+          }
+        }
+
+        // integrate
+        p.vx = (p.vx + fx) * damp;
+        p.vy = (p.vy + fy) * damp;
+        p.x += p.vx * dtN;
+        p.y += p.vy * dtN;
+
+        // draw
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+    });
+  })();
+
+  /* ============================================================
+     ZONE 3: LIGHT RIBBON TRAIL
+     Mouse trail with multi-segment ribbon, width tapers,
+     gradient color, additive glow.
+     ============================================================ */
+  (function lightRibbon() {
+    const canvas = document.getElementById('ribbonCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const presets = [
+      ['#f0d080', '#d4a853', '#9a7a32'],   // gold
+      ['#7ee8e3', '#4ac6c0', '#1f6b68'],   // cyan
+      ['#f0d080', '#d4a853', '#4ac6c0'],   // gold-cyan mix
+      ['#ffffff', '#f0d080', '#d4a853'],   // white-gold
+    ];
+    let currentPreset = 0;
+
+    $$('.preset-dot').forEach(dot => {
+      dot.addEventListener('click', () => {
+        $$('.preset-dot').forEach(d => d.classList.remove('active'));
+        dot.classList.add('active');
+        currentPreset = +dot.dataset.preset;
+      });
+    });
+
+    // trail points
+    const TRAIL_LEN = 60;
+    const trail = [];
+    let mouseInZone = false;
+    let lx = W/2, ly = H/2;
+    const zoneEl = document.getElementById('zone-2');
+
+    zoneEl.addEventListener('mousemove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      lx = e.clientX - r.left;
+      ly = e.clientY - r.top;
+      mouseInZone = true;
+    });
+    zoneEl.addEventListener('mouseleave', () => { mouseInZone = false; });
+
+    registerRAF((dt) => {
+      if (!zones[2].classList.contains('active')) return;
+
+      // fade
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      // add point
+      if (mouseInZone) {
+        trail.unshift({ x: lx, y: ly, t: performance.now() });
+        if (trail.length > TRAIL_LEN) trail.pop();
+      } else if (trail.length > 0) {
+        trail.pop();
+      }
+
+      if (trail.length < 3) return;
+
+      const colors = presets[currentPreset];
+
+      // draw ribbon as thick path with gradient
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // multiple layered strokes for glow
+      for (let layer = 0; layer < 3; layer++) {
+        ctx.beginPath();
+        ctx.moveTo(trail[0].x, trail[0].y);
+        for (let i = 1; i < trail.length; i++) {
+          ctx.lineTo(trail[i].x, trail[i].y);
+        }
+        const baseWidth = [20, 10, 3][layer];
+        ctx.strokeStyle = colors[layer];
+        ctx.globalAlpha = [0.15, 0.4, 0.9][layer];
+        ctx.lineWidth = baseWidth * (1 + 0.5 * Math.sin(performance.now() * 0.003));
+        ctx.stroke();
+      }
+
+      // bright spark at head
+      const head = trail[0];
+      const grad = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 40);
+      grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+      grad.addColorStop(0.3, colors[0].replace(')', ', 0.5)').replace('rgb', 'rgba'));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, 40, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    });
+  })();
+
+  /* ============================================================
+     ZONE 4: AUDIO SPECTRUM
+     Web Audio API + oscillator-generated tracks, visualised as bars.
+     Mic input supported.
+     ============================================================ */
+  (function spectrum() {
+    const canvas = document.getElementById('specCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let audioCtx = null;
+    let analyser = null;
+    let dataArray = null;
+    let currentSource = null;
+    let currentTrack = -1;
+    let trackTimers = [];
+
+    function ensureAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.connect(audioCtx.destination);
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+    }
+
+    function stopTrack() {
+      trackTimers.forEach(t => clearTimeout(t));
+      trackTimers = [];
+      if (currentSource) {
+        try { currentSource.stop && currentSource.stop(); } catch(e) {}
+        try { currentSource.disconnect(); } catch(e) {}
+        currentSource = null;
+      }
+      $$('.audio-track-btn').forEach(b => b.classList.remove('playing'));
+    }
+
+    function playTrack(idx) {
+      ensureAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      stopTrack();
+      currentTrack = idx;
+
+      const btn = document.querySelector(`.audio-track-btn[data-track="${idx}"]`);
+      if (btn) btn.classList.add('playing');
+
+      // generate different patterns via oscillators
+      const now = audioCtx.currentTime;
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.15;
+      gain.connect(analyser);
+
+      if (idx === 0) {
+        // Pulse rhythm: repeating low pulse + high arpeggio
+        const playPulse = () => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = 60 + Math.random() * 40;
+          g.gain.setValueAtTime(0, audioCtx.currentTime);
+          g.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+          osc.connect(g); g.connect(gain);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.6);
+        };
+        const playHi = () => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = 400 + Math.random() * 800;
+          g.gain.setValueAtTime(0, audioCtx.currentTime);
+          g.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+          osc.connect(g); g.connect(gain);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.2);
+        };
+        const loop = () => {
+          playPulse();
+          for (let i = 0; i < 4; i++) {
+            trackTimers.push(setTimeout(playHi, 100 + i * 120));
+          }
+          trackTimers.push(setTimeout(loop, 600));
+        };
+        loop();
+        currentSource = gain;
+
+      } else if (idx === 1) {
+        // Ink nocturne: slow pad + melody
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc1.type = 'sine'; osc2.type = 'sine';
+        osc1.frequency.value = 110;
+        osc2.frequency.value = 165;
+        g.gain.value = 0.2;
+        osc1.connect(g); osc2.connect(g); g.connect(gain);
+        osc1.start(); osc2.start();
+
+        // slow lfo on filter
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 800;
+        gain.disconnect();
+        gain.connect(filter);
+        filter.connect(analyser);
+
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        lfo.frequency.value = 0.2;
+        lfoGain.gain.value = 500;
+        lfo.connect(lfoGain);
+        lfoGain.connect(filter.frequency);
+        lfo.start();
+
+        // melody blips
+        const notes = [261.6, 329.6, 392, 493.9, 523.3];
+        const playNote = () => {
+          const o = audioCtx.createOscillator();
+          const og = audioCtx.createGain();
+          o.type = 'sine';
+          o.frequency.value = notes[Math.floor(Math.random() * notes.length)];
+          og.gain.setValueAtTime(0, audioCtx.currentTime);
+          og.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.05);
+          og.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+          o.connect(og); og.connect(filter);
+          o.start();
+          o.stop(audioCtx.currentTime + 1.6);
+          trackTimers.push(setTimeout(playNote, 800 + Math.random() * 1000));
+        };
+        trackTimers.push(setTimeout(playNote, 500));
+
+        currentSource = {
+          stop: () => { osc1.stop(); osc2.stop(); lfo.stop(); }
+        };
+
+      } else if (idx === 2) {
+        // Metal resonance: multiple detuned oscillators
+        const freqs = [200, 300, 450, 600, 800];
+        const oscs = [];
+        freqs.forEach((f, i) => {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.type = 'sawtooth';
+          o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.02);
+          g.gain.value = 0.04;
+          o.connect(g); g.connect(gain);
+          o.start();
+          oscs.push(o);
+        });
+        // slow amplitude modulation
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        lfo.frequency.value = 0.3;
+        lfoGain.gain.value = 0.08;
+        lfo.connect(lfoGain);
+        lfoGain.connect(gain.gain);
+        lfo.start();
+
+        // noise bursts
+        const playBurst = () => {
+          const bufSize = audioCtx.sampleRate * 0.1;
+          const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          const ng = audioCtx.createGain();
+          ng.gain.value = 0.3;
+          const bp = audioCtx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = 1000 + Math.random() * 2000;
+          src.connect(bp); bp.connect(ng); ng.connect(gain);
+          src.start();
+          trackTimers.push(setTimeout(playBurst, 1500 + Math.random() * 2000));
+        };
+        trackTimers.push(setTimeout(playBurst, 800));
+
+        currentSource = {
+          stop: () => { oscs.forEach(o => o.stop()); lfo.stop(); }
+        };
+      }
+    }
+
+    async function playMic() {
+      ensureAudio();
+      stopTrack();
+      const btn = document.querySelector('.audio-track-btn[data-track="mic"]');
+      if (btn) btn.classList.add('playing');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const src = audioCtx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        currentSource = {
+          stop: () => {
+            stream.getTracks().forEach(t => t.stop());
+            try { src.disconnect(); } catch(e) {}
+          }
+        };
+      } catch (e) {
+        console.warn('mic denied', e);
+        if (btn) btn.classList.remove('playing');
+      }
+    }
+
+    $$('.audio-track-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.track;
+        if (t === 'mic') playMic();
+        else playTrack(+t);
+      });
+    });
+
+    // draw spectrum
+    registerRAF((dt) => {
+      if (!zones[3].classList.contains('active')) return;
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
+      ctx.fillRect(0, 0, W, H);
+
+      if (!analyser || !dataArray) {
+        // idle: draw flat bars
+        const bars = 64;
+        const barW = W / bars * 0.7;
+        const gap = W / bars * 0.3;
+        for (let i = 0; i < bars; i++) {
+          const h = 2 + Math.sin(performance.now() * 0.002 + i * 0.3) * 2;
+          const hue = i / bars;
+          ctx.fillStyle = hue < 0.5 ? '#d4a853' : '#4ac6c0';
+          ctx.globalAlpha = 0.3;
+          ctx.fillRect(i * (barW + gap) + gap / 2, H / 2 - h / 2, barW, h);
+        }
+        ctx.globalAlpha = 1;
+        return;
+      }
+
+      analyser.getByteFrequencyData(dataArray);
+      const bars = dataArray.length;
+      const barW = W / bars * 0.8;
+      const gap = W / bars * 0.2;
+
+      for (let i = 0; i < bars; i++) {
+        const v = dataArray[i] / 255;
+        const h = v * H * 0.85;
+        const x = i * (barW + gap) + gap / 2;
+        const y = H - h;
+
+        // gradient bar: gold bottom -> cyan top
+        const grad = ctx.createLinearGradient(0, y, 0, H);
+        grad.addColorStop(0, '#7ee8e3');
+        grad.addColorStop(0.5, '#d4a853');
+        grad.addColorStop(1, '#9a7a32');
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(x, y, barW, h);
+
+        // top cap
+        ctx.fillStyle = '#f0d080';
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(x, y - 2, barW, 2);
+      }
+      ctx.globalAlpha = 1;
+
+      // mirror reflection
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.translate(0, H);
+      ctx.scale(1, -0.3);
+      for (let i = 0; i < bars; i++) {
+        const v = dataArray[i] / 255;
+        const h = v * H * 0.85;
+        const x = i * (barW + gap) + gap / 2;
+        const grad = ctx.createLinearGradient(0, H - h, 0, H);
+        grad.addColorStop(0, '#4ac6c0');
+        grad.addColorStop(1, 'rgba(74,198,192,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, H - h, barW, h);
+      }
+      ctx.restore();
+    });
+
+    // cleanup on zone change away
+    window.addEventListener('zonechange', (e) => {
+      if (e.detail.index !== 3) stopTrack();
+    });
+  })();
+
+  /* ============================================================
+     ZONE 5: PARALLAX SCENE
+     7-layer parallax with eased follow.
+     ============================================================ */
+  (function parallax() {
+    const scene = document.getElementById('parallaxScene');
+    const layers = $$('.parallax-layer');
+    const zoneEl = document.getElementById('zone-4');
+
+    // generate stars
+    function genStars(containerId, count, sizeRange, opacityRange) {
+      const c = document.getElementById(containerId);
+      if (!c) return;
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < count; i++) {
+        const s = document.createElement('div');
+        s.className = 'pstar';
+        s.style.left = Math.random() * 100 + '%';
+        s.style.top = Math.random() * 100 + '%';
+        const size = rand(sizeRange[0], sizeRange[1]);
+        s.style.width = size + 'px';
+        s.style.height = size + 'px';
+        s.style.opacity = rand(opacityRange[0], opacityRange[1]);
+        // twinkle
+        s.style.animation = `twinkle${i % 3} ${rand(2, 5)}s ease-in-out ${rand(0, 3)}s infinite`;
+        frag.appendChild(s);
+      }
+      c.appendChild(frag);
+    }
+
+    // inject twinkle keyframes
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes twinkle0 { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+      @keyframes twinkle1 { 0%,100% { opacity:.5; } 50% { opacity:.2; } }
+      @keyframes twinkle2 { 0%,100% { opacity:.8; } 50% { opacity:.4; } }
+    `;
+    document.head.appendChild(style);
+
+    genStars('starsFar', reduced ? 30 : 80, [1, 1.5], [0.3, 0.6]);
+    genStars('starsMid', reduced ? 20 : 50, [1.5, 2.5], [0.5, 0.9]);
+
+    let targetX = 0, targetY = 0;
+    let curX = 0, curY = 0;
+
+    zoneEl.addEventListener('mousemove', (e) => {
+      const r = scene.getBoundingClientRect();
+      targetX = (e.clientX - r.left - r.width / 2) / r.width;
+      targetY = (e.clientY - r.top - r.height / 2) / r.height;
+    });
+    zoneEl.addEventListener('mouseleave', () => {
+      targetX = 0; targetY = 0;
+    });
+
+    registerRAF((dt) => {
+      if (!zones[4].classList.contains('active')) return;
+      const k = dt / 16;
+      curX = lerp(curX, targetX, 0.05 * k);
+      curY = lerp(curY, targetY, 0.05 * k);
+
+      layers.forEach(layer => {
+        const depth = parseFloat(layer.dataset.depth);
+        const tx = -curX * depth * 80;
+        const ty = -curY * depth * 60;
+        layer.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+      });
+    });
+  })();
+
+  /* ============================================================
+     ZONE 6: CRT SCANLINE FRAME
+     Interactive CRT filter with adjustable knobs.
+     ============================================================ */
+  (function crt() {
+    const knobs = [
+      { el: document.getElementById('crtKnob1'), value: 50, label: 'contrast' },
+      { el: document.getElementById('crtKnob2'), value: 70, label: 'scanlines' },
+      { el: document.getElementById('crtKnob3'), value: 40, label: 'glow' }
+    ];
+    const scanlines = document.getElementById('crtScanlines');
+    const flicker = document.getElementById('crtFlicker');
+    const content = document.getElementById('crtContent');
+    const oscCanvas = document.getElementById('crtOsc');
+    const oscCtx = oscCanvas.getContext('2d');
+
+    let dragKnob = null;
+    let dragStartY = 0;
+    let dragStartVal = 0;
+
+    knobs.forEach(k => {
+      k.el.addEventListener('mousedown', (e) => {
+        dragKnob = k;
+        dragStartY = e.clientY;
+        dragStartVal = k.value;
+        e.preventDefault();
+      });
+      k.el.style.transform = `rotate(${(k.value - 50) * 2.7}deg)`;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragKnob) return;
+      const dy = dragStartY - e.clientY;
+      dragKnob.value = clamp(dragStartVal + dy * 0.5, 0, 100);
+      dragKnob.el.style.transform = `rotate(${(dragKnob.value - 50) * 2.7}deg)`;
+      updateCRT();
+    });
+    document.addEventListener('mouseup', () => { dragKnob = null; });
+
+    function updateCRT() {
+      const contrast = knobs[0].value / 50; // 0-2
+      const scan = knobs[1].value;           // 0-100
+      const glow = knobs[2].value;           // 0-100
+
+      content.style.filter = `contrast(${contrast}) brightness(${0.8 + contrast * 0.2})`;
+      scanlines.style.opacity = scan / 100 * 0.8;
+      flicker.style.opacity = glow / 100 * 0.6;
+    }
+    updateCRT();
+
+    // oscilloscope line
+    let phase = 0;
+    function resizeOsc() {
+      const r = oscCanvas.getBoundingClientRect();
+      oscCanvas.width = r.width * (window.devicePixelRatio || 1);
+      oscCanvas.height = r.height * (window.devicePixelRatio || 1);
+    }
+    resizeOsc();
+    window.addEventListener('resize', resizeOsc);
+
+    registerRAF((dt) => {
+      if (!zones[5].classList.contains('active')) return;
+      const w = oscCanvas.width, h = oscCanvas.height;
+      oscCtx.clearRect(0, 0, w, h);
+
+      phase += dt * 0.005;
+
+      // draw wave
+      oscCtx.strokeStyle = 'rgba(74, 198, 192, 0.8)';
+      oscCtx.lineWidth = 1.5;
+      oscCtx.shadowBlur = 10;
+      oscCtx.shadowColor = '#4ac6c0';
+      oscCtx.beginPath();
+      for (let x = 0; x < w; x++) {
+        const t = x / w;
+        let y = h / 2;
+        y += Math.sin(t * 8 + phase) * h * 0.2;
+        y += Math.sin(t * 15 + phase * 1.7) * h * 0.08;
+        y += Math.sin(t * 3 + phase * 0.5) * h * 0.1;
+        if (x === 0) oscCtx.moveTo(x, y);
+        else oscCtx.lineTo(x, y);
+      }
+      oscCtx.stroke();
+      oscCtx.shadowBlur = 0;
+
+      // grid
+      oscCtx.strokeStyle = 'rgba(212, 168, 83, 0.15)';
+      oscCtx.lineWidth = 0.5;
+      for (let i = 1; i < 4; i++) {
+        const y = h * i / 4;
+        oscCtx.beginPath();
+        oscCtx.moveTo(0, y);
+        oscCtx.lineTo(w, y);
+        oscCtx.stroke();
+      }
+    });
+  })();
+
+  /* ============================================================
+     ZONE 7: PARTICLE NEBULA
+     N-body particles attracted to mouse + repulsion between particles.
+     Shockwave on click.
+     ============================================================ */
+  (function nebula() {
+    const canvas = document.getElementById('nebCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const PARTICLE_COUNT = reduced ? 300 : 800;
+    const particles = [];
+
+    class NebParticle {
+      constructor() { this.reset(); }
+      reset() {
+        this.x = Math.random() * W;
+        this.y = Math.random() * H;
+        this.vx = rand(-0.5, 0.5);
+        this.vy = rand(-0.5, 0.5);
+        this.size = rand(0.8, 2);
+        const hue = Math.random();
+        this.color = hue < 0.5
+          ? `rgba(212, 168, 83, ${rand(0.4, 0.9)})`
+          : `rgba(74, 198, 192, ${rand(0.4, 0.9)})`;
+        this.mass = this.size;
+      }
+    }
+    for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new NebParticle());
+
+    const countEl = document.getElementById('nebCount');
+    if (countEl) countEl.textContent = PARTICLE_COUNT;
+
+    let mouseInZone = false;
+    let mx = W/2, my = H/2;
+    const zoneEl = document.getElementById('zone-6');
+    let shockwaves = [];
+
+    zoneEl.addEventListener('mousemove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      mx = e.clientX - r.left;
+      my = e.clientY - r.top;
+      mouseInZone = true;
+    });
+    zoneEl.addEventListener('mouseleave', () => { mouseInZone = false; });
+    zoneEl.addEventListener('mousedown', (e) => {
+      const r = canvas.getBoundingClientRect();
+      shockwaves.push({
+        x: e.clientX - r.left,
+        y: e.clientY - r.top,
+        r: 5,
+        maxR: 300,
+        strength: 12
+      });
+    });
+
+    registerRAF((dt) => {
+      if (!zones[6].classList.contains('active')) return;
+      const dtN = dt / 16;
+
+      // fade
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.15)';
+      ctx.fillRect(0, 0, W, H);
+
+      // update shockwaves
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const s = shockwaves[i];
+        s.r += 8 * dtN;
+        // apply outward force
+        for (let j = 0; j < particles.length; j++) {
+          const p = particles[j];
+          const dx = p.x - s.x;
+          const dy = p.y - s.y;
+          const dist = Math.hypot(dx, dy);
+          const ringThickness = 30;
+          if (Math.abs(dist - s.r) < ringThickness && dist > 0.1) {
+            const f = (1 - Math.abs(dist - s.r) / ringThickness) * s.strength;
+            p.vx += (dx / dist) * f;
+            p.vy += (dy / dist) * f;
+          }
+        }
+        if (s.r > s.maxR) shockwaves.splice(i, 1);
+      }
+
+      // particle forces
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // attract to mouse (inverse square toward mouse)
+        if (mouseInZone) {
+          const dx = mx - p.x;
+          const dy = my - p.y;
+          const dist2 = dx * dx + dy * dy;
+          const minD = 30;
+          if (dist2 > minD * minD) {
+            const dist = Math.sqrt(dist2);
+            const f = 400 / dist2;
+            p.vx += (dx / dist) * f * dtN;
+            p.vy += (dy / dist) * f * dtN;
+          } else {
+            // soft repulsion at very close
+            const dist = Math.sqrt(dist2) || 0.1;
+            p.vx -= (dx / dist) * 0.3 * dtN;
+            p.vy -= (dy / dist) * 0.3 * dtN;
+          }
+        }
+
+        // slight wander
+        p.vx += (Math.random() - 0.5) * 0.02 * dtN;
+        p.vy += (Math.random() - 0.5) * 0.02 * dtN;
+
+        // damping
+        p.vx *= 0.99;
+        p.vy *= 0.99;
+
+        p.x += p.vx * dtN;
+        p.y += p.vy * dtN;
+
+        // bounce off walls
+        if (p.x < 0) { p.x = 0; p.vx *= -0.7; }
+        if (p.x > W) { p.x = W; p.vx *= -0.7; }
+        if (p.y < 0) { p.y = 0; p.vy *= -0.7; }
+        if (p.y > H) { p.y = H; p.vy *= -0.7; }
+      }
+
+      // draw particles with glow
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // draw attractor glow
+      if (mouseInZone) {
+        const grad = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
+        grad.addColorStop(0, 'rgba(240, 208, 128, 0.15)');
+        grad.addColorStop(0.5, 'rgba(212, 168, 83, 0.05)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(mx - 80, my - 80, 160, 160);
+      }
+    });
+  })();
+
+  /* ============================================================
+     CLEANUP on unload
+     ============================================================ */
+  window.addEventListener('beforeunload', () => {
+    rafRegistry.clear();
+  });
+
+})();
+</script>
+</body>
+</html>
