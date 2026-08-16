@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="creative-medium" content="interactive-prototype">
+  <title>KINETIC · 动力学交互实验室</title>
+  <link rel="preconnect" href="https://miaoda.feishu.cn">
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=JetBrains+Mono:wght@300;400;500;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,700;9..144,900&display=swap">
+  <style>
+    /* ========== RESET & BASE ========== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg-deep);
+      color: var(--ink);
+      font-family: 'JetBrains Mono', monospace;
+      overflow-x: hidden;
+      cursor: none;
+    }
+    :root {
+      --bg-deep: #0d1410;
+      --bg-mid: #151d18;
+      --bg-elev: #1c2721;
+      --acid: #d6ff3a;
+      --acid-dim: #9bbf28;
+      --ink: #f2efe6;
+      --ink-dim: #8a928b;
+      --ink-mute: #4d5450;
+      --border: #2a3630;
+      --danger: #ff6b4a;
+      --serif: 'Fraunces', 'Playfair Display', Georgia, serif;
+      --mono: 'JetBrains Mono', 'SF Mono', monospace;
+    }
+
+    /* ========== CUSTOM CURSOR ========== */
+    .cursor-ring {
+      position: fixed;
+      top: 0; left: 0;
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--acid);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: difference;
+      will-change: transform, width, height;
+    }
+    .cursor-dot {
+      position: fixed;
+      top: 0; left: 0;
+      width: 6px; height: 6px;
+      background: var(--acid);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 10000;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: difference;
+    }
+    .cursor-trail {
+      position: fixed;
+      top: 0; left: 0;
+      width: 6px; height: 6px;
+      background: var(--acid);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      opacity: 0.4;
+      transform: translate(-50%, -50%);
+    }
+    body.cursor-grab .cursor-ring { width: 52px; height: 52px; border-width: 2px; }
+    body.cursor-grab .cursor-ring::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 8px; height: 2px;
+      background: var(--acid);
+      transform: translate(-50%, -50%);
+    }
+    body.cursor-hover .cursor-ring { width: 56px; height: 56px; border-color: var(--acid); background: rgba(214, 255, 58, 0.08); }
+    body.cursor-drag .cursor-ring { width: 28px; height: 28px; background: var(--acid); }
+    body.cursor-drag .cursor-dot { opacity: 0; }
+
+    @media (hover: none) and (pointer: coarse) {
+      body { cursor: auto; }
+      .cursor-ring, .cursor-dot, .cursor-trail { display: none; }
+    }
+
+    /* ========== PROGRESS BAR ========== */
+    .progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      width: 0%;
+      background: var(--acid);
+      z-index: 1000;
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px var(--acid);
+    }
+
+    /* ========== NAV ========== */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 24px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      mix-blend-mode: difference;
+    }
+    .nav-logo {
+      font-family: var(--serif);
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+    .nav-logo span { color: var(--acid); font-style: italic; }
+    .nav-meta {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      display: flex;
+      gap: 32px;
+    }
+
+    /* ========== SECTIONS ========== */
+    section {
+      min-height: 100vh;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 80px 48px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--acid-dim);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-label::before {
+      content: '';
+      width: 24px; height: 1px;
+      background: var(--acid-dim);
+    }
+    .section-number {
+      position: absolute;
+      top: 80px; right: 48px;
+      font-family: var(--serif);
+      font-size: 120px;
+      font-weight: 900;
+      font-style: italic;
+      color: var(--border);
+      line-height: 1;
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .section-title {
+      font-family: var(--serif);
+      font-size: clamp(48px, 7vw, 96px);
+      font-weight: 300;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+    .section-title em {
+      font-style: italic;
+      font-weight: 700;
+      color: var(--acid);
+    }
+    .section-desc {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink-dim);
+      max-width: 480px;
+      margin-bottom: 48px;
+    }
+
+    /* ========== HERO ========== */
+    #hero {
+      min-height: 100vh;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      background: radial-gradient(ellipse at 50% 60%, var(--bg-mid) 0%, var(--bg-deep) 70%);
+    }
+    .hero-grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.15;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+    }
+    .hero-eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--acid);
+      margin-bottom: 32px;
+    }
+    .hero-title {
+      font-family: var(--serif);
+      font-size: clamp(72px, 14vw, 200px);
+      font-weight: 900;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      margin-bottom: 32px;
+    }
+    .hero-title em {
+      font-style: italic;
+      color: var(--acid);
+      font-weight: 300;
+    }
+    .hero-subtitle {
+      font-size: 15px;
+      color: var(--ink-dim);
+      max-width: 560px;
+      margin: 0 auto 56px;
+      line-height: 1.7;
+    }
+    .hero-scroll-hint {
+      position: absolute;
+      bottom: 48px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .scroll-line {
+      width: 1px; height: 40px;
+      background: linear-gradient(to bottom, var(--acid), transparent);
+      animation: scrollPulse 2s ease-in-out infinite;
+    }
+    @keyframes scrollPulse {
+      0%, 100% { opacity: 0.3; transform: scaleY(0.6); }
+      50% { opacity: 1; transform: scaleY(1); }
+    }
+
+    /* ========== SPRING SECTION ========== */
+    #spring-section {
+      background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 100%);
+    }
+    .spring-stage {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      height: 400px;
+      margin: 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-elev);
+      overflow: hidden;
+    }
+    .spring-stage::before {
+      content: 'SPRING OSCILLATOR / 01';
+      position: absolute;
+      top: 16px; left: 20px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+    }
+    .spring-anchor {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 2px; height: 2px;
+      background: var(--acid);
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 8px var(--acid);
+    }
+    .spring-anchor::before, .spring-anchor::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      border: 1px dashed var(--border);
+      border-radius: 50%;
+    }
+    .spring-anchor::before { width: 160px; height: 160px; }
+    .spring-anchor::after { width: 80px; height: 80px; }
+
+    .spring-ball {
+      position: absolute;
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--acid);
+      cursor: grab;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 40px rgba(214, 255, 58, 0.4), inset 0 -8px 16px rgba(0,0,0,0.1);
+      z-index: 3;
+    }
+    .spring-ball:active { cursor: grabbing; }
+    .spring-ball::after {
+      content: 'DRAG';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--bg-deep);
+    }
+
+    .spring-line {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .spring-params {
+      display: flex;
+      gap: 32px;
+      margin-top: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .param-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 120px;
+    }
+    .param-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+    }
+    .param-value {
+      font-size: 24px;
+      font-weight: 500;
+      color: var(--acid);
+      font-variant-numeric: tabular-nums;
+    }
+    .param-value span {
+      font-size: 12px;
+      color: var(--ink-dim);
+      margin-left: 4px;
+    }
+
+    /* ========== INERTIA SECTION ========== */
+    #inertia-section {
+      background: var(--bg-mid);
+    }
+    .inertia-container {
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .inertia-viewport {
+      width: 100%;
+      height: 320px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-elev);
+      position: relative;
+      cursor: grab;
+    }
+    .inertia-viewport:active { cursor: grabbing; }
+    .inertia-track {
+      display: flex;
+      gap: 20px;
+      padding: 30px;
+      width: max-content;
+      will-change: transform;
+    }
+    .inertia-card {
+      width: 220px;
+      height: 260px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--bg-elev) 0%, #1f2c25 100%);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 20px;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .inertia-card:nth-child(3n) { border-color: var(--acid-dim); }
+    .inertia-card:nth-child(3n) .card-num { color: var(--acid); }
+    .card-num {
+      font-family: var(--serif);
+      font-size: 72px;
+      font-weight: 900;
+      font-style: italic;
+      color: var(--border);
+      line-height: 1;
+      position: absolute;
+      top: 16px; right: 20px;
+    }
+    .card-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin-bottom: 8px;
+    }
+    .card-title {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--ink);
+      line-height: 1.2;
+    }
+
+    .inertia-hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+      padding: 0 8px;
+    }
+    .hud-left {
+      display: flex;
+      gap: 32px;
+    }
+    .velocity-meter {
+      width: 200px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .velocity-fill {
+      height: 100%;
+      background: var(--acid);
+      width: 0%;
+      transition: width 0.05s linear;
+      box-shadow: 0 0 6px var(--acid);
+    }
+    .velocity-fill.negative { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+    /* ========== MAGNETIC SECTION ========== */
+    #magnetic-section {
+      background: linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-deep) 100%);
+    }
+    .magnetic-stage {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .magnetic-btn {
+      position: relative;
+      height: 160px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-elev);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+    .magnetic-btn:hover { border-color: var(--acid-dim); }
+    .magnetic-core {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: var(--acid);
+      box-shadow: 0 0 30px rgba(214, 255, 58, 0.5);
+      will-change: transform;
+      transition: box-shadow 0.3s;
+    }
+    .magnetic-btn:hover .magnetic-core {
+      box-shadow: 0 0 50px rgba(214, 255, 58, 0.7);
+    }
+    .magnetic-label {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .magnetic-field {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .magnetic-field line {
+      stroke: var(--acid);
+      stroke-width: 0.5;
+      opacity: 0.1;
+    }
+
+    /* ========== SCROLL MORPH SECTION ========== */
+    #morph-section {
+      background: var(--bg-deep);
+      min-height: 200vh;
+      position: relative;
+    }
+    .morph-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+    .morph-shape-container {
+      width: 400px; height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .morph-shape {
+      width: 200px;
+      height: 200px;
+      background: var(--acid);
+      will-change: border-radius, transform;
+      box-shadow: 0 0 80px rgba(214, 255, 58, 0.3);
+    }
+    .morph-label {
+      position: absolute;
+      bottom: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      white-space: nowrap;
+    }
+    .morph-progress {
+      position: absolute;
+      right: 48px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .morph-step {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+      transition: color 0.3s;
+    }
+    .morph-step.active { color: var(--acid); }
+
+    /* ========== PARALLAX SECTION ========== */
+    #parallax-section {
+      background: linear-gradient(180deg, var(--bg-deep) 0%, #0a100d 100%);
+      min-height: 120vh;
+      perspective: 1000px;
+    }
+    .parallax-scene {
+      position: relative;
+      width: 100%;
+      max-width: 1100px;
+      height: 500px;
+      margin: 0 auto;
+      transform-style: preserve-3d;
+    }
+    .parallax-layer {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      will-change: transform;
+      pointer-events: none;
+    }
+    .parallax-depth-badge {
+      position: absolute;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+    }
+    .layer-0 .parallax-depth-badge { top: 20px; left: 20px; }
+    .layer-1 .parallax-depth-badge { top: 60px; left: 60px; }
+    .layer-2 .parallax-depth-badge { top: 100px; left: 100px; }
+    .layer-3 .parallax-depth-badge { top: 140px; left: 140px; }
+
+    .parallax-shape {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-elev);
+      opacity: 0.6;
+    }
+    .layer-0 .parallax-shape {
+      width: 80%; height: 80%;
+      background: transparent;
+      border-style: dashed;
+    }
+    .layer-1 .parallax-shape {
+      width: 60%; height: 60%;
+      background: rgba(214, 255, 58, 0.03);
+      border-color: var(--acid-dim);
+    }
+    .layer-2 .parallax-shape {
+      width: 40%; height: 40%;
+      background: rgba(214, 255, 58, 0.08);
+      border-color: var(--acid);
+    }
+    .layer-3 .parallax-shape {
+      width: 20%; height: 20%;
+      background: var(--acid);
+      border-color: var(--acid);
+      opacity: 1;
+      box-shadow: 0 0 40px rgba(214, 255, 58, 0.5);
+    }
+
+    .parallax-coords {
+      position: absolute;
+      bottom: 20px; right: 20px;
+      font-size: 11px;
+      color: var(--acid);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ========== FOOTER ========== */
+    #footer-section {
+      min-height: 60vh;
+      background: #0a100d;
+      text-align: center;
+      justify-content: center;
+      align-items: center;
+    }
+    .footer-title {
+      font-family: var(--serif);
+      font-size: clamp(48px, 8vw, 120px);
+      font-weight: 900;
+      font-style: italic;
+      color: var(--ink);
+      line-height: 0.9;
+      letter-spacing: -0.03em;
+      margin-bottom: 32px;
+    }
+    .footer-title em { color: var(--acid); font-weight: 300; }
+    .footer-meta {
+      font-size: 12px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .footer-meta span::before {
+      content: '● ';
+      color: var(--acid);
+      margin-right: 6px;
+      font-size: 8px;
+    }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 768px) {
+      .nav { padding: 16px 20px; }
+      .nav-meta { display: none; }
+      section { padding: 60px 20px; }
+      .section-number { font-size: 64px; right: 20px; top: 60px; }
+      .spring-stage { height: 300px; }
+      .spring-ball { width: 56px; height: 56px; }
+      .inertia-card { width: 180px; height: 220px; }
+      .card-num { font-size: 48px; }
+      .magnetic-stage { grid-template-columns: 1fr; max-width: 320px; }
+      .magnetic-btn { height: 120px; }
+      .morph-shape-container { width: 280px; height: 280px; }
+      .morph-shape { width: 140px; height: 140px; }
+      .morph-progress { right: 16px; }
+      .parallax-scene { height: 360px; }
+      .spring-params { gap: 16px; }
+      .param-item { min-width: 80px; }
+      .param-value { font-size: 18px; }
+      body { cursor: auto; }
+      .cursor-ring, .cursor-dot, .cursor-trail { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Progress bar -->
+  <div class="progress-bar" id="progressBar"></div>
+
+  <!-- Custom cursor -->
+  <div class="cursor-trail" id="trail8"></div>
+  <div class="cursor-trail" id="trail7"></div>
+  <div class="cursor-trail" id="trail6"></div>
+  <div class="cursor-trail" id="trail5"></div>
+  <div class="cursor-trail" id="trail4"></div>
+  <div class="cursor-trail" id="trail3"></div>
+  <div class="cursor-trail" id="trail2"></div>
+  <div class="cursor-trail" id="trail1"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="cursor-dot" id="cursorDot"></div>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-logo">KINETIC<span>.</span>LAB</div>
+    <div class="nav-meta">
+      <span>EXPERIMENT 03</span>
+      <span>UX · MOTION</span>
+      <span id="fpsCounter">60 FPS</span>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero" data-section="00">
+    <div class="hero-grid-bg"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">Arc Daily Design · V3 / UX Interaction</div>
+      <h1 class="hero-title">
+        KINETIC<br><em>Laboratory</em>
+      </h1>
+      <p class="hero-subtitle">
+        一座可以亲手把玩的交互美术馆。<br>
+        五个展区，五种物理运动原理——<br>
+        拖拽、甩动、悬停、滚动，感受真实的力与运动。
+      </p>
+    </div>
+    <div class="hero-scroll-hint">
+      <span>Scroll to explore</span>
+      <div class="scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- 01 SPRING -->
+  <section id="spring-section" data-section="01">
+    <div class="section-number">01</div>
+    <div class="section-label">Experiment · Spring Physics</div>
+    <h2 class="section-title">弹性<em>弹簧</em>振荡</h2>
+    <p class="section-desc">
+      Hooke's Law — F = -kx。拖动荧光球偏离平衡位置，松手观察弹簧刚度与阻尼系数如何共同塑造一段有生命的振荡。
+      所有运动由每一帧的弹簧积分器实时计算，无预设曲线。
+    </p>
+    <div class="spring-stage" id="springStage">
+      <svg class="spring-line" id="springLine" viewBox="0 0 900 400" preserveAspectRatio="none">
+        <line id="springSvgLine" x1="450" y1="200" x2="450" y2="200" stroke="var(--acid)" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+      </svg>
+      <div class="spring-anchor"></div>
+      <div class="spring-ball" id="springBall"></div>
+    </div>
+    <div class="spring-params">
+      <div class="param-item">
+        <span class="param-label">Stiffness (k)</span>
+        <span class="param-value" id="paramK">180<span>N/m</span></span>
+      </div>
+      <div class="param-item">
+        <span class="param-label">Damping (c)</span>
+        <span class="param-value" id="paramD">12<span>kg/s</span></span>
+      </div>
+      <div class="param-item">
+        <span class="param-label">Velocity</span>
+        <span class="param-value" id="paramV">0.00<span>m/s</span></span>
+      </div>
+      <div class="param-item">
+        <span class="param-label">Displacement</span>
+        <span class="param-value" id="paramX">0.00<span>px</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 INERTIA -->
+  <section id="inertia-section" data-section="02">
+    <div class="section-number">02</div>
+    <div class="section-label">Experiment · Inertia & Momentum</div>
+    <h2 class="section-title">惯性<em>拖拽</em>滑动</h2>
+    <p class="section-desc">
+      Newton's First Law — 物体保持运动状态直到外力阻止它。抓住轨道用力甩出，
+      感受动量衰减与自然停止的过程。速度越快，滑行越远。
+    </p>
+    <div class="inertia-container">
+      <div class="inertia-viewport" id="inertiaViewport">
+        <div class="inertia-track" id="inertiaTrack">
+          <div class="inertia-card"><div class="card-num">01</div><div class="card-label">MOMENTUM</div><div class="card-title">Impulse &amp; Velocity</div></div>
+          <div class="inertia-card"><div class="card-num">02</div><div class="card-label">FRICTION</div><div class="card-title">Decay &amp; Rest</div></div>
+          <div class="inertia-card"><div class="card-num">03</div><div class="card-label">MASS</div><div class="card-title">Weight &amp; Feel</div></div>
+          <div class="inertia-card"><div class="card-num">04</div><div class="card-label">FORCE</div><div class="card-title">Applied Energy</div></div>
+          <div class="inertia-card"><div class="card-num">05</div><div class="card-label">ELASTIC</div><div class="card-title">Bounce Back</div></div>
+          <div class="inertia-card"><div class="card-num">06</div><div class="card-label">TENSION</div><div class="card-title">Pull &amp; Release</div></div>
+          <div class="inertia-card"><div class="card-num">07</div><div class="card-label">DYNAMIC</div><div class="card-title">Live Response</div></div>
+          <div class="inertia-card"><div class="card-num">08</div><div class="card-label">FLUID</div><div class="card-title">Smooth Motion</div></div>
+        </div>
+      </div>
+      <div class="inertia-hud">
+        <div class="hud-left">
+          <div class="param-item">
+            <span class="param-label">Velocity</span>
+            <span class="param-value" id="inertiaVel">0.00<span>px/f</span></span>
+          </div>
+          <div class="param-item" style="min-width: 200px;">
+            <span class="param-label">Momentum Gauge</span>
+            <div class="velocity-meter"><div class="velocity-fill" id="velocityFill"></div></div>
+          </div>
+        </div>
+        <div class="param-item">
+          <span class="param-label">Friction coef.</span>
+          <span class="param-value" style="font-size: 18px;">0.95<span>μ</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 MAGNETIC -->
+  <section id="magnetic-section" data-section="03">
+    <div class="section-number">03</div>
+    <div class="section-label">Experiment · Magnetic Attraction</div>
+    <h2 class="section-title">磁性<em>吸附</em>按钮</h2>
+    <p class="section-desc">
+      反平方定律 — 吸引力与距离的平方成反比。将光标移向按钮，感受核心被磁场拖拽向指针的微妙引力。
+      距离越近，引力越强。
+    </p>
+    <div class="magnetic-stage" id="magneticStage">
+      <div class="magnetic-btn" data-strength="0.3">
+        <svg class="magnetic-field" viewBox="0 0 200 160">
+          <line x1="0" y1="80" x2="200" y2="80"/>
+          <line x1="0" y1="40" x2="200" y2="40"/>
+          <line x1="0" y1="120" x2="200" y2="120"/>
+          <line x1="0" y1="10" x2="200" y2="10"/>
+          <line x1="0" y1="150" x2="200" y2="150"/>
+        </svg>
+        <div class="magnetic-core"></div>
+        <span class="magnetic-label">Weak Field</span>
+      </div>
+      <div class="magnetic-btn" data-strength="0.5">
+        <svg class="magnetic-field" viewBox="0 0 200 160">
+          <line x1="0" y1="80" x2="200" y2="80"/>
+          <line x1="0" y1="40" x2="200" y2="40"/>
+          <line x1="0" y1="120" x2="200" y2="120"/>
+          <line x1="0" y1="10" x2="200" y2="10"/>
+          <line x1="0" y1="150" x2="200" y2="150"/>
+        </svg>
+        <div class="magnetic-core"></div>
+        <span class="magnetic-label">Normal Field</span>
+      </div>
+      <div class="magnetic-btn" data-strength="0.8">
+        <svg class="magnetic-field" viewBox="0 0 200 160">
+          <line x1="0" y1="80" x2="200" y2="80"/>
+          <line x1="0" y1="40" x2="200" y2="40"/>
+          <line x1="0" y1="120" x2="200" y2="120"/>
+          <line x1="0" y1="10" x2="200" y2="10"/>
+          <line x1="0" y1="150" x2="200" y2="150"/>
+        </svg>
+        <div class="magnetic-core"></div>
+        <span class="magnetic-label">Strong Field</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 SCROLL MORPH -->
+  <section id="morph-section" data-section="04">
+    <div class="section-number">04</div>
+    <div class="section-label">Experiment · Scroll-driven Morphing</div>
+    <h2 class="section-title" style="position: absolute; top: 120px; left: 48px; z-index: 10;">滚动<em>驱动</em>形变</h2>
+    <p class="section-desc" style="position: absolute; top: 240px; left: 48px; z-index: 10; max-width: 360px;">
+      滚动进度成为形状演化的时间轴。
+      从上往下滑过这一屏，观察一个方形如何经过圆形、星形、最终化作流体形态。
+    </p>
+    <div class="morph-sticky" id="morphSticky">
+      <div class="morph-shape-container">
+        <div class="morph-shape" id="morphShape"></div>
+        <div class="morph-label" id="morphLabel">CUBE → CIRCLE</div>
+      </div>
+      <div class="morph-progress">
+        <div class="morph-step active" data-step="0">00 · Cube</div>
+        <div class="morph-step" data-step="1">25 · Rounded</div>
+        <div class="morph-step" data-step="2">50 · Circle</div>
+        <div class="morph-step" data-step="3">75 · Blob</div>
+        <div class="morph-step" data-step="4">100 · Splash</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 PARALLAX -->
+  <section id="parallax-section" data-section="05">
+    <div class="section-number">05</div>
+    <div class="section-label">Experiment · Parallax Depth</div>
+    <h2 class="section-title">视差<em>纵深</em>空间</h2>
+    <p class="section-desc">
+      多层独立运动构建深度错觉。移动鼠标，观察四层结构以不同速率跟随，
+      模拟真实三维空间中的运动视差。越远的层移动越慢。
+    </p>
+    <div class="parallax-scene" id="parallaxScene">
+      <div class="parallax-layer layer-0" data-depth="0.05">
+        <div class="parallax-depth-badge">LAYER 0 · 0.05×</div>
+        <div class="parallax-shape"></div>
+      </div>
+      <div class="parallax-layer layer-1" data-depth="0.15">
+        <div class="parallax-depth-badge">LAYER 1 · 0.15×</div>
+        <div class="parallax-shape"></div>
+      </div>
+      <div class="parallax-layer layer-2" data-depth="0.3">
+        <div class="parallax-depth-badge">LAYER 2 · 0.30×</div>
+        <div class="parallax-shape"></div>
+      </div>
+      <div class="parallax-layer layer-3" data-depth="0.5">
+        <div class="parallax-depth-badge">LAYER 3 · 0.50×</div>
+        <div class="parallax-shape"></div>
+      </div>
+      <div class="parallax-coords" id="parallaxCoords">X: 000 · Y: 000</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <section id="footer-section" data-section="06">
+    <h2 class="footer-title">Motion <em>is</em><br>Emotion.</h2>
+    <div class="footer-meta">
+      <span>KINETIC LAB / V3</span>
+      <span>Arc Daily Design Series</span>
+      <span>5 Experiments</span>
+      <span>Spring · Inertia · Magnetic · Morph · Parallax</span>
+    </div>
+  </section>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ========== UTILITY: SPRING PHYSICS ==========
+    function createSpring(stiffness, damping, mass) {
+      return {
+        x: 0, v: 0, target: 0,
+        stiffness: stiffness || 180,
+        damping: damping || 12,
+        mass: mass || 1,
+        update: function(dt) {
+          var springForce = -this.stiffness * (this.x - this.target);
+          var dampingForce = -this.damping * this.v;
+          var acceleration = (springForce + dampingForce) / this.mass;
+          this.v += acceleration * dt;
+          this.x += this.v * dt;
+          return this.x;
+        },
+        setTarget: function(t) { this.target = t; },
+        reset: function(x) { this.x = x; this.v = 0; this.target = x; }
+      };
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function map(v, inMin, inMax, outMin, outMax) {
+      return outMin + (outMax - outMin) * ((v - inMin) / (inMax - inMin));
+    }
+
+    // ========== CUSTOM CURSOR ==========
+    var cursorRing = document.getElementById('cursorRing');
+    var cursorDot = document.getElementById('cursorDot');
+    var trailEls = [];
+    for (var i = 1; i <= 8; i++) {
+      trailEls.push(document.getElementById('trail' + i));
+    }
+
+    var mouseX = window.innerWidth / 2;
+    var mouseY = window.innerHeight / 2;
+    var cursorX = mouseX;
+    var cursorY = mouseY;
+    var trailX = new Array(8).fill(mouseX);
+    var trailY = new Array(8).fill(mouseY);
+
+    var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+    if (!isTouchDevice) {
+      document.addEventListener('mousemove', function(e) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      // Hover state detection
+      document.querySelectorAll('button, a, .spring-ball, .inertia-viewport, .magnetic-btn').forEach(function(el) {
+        el.addEventListener('mouseenter', function() { document.body.classList.add('cursor-hover'); });
+        el.addEventListener('mouseleave', function() { document.body.classList.remove('cursor-hover'); });
+      });
+    }
+
+    // ========== FPS COUNTER ==========
+    var fpsCounter = document.getElementById('fpsCounter');
+    var lastFpsTime = performance.now();
+    var frameCount = 0;
+    var fps = 60;
+
+    // ========== PROGRESS BAR ==========
+    var progressBar = document.getElementById('progressBar');
+
+    function updateProgress() {
+      var scrollTop = window.scrollY || document.documentElement.scrollTop;
+      var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      var progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+      progressBar.style.width = progress + '%';
+    }
+    window.addEventListener('scroll', updateProgress, { passive: true });
+
+    // ========== 01 SPRING OSCILLATOR ==========
+    var springBall = document.getElementById('springBall');
+    var springStage = document.getElementById('springStage');
+    var springSvgLine = document.getElementById('springSvgLine');
+    var paramK = document.getElementById('paramK');
+    var paramD = document.getElementById('paramD');
+    var paramV = document.getElementById('paramV');
+    var paramX = document.getElementById('paramX');
+
+    var springX = createSpring(180, 12, 1);
+    var springY = createSpring(180, 12, 1);
+    var isDraggingSpring = false;
+    var springStartX = 0, springStartY = 0;
+    var dragStartX = 0, dragStartY = 0;
+    var ballW = 72;
+
+    function getSpringCenter() {
+      var rect = springStage.getBoundingClientRect();
+      return { x: rect.width / 2, y: rect.height / 2, rect: rect };
+    }
+
+    function setBallPosition(x, y) {
+      springBall.style.left = x + 'px';
+      springBall.style.top = y + 'px';
+    }
+
+    function updateSpringLine(x, y) {
+      var center = getSpringCenter();
+      springSvgLine.setAttribute('x1', center.x);
+      springSvgLine.setAttribute('y1', center.y);
+      springSvgLine.setAttribute('x2', x);
+      springSvgLine.setAttribute('y2', y);
+    }
+
+    if (!isTouchDevice) {
+      springBall.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        isDraggingSpring = true;
+        document.body.classList.add('cursor-drag');
+        var rect = springStage.getBoundingClientRect();
+        dragStartX = e.clientX - rect.left;
+        dragStartY = e.clientY - rect.top;
+        springX.v = 0; springY.v = 0;
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!isDraggingSpring) return;
+        var rect = springStage.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        springX.x = x - rect.width / 2;
+        springY.x = y - rect.height / 2;
+        setBallPosition(x, y);
+        updateSpringLine(x, y);
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (isDraggingSpring) {
+          isDraggingSpring = false;
+          document.body.classList.remove('cursor-drag');
+          springX.setTarget(0);
+          springY.setTarget(0);
+        }
+      });
+    }
+
+    function initSpring() {
+      var center = getSpringCenter();
+      setBallPosition(center.x, center.y);
+      updateSpringLine(center.x, center.y);
+      springX.reset(0);
+      springY.reset(0);
+    }
+    initSpring();
+    window.addEventListener('resize', initSpring);
+
+    // ========== 02 INERTIA DRAG ==========
+    var inertiaViewport = document.getElementById('inertiaViewport');
+    var inertiaTrack = document.getElementById('inertiaTrack');
+    var inertiaVel = document.getElementById('inertiaVel');
+    var velocityFill = document.getElementById('velocityFill');
+
+    var inertiaX = 0;
+    var inertiaVX = 0;
+    var isDraggingInertia = false;
+    var dragLastX = 0;
+    var dragPrevX = 0;
+    var dragStartInertiaX = 0;
+    var maxDrag = 0;
+
+    function updateInertiaBounds() {
+      var trackW = inertiaTrack.scrollWidth;
+      var viewW = inertiaViewport.clientWidth;
+      maxDrag = trackW - viewW;
+    }
+    updateInertiaBounds();
+    window.addEventListener('resize', updateInertiaBounds);
+
+    function setInertiaX(x) {
+      inertiaX = clamp(x, -maxDrag, 0);
+      inertiaTrack.style.transform = 'translateX(' + inertiaX + 'px)';
+    }
+
+    if (!isTouchDevice) {
+      inertiaViewport.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        isDraggingInertia = true;
+        dragLastX = e.clientX;
+        dragPrevX = e.clientX;
+        dragStartInertiaX = inertiaX;
+        inertiaVX = 0;
+        document.body.classList.add('cursor-grab');
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!isDraggingInertia) return;
+        dragPrevX = dragLastX;
+        dragLastX = e.clientX;
+        var delta = dragLastX - dragPrevX;
+        inertiaVX = delta;
+        setInertiaX(inertiaX + delta);
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (isDraggingInertia) {
+          isDraggingInertia = false;
+          document.body.classList.remove('cursor-grab');
+        }
+      });
+    }
+
+    // Touch support for inertia
+    inertiaViewport.addEventListener('touchstart', function(e) {
+      isDraggingInertia = true;
+      dragLastX = e.touches[0].clientX;
+      dragPrevX = e.touches[0].clientX;
+      dragStartInertiaX = inertiaX;
+      inertiaVX = 0;
+    }, { passive: true });
+
+    inertiaViewport.addEventListener('touchmove', function(e) {
+      if (!isDraggingInertia) return;
+      dragPrevX = dragLastX;
+      dragLastX = e.touches[0].clientX;
+      var delta = dragLastX - dragPrevX;
+      inertiaVX = delta;
+      setInertiaX(inertiaX + delta);
+    }, { passive: true });
+
+    inertiaViewport.addEventListener('touchend', function() {
+      isDraggingInertia = false;
+    });
+
+    // ========== 03 MAGNETIC BUTTONS ==========
+    var magneticBtns = document.querySelectorAll('.magnetic-btn');
+
+    magneticBtns.forEach(function(btn) {
+      var core = btn.querySelector('.magnetic-core');
+      var strength = parseFloat(btn.getAttribute('data-strength')) || 0.5;
+      var targetX = 0, targetY = 0;
+      var currentX = 0, currentY = 0;
+
+      if (!isTouchDevice) {
+        btn.addEventListener('mousemove', function(e) {
+          var rect = btn.getBoundingClientRect();
+          var centerX = rect.left + rect.width / 2;
+          var centerY = rect.top + rect.height / 2;
+          var dx = e.clientX - centerX;
+          var dy = e.clientY - centerY;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          var maxDist = Math.min(rect.width, rect.height) / 2;
+          var force = Math.max(0, 1 - dist / maxDist) * strength;
+          targetX = dx * force * 2;
+          targetY = dy * force * 2;
+        });
+
+        btn.addEventListener('mouseleave', function() {
+          targetX = 0;
+          targetY = 0;
+        });
+      }
+
+      // Store for animation loop
+      btn._magUpdate = function() {
+        currentX = lerp(currentX, targetX, 0.15);
+        currentY = lerp(currentY, targetY, 0.15);
+        core.style.transform = 'translate(' + currentX + 'px, ' + currentY + 'px)';
+      };
+    });
+
+    // ========== 04 SCROLL MORPH ==========
+    var morphShape = document.getElementById('morphShape');
+    var morphLabel = document.getElementById('morphLabel');
+    var morphSteps = document.querySelectorAll('.morph-step');
+    var morphSection = document.getElementById('morph-section');
+
+    var morphStates = [
+      { br: '0% 0% 0% 0% / 0% 0% 0% 0%', label: 'CUBE', scale: 1 },
+      { br: '20% 20% 20% 20% / 20% 20% 20% 20%', label: 'ROUNDED', scale: 1.05 },
+      { br: '50% 50% 50% 50% / 50% 50% 50% 50%', label: 'CIRCLE', scale: 1.1 },
+      { br: '60% 40% 30% 70% / 60% 30% 70% 40%', label: 'BLOB', scale: 1.15 },
+      { br: '30% 70% 70% 30% / 30% 52% 48% 70%', label: 'SPLASH', scale: 1.2 }
+    ];
+
+    function getMorphProgress() {
+      var rect = morphSection.getBoundingClientRect();
+      var sectionH = rect.height;
+      var scrolled = -rect.top;
+      var progress = clamp(scrolled / (sectionH - window.innerHeight), 0, 1);
+      return progress;
+    }
+
+    function updateMorph() {
+      var p = getMorphProgress();
+      var totalStates = morphStates.length;
+      var exactIndex = p * (totalStates - 1);
+      var idx = Math.floor(exactIndex);
+      var frac = exactIndex - idx;
+
+      var fromState = morphStates[clamp(idx, 0, totalStates - 1)];
+      var toState = morphStates[clamp(idx + 1, 0, totalStates - 1)];
+
+      morphShape.style.borderRadius = fromState.br;
+      morphShape.style.transform = 'scale(' + lerp(fromState.scale, toState.scale, frac) + ') rotate(' + (p * 45) + 'deg)';
+
+      // Label shows current state
+      var activeIdx = Math.round(p * (totalStates - 1));
+      morphLabel.textContent = morphStates[activeIdx].label;
+
+      // Update steps
+      morphSteps.forEach(function(step, i) {
+        if (i <= Math.round(p * (morphSteps.length - 1))) {
+          step.classList.add('active');
+        } else {
+          step.classList.remove('active');
+        }
+      });
+    }
+
+    // ========== 05 PARALLAX ==========
+    var parallaxScene = document.getElementById('parallaxScene');
+    var parallaxLayers = document.querySelectorAll('.parallax-layer');
+    var parallaxCoords = document.getElementById('parallaxCoords');
+
+    var parallaxTargetX = 0, parallaxTargetY = 0;
+
+    if (!isTouchDevice) {
+      parallaxScene.addEventListener('mousemove', function(e) {
+        var rect = parallaxScene.getBoundingClientRect();
+        var cx = e.clientX - rect.left - rect.width / 2;
+        var cy = e.clientY - rect.top - rect.height / 2;
+        parallaxTargetX = cx;
+        parallaxTargetY = cy;
+      });
+
+      parallaxScene.addEventListener('mouseleave', function() {
+        parallaxTargetX = 0;
+        parallaxTargetY = 0;
+      });
+    }
+
+    // ========== MAIN ANIMATION LOOP ==========
+    var lastTime = performance.now();
+    var rafId = null;
+
+    function animate(now) {
+      var dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      // FPS
+      frameCount++;
+      if (now - lastFpsTime >= 500) {
+        fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+        fpsCounter.textContent = fps + ' FPS';
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+
+      // --- Cursor ---
+      if (!isTouchDevice) {
+        cursorX = lerp(cursorX, mouseX, 0.25);
+        cursorY = lerp(cursorY, mouseY, 0.25);
+        cursorRing.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+        cursorDot.style.transform = 'translate(' + mouseX + 'px, ' + mouseY + 'px) translate(-50%, -50%)';
+
+        // Trails
+        for (var t = 0; t < 8; t++) {
+          var prevX = t === 0 ? cursorX : trailX[t - 1];
+          var prevY = t === 0 ? cursorY : trailY[t - 1];
+          trailX[t] = lerp(trailX[t], prevX, 0.4 - t * 0.04);
+          trailY[t] = lerp(trailY[t], prevY, 0.4 - t * 0.04);
+          var scale = 1 - t * 0.1;
+          var opacity = (1 - t * 0.12) * 0.4;
+          trailEls[t].style.transform = 'translate(' + trailX[t] + 'px, ' + trailY[t] + 'px) translate(-50%, -50%) scale(' + scale + ')';
+          trailEls[t].style.opacity = opacity;
+        }
+      }
+
+      // --- Spring Ball ---
+      if (!isDraggingSpring) {
+        springX.update(dt);
+        springY.update(dt);
+        var center = getSpringCenter();
+        var bx = center.x + springX.x;
+        var by = center.y + springY.x;
+        setBallPosition(bx, by);
+        updateSpringLine(bx, by);
+
+        // Update params display
+        var disp = Math.sqrt(springX.x * springX.x + springY.x * springY.y);
+        var velMag = Math.sqrt(springX.v * springX.v + springY.v * springY.v);
+        paramX.textContent = disp.toFixed(1);
+        paramV.textContent = velMag.toFixed(2);
+      }
+
+      // --- Inertia ---
+      if (!isDraggingInertia) {
+        if (Math.abs(inertiaVX) > 0.05) {
+          inertiaVX *= 0.95; // friction
+          setInertiaX(inertiaX + inertiaVX);
+
+          // Bounce at edges with spring
+          if (inertiaX > 0) {
+            var springF = -inertiaX * 0.3;
+            inertiaVX += springF * dt * 60;
+          } else if (inertiaX < -maxDrag && maxDrag > 0) {
+            var over = inertiaX + maxDrag;
+            var sF = -over * 0.3;
+            inertiaVX += sF * dt * 60;
+          }
+        } else {
+          inertiaVX = 0;
+          // Snap to bounds
+          if (inertiaX > 0) setInertiaX(0);
+          else if (inertiaX < -maxDrag && maxDrag > 0) setInertiaX(-maxDrag);
+        }
+
+        inertiaVel.textContent = inertiaVX.toFixed(2);
+        var velPercent = Math.min(Math.abs(inertiaVX) / 30 * 100, 100);
+        velocityFill.style.width = velPercent + '%';
+        velocityFill.classList.toggle('negative', inertiaVX < 0);
+      }
+
+      // --- Magnetic buttons ---
+      magneticBtns.forEach(function(btn) {
+        if (btn._magUpdate) btn._magUpdate();
+      });
+
+      // --- Parallax ---
+      if (!isTouchDevice) {
+        parallaxLayers.forEach(function(layer) {
+          var depth = parseFloat(layer.getAttribute('data-depth')) || 0.1;
+          var lx = parallaxTargetX * depth;
+          var ly = parallaxTargetY * depth;
+          layer.style.transform = 'translate(' + lx + 'px, ' + ly + 'px)';
+        });
+        parallaxCoords.textContent = 'X: ' + String(Math.round(parallaxTargetX)).padStart(3, '0') +
+          ' · Y: ' + String(Math.round(parallaxTargetY)).padStart(3, '0');
+      }
+
+      // --- Scroll morph ---
+      updateMorph();
+
+      rafId = requestAnimationFrame(animate);
+    }
+
+    rafId = requestAnimationFrame(animate);
+
+    // ========== PAGE VISIBILITY ==========
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+      } else {
+        lastTime = performance.now();
+        if (!rafId) rafId = requestAnimationFrame(animate);
+      }
+    });
+
+    // ========== CLEANUP ON UNLOAD ==========
+    window.addEventListener('beforeunload', function() {
+      if (rafId) cancelAnimationFrame(rafId);
+    });
+
+    // ========== ANNOUNCE UPGRADE ==========
+    function announceUpgrade() {
+      try {
+        window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+      } catch(e) {}
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+
+  })();
+  </script>
+</body>
+</html>
