@@ -1,0 +1,3738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>光影集 PhotoMuse · 证件照 AI 工作室</title>
+  <meta name="creative-medium" content="interactive-prototype">
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600;1,700&family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+      background: #FAFAF8;
+      color: #1A1A1A;
+      -webkit-font-smoothing: antialiased;
+      text-wrap: pretty;
+    }
+    ::-webkit-scrollbar { width: 0; height: 0; }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    function announceUpgrade() {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') window.addEventListener('load', announceUpgrade, { once: true });
+  </script>
+<script type="text/babel">
+// ===== 光影集 PhotoMuse · 主应用框架 =====
+// 契约层对齐：4 个页面 / 13 个云函数 / 订单状态机 / snake_case 字段
+// 视觉方向：Editorial 编辑室（衬线大标题 + 发丝线 + 极致留白 + 杂志质感）
+
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+// ===== 设计令牌 Design Tokens =====
+const PM = {
+  // 页面底色
+  pageBg: '#FAFAF8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F5F3EF',
+  // 主色（墨黑）
+  ink: '#1A1A1A',
+  inkSecondary: '#3D3D38',
+  inkTertiary: '#737169',
+  inkFaint: '#B8B6AE',
+  // 线条
+  border: '#E0DED8',
+  borderHover: '#B8B6AE',
+  hairline: '#D0CEC6',
+  divider: '#ECE9E1',
+  // 强调色（低调琥珀金）
+  accent: '#B8860B',
+  accentSoft: '#F7EFE0',
+  accentLight: '#D4AF6A',
+  // 状态色
+  success: '#2E6B3F',
+  successSoft: '#E8F2EA',
+  warning: '#C66A2E',
+  warningSoft: '#FAECE0',
+  error: '#B23A3A',
+  errorSoft: '#F6E3E1',
+  info: '#2C5A7A',
+  infoSoft: '#E2ECF2',
+  // 字体
+  display: "'Playfair Display', 'Noto Serif SC', serif",
+  serif: "'Playfair Display', 'Noto Serif SC', serif",
+  body: "'Inter', 'Noto Sans SC', sans-serif",
+  mono: "'JetBrains Mono', monospace",
+};
+
+// ===== 配置常量（对齐 utils/ai-studio-config.js 契约） =====
+const PRODUCTS = [
+  { productId: 'id_photo_9_9', name: '证件照体验版', price: '¥3.9', desc: '单张出片 · AI 自动制作', deliveryCount: 1, productionLine: 'auto' },
+  { productId: 'resume_photo_29_9', name: '简历形象照', price: '¥29.9', desc: '三张交付 · 半人工精修', deliveryCount: 3, productionLine: 'semi_auto' },
+];
+
+const STYLES = [
+  { styleId: 'ID-01', name: '蓝底正装', subtitle: 'Blue · Formal', thumb: null },
+  { styleId: 'ID-02', name: '红底经典', subtitle: 'Red · Classic', thumb: null },
+  { styleId: 'ID-03', name: '白底简约', subtitle: 'White · Minimal', thumb: null },
+];
+
+const STATUS_LABELS = {
+  waiting_photos: '待上传',
+  photo_review: '审核中',
+  queued: '队列中',
+  generating: '生成中',
+  qc: '质检中',
+  delivered: '已交付',
+  cancelled: '已取消',
+  waiting_retake: '待补拍',
+};
+
+const PHOTO_CHECK_LABELS = {
+  unchecked: '未审核',
+  passed: '已通过',
+  need_retake: '需补拍',
+  rejected: '已拒绝',
+};
+
+// 订单状态筛选（管理端，与契约对齐 7 状态）
+const ADMIN_STATUS_OPTIONS = [
+  { value: 'photo_review', label: '待审核' },
+  { value: 'queued', label: '队列中' },
+  { value: 'generating', label: '生成中' },
+  { value: 'qc', label: '质检中' },
+  { value: 'delivered', label: '已交付' },
+  { value: 'waiting_photos', label: '补拍中' },
+  { value: 'cancelled', label: '已取消' },
+];
+
+const AUTHORIZATION_TEXT = [
+  { field: 'isSelfOrAuthorized', text: '确认是本人或已获得授权' },
+  { field: 'isAdult', text: '确认已年满 18 周岁' },
+  { field: 'agreesProduction', text: '同意 AI 制作与服务条款' },
+];
+
+const BACKGROUND_OPTIONS = ['白底', '蓝底', '红底', '灰底'];
+const CLOTHING_OPTIONS = ['保持原服装', '白衬衫', '深色西装'];
+const SPEC_OPTIONS = ['一寸', '二寸', '考试报名', '社保照', '简历头像'];
+
+// ===== 示例图片（项目内已有） =====
+const IMG = {
+  idBlue: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgn34a4go_ve_miaoda',
+  idRed: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgt4kjsag_ve_miaoda',
+  portrait: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgl2lxgfq_ve_miaoda',
+  cinematic: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgucgdubi_ve_miaoda',
+  magazine: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgr33tukq_ve_miaoda',
+  polaroid: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgucgduai_ve_miaoda',
+  studio: 'https://dcniaqwtmoca.feishu.cn/spark/app/app_17c85bu20nu/runtime/api/v1/storage/object/bucket_aadkqg427v4ju_static/static%2Faadkqgr33tukq_ve_miaoda',
+};
+
+// 产品效果范例
+const PRODUCT_EXAMPLES = {
+  id_photo_9_9: {
+    subtitle: 'ID Photo · Standard',
+    beforeImage: IMG.cinematic,
+    afterImage: IMG.idBlue,
+    features: [
+      '智能识别五官与脸型',
+      '自动替换证件照底色',
+      '光线与肤色自然校准',
+      '3 秒极速出片',
+    ],
+    tips: [
+      '光线均匀，避免强烈侧光',
+      '正脸直视镜头，表情自然',
+      '头发不遮挡眉眼',
+    ],
+  },
+  resume_photo_29_9: {
+    subtitle: 'Business Portrait · Premium',
+    beforeImage: IMG.magazine,
+    afterImage: IMG.portrait,
+    features: [
+      '电影级光影重塑',
+      '专业背景虚化处理',
+      '服装与发型智能优化',
+      '人工精修质检 · 2 小时交付',
+    ],
+    tips: [
+      '选择纯色简洁背景',
+      '肩膀放松，自然微笑',
+      '光线从前方 45° 照射效果最佳',
+    ],
+  },
+};
+
+// ===== 全局 Hook =====
+function useAppState() {
+  // 路由：index / detail / adminLogin / admin
+  const [page, setPage] = useState('index');
+  const [pageStack, setPageStack] = useState(['index']);
+
+  // 全局 Toast
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
+
+  // 下单表单状态（对齐契约 data 字段）
+  const [form, setForm] = useState({
+    selectedProductId: PRODUCTS[0].productId,
+    selectedStyleId: STYLES[0].styleId,
+    backgroundIndex: 0,
+    clothingIndex: 0,
+    specIndex: 0,
+    customerNote: '',
+    contactPhone: '',
+    queryPassword: '',
+    photos: [],           // [{ id, url, size }]
+    authorization: {
+      isSelfOrAuthorized: false,
+      isAdult: false,
+      agreesProduction: false,
+    },
+    // 查询面板
+    showQueryPanel: false,
+    queryOrderId: '',
+    queryContactPhone: '',
+    queryOrderPassword: '',
+  });
+
+  // 订单列表
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+
+  // 当前订单（详情页）
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [currentOrderFiles, setCurrentOrderFiles] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [queryMode, setQueryMode] = useState(false);
+
+  // 管理端
+  const [adminPassword, setAdminPassword] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminOrders, setAdminOrders] = useState([]);
+  const [adminStatus, setAdminStatus] = useState('photo_review');
+  const [adminLoading, setAdminLoading] = useState(true);
+  const [actionOrderId, setActionOrderId] = useState(null);
+
+  const showToast = useCallback((message, type = 'info', duration = 2200) => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), duration);
+  }, []);
+
+  const navigate = useCallback((newPage, params = {}) => {
+    setPageStack(prev => [...prev, newPage]);
+    setPage(newPage);
+  }, []);
+
+  const goBack = useCallback(() => {
+    setPageStack(prev => {
+      if (prev.length <= 1) return prev;
+      const newStack = prev.slice(0, -1);
+      setPage(newStack[newStack.length - 1]);
+      return newStack;
+    });
+  }, []);
+
+  const goHome = useCallback(() => {
+    setPageStack(['index']);
+    setPage('index');
+  }, []);
+
+  // 初始化：模拟加载订单列表
+  useEffect(() => {
+    setOrdersLoading(true);
+    setTimeout(() => {
+      const demoOrders = [
+        {
+          orderId: 'AIStudio-1730000000-abc123',
+          productName: '证件照体验版',
+          styleName: '蓝底正装',
+          price: '¥3.9',
+          order_status: 'delivered',
+          photo_check: 'passed',
+          reference_photo_count: 1,
+          delivery_file_count: 1,
+          reviewNote: '',
+          createdAt: '2026-08-15T10:23:00Z',
+          updatedAt: '2026-08-15T10:25:00Z',
+          customerUrls: [IMG.cinematic],
+          deliveryUrls: [IMG.idBlue],
+        },
+        {
+          orderId: 'AIStudio-1729000000-def456',
+          productName: '简历形象照',
+          styleName: '白底简约',
+          price: '¥29.9',
+          order_status: 'photo_review',
+          photo_check: 'unchecked',
+          reference_photo_count: 2,
+          delivery_file_count: 0,
+          reviewNote: '',
+          createdAt: '2026-08-14T14:05:00Z',
+          updatedAt: '2026-08-14T14:06:00Z',
+          customerUrls: [IMG.magazine, IMG.portrait],
+          deliveryUrls: [],
+        },
+      ];
+      setOrders(demoOrders);
+      setOrdersLoading(false);
+    }, 600);
+  }, []);
+
+  return {
+    // 路由
+    page, navigate, goBack, goHome, pageStack,
+    // Toast
+    toast, showToast,
+    // 表单
+    form, setForm,
+    // 订单列表
+    orders, setOrders, ordersLoading, setOrdersLoading,
+    // 当前订单
+    currentOrder, setCurrentOrder,
+    currentOrderFiles, setCurrentOrderFiles,
+    detailLoading, setDetailLoading,
+    queryMode, setQueryMode,
+    // 管理端
+    adminPassword, setAdminPassword,
+    isAdmin, setIsAdmin,
+    adminOrders, setAdminOrders,
+    adminStatus, setAdminStatus,
+    adminLoading, setAdminLoading,
+    actionOrderId, setActionOrderId,
+  };
+}
+
+// ===== 全局组件 =====
+function Toast({ message, visible, type = 'info' }) {
+  const bgMap = {
+    info: 'rgba(26,26,26,0.92)',
+    success: 'rgba(46,107,63,0.92)',
+    error: 'rgba(178,58,58,0.92)',
+    warning: 'rgba(198,106,46,0.92)',
+  };
+  return (
+    <div style={{
+      position: 'fixed',
+      top: '38%',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      padding: '11px 22px',
+      background: bgMap[type],
+      backdropFilter: 'blur(12px)',
+      color: '#fff',
+      fontSize: 13,
+      lineHeight: 1.5,
+      borderRadius: 10,
+      zIndex: 9999,
+      opacity: visible ? 1 : 0,
+      pointerEvents: 'none',
+      transition: 'opacity 0.25s ease',
+      textAlign: 'center',
+      maxWidth: '78%',
+      fontWeight: 400,
+      letterSpacing: 0.2,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    }}>
+      {message}
+    </div>
+  );
+}
+
+// 发丝线分隔
+function Hairline({ style }) {
+  return <div style={{ height: 1, background: PM.hairline, opacity: 0.5, ...style }} />;
+}
+
+// 页面容器
+function PageFrame({ children }) {
+  return (
+    <div style={{
+      width: '100%',
+      maxWidth: 480,
+      height: '100%',
+      margin: '0 auto',
+      background: PM.pageBg,
+      position: 'relative',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ===== 主 App =====
+function App() {
+  const state = useAppState();
+  const { page, pageStack } = state;
+
+  const renderPage = () => {
+    const { IndexPage } = window;
+    const { DetailPage } = window;
+    const { AdminLoginPage } = window;
+    const { AdminPage } = window;
+
+    switch (page) {
+      case 'detail': return <DetailPage {...state} />;
+      case 'adminLogin': return <AdminLoginPage {...state} />;
+      case 'admin': return <AdminPage {...state} />;
+      default: return <IndexPage {...state} />;
+    }
+  };
+
+  const pageKey = `${page}-${pageStack.length}`;
+
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      background: PM.pageBg,
+      overflow: 'hidden',
+    }}>
+      <PageFrame>
+        <div
+          key={pageKey}
+          style={{
+            width: '100%',
+            height: '100%',
+            animation: 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {renderPage()}
+        </div>
+      </PageFrame>
+      <Toast message={state.toast.message} visible={state.toast.visible} type={state.toast.type} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+// 暴露到全局（页面组件通过 window 访问）
+Object.assign(window, {
+  PM,
+  IMG,
+  PRODUCTS,
+  STYLES,
+  STATUS_LABELS,
+  PHOTO_CHECK_LABELS,
+  ADMIN_STATUS_OPTIONS,
+  AUTHORIZATION_TEXT,
+  BACKGROUND_OPTIONS,
+  CLOTHING_OPTIONS,
+  SPEC_OPTIONS,
+  PRODUCT_EXAMPLES,
+  Hairline,
+  PageFrame,
+  Toast,
+});
+
+
+// ===== 页面一：Index 下单主页 =====
+// 对齐契约区块树：page-nav / hero / 套餐 / 效果范例 / 拍照引导 / 风格 / 制作要求 / 上传 / 授权 / 提交 / 查询订单 / 我的订单 / 管理入口
+
+function IndexPage(props) {
+  const s = PM;
+  const {
+    form, setForm,
+    orders, setOrders, ordersLoading,
+    navigate, showToast,
+  } = props;
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [exampleImgLoaded, setExampleImgLoaded] = useState(false);
+
+  const currentProduct = PRODUCTS.find(p => p.productId === form.selectedProductId) || PRODUCTS[0];
+  const currentExample = PRODUCT_EXAMPLES[form.selectedProductId] || PRODUCT_EXAMPLES.id_photo_9_9;
+  const currentStyle = STYLES.find(st => st.styleId === form.selectedStyleId) || STYLES[0];
+
+  // ---- 交互方法（对齐行为契约） ----
+  const [hoverProduct, setHoverProduct] = useState(null);
+  const [hoverStyle, setHoverStyle] = useState(null);
+
+  const selectProduct = (productId) => {
+    setForm(prev => ({
+      ...prev,
+      selectedProductId: productId,
+      // 选简历形象照时强制风格为白底简约（ID-03）
+      selectedStyleId: productId === 'resume_photo_29_9' ? 'ID-03' : prev.selectedStyleId,
+    }));
+    setExampleImgLoaded(false);
+  };
+
+  const selectStyle = (styleId) => {
+    setForm(prev => ({ ...prev, selectedStyleId: styleId }));
+  };
+
+  const setPickerIndex = (field, index) => {
+    setForm(prev => ({ ...prev, [field]: index }));
+  };
+
+  const setField = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleAuth = (field) => {
+    setForm(prev => ({
+      ...prev,
+      authorization: { ...prev.authorization, [field]: !prev.authorization[field] },
+    }));
+  };
+
+  const toggleQueryPanel = () => {
+    setForm(prev => ({ ...prev, showQueryPanel: !prev.showQueryPanel }));
+  };
+
+  const choosePhotos = () => {
+    if (form.photos.length >= 3) {
+      showToast('最多上传 3 张参考照片', 'error');
+      return;
+    }
+    const remaining = 3 - form.photos.length;
+    const candidates = [IMG.cinematic, IMG.portrait, IMG.magazine];
+    const newPhotos = [];
+    for (let i = 0; i < remaining; i++) {
+      const idx = (form.photos.length + i) % candidates.length;
+      newPhotos.push({
+        id: Date.now() + i,
+        tempFilePath: candidates[idx],
+        url: candidates[idx],
+        size: 1024000 + Math.floor(Math.random() * 500000),
+      });
+    }
+    setForm(prev => ({ ...prev, photos: [...prev.photos, ...newPhotos] }));
+    showToast('照片已添加', 'success');
+  };
+
+  const removePhoto = (index) => {
+    setForm(prev => ({
+      ...prev,
+      photos: prev.photos.filter((_, i) => i !== index),
+    }));
+  };
+
+  const allAuthChecked = form.authorization.isSelfOrAuthorized
+    && form.authorization.isAdult
+    && form.authorization.agreesProduction;
+
+  const submitOrder = () => {
+    // 校验（对齐契约 VALIDATION_ERROR / AUTHORIZATION_REQUIRED / PHOTO_REQUIRED）
+    if (form.photos.length === 0) {
+      showToast('请至少上传 1 张正脸照片', 'error');
+      return;
+    }
+    if (!form.contactPhone || !/^1\d{10}$/.test(form.contactPhone.replace(/\s/g, ''))) {
+      showToast('请填写正确的手机号', 'error');
+      return;
+    }
+    if (!form.queryPassword || form.queryPassword.length < 6) {
+      showToast('查询密码至少 6 位', 'error');
+      return;
+    }
+    if (!allAuthChecked) {
+      showToast('请先确认本人/成年人授权', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    // 模拟三阶段：create → upload → submit
+    setTimeout(() => {
+      const newOrder = {
+        orderId: `AIStudio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        productName: currentProduct.name,
+        styleName: currentStyle.name,
+        price: currentProduct.price,
+        order_status: 'photo_review',
+        photo_check: 'unchecked',
+        reference_photo_count: form.photos.length,
+        delivery_file_count: 0,
+        reviewNote: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        customerUrls: form.photos.map(p => p.url),
+        deliveryUrls: [],
+        background: BACKGROUND_OPTIONS[form.backgroundIndex],
+        clothing: CLOTHING_OPTIONS[form.clothingIndex],
+        spec: SPEC_OPTIONS[form.specIndex],
+      };
+      // 插入到订单列表顶部
+      setOrders(prev => [newOrder, ...prev]);
+      // 清表单（对齐契约）
+      setForm(prev => ({
+        ...prev,
+        photos: [],
+        customerNote: '',
+        contactPhone: '',
+        queryPassword: '',
+        authorization: { isSelfOrAuthorized: false, isAdult: false, agreesProduction: false },
+      }));
+      setIsSubmitting(false);
+      showToast('订单提交成功', 'success');
+      // 跳详情
+      setTimeout(() => {
+        props.setCurrentOrder(newOrder);
+        props.setCurrentOrderFiles([
+          ...form.photos.map((p, i) => ({ fileId: `cust-${i}`, fileType: 'customer_photo', fileID: p.url, fileName: `photo-${i + 1}.jpg`, size: p.size, status: 'uploaded' })),
+        ]);
+        navigate('detail');
+      }, 400);
+    }, 1400);
+  };
+
+  // 查询订单
+  const queryOrder = () => {
+    if (!form.queryOrderId || !form.queryContactPhone || !form.queryOrderPassword) {
+      showToast('请填写完整查询信息', 'error');
+      return;
+    }
+    // 模拟查询
+    const found = orders.find(o => o.orderId === form.queryOrderId);
+    if (!found) {
+      showToast('订单不存在或信息不匹配', 'error');
+      return;
+    }
+    props.setCurrentOrder(found);
+    props.setQueryMode(true);
+    navigate('detail');
+  };
+
+  const openOrder = (order) => {
+    props.setCurrentOrder(order);
+    props.setQueryMode(false);
+    navigate('detail');
+  };
+
+  const openAdminLogin = () => {
+    navigate('adminLogin');
+  };
+
+  return (
+    <div style={{
+      flex: 1,
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      background: s.pageBg,
+      color: s.ink,
+      position: 'relative',
+    }}>
+
+      {/* 页面导航 */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: `${s.pageBg}`,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '52px 24px 14px',
+        }}>
+          <div style={{ width: 32, height: 32 }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              fontFamily: s.serif,
+              fontStyle: 'italic',
+              fontSize: 17,
+              fontWeight: 600,
+              letterSpacing: 0.3,
+              color: s.ink,
+            }}>PhotoMuse</div>
+          </div>
+          <div
+            onClick={openAdminLogin}
+            style={{
+              width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M6 21v-2a6 6 0 0 1 12 0v2" />
+            </svg>
+          </div>
+        </div>
+        <div style={{ height: 1, background: s.hairline, opacity: 0.4 }} />
+      </div>
+
+      {/* HERO */}
+      <div style={{
+        position: 'relative',
+        padding: '48px 28px 56px',
+        textAlign: 'center',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: 3,
+          textTransform: 'uppercase',
+          color: s.inkTertiary,
+          marginBottom: 18,
+        }}>Issue No.01 — Portrait Studio</div>
+
+        <h1 style={{
+          fontFamily: s.display,
+          fontSize: 68,
+          fontWeight: 400,
+          lineHeight: 0.92,
+          letterSpacing: -1,
+          color: s.ink,
+          marginBottom: 4,
+        }}>光影</h1>
+        <h1 style={{
+          fontFamily: s.display,
+          fontSize: 68,
+          fontWeight: 400,
+          fontStyle: 'italic',
+          lineHeight: 0.92,
+          letterSpacing: -1,
+          color: s.ink,
+        }}>集</h1>
+
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'center', gap: 14,
+          margin: '24px 0 20px',
+        }}>
+          <div style={{ width: 32, height: 1, background: s.ink }} />
+          <div style={{
+            fontFamily: s.serif,
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: s.inkSecondary,
+          }}>Est. 2026</div>
+          <div style={{ width: 32, height: 1, background: s.ink }} />
+        </div>
+
+        <p style={{
+          fontSize: 13,
+          color: s.inkSecondary,
+          lineHeight: 1.85,
+          maxWidth: 280,
+          margin: '0 auto',
+          letterSpacing: 0.2,
+        }}>
+          为每一张肖像注入杂志封面的质感。<br />
+          AI 专业人像修图，三秒出片。
+        </p>
+      </div>
+
+      {/* 发丝线分隔 + 编号装饰 */}
+      <SectionHeader number="02" title="选择套餐" subtitle="Packages" />
+
+      {/* 套餐列表 */}
+      <div style={{ padding: '0 28px', display: 'flex', flexDirection: 'column' }}>
+        {PRODUCTS.map((p, i) => (
+          <div
+            key={p.productId}
+            onClick={() => selectProduct(p.productId)}
+            onMouseEnter={() => setHoverProduct(p.productId)}
+            onMouseLeave={() => setHoverProduct(null)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '22px 12px',
+              margin: '0 -12px',
+              borderTop: i === 0 ? `1px solid ${s.border}` : 'none',
+              borderBottom: `1px solid ${s.border}`,
+              cursor: 'pointer',
+              position: 'relative',
+              background: hoverProduct === p.productId ? s.surfaceAlt : 'transparent',
+              transition: 'background 0.25s ease, padding 0.25s ease',
+              borderRadius: hoverProduct === p.productId ? 8 : 0,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                {form.selectedProductId === p.productId ? (
+                  <div style={{
+                    width: 20, height: 20,
+                    borderRadius: '50%',
+                    background: s.ink,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: 'fadeIn 0.3s ease',
+                  }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div style={{
+                    width: 20, height: 20,
+                    borderRadius: '50%',
+                    border: `1px solid ${hoverProduct === p.productId ? s.inkTertiary : s.inkFaint}`,
+                    transition: 'border-color 0.25s ease',
+                  }} />
+                )}
+                <span style={{
+                  fontSize: 16,
+                  color: s.ink,
+                  fontWeight: form.selectedProductId === p.productId ? 600 : hoverProduct === p.productId ? 500 : 400,
+                  letterSpacing: 0.2,
+                  transition: 'font-weight 0.2s ease',
+                }}>{p.name}</span>
+              </div>
+              <div style={{
+                fontSize: 12,
+                color: s.inkSecondary,
+                marginLeft: 30,
+                letterSpacing: 0.1,
+                marginTop: 2,
+              }}>{p.desc}</div>
+            </div>
+            <div style={{
+              fontFamily: s.display,
+              fontStyle: 'italic',
+              fontSize: 24,
+              color: s.ink,
+              transform: hoverProduct === p.productId ? 'scale(1.05)' : 'scale(1)',
+              transition: 'transform 0.25s ease',
+            }}>{p.price}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 效果范例 */}
+      <SectionHeader number="03" title="效果范例" subtitle="Preview" />
+
+      <div style={{ padding: '0 28px 16px' }}>
+        <div style={{
+          fontSize: 10,
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          color: s.inkTertiary,
+          marginBottom: 6,
+          textAlign: 'center',
+        }}>{currentExample.subtitle}</div>
+        <h3 style={{
+          fontFamily: s.serif,
+          fontSize: 20,
+          fontStyle: 'italic',
+          fontWeight: 600,
+          textAlign: 'center',
+          color: s.ink,
+          marginBottom: 20,
+        }}>Before & After</h3>
+
+        {/* 对比展示 */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: 0,
+          marginBottom: 24,
+          position: 'relative',
+        }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ aspectRatio: '3/4', overflow: 'hidden', position: 'relative' }}>
+              <img
+                src={currentExample.beforeImage}
+                onLoad={() => setExampleImgLoaded(true)}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  filter: 'grayscale(20%) contrast(0.95)',
+                  transition: 'opacity 0.5s ease',
+                  opacity: exampleImgLoaded ? 1 : 0,
+                }}
+              />
+              <div style={{
+                position: 'absolute', top: 12, left: 12,
+                fontSize: 9,
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.85)',
+                background: 'rgba(0,0,0,0.2)',
+                padding: '3px 8px',
+                backdropFilter: 'blur(4px)',
+              }}>Before</div>
+            </div>
+          </div>
+          <div style={{
+            width: 1,
+            background: s.surface,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            position: 'relative',
+            zIndex: 2,
+          }}>
+            <div style={{
+              width: 28, height: 28,
+              borderRadius: '50%',
+              background: s.surface,
+              border: `1px solid ${s.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'absolute',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1.5">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </div>
+          </div>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ aspectRatio: '3/4', overflow: 'hidden', position: 'relative' }}>
+              <img
+                src={currentExample.afterImage}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  transition: 'opacity 0.5s ease',
+                  opacity: exampleImgLoaded ? 1 : 0,
+                }}
+              />
+              <div style={{
+                position: 'absolute', top: 12, right: 12,
+                fontSize: 9,
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.9)',
+                background: 'rgba(0,0,0,0.25)',
+                padding: '3px 8px',
+                backdropFilter: 'blur(4px)',
+              }}>After</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 功能点 */}
+        <div style={{
+          padding: '4px 0 0',
+        }}>
+          {currentExample.features.map((f, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start',
+              padding: '10px 0',
+              borderBottom: i < currentExample.features.length - 1 ? `1px solid ${s.divider}` : 'none',
+            }}>
+              <div style={{
+                width: 4, height: 4,
+                borderRadius: '50%',
+                background: s.accent,
+                marginTop: 7,
+                marginRight: 12,
+                flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 13, color: s.inkSecondary, lineHeight: 1.6 }}>{f}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 拍照引导 */}
+      <SectionHeader number="04" title="拍照引导" subtitle="Tips" />
+
+      <div style={{ padding: '0 28px 28px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {currentExample.tips.map((tip, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 16,
+              padding: '14px 0',
+              borderBottom: i < currentExample.tips.length - 1 ? `1px solid ${s.divider}` : 'none',
+            }}>
+              <div style={{
+                width: 24, height: 24,
+                borderRadius: '50%',
+                border: `1px solid ${s.hairline}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: s.display,
+                fontStyle: 'italic',
+                fontSize: 13,
+                color: s.ink,
+                flexShrink: 0,
+              }}>{i + 1}</div>
+              <div style={{ fontSize: 13, color: s.inkSecondary, lineHeight: 1.7, paddingTop: 3 }}>
+                {tip}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 选择风格 */}
+      <SectionHeader number="05" title="选择风格" subtitle="Styles" />
+
+      <div style={{
+        padding: '0 28px 28px',
+        display: 'flex',
+        gap: 0,
+        borderBottom: `1px solid ${s.border}`,
+      }}>
+        {STYLES.map((st, i) => (
+          <div
+            key={st.styleId}
+            onClick={() => selectStyle(st.styleId)}
+            onMouseEnter={() => setHoverStyle(st.styleId)}
+            onMouseLeave={() => setHoverStyle(null)}
+            style={{
+              flex: 1,
+              padding: '16px 0 18px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              position: 'relative',
+              transition: 'all 0.25s ease',
+              background: hoverStyle === st.styleId && form.selectedStyleId !== st.styleId ? s.surfaceAlt : 'transparent',
+            }}
+          >
+            <div style={{
+              fontSize: 13,
+              color: form.selectedStyleId === st.styleId ? s.ink : (hoverStyle === st.styleId ? s.inkSecondary : s.inkTertiary),
+              fontWeight: form.selectedStyleId === st.styleId ? 600 : (hoverStyle === st.styleId ? 500 : 400),
+              marginBottom: 3,
+              letterSpacing: 0.2,
+              transition: 'all 0.2s ease',
+              transform: form.selectedStyleId === st.styleId ? 'translateY(-1px)' : 'translateY(0)',
+            }}>{st.name}</div>
+            <div style={{
+              fontSize: 9,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              color: form.selectedStyleId === st.styleId ? s.inkSecondary : s.inkFaint,
+              transition: 'color 0.2s ease',
+            }}>{st.subtitle}</div>
+            {form.selectedStyleId === st.styleId && (
+              <div style={{
+                position: 'absolute', bottom: -1, left: 0, right: 0,
+                height: 1.5, background: s.ink,
+                animation: 'fadeIn 0.3s ease',
+              }} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 制作要求 */}
+      <SectionHeader number="06" title="制作要求" subtitle="Specifications" />
+
+      <div style={{ padding: '0 28px 8px', display: 'flex', flexDirection: 'column' }}>
+        {/* 三个 picker 行 */}
+        {[
+          { label: '用途规格', value: SPEC_OPTIONS[form.specIndex], field: 'specIndex', options: SPEC_OPTIONS, onSelect: (idx) => setPickerIndex('specIndex', idx) },
+          { label: '底色', value: BACKGROUND_OPTIONS[form.backgroundIndex], field: 'backgroundIndex', options: BACKGROUND_OPTIONS, onSelect: (idx) => setPickerIndex('backgroundIndex', idx) },
+          { label: '服装', value: CLOTHING_OPTIONS[form.clothingIndex], field: 'clothingIndex', options: CLOTHING_OPTIONS, onSelect: (idx) => setPickerIndex('clothingIndex', idx) },
+        ].map((row, i) => (
+          <PickerRow key={i} label={row.label} value={row.value} options={row.options} onSelect={row.onSelect} />
+        ))}
+
+        {/* 手机号 & 查询密码 */}
+        <TextInput label="手机号" type="tel" value={form.contactPhone} onChange={(v) => setField('contactPhone', v)} placeholder="请输入手机号" />
+        <TextInput label="查询密码" type="password" value={form.queryPassword} onChange={(v) => setField('queryPassword', v)} placeholder="至少 6 位" />
+
+        {/* 备注 */}
+        <div style={{ padding: '16px 0', borderBottom: `1px solid ${s.border}` }}>
+          <div style={{
+            fontSize: 11,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            color: s.inkTertiary,
+            marginBottom: 8,
+          }}>补充要求</div>
+          <textarea
+            value={form.customerNote}
+            onChange={(e) => setField('customerNote', e.target.value)}
+            placeholder="可选，最多 300 字"
+            maxLength={300}
+            style={{
+              width: '100%',
+              minHeight: 76,
+              padding: '4px 0',
+              background: 'transparent',
+              border: 'none',
+              fontSize: 14,
+              color: s.ink,
+              outline: 'none',
+              resize: 'none',
+              fontFamily: s.body,
+              lineHeight: 1.65,
+            }}
+          />
+          <div style={{
+            fontSize: 10,
+            color: s.inkTertiary,
+            textAlign: 'right',
+            marginTop: 4,
+            letterSpacing: 0.5,
+          }}>{form.customerNote.length}/300</div>
+        </div>
+
+        <div style={{
+          fontSize: 11,
+          color: s.inkTertiary,
+          lineHeight: 1.7,
+          padding: '12px 0',
+          letterSpacing: 0.1,
+        }}>
+          我们承诺不会将您的照片用于任何其他用途。制作完成后原图将在 7 天内自动删除。
+        </div>
+      </div>
+
+      {/* 上传照片 */}
+      <SectionHeader number="07" title="上传正脸照" subtitle="Upload" />
+
+      <div style={{ padding: '0 28px 28px' }}>
+        <div style={{
+          display: 'flex',
+          gap: 14,
+          alignItems: 'flex-start',
+          padding: '24px 20px',
+          background: s.surfaceAlt,
+          border: `1px solid ${s.border}`,
+          marginBottom: 12,
+          transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
+          position: 'relative',
+        }}>
+          {form.photos.map((photo, index) => (
+            <div key={photo.id} style={{
+              width: 64, height: 80,
+              position: 'relative',
+              animation: 'fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+              transition: 'transform 0.3s ease',
+            }} onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+               onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+            >
+              <img src={photo.url} style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                border: `1px solid ${s.hairline}`,
+              }} />
+              <div
+                onClick={(e) => { e.stopPropagation(); removePhoto(index); }}
+                style={{
+                  position: 'absolute', top: -7, right: -7,
+                  width: 22, height: 22,
+                  borderRadius: '50%',
+                  background: s.ink,
+                  color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 300,
+                  transition: 'transform 0.2s ease, background 0.2s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.background = s.error; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = s.ink; }}
+              >×</div>
+              <div style={{
+                position: 'absolute', bottom: -2, left: 0, right: 0,
+                textAlign: 'center',
+                fontSize: 9,
+                color: s.inkTertiary,
+              }}>{(photo.size / 1024 / 1024).toFixed(1)}MB</div>
+            </div>
+          ))}
+          {form.photos.length < 3 && (
+            <div
+              onClick={choosePhotos}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = s.inkSecondary;
+                e.currentTarget.style.background = s.surface;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = s.inkFaint;
+                e.currentTarget.style.background = 'transparent';
+              }}
+              style={{
+                width: 64, height: 80,
+                border: `1px dashed ${s.inkFaint}`,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 5,
+                cursor: 'pointer',
+                transition: 'all 0.25s ease',
+                background: 'transparent',
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={s.inkSecondary} strokeWidth="1">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span style={{ fontSize: 10, color: s.inkSecondary }}>添加照片</span>
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: s.inkTertiary, lineHeight: 1.6, textAlign: 'center' }}>
+          支持 JPG / PNG 格式，单张不超过 10MB，最多 3 张
+        </div>
+      </div>
+
+      {/* 授权确认 */}
+      <SectionHeader number="08" title="授权确认" subtitle="Authorization" />
+
+      <div style={{
+        padding: '0 28px 28px',
+        borderBottom: `1px solid ${s.border}`,
+      }}>
+        {AUTHORIZATION_TEXT.map((item, i) => (
+          <div
+            key={item.field}
+            onClick={() => toggleAuth(item.field)}
+            style={{
+              display: 'flex', alignItems: 'center',
+              padding: '18px 0',
+              borderBottom: i < AUTHORIZATION_TEXT.length - 1 ? `1px solid ${s.divider}` : 'none',
+              cursor: 'pointer',
+              transition: 'background 0.2s ease',
+            }}
+          >
+            <div style={{
+              width: 22, height: 22,
+              border: `1.5px solid ${form.authorization[item.field] ? s.ink : s.hairline}`,
+              background: form.authorization[item.field] ? s.ink : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginRight: 14,
+              flexShrink: 0,
+              transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              transform: form.authorization[item.field] ? 'scale(1)' : 'scale(0.98)',
+            }}>
+              {form.authorization[item.field] && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" style={{ animation: 'fadeInUp 0.25s ease' }}>
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span style={{ fontSize: 13, color: s.ink, lineHeight: 1.4, letterSpacing: 0.1 }}>{item.text}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* 提交按钮 */}
+      <div style={{ padding: '32px 28px 12px' }}>
+        <button
+          onClick={submitOrder}
+          disabled={isSubmitting}
+          style={{
+            width: '100%',
+            height: 58,
+            background: isSubmitting ? s.inkSecondary : s.ink,
+            border: 'none',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 500,
+            letterSpacing: 3,
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 10,
+            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            boxShadow: isSubmitting ? 'none' : '0 4px 16px rgba(26,26,26,0.12)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+          onMouseEnter={(e) => {
+            if (!isSubmitting) {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(26,26,26,0.18)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = isSubmitting ? 'none' : '0 4px 16px rgba(26,26,26,0.12)';
+          }}
+          onMouseDown={(e) => {
+            if (!isSubmitting) {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(26,26,26,0.15)';
+            }
+          }}
+        >
+          {isSubmitting ? (
+            <>
+              <div style={{
+                width: 14, height: 14,
+                border: '1.5px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff',
+                borderRadius: '50%',
+                animation: 'spin-slow 0.8s linear infinite',
+              }} />
+              SUBMITTING
+            </>
+          ) : (
+            <>
+              提交订单
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 查询订单 */}
+      <div style={{ padding: '8px 28px 0' }}>
+        <div
+          onClick={toggleQueryPanel}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '18px 0',
+            borderTop: `1px solid ${s.border}`,
+            cursor: 'pointer',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, color: s.ink, fontWeight: 500 }}>查询已有订单</div>
+            <div style={{ fontSize: 11, color: s.inkTertiary, marginTop: 2 }}>
+              凭订单号 + 手机号 + 密码查询
+            </div>
+          </div>
+          <svg
+            width="16" height="16"
+            viewBox="0 0 24 24" fill="none" stroke={s.inkTertiary} strokeWidth="1"
+            style={{
+              transform: form.showQueryPanel ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.3s ease',
+            }}
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
+
+        {form.showQueryPanel && (
+          <div style={{
+            animation: 'slideUp 0.3s ease',
+            padding: '4px 0 20px',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <TextInputSimple
+              placeholder="订单号"
+              value={form.queryOrderId}
+              onChange={(v) => setField('queryOrderId', v)}
+            />
+            <TextInputSimple
+              placeholder="下单手机号"
+              value={form.queryContactPhone}
+              onChange={(v) => setField('queryContactPhone', v)}
+              type="tel"
+            />
+            <TextInputSimple
+              placeholder="查询密码"
+              value={form.queryOrderPassword}
+              onChange={(v) => setField('queryOrderPassword', v)}
+              type="password"
+            />
+            <button
+              onClick={queryOrder}
+              style={{
+                marginTop: 16,
+                height: 48,
+                background: 'transparent',
+                border: `1px solid ${s.ink}`,
+                color: s.ink,
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: 2,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                borderRadius: 0,
+                transition: 'all 0.25s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = s.ink;
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = s.ink;
+              }}
+            >
+              查询订单
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 我的订单 */}
+      <div style={{
+        padding: '24px 28px',
+        borderTop: `4px solid ${s.surfaceAlt}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{
+            fontFamily: s.serif,
+            fontSize: 22,
+            fontStyle: 'italic',
+            fontWeight: 600,
+            color: s.ink,
+          }}>我的订单</div>
+          <div style={{
+            fontSize: 9,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            color: s.inkTertiary,
+          }}>My Orders</div>
+        </div>
+
+        {ordersLoading ? (
+          <div style={{
+            padding: '40px 0',
+            textAlign: 'center',
+            fontSize: 12,
+            color: s.inkTertiary,
+            letterSpacing: 1,
+          }}>
+            加载中...
+          </div>
+        ) : orders.length === 0 ? (
+          <div style={{
+            padding: '48px 0',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontFamily: s.display,
+              fontStyle: 'italic',
+              fontSize: 16,
+              color: s.inkTertiary,
+              marginBottom: 6,
+            }}>暂无订单</div>
+            <div style={{ fontSize: 11, color: s.inkFaint }}>上传第一张照片，开启制作</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {orders.map((order, idx) => (
+              <div
+                key={order.orderId}
+                onClick={() => openOrder(order)}
+                style={{
+                  padding: '18px 12px',
+                  margin: '0 -12px',
+                  borderTop: idx === 0 ? 'none' : `1px solid ${s.divider}`,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 14,
+                  transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                  borderRadius: 8,
+                  background: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = s.surfaceAlt;
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                {/* 缩略图 */}
+                <div style={{
+                  width: 48, height: 60,
+                  flexShrink: 0,
+                  overflow: 'hidden',
+                  border: `1px solid ${s.border}`,
+                }}>
+                  {order.deliveryUrls.length > 0 ? (
+                    <img src={order.deliveryUrls[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : order.customerUrls?.length > 0 ? (
+                    <img src={order.customerUrls[0]} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(30%)' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', background: s.surfaceAlt }} />
+                  )}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: s.ink,
+                    marginBottom: 3,
+                  }}>{order.productName} · {order.styleName}</div>
+                  <div style={{
+                    fontSize: 10,
+                    color: s.inkTertiary,
+                    fontFamily: s.mono,
+                    marginBottom: 5,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>{order.orderId}</div>
+                  {order.reviewNote && (
+                    <div style={{
+                      fontSize: 11,
+                      color: s.warning,
+                      background: s.warningSoft,
+                      padding: '3px 8px',
+                      display: 'inline-block',
+                    }}>
+                      审核意见：{order.reviewNote.slice(0, 20)}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: 6,
+                }}>
+                  <StatusBadge status={order.order_status} />
+                  <div style={{
+                    fontFamily: s.display,
+                    fontStyle: 'italic',
+                    fontSize: 14,
+                    color: s.ink,
+                  }}>{order.price}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 底部装饰文字 */}
+      <div style={{
+        textAlign: 'center',
+        padding: '16px 28px 36px',
+        fontSize: 10,
+        color: s.inkFaint,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+        fontFamily: s.serif,
+        fontStyle: 'italic',
+      }}>
+        — PhotoMuse Studio · Since 2026 —
+      </div>
+    </div>
+  );
+}
+
+// ===== 子组件 =====
+
+// 章节标题
+function SectionHeader({ number, title, subtitle }) {
+  const s = PM;
+  return (
+    <div style={{
+      padding: '32px 28px 18px',
+      display: 'flex',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 14,
+      }}>
+        <span style={{
+          fontFamily: s.display,
+          fontStyle: 'italic',
+          fontSize: 12,
+          color: s.accent,
+          letterSpacing: 1,
+          fontWeight: 600,
+        }}>№ {number}</span>
+        <span style={{
+          fontFamily: s.serif,
+          fontSize: 24,
+          fontStyle: 'italic',
+          fontWeight: 600,
+          color: s.ink,
+          letterSpacing: 0.2,
+        }}>{title}</span>
+      </div>
+      <span style={{
+        fontSize: 10,
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+        color: s.inkTertiary,
+        fontWeight: 500,
+      }}>{subtitle}</span>
+    </div>
+  );
+}
+
+// 文本输入行（带下划线样式）
+function TextInput({ label, value, onChange, type = 'text', placeholder }) {
+  const s = PM;
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{
+      padding: '14px 0',
+      borderBottom: `1px solid ${focused ? s.ink : s.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      transition: 'border-color 0.25s ease',
+    }}>
+      <div style={{
+        flex: '0 0 84px',
+        fontSize: 11,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        color: focused ? s.ink : s.inkTertiary,
+        fontWeight: focused ? 600 : 500,
+        transition: 'all 0.2s ease',
+      }}>{label}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={placeholder}
+        style={{
+          flex: 1,
+          height: 28,
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          fontSize: 14,
+          color: s.ink,
+          fontFamily: s.body,
+          textAlign: 'right',
+          letterSpacing: 0.2,
+        }}
+      />
+    </div>
+  );
+}
+
+// 简单文本输入框
+function TextInputSimple({ value, onChange, type = 'text', placeholder }) {
+  const s = PM;
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder={placeholder}
+      style={{
+        height: 46,
+        padding: '0 0',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: `1px solid ${focused ? s.ink : s.border}`,
+        fontSize: 14,
+        color: s.ink,
+        outline: 'none',
+        fontFamily: s.body,
+        width: '100%',
+        transition: 'border-color 0.25s ease',
+      }}
+    />
+  );
+}
+
+// Picker 行（模拟选择器展开）
+function PickerRow({ label, value, options, onSelect }) {
+  const s = PM;
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderBottom: `1px solid ${s.border}` }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '16px 0',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{
+          flex: '0 0 84px',
+          fontSize: 11,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          color: s.inkTertiary,
+        }}>{label}</div>
+        <div style={{ flex: 1, textAlign: 'right', fontSize: 14, color: s.ink }}>{value}</div>
+        <svg
+          width="14" height="14"
+          viewBox="0 0 24 24" fill="none" stroke={s.inkTertiary} strokeWidth="1"
+          style={{
+            marginLeft: 10,
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.3s ease',
+          }}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+      {open && (
+        <div style={{
+          animation: 'fadeIn 0.2s ease',
+          padding: '0 0 16px 84px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
+          {options.map((opt, i) => (
+            <div
+              key={i}
+              onClick={() => { onSelect(i); setOpen(false); }}
+              style={{
+                padding: '5px 12px',
+                fontSize: 12,
+                border: `1px solid ${value === opt ? s.ink : s.border}`,
+                background: value === opt ? s.ink : 'transparent',
+                color: value === opt ? '#fff' : s.inkSecondary,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 状态胶囊
+function StatusBadge({ status }) {
+  const s = PM;
+  const map = {
+    waiting_photos: { label: '待上传', color: s.inkTertiary, bg: s.surfaceAlt },
+    photo_review: { label: '审核中', color: s.warning, bg: s.warningSoft },
+    queued: { label: '队列中', color: s.info, bg: s.infoSoft },
+    generating: { label: '生成中', color: s.info, bg: s.infoSoft },
+    qc: { label: '质检中', color: s.info, bg: s.infoSoft },
+    delivered: { label: '已交付', color: s.success, bg: s.successSoft },
+    cancelled: { label: '已取消', color: s.error, bg: s.errorSoft },
+  };
+  const info = map[status] || map.photo_review;
+  return (
+    <span style={{
+      fontSize: 10,
+      fontWeight: 500,
+      letterSpacing: 0.5,
+      padding: '3px 8px',
+      background: info.bg,
+      color: info.color,
+    }}>{info.label}</span>
+  );
+}
+
+// 暴露
+Object.assign(window, {
+  IndexPage,
+  SectionHeader,
+  TextInput,
+  TextInputSimple,
+  PickerRow,
+  StatusBadge,
+});
+
+
+// ===== 页面二：Detail 订单详情页（客户视角） =====
+// 对齐契约：状态卡 / 订单信息 / 补拍上传 / 交付图 / 进度 / queryMode
+
+function DetailPage(props) {
+  const s = PM;
+  const {
+    currentOrder, setCurrentOrder,
+    currentOrderFiles, setCurrentOrderFiles,
+    detailLoading, setDetailLoading,
+    queryMode, setQueryMode,
+    goBack, navigate, showToast,
+  } = props;
+
+  const [retakePhotos, setRetakePhotos] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [progress, setProgress] = useState(65);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  const order = currentOrder;
+  const needRetake = order?.photo_check === 'need_retake';
+
+  const customerFiles = currentOrderFiles.filter(f => f.fileType === 'customer_photo');
+  const deliveryFiles = currentOrderFiles.filter(f => f.fileType === 'delivery');
+
+  // 模拟生成中进度推进
+  useEffect(() => {
+    if (order && (order.order_status === 'queued' || order.order_status === 'generating')) {
+      const timer = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(timer);
+            setCurrentOrder(prev => prev ? {
+              ...prev,
+              order_status: 'delivered',
+              delivery_file_count: 1,
+            } : null);
+            return 100;
+          }
+          return prev + 1.5;
+        });
+      }, 280);
+      return () => clearInterval(timer);
+    }
+  }, [order?.order_status]);
+
+  if (!order) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.inkTertiary }}>
+        加载订单中...
+      </div>
+    );
+  }
+
+  const chooseRetakePhotos = () => {
+    if (retakePhotos.length >= 3) { showToast('最多上传 3 张参考照片', 'error'); return; }
+    const remaining = 3 - retakePhotos.length;
+    const candidates = [IMG.portrait, IMG.idBlue, IMG.magazine];
+    const newPhotos = [];
+    for (let i = 0; i < remaining; i++) {
+      newPhotos.push({
+        id: Date.now() + i,
+        tempFilePath: candidates[(retakePhotos.length + i) % candidates.length],
+        url: candidates[(retakePhotos.length + i) % candidates.length],
+        size: 800000 + Math.floor(Math.random() * 400000),
+      });
+    }
+    setRetakePhotos(prev => [...prev, ...newPhotos]);
+  };
+
+  const removeRetakePhoto = (index) => {
+    setRetakePhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const submitRetakePhotos = () => {
+    if (retakePhotos.length === 0) { showToast('请至少上传 1 张正脸照片', 'error'); return; }
+    setIsUploading(true);
+    // 模拟 upload → submit
+    setTimeout(() => {
+      setCurrentOrder(prev => prev ? {
+        ...prev,
+        order_status: 'photo_review',
+        photo_check: 'unchecked',
+        reference_photo_count: prev.reference_photo_count + retakePhotos.length,
+      } : null);
+      setCurrentOrderFiles(prev => [
+        ...prev,
+        ...retakePhotos.map((p, i) => ({
+          fileId: `retake-${Date.now()}-${i}`,
+          fileType: 'customer_photo',
+          fileID: p.url,
+          fileName: `retake-${i + 1}.jpg`,
+          size: p.size,
+          status: 'uploaded',
+        })),
+      ]);
+      setRetakePhotos([]);
+      setIsUploading(false);
+      showToast('补拍照片已提交', 'success');
+    }, 1200);
+  };
+
+  const previewDelivery = (url) => {
+    setPreviewUrl(url);
+  };
+
+  const closePreview = () => {
+    setPreviewUrl(null);
+  };
+
+  const statusInfo = STATUS_LABELS[order.order_status] || '进行中';
+  const photoCheckInfo = PHOTO_CHECK_LABELS[order.photo_check] || '未知';
+
+  // 步骤进度
+  const steps = [
+    { label: '上传', done: order.order_status !== 'waiting_photos' },
+    { label: '审核', done: order.order_status !== 'photo_review' && order.order_status !== 'waiting_photos' && order.photo_check !== 'need_retake' && order.photo_check !== 'unchecked', current: order.order_status === 'photo_review' || order.photo_check === 'need_retake' },
+    { label: '制作', done: order.order_status === 'qc' || order.order_status === 'delivered' || order.order_status === 'cancelled', current: order.order_status === 'queued' || order.order_status === 'generating' },
+    { label: '交付', done: order.order_status === 'delivered', current: order.order_status === 'qc' },
+  ];
+
+  const isActive = (order.order_status === 'queued' || order.order_status === 'generating' || order.order_status === 'qc');
+
+  return (
+    <div style={{
+      flex: 1, overflowY: 'auto', overflowX: 'hidden',
+      background: s.pageBg, color: s.ink,
+    }}>
+
+      {/* 顶栏 */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: s.pageBg,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '52px 24px 14px',
+        }}>
+          <div
+            onClick={goBack}
+            style={{
+              width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase', color: s.ink }}>
+            Order Detail
+          </div>
+          <div style={{ width: 32 }} />
+        </div>
+        <div style={{ height: 1, background: s.hairline, opacity: 0.4 }} />
+      </div>
+
+      {/* 状态大标题区 */}
+      <div style={{ padding: '36px 28px 28px', textAlign: 'center' }}>
+        <div style={{
+          fontSize: 9,
+          letterSpacing: 3,
+          textTransform: 'uppercase',
+          color: s.inkTertiary,
+          marginBottom: 16,
+          fontFamily: s.mono,
+        }}>{order.orderId}</div>
+
+        <h1 style={{
+          fontFamily: s.display,
+          fontSize: 48,
+          fontWeight: 400,
+          lineHeight: 0.95,
+          marginBottom: 4,
+        }}>
+          {order.order_status === 'delivered' ? 'Ready' :
+           needRetake ? 'Retake' :
+           order.order_status === 'photo_review' ? 'In' :
+           order.order_status === 'cancelled' ? 'Cancelled' :
+           'In'}
+        </h1>
+        <h1 style={{
+          fontFamily: s.display,
+          fontSize: 48,
+          fontWeight: 400,
+          fontStyle: 'italic',
+          lineHeight: 0.95,
+        }}>
+          {order.order_status === 'delivered' ? 'to View' :
+           needRetake ? 'Required' :
+           order.order_status === 'photo_review' ? 'Review' :
+           order.order_status === 'cancelled' ? 'Order' :
+           'Progress'}
+        </h1>
+
+        <div style={{
+          width: 36, height: 1,
+          background: s.ink,
+          margin: '24px auto',
+        }} />
+
+        <p style={{
+          fontSize: 13,
+          color: s.inkSecondary,
+          lineHeight: 1.75,
+          maxWidth: 260,
+          margin: '0 auto',
+        }}>
+          {order.order_status === 'delivered'
+            ? '您的照片已制作完成，快来查看吧。'
+            : needRetake
+            ? '照片不符合要求，请重新上传清晰正脸照。'
+            : order.order_status === 'photo_review'
+            ? '工作人员正在审核您的照片，请稍候。'
+            : order.order_status === 'cancelled'
+            ? '订单已取消。'
+            : '照片正在制作中，完成后会第一时间呈现。'}
+        </p>
+      </div>
+
+      {/* 进度条与步骤节点（生成中显示） */}
+      {isActive && (
+        <div style={{ padding: '0 28px 32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 11, color: s.inkSecondary }}>制作进度</span>
+            <span style={{
+              fontFamily: s.serif,
+              fontStyle: 'italic',
+              fontSize: 16,
+              color: s.ink,
+            }}>{Math.floor(progress)}%</span>
+          </div>
+          <div style={{
+            height: 2,
+            background: s.divider,
+          }}>
+            <div style={{
+              width: `${progress}%`,
+              height: '100%',
+              background: s.ink,
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginTop: 20,
+          }}>
+            {steps.map((step, i) => (
+              <div key={i} style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 8, height: 8,
+                  borderRadius: '50%',
+                  background: step.done ? s.ink : step.current ? s.ink : s.inkFaint,
+                  margin: '0 auto 8px',
+                  boxShadow: step.current ? `0 0 0 4px ${s.surfaceAlt}` : 'none',
+                  transition: 'all 0.3s ease',
+                }} />
+                <div style={{
+                  fontSize: 10,
+                  color: step.done || step.current ? s.ink : s.inkTertiary,
+                  fontWeight: step.current ? 600 : 400,
+                  letterSpacing: 0.5,
+                }}>{step.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 发丝线 */}
+      <div style={{ height: 1, background: s.hairline, opacity: 0.4, margin: '0 28px' }} />
+
+      {/* 凭证查询提示 */}
+      {queryMode && (
+        <div style={{
+          margin: '20px 28px 0',
+          padding: '12px 16px',
+          background: s.infoSoft,
+          color: s.info,
+          fontSize: 12,
+          lineHeight: 1.6,
+        }}>
+          您正在通过订单号 + 手机号 + 查询密码查看订单。
+        </div>
+      )}
+
+      {/* 补拍上传区 */}
+      {needRetake && (
+        <div style={{ padding: '24px 28px' }}>
+          <div style={{
+            padding: '18px',
+            border: `1px solid ${s.warning}`,
+            marginBottom: 20,
+          }}>
+            <div style={{
+              fontFamily: s.serif,
+              fontSize: 15,
+              fontStyle: 'italic',
+              fontWeight: 600,
+              color: s.warning,
+              marginBottom: 8,
+            }}>照片审核未通过</div>
+            <div style={{ fontSize: 12, color: s.inkSecondary, lineHeight: 1.7 }}>
+              {order.reviewNote || '照片不符合制作要求，请重新上传清晰正脸照。'}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{
+              fontFamily: s.serif,
+              fontSize: 18,
+              fontStyle: 'italic',
+              fontWeight: 600,
+            }}>补拍上传</div>
+            <div style={{ fontSize: 10, color: s.inkTertiary, letterSpacing: 1, textTransform: 'uppercase' }}>
+              {retakePhotos.length}/3
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: 12,
+            alignItems: 'flex-start',
+            marginBottom: 16,
+          }}>
+            {retakePhotos.map((photo, i) => (
+              <div key={photo.id} style={{ position: 'relative', width: 72, height: 90 }}>
+                <img src={photo.url} style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  border: `1px solid ${s.hairline}`,
+                }} />
+                <div
+                  onClick={() => removeRetakePhoto(i)}
+                  style={{
+                    position: 'absolute', top: -7, right: -7,
+                    width: 20, height: 20,
+                    borderRadius: '50%',
+                    background: s.ink,
+                    color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >×</div>
+              </div>
+            ))}
+            {retakePhotos.length < 3 && (
+              <div
+                onClick={chooseRetakePhotos}
+                style={{
+                  width: 72, height: 90,
+                  border: `1px dashed ${s.inkFaint}`,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: 5,
+                  cursor: 'pointer',
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={s.inkTertiary} strokeWidth="1">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                <span style={{ fontSize: 10, color: s.inkTertiary }}>补传照片</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={submitRetakePhotos}
+            disabled={isUploading}
+            style={{
+              width: '100%',
+              height: 52,
+              background: isUploading ? s.inkSecondary : s.ink,
+              border: 'none',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: 3,
+              cursor: isUploading ? 'not-allowed' : 'pointer',
+              textTransform: 'uppercase',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              boxShadow: isUploading ? 'none' : '0 4px 14px rgba(26,26,26,0.12)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isUploading) {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 8px 20px rgba(26,26,26,0.18)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = isUploading ? 'none' : '0 4px 14px rgba(26,26,26,0.12)';
+            }}
+          >
+            {isUploading ? (
+              <>
+                <div style={{
+                  width: 12, height: 12,
+                  border: '1.5px solid rgba(255,255,255,0.3)',
+                  borderTopColor: '#fff',
+                  borderRadius: '50%',
+                  animation: 'spin-slow 0.8s linear infinite',
+                }} />
+                UPLOADING
+              </>
+            ) : '提交补拍照片'}
+          </button>
+        </div>
+      )}
+
+      {/* 订单信息 */}
+      <div style={{ padding: '24px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{
+            fontFamily: s.serif,
+            fontSize: 20,
+            fontStyle: 'italic',
+            fontWeight: 600,
+          }}>订单信息</div>
+          <div style={{ fontSize: 9, color: s.inkTertiary, letterSpacing: 2, textTransform: 'uppercase' }}>Details</div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {[
+            { label: '订单号', value: order.orderId },
+            { label: '套餐', value: order.productName },
+            { label: '风格', value: order.styleName },
+            { label: '照片审核', value: photoCheckInfo, emphasize: order.photo_check === 'need_retake' },
+            { label: '参考照片', value: `${order.reference_photo_count} 张` },
+            { label: '交付数量', value: `${order.delivery_file_count} 张` },
+            { label: '价格', value: order.price },
+          ].map((row, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              padding: '14px 0',
+              borderBottom: i < 6 ? `1px solid ${s.divider}` : 'none',
+              gap: 16,
+            }}>
+              <span style={{
+                flexShrink: 0,
+                fontSize: 12,
+                color: s.inkTertiary,
+                letterSpacing: 0.5,
+              }}>{row.label}</span>
+              <span style={{
+                fontSize: row.label === '价格' ? 18 : 13,
+                color: row.emphasize ? s.warning : s.ink,
+                textAlign: 'right',
+                fontFamily: row.label === '价格' ? s.serif : s.body,
+                fontStyle: row.label === '价格' ? 'italic' : 'normal',
+                fontWeight: row.label === '价格' ? 600 : 400,
+                wordBreak: 'break-all',
+              }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* 审核意见 */}
+        {order.reviewNote && (
+          <div style={{
+            marginTop: 16,
+            padding: '14px 16px',
+            background: s.warningSoft,
+            borderLeft: `2px solid ${s.warning}`,
+          }}>
+            <div style={{ fontSize: 11, color: s.warning, marginBottom: 4, letterSpacing: 0.5 }}>审核意见</div>
+            <div style={{ fontSize: 13, color: s.inkSecondary, lineHeight: 1.7 }}>{order.reviewNote}</div>
+          </div>
+        )}
+      </div>
+
+      {/* 发丝线分隔 */}
+      <div style={{ height: 1, background: s.hairline, opacity: 0.4, margin: '0 28px' }} />
+
+      {/* 参考照片 */}
+      <div style={{ padding: '24px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{
+            fontFamily: s.serif,
+            fontSize: 18,
+            fontStyle: 'italic',
+            fontWeight: 600,
+          }}>参考照片</div>
+          <div style={{ fontSize: 9, color: s.inkTertiary, letterSpacing: 2, textTransform: 'uppercase' }}>
+            {customerFiles.length} Photos
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {customerFiles.map((f, i) => (
+            <div key={f.fileId || i} style={{
+              width: 72, height: 90,
+              overflow: 'hidden',
+              border: `1px solid ${s.border}`,
+              cursor: 'pointer',
+            }}>
+              <img src={f.fileID || f.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+          ))}
+          {customerFiles.length === 0 && (
+            <div style={{ fontSize: 12, color: s.inkTertiary, padding: '8px 0' }}>暂无照片</div>
+          )}
+        </div>
+      </div>
+
+      {/* 发丝线分隔 */}
+      <div style={{ height: 1, background: s.hairline, opacity: 0.4, margin: '0 28px' }} />
+
+      {/* 交付图 */}
+      <div style={{ padding: '24px 28px 32px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{
+            fontFamily: s.serif,
+            fontSize: 20,
+            fontStyle: 'italic',
+            fontWeight: 600,
+          }}>交付作品</div>
+          <div style={{ fontSize: 9, color: s.inkTertiary, letterSpacing: 2, textTransform: 'uppercase' }}>
+            Delivered
+          </div>
+        </div>
+
+        {order.delivery_file_count === 0 ? (
+          <div style={{
+            padding: '48px 20px',
+            textAlign: 'center',
+            background: s.surfaceAlt,
+            border: `1px solid ${s.border}`,
+          }}>
+            <div style={{
+              width: 44, height: 44,
+              margin: '0 auto 14px',
+              borderRadius: '50%',
+              border: `1px solid ${s.hairline}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={s.inkTertiary} strokeWidth="1">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v4l3 2" />
+              </svg>
+            </div>
+            <div style={{ fontFamily: s.serif, fontStyle: 'italic', fontSize: 15, color: s.inkSecondary, marginBottom: 4 }}>
+              Not yet
+            </div>
+            <div style={{ fontSize: 11, color: s.inkTertiary, letterSpacing: 1 }}>
+              制作完成后将在此处展示
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 12,
+          }}>
+            {(order.deliveryUrls && order.deliveryUrls.length > 0
+              ? order.deliveryUrls
+              : [IMG.idBlue]
+            ).map((url, i) => (
+              <div
+                key={i}
+                onClick={() => previewDelivery(url)}
+                style={{
+                  aspectRatio: '3/4',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  animation: 'fadeInUp 0.5s ease',
+                  transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = '0 12px 28px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  padding: '20px 16px 14px',
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.55))',
+                  color: '#fff',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+                }}>
+                  <div>
+                    <div style={{
+                      fontFamily: s.display,
+                      fontStyle: 'italic',
+                      fontSize: 18,
+                      marginBottom: 2,
+                    }}>Final</div>
+                    <div style={{ fontSize: 10, opacity: 0.8 }}>点击查看大图</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1">
+                    <path d="M7 17L17 7M17 7H8M17 7v9" />
+                  </svg>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 底部装饰 */}
+      <div style={{
+        textAlign: 'center',
+        paddingBottom: 40,
+        fontSize: 10,
+        color: s.inkFaint,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+        fontFamily: s.serif,
+        fontStyle: 'italic',
+      }}>
+        — PhotoMuse —
+      </div>
+
+      {/* 图片预览层 */}
+      {previewUrl && (
+        <div
+          onClick={closePreview}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.92)',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'fadeIn 0.25s ease',
+            cursor: 'zoom-out',
+          }}
+        >
+          <img src={previewUrl} style={{
+            maxWidth: '90%',
+            maxHeight: '80%',
+            objectFit: 'contain',
+          }} />
+          <div
+            onClick={closePreview}
+            style={{
+              position: 'absolute',
+              top: 24, right: 24,
+              width: 40, height: 40,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { DetailPage });
+
+
+// ===== 页面三：AdminLogin 管理登录页 =====
+// 对齐契约：口令校验 / isChecking / errorMessage / 登录态写入
+
+function AdminLoginPage(props) {
+  const s = PM;
+  const { goBack, navigate, showToast, setAdminPassword: setGlobalAdminPassword, setIsAdmin } = props;
+
+  const [password, setPassword] = useState('');
+  const [isChecking, setIsChecking] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const onPasswordInput = (value) => {
+    setPassword(value.trim());
+    if (errorMessage) setErrorMessage('');
+  };
+
+  const loginAdmin = () => {
+    if (!password.trim()) {
+      setErrorMessage('请输入管理口令');
+      return;
+    }
+    if (password.trim().length < 4) {
+      setErrorMessage('口令格式不正确');
+      return;
+    }
+    setIsChecking(true);
+    setErrorMessage('');
+    // 模拟：调用 adminListAIStudioOrders 作口令探测
+    setTimeout(() => {
+      // 演示模式：任意非空口令通过
+      setIsChecking(false);
+      setGlobalAdminPassword(password);
+      setIsAdmin(true);
+      showToast('登录成功', 'success');
+      setTimeout(() => navigate('admin'), 400);
+    }, 1000);
+  };
+
+  return (
+    <div style={{
+      flex: 1,
+      overflowY: 'auto',
+      background: s.pageBg,
+      color: s.ink,
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+
+      {/* 顶栏 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '52px 24px 14px',
+      }}>
+        <div
+          onClick={goBack}
+          style={{
+            width: 32, height: 32,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase' }}>
+          Admin
+        </div>
+        <div style={{ width: 32 }} />
+      </div>
+      <div style={{ height: 1, background: s.hairline, opacity: 0.4 }} />
+
+      {/* 登录卡片区 */}
+      <div style={{
+        flex: 1,
+        padding: '60px 32px 32px',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <div style={{
+            fontSize: 9,
+            fontWeight: 500,
+            letterSpacing: 3,
+            textTransform: 'uppercase',
+            color: s.accent,
+            marginBottom: 18,
+          }}>
+            PhotoMuse · Ops
+          </div>
+
+          <h1 style={{
+            fontFamily: s.display,
+            fontSize: 40,
+            fontWeight: 400,
+            lineHeight: 0.95,
+            marginBottom: 2,
+          }}>Admin</h1>
+          <h1 style={{
+            fontFamily: s.display,
+            fontSize: 40,
+            fontWeight: 400,
+            fontStyle: 'italic',
+            lineHeight: 0.95,
+          }}>Console</h1>
+
+          <div style={{
+            width: 32, height: 1,
+            background: s.ink,
+            margin: '22px auto',
+          }} />
+
+          <p style={{
+            fontSize: 12,
+            color: s.inkSecondary,
+            lineHeight: 1.7,
+            maxWidth: 240,
+            margin: '0 auto',
+          }}>
+            请输入管理口令进入运营控制台。
+          </p>
+        </div>
+
+        {/* 权限说明 */}
+        <div style={{
+          padding: '20px 0',
+          borderTop: `1px solid ${s.border}`,
+          borderBottom: `1px solid ${s.border}`,
+          marginBottom: 32,
+        }}>
+          <div style={{
+            fontSize: 10,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            color: s.inkTertiary,
+            marginBottom: 14,
+          }}>可管理内容</div>
+          {[
+            '审核订单与照片质量',
+            '派发补拍与拒绝订单',
+            '上传交付成品图',
+          ].map((item, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '7px 0',
+              fontSize: 13,
+              color: s.inkSecondary,
+            }}>
+              <div style={{
+                width: 4, height: 4,
+                borderRadius: '50%',
+                background: s.accent,
+                marginRight: 12,
+                flexShrink: 0,
+              }} />
+              {item}
+            </div>
+          ))}
+        </div>
+
+        {/* 密码输入 */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            fontSize: 10,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            color: s.inkTertiary,
+            marginBottom: 8,
+          }}>管理口令</div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => onPasswordInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && loginAdmin()}
+            placeholder="请输入管理口令"
+            autoFocus
+            style={{
+              width: '100%',
+              height: 48,
+              padding: '8px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: `1px solid ${errorMessage ? s.error : s.border}`,
+              fontSize: 15,
+              color: s.ink,
+              outline: 'none',
+              fontFamily: s.body,
+              letterSpacing: 1,
+            }}
+          />
+          {errorMessage && (
+            <div style={{
+              marginTop: 12,
+              padding: '10px 14px',
+              background: s.errorSoft,
+              color: s.error,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}>{errorMessage}</div>
+          )}
+        </div>
+
+        {/* 登录按钮 */}
+        <button
+          onClick={loginAdmin}
+          disabled={isChecking}
+          style={{
+            height: 56,
+            background: isChecking ? s.inkSecondary : s.ink,
+            border: 'none',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 500,
+            letterSpacing: 3,
+            cursor: isChecking ? 'not-allowed' : 'pointer',
+            textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 10,
+            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            boxShadow: isChecking ? 'none' : '0 4px 16px rgba(26,26,26,0.12)',
+          }}
+          onMouseEnter={(e) => {
+            if (!isChecking) {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(26,26,26,0.18)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = isChecking ? 'none' : '0 4px 16px rgba(26,26,26,0.12)';
+          }}
+        >
+          {isChecking ? (
+            <>
+              <div style={{
+                width: 14, height: 14,
+                border: '1.5px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff',
+                borderRadius: '50%',
+                animation: 'spin-slow 0.8s linear infinite',
+              }} />
+              VERIFYING
+            </>
+          ) : 'Enter Console'}
+        </button>
+
+        <div style={{
+          textAlign: 'center',
+          marginTop: 20,
+          fontSize: 10,
+          color: s.inkTertiary,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+        }}>
+          Demo Mode — Any password works
+        </div>
+
+        {/* 底部装饰 */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+          paddingBottom: 8,
+        }}>
+          <div style={{
+            fontSize: 9,
+            color: s.inkFaint,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            fontFamily: s.serif,
+            fontStyle: 'italic',
+          }}>
+            — PhotoMuse Admin v1.0 —
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { AdminLoginPage });
+
+
+// ===== 页面四：Admin 订单管理页（运营看板） =====
+// 对齐契约：7 状态 Tab / 审核操作（通过/重拍/拒单）/ 交付上传 / 图片预览 / actionOrderId
+
+function AdminPage(props) {
+  const s = PM;
+  const {
+    adminStatus, setAdminStatus,
+    adminOrders, setAdminOrders,
+    adminLoading, setAdminLoading,
+    actionOrderId, setActionOrderId,
+    goBack, navigate, showToast, setIsAdmin,
+    adminPassword,
+  } = props;
+
+  const [deliveryOrderId, setDeliveryOrderId] = useState(null);
+  const [deliveryFiles, setDeliveryFiles] = useState([]);
+  const [isDelivering, setIsDelivering] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewList, setPreviewList] = useState([]);
+  const [retakeReason, setRetakeReason] = useState('');
+  const [showRetakeModal, setShowRetakeModal] = useState(null);
+
+  // 守卫：未登录踢回
+  useEffect(() => {
+    if (!adminPassword || adminPassword.length === 0) {
+      showToast('请先登录', 'error');
+      setTimeout(() => navigate('adminLogin'), 300);
+    }
+  }, []);
+
+  // 模拟加载订单（按状态筛选）
+  useEffect(() => {
+    setAdminLoading(true);
+    setTimeout(() => {
+      const demoOrders = buildDemoOrders(adminStatus);
+      setAdminOrders(demoOrders);
+      setAdminLoading(false);
+    }, 500);
+  }, [adminStatus]);
+
+  const buildDemoOrders = (status) => {
+    const base = [
+      {
+        orderId: 'AIStudio-1730000001-abc123',
+        productName: '证件照体验版',
+        styleName: '蓝底正装',
+        price: '¥3.9',
+        order_status: 'photo_review',
+        photo_check: 'unchecked',
+        reference_photo_count: 1,
+        delivery_file_count: 0,
+        reviewNote: '',
+        customerUrls: [IMG.cinematic],
+        deliveryUrls: [],
+        createdAt: '2026-08-16T10:23:00Z',
+      },
+      {
+        orderId: 'AIStudio-1730000002-def456',
+        productName: '简历形象照',
+        styleName: '白底简约',
+        price: '¥29.9',
+        order_status: 'photo_review',
+        photo_check: 'unchecked',
+        reference_photo_count: 2,
+        delivery_file_count: 0,
+        reviewNote: '',
+        customerUrls: [IMG.magazine, IMG.portrait],
+        deliveryUrls: [],
+        createdAt: '2026-08-16T09:15:00Z',
+      },
+      {
+        orderId: 'AIStudio-1730000003-ghi789',
+        productName: '证件照体验版',
+        styleName: '红底经典',
+        price: '¥3.9',
+        order_status: 'photo_review',
+        photo_check: 'unchecked',
+        reference_photo_count: 1,
+        delivery_file_count: 0,
+        reviewNote: '',
+        customerUrls: [IMG.idRed],
+        deliveryUrls: [],
+        createdAt: '2026-08-16T08:42:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999999-jkl012',
+        productName: '简历形象照',
+        styleName: '白底简约',
+        price: '¥29.9',
+        order_status: 'queued',
+        photo_check: 'passed',
+        reference_photo_count: 2,
+        delivery_file_count: 0,
+        reviewNote: '',
+        customerUrls: [IMG.portrait, IMG.cinematic],
+        deliveryUrls: [],
+        createdAt: '2026-08-15T16:30:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999998-mno345',
+        productName: '证件照体验版',
+        styleName: '蓝底正装',
+        price: '¥3.9',
+        order_status: 'generating',
+        photo_check: 'passed',
+        reference_photo_count: 1,
+        delivery_file_count: 0,
+        reviewNote: '',
+        customerUrls: [IMG.cinematic],
+        deliveryUrls: [],
+        createdAt: '2026-08-15T14:20:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999997-pqr678',
+        productName: '证件照体验版',
+        styleName: '蓝底正装',
+        price: '¥3.9',
+        order_status: 'delivered',
+        photo_check: 'passed',
+        reference_photo_count: 1,
+        delivery_file_count: 1,
+        reviewNote: '',
+        customerUrls: [IMG.portrait],
+        deliveryUrls: [IMG.idBlue],
+        createdAt: '2026-08-15T10:00:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999996-stu901',
+        productName: '证件照体验版',
+        styleName: '蓝底正装',
+        price: '¥3.9',
+        order_status: 'waiting_photos',
+        photo_check: 'need_retake',
+        reference_photo_count: 1,
+        delivery_file_count: 0,
+        reviewNote: '光线过暗，面部细节不清晰，请重新上传。',
+        customerUrls: [IMG.cinematic],
+        deliveryUrls: [],
+        createdAt: '2026-08-15T09:30:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999995-vwx234',
+        productName: '证件照体验版',
+        styleName: '蓝底正装',
+        price: '¥3.9',
+        order_status: 'cancelled',
+        photo_check: 'rejected',
+        reference_photo_count: 1,
+        delivery_file_count: 0,
+        reviewNote: '多次补拍仍不符合要求，订单已取消。',
+        customerUrls: [IMG.cinematic],
+        deliveryUrls: [],
+        createdAt: '2026-08-14T18:00:00Z',
+      },
+      {
+        orderId: 'AIStudio-1729999994-yza567',
+        productName: '简历形象照',
+        styleName: '白底简约',
+        price: '¥29.9',
+        order_status: 'qc',
+        photo_check: 'passed',
+        reference_photo_count: 2,
+        delivery_file_count: 3,
+        reviewNote: '',
+        customerUrls: [IMG.magazine, IMG.portrait],
+        deliveryUrls: [IMG.idBlue, IMG.portrait, IMG.magazine],
+        createdAt: '2026-08-14T17:00:00Z',
+      },
+    ];
+    return base.filter(o => o.order_status === status);
+  };
+
+  const selectStatus = (status) => {
+    setAdminStatus(status);
+  };
+
+  const passReview = (orderId) => {
+    setActionOrderId(orderId);
+    setTimeout(() => {
+      setAdminOrders(prev => prev.filter(o => o.orderId !== orderId));
+      setActionOrderId(null);
+      showToast('审核通过，已进入制作队列', 'success');
+    }, 800);
+  };
+
+  const requestRetake = (orderId) => {
+    setShowRetakeModal(orderId);
+    setRetakeReason('光线不均匀，面部有阴影，建议在自然光下重新拍摄。');
+  };
+
+  const confirmRetake = () => {
+    if (!retakeReason.trim()) {
+      showToast('请填写补拍原因', 'error');
+      return;
+    }
+    const orderId = showRetakeModal;
+    setShowRetakeModal(null);
+    setActionOrderId(orderId);
+    setTimeout(() => {
+      setAdminOrders(prev => prev.filter(o => o.orderId !== orderId));
+      setActionOrderId(null);
+      showToast('已通知用户补拍', 'success');
+    }, 800);
+  };
+
+  const rejectOrder = (orderId) => {
+    if (!confirm('确认拒绝该订单吗？')) return;
+    setActionOrderId(orderId);
+    setTimeout(() => {
+      setAdminOrders(prev => prev.filter(o => o.orderId !== orderId));
+      setActionOrderId(null);
+      showToast('订单已拒绝', 'info');
+    }, 800);
+  };
+
+  // 交付相关
+  const openDelivery = (orderId) => {
+    setDeliveryOrderId(orderId);
+    setDeliveryFiles([]);
+  };
+
+  const closeDelivery = () => {
+    setDeliveryOrderId(null);
+    setDeliveryFiles([]);
+  };
+
+  const chooseDelivery = () => {
+    const candidates = [IMG.idBlue, IMG.portrait, IMG.magazine];
+    const newFiles = [];
+    for (let i = 0; i < 3; i++) {
+      newFiles.push({
+        id: Date.now() + i,
+        url: candidates[(deliveryFiles.length + i) % candidates.length],
+        size: 2048000 + Math.floor(Math.random() * 1000000),
+        fileName: `delivery-${deliveryFiles.length + i + 1}.jpg`,
+      });
+    }
+    setDeliveryFiles(prev => [...prev, ...newFiles].slice(0, 9));
+  };
+
+  const removeDeliveryFile = (id) => {
+    setDeliveryFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const uploadDeliveryFiles = () => {
+    if (deliveryFiles.length === 0) {
+      showToast('请先选择交付图片', 'error');
+      return;
+    }
+    setIsDelivering(true);
+    setTimeout(() => {
+      setAdminOrders(prev => prev.filter(o => o.orderId !== deliveryOrderId));
+      setIsDelivering(false);
+      setDeliveryOrderId(null);
+      setDeliveryFiles([]);
+      showToast('交付图已上传，订单已交付', 'success');
+    }, 1500);
+  };
+
+  const previewImage = (url, urls) => {
+    setPreviewUrl(url);
+    setPreviewList(urls || [url]);
+  };
+
+  const logoutAdmin = () => {
+    setIsAdmin(false);
+    showToast('已退出登录', 'info');
+    setTimeout(() => navigate('adminLogin'), 400);
+  };
+
+  const isPhotoReview = adminStatus === 'photo_review';
+  const canDelivery = adminStatus === 'qc' || adminStatus === 'generating' || adminStatus === 'queued';
+
+  return (
+    <div style={{
+      flex: 1, overflowY: 'auto', overflowX: 'hidden',
+      background: s.pageBg, color: s.ink,
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+
+      {/* 顶栏 */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: s.pageBg,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '52px 24px 12px',
+        }}>
+          <div
+            onClick={logoutAdmin}
+            style={{
+              width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase' }}>
+              Admin
+            </div>
+            <div style={{
+              fontFamily: s.serif,
+              fontStyle: 'italic',
+              fontSize: 11,
+              color: s.inkTertiary,
+              marginTop: 1,
+            }}>PhotoMuse Ops</div>
+          </div>
+          <div
+            onClick={logoutAdmin}
+            style={{
+              fontSize: 12,
+              color: s.error,
+              cursor: 'pointer',
+              fontWeight: 500,
+              letterSpacing: 0.5,
+            }}
+          >退出</div>
+        </div>
+        <div style={{ height: 1, background: s.hairline, opacity: 0.4 }} />
+      </div>
+
+      {/* 统计卡片 */}
+      <div style={{ padding: '20px 28px 0' }}>
+        <div style={{
+          display: 'flex',
+          border: `1px solid ${s.border}`,
+        }}>
+          {[
+            { label: '待审核', value: adminOrders.filter(o => o.order_status === 'photo_review').length, active: adminStatus === 'photo_review' },
+            { label: '制作中', value: 5, border: true },
+            { label: '今日交付', value: 12, border: true },
+          ].map((stat, i) => (
+            <div key={i} style={{
+              flex: 1,
+              padding: '18px 0',
+              textAlign: 'center',
+              borderLeft: i > 0 ? `1px solid ${s.border}` : 'none',
+            }}>
+              <div style={{
+                fontFamily: s.display,
+                fontStyle: 'italic',
+                fontSize: 24,
+                color: s.ink,
+                marginBottom: 4,
+                fontWeight: 400,
+              }}>{stat.value}</div>
+              <div style={{
+                fontSize: 9,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                color: s.inkTertiary,
+              }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 状态筛选 Tab */}
+      <div style={{
+        padding: '20px 28px 0',
+        display: 'flex',
+        gap: 0,
+        overflowX: 'auto',
+        borderBottom: `1px solid ${s.border}`,
+      }}>
+          {ADMIN_STATUS_OPTIONS.map(tab => {
+            const count = tab.value === adminStatus ? adminOrders.length : null;
+            return (
+              <div
+                key={tab.value}
+                onClick={() => selectStatus(tab.value)}
+                onMouseEnter={(e) => {
+                  if (adminStatus !== tab.value) e.currentTarget.style.color = s.inkSecondary;
+                }}
+                onMouseLeave={(e) => {
+                  if (adminStatus !== tab.value) e.currentTarget.style.color = s.inkTertiary;
+                }}
+                style={{
+                  flexShrink: 0,
+                  padding: '14px 0',
+                  marginRight: 22,
+                  fontSize: 12,
+                  color: adminStatus === tab.value ? s.ink : s.inkTertiary,
+                  fontWeight: adminStatus === tab.value ? 600 : 400,
+                  cursor: 'pointer',
+                  position: 'relative',
+                  letterSpacing: 0.3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'color 0.2s ease',
+                }}
+              >
+              {tab.label}
+              {count !== null && (
+                <span style={{
+                  fontSize: 10,
+                  color: adminStatus === tab.value ? s.ink : s.inkFaint,
+                  fontFamily: s.display,
+                  fontStyle: 'italic',
+                }}>{count}</span>
+              )}
+              {adminStatus === tab.value && (
+                <div style={{
+                  position: 'absolute', bottom: -1, left: 0, right: -22,
+                  height: 1.5, background: s.ink,
+                }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 订单列表 */}
+      <div style={{ padding: '0 28px 28px', flex: 1 }}>
+        {adminLoading ? (
+          <div style={{
+            padding: '60px 0',
+            textAlign: 'center',
+            fontSize: 12,
+            color: s.inkTertiary,
+            letterSpacing: 1,
+          }}>加载中...</div>
+        ) : adminOrders.length === 0 ? (
+          <div style={{
+            padding: '64px 20px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontFamily: s.display,
+              fontStyle: 'italic',
+              fontSize: 20,
+              color: s.ink,
+              marginBottom: 6,
+            }}>No Orders</div>
+            <div style={{
+              fontSize: 11,
+              color: s.inkTertiary,
+              letterSpacing: 1,
+            }}>
+              该状态下暂无订单
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {adminOrders.map((order, idx) => (
+              <div
+                key={order.orderId}
+                style={{
+                  padding: '20px 12px',
+                  margin: '0 -12px',
+                  borderBottom: idx < adminOrders.length - 1 ? `1px solid ${s.divider}` : 'none',
+                  transition: 'background 0.25s ease',
+                  borderRadius: 8,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = s.surfaceAlt; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                {/* 订单头 */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: 14,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: s.ink,
+                      marginBottom: 3,
+                    }}>
+                      {order.productName} · {order.styleName}
+                    </div>
+                    <div style={{
+                      fontSize: 10,
+                      color: s.inkTertiary,
+                      fontFamily: s.mono,
+                      letterSpacing: 0.3,
+                    }}>
+                      {order.orderId}
+                    </div>
+                    <div style={{
+                      fontSize: 10,
+                      color: s.inkTertiary,
+                      marginTop: 4,
+                    }}>
+                      参考照片：{order.reference_photo_count} 张
+                    </div>
+                  </div>
+                  <div style={{
+                    textAlign: 'right',
+                    flexShrink: 0,
+                  }}>
+                    <div style={{
+                      fontFamily: s.display,
+                      fontStyle: 'italic',
+                      fontSize: 18,
+                      color: s.ink,
+                      marginBottom: 4,
+                    }}>{order.price}</div>
+                    <StatusBadge status={order.order_status} />
+                  </div>
+                </div>
+
+                {/* 审核意见（有则展示） */}
+                {order.reviewNote && (
+                  <div style={{
+                    padding: '10px 12px',
+                    background: s.warningSoft,
+                    marginBottom: 14,
+                    fontSize: 11,
+                    color: s.warning,
+                    lineHeight: 1.6,
+                  }}>
+                    <span style={{ fontWeight: 600 }}>审核意见：</span>{order.reviewNote}
+                  </div>
+                )}
+
+                {/* 参考图 */}
+                <div style={{
+                  display: 'flex',
+                  gap: 10,
+                  marginBottom: 16,
+                  alignItems: 'flex-start',
+                }}>
+                  {order.customerUrls?.map((url, i) => (
+                    <div
+                      key={i}
+                      onClick={() => previewImage(url, order.customerUrls)}
+                      style={{
+                        width: 60, height: 76,
+                        overflow: 'hidden',
+                        border: `1px solid ${s.border}`,
+                        cursor: 'zoom-in',
+                        transition: 'transform 0.25s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  ))}
+                  {order.deliveryUrls?.length > 0 && (
+                    <div style={{
+                      marginLeft: 'auto',
+                      display: 'flex',
+                      gap: 6,
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                    }}>
+                      <div style={{
+                        fontSize: 10,
+                        color: s.inkTertiary,
+                        letterSpacing: 0.5,
+                      }}>交付图</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {order.deliveryUrls.slice(0, 3).map((url, i) => (
+                          <div
+                            key={i}
+                            onClick={() => previewImage(url, order.deliveryUrls)}
+                            style={{
+                              width: 44, height: 56,
+                              overflow: 'hidden',
+                              border: `1px solid ${s.border}`,
+                              cursor: 'zoom-in',
+                            }}
+                          >
+                            <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 操作区 */}
+                <div style={{
+                  display: 'flex',
+                  paddingTop: 14,
+                  borderTop: `1px solid ${s.divider}`,
+                  gap: 0,
+                }}>
+                  {isPhotoReview && (
+                    <>
+                      <AdminActionBtn
+                        label="通过"
+                        color={s.success}
+                        onClick={() => passReview(order.orderId)}
+                        loading={actionOrderId === order.orderId}
+                      />
+                      <AdminActionBtn
+                        label="重拍"
+                        color={s.warning}
+                        onClick={() => requestRetake(order.orderId)}
+                        loading={actionOrderId === order.orderId}
+                      />
+                      <AdminActionBtn
+                        label="拒单"
+                        color={s.error}
+                        onClick={() => rejectOrder(order.orderId)}
+                        loading={actionOrderId === order.orderId}
+                      />
+                    </>
+                  )}
+                  {canDelivery && (
+                    <AdminActionBtn
+                      label="上传交付"
+                      color={s.ink}
+                      onClick={() => openDelivery(order.orderId)}
+                      full={!isPhotoReview}
+                    />
+                  )}
+                  {adminStatus === 'delivered' && (
+                    <AdminActionBtn
+                      label="查看详情"
+                      color={s.ink}
+                      onClick={() => previewImage(order.deliveryUrls[0], order.deliveryUrls)}
+                      full
+                    />
+                  )}
+                  {adminStatus === 'cancelled' && (
+                    <div style={{
+                      flex: 1,
+                      textAlign: 'center',
+                      fontSize: 12,
+                      color: s.inkTertiary,
+                      padding: '8px 0',
+                    }}>订单已取消</div>
+                  )}
+                  {adminStatus === 'waiting_photos' && (
+                    <div style={{
+                      flex: 1,
+                      textAlign: 'center',
+                      fontSize: 12,
+                      color: s.warning,
+                      padding: '8px 0',
+                    }}>等待用户补拍</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 底部 */}
+      <div style={{
+        textAlign: 'center',
+        paddingBottom: 32,
+        fontSize: 9,
+        color: s.inkFaint,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+        fontFamily: s.serif,
+        fontStyle: 'italic',
+      }}>
+        — Admin Console · v1.0 —
+      </div>
+
+      {/* ===== 交付上传弹层 ===== */}
+      {deliveryOrderId && (
+        <div
+          onClick={closeDelivery}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'flex-end',
+            animation: 'fadeIn 0.25s ease',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              margin: '0 auto',
+              background: s.pageBg,
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
+              padding: '24px 28px 28px',
+              animation: 'slideUp 0.3s ease',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 20,
+            }}>
+              <div>
+                <div style={{
+                  fontFamily: s.serif,
+                  fontSize: 20,
+                  fontStyle: 'italic',
+                  fontWeight: 600,
+                }}>上传交付图</div>
+                <div style={{
+                  fontSize: 10,
+                  color: s.inkTertiary,
+                  letterSpacing: 1,
+                  marginTop: 2,
+                }}>{deliveryOrderId}</div>
+              </div>
+              <div
+                onClick={closeDelivery}
+                style={{
+                  width: 28, height: 28,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={s.ink} strokeWidth="1">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+              marginBottom: 16,
+              alignItems: 'flex-start',
+            }}>
+              {deliveryFiles.map((f, i) => (
+                <div key={f.id} style={{ position: 'relative', width: 72, height: 90 }}>
+                  <img src={f.url} style={{
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    border: `1px solid ${s.border}`,
+                  }} />
+                  <div
+                    onClick={() => removeDeliveryFile(f.id)}
+                    style={{
+                      position: 'absolute', top: -7, right: -7,
+                      width: 20, height: 20,
+                      borderRadius: '50%',
+                      background: s.ink,
+                      color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                    }}
+                  >×</div>
+                  <div style={{
+                    textAlign: 'center',
+                    fontSize: 9,
+                    color: s.inkTertiary,
+                    marginTop: 2,
+                  }}>{(f.size / 1024 / 1024).toFixed(1)}MB</div>
+                </div>
+              ))}
+              {deliveryFiles.length < 9 && (
+                <div
+                  onClick={chooseDelivery}
+                  style={{
+                    width: 72, height: 90,
+                    border: `1px dashed ${s.inkFaint}`,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={s.inkTertiary} strokeWidth="1">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  <span style={{ fontSize: 10, color: s.inkTertiary }}>添加图片</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              fontSize: 11,
+              color: s.inkTertiary,
+              lineHeight: 1.6,
+              padding: '10px 12px',
+              background: s.surfaceAlt,
+              marginBottom: 20,
+            }}>
+              最多上传 9 张交付图。上传后订单状态将自动更新为「已交付」。
+            </div>
+
+            <button
+              onClick={uploadDeliveryFiles}
+              disabled={isDelivering}
+              style={{
+                width: '100%',
+                height: 52,
+                background: isDelivering ? s.inkSecondary : s.ink,
+                border: 'none',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: 3,
+                cursor: isDelivering ? 'not-allowed' : 'pointer',
+                textTransform: 'uppercase',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              {isDelivering ? (
+                <>
+                  <div style={{
+                    width: 12, height: 12,
+                    border: '1.5px solid rgba(255,255,255,0.3)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'spin-slow 0.8s linear infinite',
+                  }} />
+                  UPLOADING
+                </>
+              ) : '确认交付'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 重拍原因弹层 ===== */}
+      {showRetakeModal && (
+        <div
+          onClick={() => setShowRetakeModal(null)}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 28px',
+            animation: 'fadeIn 0.25s ease',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              background: s.pageBg,
+              padding: '28px',
+              animation: 'slideUp 0.3s ease',
+            }}
+          >
+            <div style={{
+              fontFamily: s.serif,
+              fontSize: 20,
+              fontStyle: 'italic',
+              fontWeight: 600,
+              marginBottom: 8,
+            }}>要求补拍</div>
+            <div style={{ fontSize: 12, color: s.inkSecondary, lineHeight: 1.7, marginBottom: 16 }}>
+              请填写补拍原因，用户将收到通知。
+            </div>
+
+            <textarea
+              value={retakeReason}
+              onChange={(e) => setRetakeReason(e.target.value)}
+              placeholder="请输入补拍原因"
+              style={{
+                width: '100%',
+                minHeight: 100,
+                padding: 12,
+                background: s.surfaceAlt,
+                border: `1px solid ${s.border}`,
+                fontSize: 13,
+                color: s.ink,
+                outline: 'none',
+                resize: 'none',
+                fontFamily: s.body,
+                lineHeight: 1.6,
+                marginBottom: 16,
+              }}
+            />
+
+            {/* 常用原因快捷 */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              marginBottom: 20,
+            }}>
+              {['光线过暗', '面部有遮挡', '角度不端正', '像素模糊'].map(reason => (
+                <div
+                  key={reason}
+                  onClick={() => setRetakeReason(reason + '，请重新上传清晰正脸照。')}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    border: `1px solid ${s.border}`,
+                    color: s.inkSecondary,
+                    cursor: 'pointer',
+                  }}
+                >{reason}</div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowRetakeModal(null)}
+                style={{
+                  flex: 1,
+                  height: 46,
+                  background: 'transparent',
+                  border: `1px solid ${s.hairline}`,
+                  color: s.inkTertiary,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  letterSpacing: 1,
+                }}
+              >取消</button>
+              <button
+                onClick={confirmRetake}
+                style={{
+                  flex: 1,
+                  height: 46,
+                  background: s.warning,
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  letterSpacing: 2,
+                }}
+              >确认重拍</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 图片预览层 ===== */}
+      {previewUrl && (
+        <div
+          onClick={() => setPreviewUrl(null)}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.92)',
+            zIndex: 300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'fadeIn 0.25s ease',
+            cursor: 'zoom-out',
+          }}
+        >
+          <img src={previewUrl} style={{
+            maxWidth: '90%',
+            maxHeight: '80%',
+            objectFit: 'contain',
+          }} />
+          <div
+            onClick={() => setPreviewUrl(null)}
+            style={{
+              position: 'absolute',
+              top: 24, right: 24,
+              width: 40, height: 40,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 管理操作按钮
+function AdminActionBtn({ label, color, onClick, loading, full = false }) {
+  const s = PM;
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      onMouseEnter={(e) => {
+        if (!loading) {
+          e.currentTarget.style.background = color;
+          e.currentTarget.style.color = '#fff';
+          e.currentTarget.style.fontWeight = 600;
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = color;
+        e.currentTarget.style.fontWeight = 500;
+      }}
+      style={{
+        flex: full ? 1 : undefined,
+        flexGrow: 1,
+        height: 40,
+        background: 'transparent',
+        border: 'none',
+        color: color,
+        fontSize: 12,
+        cursor: loading ? 'not-allowed' : 'pointer',
+        fontWeight: 500,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderRight: full ? 'none' : `1px solid ${s.divider}`,
+        padding: '0 8px',
+        letterSpacing: 0.3,
+        whiteSpace: 'nowrap',
+        transition: 'all 0.2s ease',
+        borderRadius: 4,
+      }}
+    >
+      {loading ? '...' : label}
+    </button>
+  );
+}
+
+Object.assign(window, { AdminPage, AdminActionBtn });
+
+</script>
+</body>
+</html>
