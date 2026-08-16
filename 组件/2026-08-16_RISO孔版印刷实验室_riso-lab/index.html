@@ -1,0 +1,2531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RISO 孔版印刷特效实验室 · V3</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+  /* ========== RISO THEME TOKENS ========== */
+  :root {
+    --ink-black: #1a1210;
+    --rice-white: #f5ecd9;
+    --rice-cream: #efe4c8;
+    --fluoro-pink: #FF4FA0;
+    --mustard: #e8c547;
+    --fluoro-orange: #ff7a2a;
+    --paper: #f0e4cd;
+    --paper-dark: #d9c9a8;
+    --shadow: rgba(26, 18, 16, 0.25);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--paper);
+    color: var(--ink-black);
+    font-family: 'Courier New', 'Consolas', monospace;
+    overflow: hidden;
+    user-select: none;
+    cursor: none;
+  }
+
+  /* Paper grain texture */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(26,18,16,0.04) 0px, transparent 1px),
+      radial-gradient(circle at 70% 60%, rgba(26,18,16,0.03) 0px, transparent 1px),
+      radial-gradient(circle at 40% 80%, rgba(255,79,160,0.02) 0px, transparent 2px);
+    background-size: 3px 3px, 5px 5px, 7px 7px;
+    pointer-events: none;
+    z-index: 9998;
+    mix-blend-mode: multiply;
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  #cursor {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 24px; height: 24px;
+    border: 3px solid var(--ink-black);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 99999;
+    transition: width 0.2s cubic-bezier(.34,1.56,.64,1),
+                height 0.2s cubic-bezier(.34,1.56,.64,1),
+                border-color 0.2s ease,
+                background-color 0.2s ease;
+    mix-blend-mode: difference;
+  }
+  #cursor::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: var(--fluoro-pink);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px var(--fluoro-pink), 0 0 16px rgba(255,79,160,0.5);
+    transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+  }
+  #cursor.hover {
+    width: 48px; height: 48px;
+    border-color: var(--fluoro-pink);
+    background: rgba(255, 79, 160, 0.1);
+  }
+  #cursor.hover::before {
+    width: 10px; height: 10px;
+    background: var(--mustard);
+    box-shadow: 0 0 12px var(--mustard), 0 0 24px var(--fluoro-orange);
+  }
+  #cursor.click::before {
+    width: 2px; height: 2px;
+  }
+  #cursor.click {
+    transition: width 0.08s ease-out, height 0.08s ease-out;
+    width: 60px; height: 60px;
+  }
+
+  .cursor-ripple {
+    position: fixed;
+    width: 20px; height: 20px;
+    border: 2px solid var(--fluoro-pink);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99998;
+    transform: translate(-50%, -50%);
+    animation: cursorRipple 0.6s ease-out forwards;
+  }
+  @keyframes cursorRipple {
+    0% { width: 20px; height: 20px; opacity: 0.8; border-width: 3px; }
+    100% { width: 80px; height: 80px; opacity: 0; border-width: 1px; }
+  }
+
+  /* ========== LAYOUT ========== */
+  #app {
+    display: grid;
+    grid-template-columns: 220px 1fr 280px;
+    grid-template-rows: 70px 1fr 40px;
+    grid-template-areas:
+      "header header header"
+      "sidebar main   controls"
+      "footer footer  footer";
+    width: 100vw; height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    grid-area: header;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    border-bottom: 2px solid var(--ink-black);
+    background: var(--rice-white);
+    position: relative;
+    z-index: 10;
+  }
+  header::after {
+    content: '';
+    position: absolute; left: 0; right: 0; bottom: -4px; height: 2px;
+    background: var(--fluoro-pink);
+    transform: translateY(2px);
+    mix-blend-mode: multiply;
+    opacity: 0.7;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: var(--ink-black);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    color: var(--fluoro-pink);
+    font-size: 18px;
+    position: relative;
+  }
+  .logo-mark::after {
+    content: 'R';
+    position: absolute;
+    color: var(--mustard);
+    transform: translate(1px, 1px);
+    mix-blend-mode: screen;
+    opacity: 0.8;
+  }
+  .logo-text {
+    font-size: 16px;
+    text-transform: uppercase;
+    line-height: 1.2;
+  }
+  .logo-text small {
+    display: block;
+    font-size: 10px;
+    color: var(--fluoro-pink);
+    letter-spacing: 3px;
+    font-weight: normal;
+  }
+
+  .header-info {
+    display: flex; align-items: center; gap: 24px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .header-info .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--fluoro-pink);
+    margin-right: 6px;
+    animation: pulseDot 2s ease-in-out infinite;
+    box-shadow: 0 0 6px var(--fluoro-pink);
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    grid-area: sidebar;
+    border-right: 2px solid var(--ink-black);
+    overflow-y: auto;
+    padding: 16px 0;
+    background: var(--rice-cream);
+    position: relative;
+  }
+  .sidebar-title {
+    padding: 0 16px 12px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--fluoro-pink);
+    border-bottom: 1px dashed var(--ink-black);
+    margin-bottom: 8px;
+  }
+  .exhibit-list {
+    list-style: none;
+  }
+  .exhibit-item {
+    padding: 12px 16px;
+    cursor: none;
+    border-left: 3px solid transparent;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    position: relative;
+    border-bottom: 1px dotted rgba(26,18,16,0.15);
+  }
+  .exhibit-item:hover {
+    background: rgba(255,79,160,0.08);
+    border-left-color: var(--mustard);
+  }
+  .exhibit-item.active {
+    background: var(--ink-black);
+    color: var(--rice-white);
+    border-left-color: var(--fluoro-pink);
+  }
+  .exhibit-item.active .exhibit-num {
+    color: var(--fluoro-pink);
+  }
+  .exhibit-num {
+    font-size: 9px;
+    font-weight: bold;
+    color: var(--fluoro-pink);
+    min-width: 22px;
+    letter-spacing: 1px;
+  }
+  .exhibit-name {
+    flex: 1;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  /* MAIN STAGE */
+  .main-stage {
+    grid-area: main;
+    position: relative;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .stage-canvas-wrap {
+    position: absolute;
+    inset: 0;
+    display: grid; place-items: center;
+  }
+  #stageCanvas {
+    display: block;
+    background: var(--rice-white);
+    box-shadow: 0 20px 60px var(--shadow);
+    border: 2px solid var(--ink-black);
+  }
+
+  .stage-title {
+    position: absolute;
+    top: 20px; left: 24px;
+    z-index: 5;
+  }
+  .stage-title h2 {
+    font-size: 22px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    position: relative;
+    display: inline-block;
+  }
+  .stage-title h2::before {
+    content: attr(data-text);
+    position: absolute;
+    left: 2px; top: 2px;
+    color: var(--fluoro-pink);
+    z-index: -1;
+    mix-blend-mode: multiply;
+  }
+  .stage-title h2::after {
+    content: attr(data-text);
+    position: absolute;
+    left: -2px; top: -2px;
+    color: var(--mustard);
+    z-index: -1;
+    mix-blend-mode: multiply;
+    opacity: 0.7;
+  }
+  .stage-title p {
+    font-size: 11px;
+    margin-top: 4px;
+    letter-spacing: 1px;
+    opacity: 0.7;
+    max-width: 380px;
+  }
+
+  .stage-hint {
+    position: absolute;
+    bottom: 20px; left: 24px;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--ink-black);
+    opacity: 0.6;
+    z-index: 5;
+  }
+
+  /* CONTROLS PANEL */
+  .controls {
+    grid-area: controls;
+    border-left: 2px solid var(--ink-black);
+    padding: 20px;
+    overflow-y: auto;
+    background: var(--rice-cream);
+    position: relative;
+  }
+  .controls::before {
+    content: '';
+    position: absolute; left: -3px; top: 0; bottom: 0; width: 2px;
+    background: var(--mustard);
+    opacity: 0.5;
+  }
+  .controls-title {
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--ink-black);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .controls-title::before {
+    content: '';
+    width: 10px; height: 10px;
+    background: var(--fluoro-pink);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--fluoro-pink);
+  }
+
+  .ctrl-group {
+    margin-bottom: 18px;
+  }
+  .ctrl-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: bold;
+  }
+  .ctrl-value {
+    color: var(--fluoro-pink);
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+  }
+  .ctrl-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--paper-dark);
+    border: 1px solid var(--ink-black);
+    border-radius: 0;
+    outline: none;
+    cursor: none;
+  }
+  .ctrl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    background: var(--ink-black);
+    border: 2px solid var(--fluoro-pink);
+    border-radius: 50%;
+    cursor: none;
+    transition: transform 0.15s ease;
+  }
+  .ctrl-slider:hover::-webkit-slider-thumb {
+    transform: scale(1.2);
+    background: var(--fluoro-pink);
+  }
+  .ctrl-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    background: var(--ink-black);
+    border: 2px solid var(--fluoro-pink);
+    border-radius: 50%;
+    cursor: none;
+  }
+
+  .ctrl-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .ctrl-btn {
+    padding: 6px 14px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: var(--rice-white);
+    border: 2px solid var(--ink-black);
+    color: var(--ink-black);
+    cursor: none;
+    font-family: inherit;
+    font-weight: bold;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  .ctrl-btn:hover {
+    background: var(--ink-black);
+    color: var(--fluoro-pink);
+    transform: translate(-2px, -2px);
+    box-shadow: 3px 3px 0 var(--fluoro-pink);
+  }
+  .ctrl-btn.active {
+    background: var(--fluoro-pink);
+    color: var(--ink-black);
+    border-color: var(--fluoro-pink);
+  }
+  .ctrl-btn.primary {
+    background: var(--ink-black);
+    color: var(--fluoro-pink);
+  }
+  .ctrl-btn.primary:hover {
+    background: var(--fluoro-pink);
+    color: var(--ink-black);
+  }
+
+  .ctrl-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0;
+    cursor: none;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .toggle-switch {
+    width: 40px; height: 20px;
+    background: var(--paper-dark);
+    border: 2px solid var(--ink-black);
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 12px; height: 12px;
+    background: var(--ink-black);
+    border-radius: 50%;
+    transition: left 0.2s cubic-bezier(.34,1.56,.64,1);
+  }
+  .ctrl-toggle.on .toggle-switch {
+    background: var(--fluoro-pink);
+  }
+  .ctrl-toggle.on .toggle-switch::after {
+    left: 21px;
+    background: var(--ink-black);
+  }
+
+  .color-swatches {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .swatch {
+    width: 28px; height: 28px;
+    border: 2px solid var(--ink-black);
+    cursor: none;
+    transition: transform 0.15s ease;
+    position: relative;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.active {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 2px var(--rice-white), 0 0 0 4px var(--ink-black);
+  }
+
+  /* FOOTER */
+  footer {
+    grid-area: footer;
+    border-top: 2px solid var(--ink-black);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    background: var(--ink-black);
+    color: var(--rice-white);
+  }
+  footer .status {
+    display: flex; align-items: center; gap: 20px;
+  }
+  footer .status span {
+    display: flex; align-items: center; gap: 6px;
+  }
+  footer .fps-val { color: var(--fluoro-pink); font-weight: bold; }
+  footer .exhibit-count { color: var(--mustard); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--ink-black); border-radius: 3px; }
+
+  /* reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+
+<div id="app">
+  <header>
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <div class="logo-text">
+        RISO LAB
+        <small>孔版印刷特效实验室</small>
+      </div>
+    </div>
+    <div class="header-info">
+      <span><span class="dot"></span>Exhibit V3 · 2026</span>
+      <span>13 EFFECTS</span>
+      <span>FLUORO INK</span>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <div class="sidebar-title">▸ 展区目录 / EXHIBITS</div>
+    <ul class="exhibit-list" id="exhibitList">
+      <!-- populated by JS -->
+    </ul>
+  </nav>
+
+  <main class="main-stage">
+    <div class="stage-title">
+      <h2 id="stageTitle" data-text="HALFTONE DRIFT">HALFTONE DRIFT</h2>
+      <p id="stageDesc">鼠标拖拽改变网点密度与油墨压力</p>
+    </div>
+    <div class="stage-canvas-wrap">
+      <canvas id="stageCanvas" width="720" height="520"></canvas>
+    </div>
+    <div class="stage-hint" id="stageHint">◉ 移动鼠标 / 拖拽与参数互动</div>
+  </main>
+
+  <aside class="controls" id="controlsPanel">
+    <div class="controls-title">参数控制台</div>
+    <div id="controlsContent">
+      <!-- populated by JS -->
+    </div>
+  </aside>
+
+  <footer>
+    <div class="status">
+      <span>STATUS: <span style="color:var(--fluoro-pink)">● LIVE</span></span>
+      <span>FPS: <span class="fps-val" id="fpsVal">60</span></span>
+      <span>EXHIBIT: <span class="exhibit-count" id="exhibitCount">01 / 13</span></span>
+    </div>
+    <div>RISO EFFECT LAB · V3 UX · 100% VANILLA</div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   RISO PRINTING EFFECTS LAB
+   Vanilla JS · Canvas 2D · No dependencies
+   ============================================================ */
+
+'use strict';
+
+// ============ UTILITIES ============
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const map = (v, a1, b1, a2, b2) => a2 + (v - a1) * (b2 - a2) / (b1 - a1);
+
+// Check reduced motion
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ============ STATE ============
+const state = {
+  currentExhibit: 0,
+  mouse: { x: 360, y: 260, px: 360, py: 260, vx: 0, vy: 0, down: false, pressed: false },
+  params: {},
+  rafId: null,
+  running: true,
+  fpsFrames: 0,
+  fpsLast: performance.now(),
+  reducedMotion: prefersReducedMotion,
+};
+
+// ============ CUSTOM CURSOR ============
+const cursorEl = document.getElementById('cursor');
+let cursorTarget = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+let cursorPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+function updateCursor(e) {
+  cursorTarget.x = e.clientX;
+  cursorTarget.y = e.clientY;
+}
+
+function tickCursor() {
+  // spring easing
+  cursorPos.x = lerp(cursorPos.x, cursorTarget.x, 0.25);
+  cursorPos.y = lerp(cursorPos.y, cursorTarget.y, 0.25);
+  cursorEl.style.left = cursorPos.x + 'px';
+  cursorEl.style.top = cursorPos.y + 'px';
+}
+
+document.addEventListener('mousemove', updateCursor);
+
+// ripple on click
+document.addEventListener('mousedown', (e) => {
+  const ripple = document.createElement('div');
+  ripple.className = 'cursor-ripple';
+  ripple.style.left = e.clientX + 'px';
+  ripple.style.top = e.clientY + 'px';
+  document.body.appendChild(ripple);
+  cursorEl.classList.add('click');
+  setTimeout(() => cursorEl.classList.remove('click'), 100);
+  setTimeout(() => ripple.remove(), 600);
+});
+
+// hover states on interactive elements
+function setupCursorHovers() {
+  const interactives = document.querySelectorAll('.exhibit-item, .ctrl-btn, .ctrl-slider, .swatch, .ctrl-toggle, #stageCanvas');
+  interactives.forEach(el => {
+    el.addEventListener('mouseenter', () => cursorEl.classList.add('hover'));
+    el.addEventListener('mouseleave', () => cursorEl.classList.remove('hover'));
+  });
+}
+
+// ============ CANVAS SETUP ============
+const canvas = document.getElementById('stageCanvas');
+const ctx = canvas.getContext('2d');
+const CW = canvas.width;
+const CH = canvas.height;
+
+// Canvas mouse tracking
+const canvasRect = () => canvas.getBoundingClientRect();
+function canvasMouse(e) {
+  const r = canvasRect();
+  const sx = CW / r.width;
+  const sy = CH / r.height;
+  state.mouse.px = state.mouse.x;
+  state.mouse.py = state.mouse.y;
+  state.mouse.x = (e.clientX - r.left) * sx;
+  state.mouse.y = (e.clientY - r.top) * sy;
+  state.mouse.vx = state.mouse.x - state.mouse.px;
+  state.mouse.vy = state.mouse.y - state.mouse.py;
+}
+
+canvas.addEventListener('mousemove', canvasMouse);
+canvas.addEventListener('mousedown', () => { state.mouse.down = true; state.mouse.pressed = true; });
+canvas.addEventListener('mouseup', () => { state.mouse.down = false; });
+canvas.addEventListener('mouseleave', () => { state.mouse.down = false; });
+
+// ============ EXHIBITS DEFINITION ============
+const exhibits = [
+  {
+    id: 'halftone',
+    num: '01',
+    name: '网点漂移',
+    title: 'HALFTONE DRIFT',
+    desc: '鼠标拖拽改变网点密度与油墨压力，半调网点实时响应',
+    hint: '◉ 按住拖拽改变网点大小 · 移动改变分布',
+    params: {
+      dotSize: { label: '网点尺寸', value: 8, min: 2, max: 24, step: 0.5 },
+      spacing: { label: '网点间距', value: 14, min: 6, max: 40, step: 1 },
+      pressure: { label: '油墨压力', value: 50, min: 0, max: 100, step: 1 },
+      inkColor: { label: '墨色', type: 'swatch', value: '#FF4FA0', options: ['#FF4FA0', '#1a1210', '#e8c547', '#ff7a2a'] },
+    },
+  },
+  {
+    id: 'misreg',
+    num: '02',
+    name: '套色偏移',
+    title: 'MISREGISTRATION',
+    desc: '拖拽分离三色印版，模拟套印错位的 RISO 经典效果',
+    hint: '◉ 拖拽三原色印版 · 体验错位之美',
+    params: {
+      offsetR: { label: '粉红偏移', value: 8, min: 0, max: 40, step: 1 },
+      offsetY: { label: '黄色偏移', value: -5, min: -40, max: 0, step: 1 },
+      offsetK: { label: '黑色偏移', value: 3, min: 0, max: 20, step: 0.5 },
+      rotate: { label: '版材旋转', value: 0, min: -5, max: 5, step: 0.1 },
+      autoDrift: { label: '自动漂移动画', type: 'toggle', value: false },
+    },
+  },
+  {
+    id: 'flowfield',
+    num: '03',
+    name: '油墨流场',
+    title: 'INK FLOW FIELD',
+    desc: 'Perlin 噪波驱动的油墨颗粒流场，鼠标制造扰动',
+    hint: '◉ 移动鼠标制造流场扰动 · 观察油墨扩散',
+    params: {
+      particles: { label: '颗粒数量', value: 300, min: 50, max: 800, step: 10 },
+      noiseScale: { label: '噪波尺度', value: 0.008, min: 0.002, max: 0.02, step: 0.001 },
+      speed: { label: '流动速度', value: 1.5, min: 0.2, max: 4, step: 0.1 },
+      trail: { label: '轨迹长度', value: 0.15, min: 0.02, max: 0.5, step: 0.01 },
+      mouseForce: { label: '鼠标斥力', value: 80, min: 0, max: 200, step: 5 },
+    },
+  },
+  {
+    id: 'glow',
+    num: '04',
+    name: '荧光叠印',
+    title: 'FLUORESCENT OVERPRINT',
+    desc: '多层荧光墨叠加，模拟 RISO 荧光油墨的发光效果',
+    hint: '◉ 点击画布生成发光墨团 · 层叠出奇迹',
+    params: {
+      glowIntensity: { label: '荧光强度', value: 25, min: 5, max: 60, step: 1 },
+      layers: { label: '叠印层数', value: 3, min: 1, max: 7, step: 1 },
+      spread: { label: '扩散范围', value: 60, min: 20, max: 150, step: 5 },
+      mode: { label: '混合模式', type: 'buttons', value: 'screen', options: ['screen', 'multiply', 'lighter'] },
+    },
+  },
+  {
+    id: 'scanline',
+    num: '05',
+    name: '扫描干涉',
+    title: 'SCANLINE MOIRÉ',
+    desc: '扫描线与半调网点的摩尔干涉图案，参数调节干涉频率',
+    hint: '◉ 移动鼠标改变扫描线相位 · 观察摩尔纹',
+    params: {
+      lineSpacing: { label: '扫描线间距', value: 6, min: 2, max: 20, step: 1 },
+      lineAngle: { label: '扫描线角度', value: 0, min: -45, max: 45, step: 1 },
+      moireFreq: { label: '干涉频率', value: 12, min: 2, max: 40, step: 1 },
+      contrast: { label: '对比度', value: 60, min: 10, max: 100, step: 1 },
+      animated: { label: '扫描动画', type: 'toggle', value: true },
+    },
+  },
+  {
+    id: 'textdecon',
+    num: '06',
+    name: '文字解构',
+    title: 'TYPE DECONSTRUCT',
+    desc: '文字解构为网点粒子，鼠标吸力重组字形',
+    hint: '◉ 移动鼠标吸引/排斥文字粒子',
+    params: {
+      text: { label: '文字内容', type: 'text', value: 'RISO' },
+      fontSize: { label: '字号', value: 120, min: 40, max: 200, step: 10 },
+      force: { label: '鼠标力度', value: 150, min: 20, max: 300, step: 10 },
+      scatter: { label: '散射强度', value: 2, min: 0, max: 8, step: 0.5 },
+      mode: { label: '模式', type: 'buttons', value: 'attract', options: ['attract', 'repel'] },
+    },
+  },
+  {
+    id: 'colorsep',
+    num: '07',
+    name: '色彩分离',
+    title: 'COLOR SEPARATION',
+    desc: '将图像分离为 RISO 专色通道，查看各印版效果',
+    hint: '◉ 切换通道查看单版效果 · 滑块调整阈值',
+    params: {
+      showPink: { label: '荧光粉红版', type: 'toggle', value: true },
+      showYellow: { label: '芥末黄版', type: 'toggle', value: true },
+      showBlack: { label: '墨黑版', type: 'toggle', value: true },
+      threshold: { label: '分色阈值', value: 50, min: 10, max: 90, step: 1 },
+      pattern: { label: '底纹图案', type: 'buttons', value: 'dots', options: ['dots', 'lines', 'crosshatch'] },
+    },
+  },
+  {
+    id: 'inkbleed',
+    num: '08',
+    name: '油墨洇染',
+    title: 'INK BLEED',
+    desc: '模拟油墨在纸张纤维中的洇散与吸收效果',
+    hint: '◉ 点击画布滴墨 · 观察油墨在纸纤维中洇开',
+    params: {
+      bleedRate: { label: '洇染速度', value: 0.8, min: 0.1, max: 2, step: 0.1 },
+      grain: { label: '纸张颗粒', value: 0.6, min: 0, max: 1.5, step: 0.05 },
+      inkDensity: { label: '墨量', value: 70, min: 20, max: 100, step: 1 },
+      inkColor: { label: '墨色', type: 'swatch', value: '#1a1210', options: ['#1a1210', '#FF4FA0', '#e8c547', '#ff7a2a'] },
+      autoDrip: { label: '自动滴墨', type: 'toggle', value: false },
+    },
+  },
+  {
+    id: 'pressure',
+    num: '09',
+    name: '印刷压力',
+    title: 'PRINT PRESSURE',
+    desc: '滚筒压力实时模拟：压力越大网点越实，压力越小网点越虚',
+    hint: '◉ 上下拖动改变滚筒压力 · 观察网点虚实变化',
+    params: {
+      pressure: { label: '滚筒压力', value: 50, min: 10, max: 100, step: 1 },
+      speed: { label: '滚筒速度', value: 1, min: 0.2, max: 3, step: 0.1 },
+      dotMin: { label: '最小网点', value: 1, min: 0, max: 6, step: 0.5 },
+      dotMax: { label: '最大网点', value: 10, min: 4, max: 20, step: 0.5 },
+      animated: { label: '滚筒动画', type: 'toggle', value: true },
+    },
+  },
+  {
+    id: 'papergrain',
+    num: '10',
+    name: '纸纹噪波',
+    title: 'PAPER GRAIN NOISE',
+    desc: '程序化生成 RISO 纸张颗粒质感，多种噪波算法叠加',
+    hint: '◉ 移动鼠标光照方向 · 改变纸纹明暗',
+    params: {
+      grainSize: { label: '颗粒大小', value: 1.5, min: 0.5, max: 5, step: 0.1 },
+      density: { label: '颗粒密度', value: 0.3, min: 0.05, max: 0.8, step: 0.01 },
+      fiberNoise: { label: '纤维噪波', value: 40, min: 0, max: 100, step: 1 },
+      lightAngle: { label: '光照角度', value: 45, min: 0, max: 360, step: 1 },
+      color: { label: '纸色', type: 'swatch', value: '#f5ecd9', options: ['#f5ecd9', '#efe4c8', '#e8d9b0', '#d4c49a'] },
+    },
+  },
+  {
+    id: 'gradmap',
+    num: '11',
+    name: '渐变映射',
+    title: 'GRADIENT MAP',
+    desc: 'RISO 专色渐变映射 + 色调分离，创造有限色阶的印刷感',
+    hint: '◉ 拖拽调整色阶分界 · 点击切换色带',
+    params: {
+      bands: { label: '色阶数量', value: 4, min: 2, max: 8, step: 1 },
+      noise: { label: '抖动噪点', value: 20, min: 0, max: 60, step: 1 },
+      offset1: { label: '色阶1位置', value: 25, min: 5, max: 95, step: 1 },
+      offset2: { label: '色阶2位置', value: 50, min: 5, max: 95, step: 1 },
+      palette: { label: '调色板', type: 'buttons', value: 'pinky', options: ['pinky', 'sunset', 'mono', 'citrus'] },
+    },
+  },
+  {
+    id: 'gridprint',
+    num: '12',
+    name: '网格印版',
+    title: 'GRID PRINTER',
+    desc: '网格化逐格打印动画，模拟 RISO 机逐行印刷的过程',
+    hint: '◉ 点击重启印刷 · 滑杆调节速度与图案',
+    params: {
+      cols: { label: '列数', value: 24, min: 8, max: 60, step: 1 },
+      rows: { label: '行数', value: 18, min: 6, max: 40, step: 1 },
+      speed: { label: '印刷速度', value: 2, min: 0.5, max: 8, step: 0.5 },
+      pattern: { label: '印刷图案', type: 'buttons', value: 'random', options: ['random', 'diagonal', 'wave', 'checker'] },
+      restart: { label: '重新开始', type: 'button', action: 'restart' },
+    },
+  },
+  {
+    id: 'risomix',
+    num: '13',
+    name: '综合叠印',
+    title: 'RISO MIX LAB',
+    desc: '所有效果的综合实验台：网点 + 套色 + 荧光 + 扫描线 + 纸纹',
+    hint: '◉ 开启/关闭各效果层 · 打造你的 RISO 风格',
+    params: {
+      halftone: { label: '半调网点', type: 'toggle', value: true },
+      misregistration: { label: '套色偏移', type: 'toggle', value: true },
+      glow: { label: '荧光墨', type: 'toggle', value: true },
+      scanlines: { label: '扫描线', type: 'toggle', value: false },
+      grain: { label: '纸纹颗粒', type: 'toggle', value: true },
+      intensity: { label: '综合强度', value: 60, min: 10, max: 100, step: 1 },
+      colorA: { label: '色A', type: 'swatch', value: '#FF4FA0', options: ['#FF4FA0', '#e8c547', '#ff7a2a', '#1a1210'] },
+      colorB: { label: '色B', type: 'swatch', value: '#e8c547', options: ['#FF4FA0', '#e8c547', '#ff7a2a', '#1a1210'] },
+    },
+  },
+];
+
+// ============ PERLIN NOISE (Simplex-ish 2D value noise) ============
+class Noise2D {
+  constructor(seed = Math.random() * 10000) {
+    this.seed = seed;
+    this.p = this._makePermutation();
+  }
+  _makePermutation() {
+    const p = [];
+    for (let i = 0; i < 256; i++) p[i] = i;
+    // shuffle with seed
+    let s = this.seed;
+    for (let i = 255; i > 0; i--) {
+      s = (s * 9301 + 49297) % 233280;
+      const j = Math.floor((s / 233280) * (i + 1));
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    return [...p, ...p];
+  }
+  _fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  _grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+  }
+  noise(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    const u = this._fade(x);
+    const v = this._fade(y);
+    const A = this.p[X] + Y;
+    const B = this.p[X + 1] + Y;
+    return lerp(
+      lerp(this._grad(this.p[A], x, y), this._grad(this.p[B], x - 1, y), u),
+      lerp(this._grad(this.p[A + 1], x, y - 1), this._grad(this.p[B + 1], x - 1, y - 1), u),
+      v
+    );
+  }
+  // multi-octave
+  fbm(x, y, oct = 4) {
+    let val = 0, amp = 1, freq = 1, max = 0;
+    for (let i = 0; i < oct; i++) {
+      val += this.noise(x * freq, y * freq) * amp;
+      max += amp;
+      amp *= 0.5;
+      freq *= 2;
+    }
+    return val / max;
+  }
+}
+
+// ============ PARTICLE SYSTEM BASE ============
+class Particle {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.px = x; this.py = y;
+    this.vx = 0; this.vy = 0;
+    this.life = 1;
+    this.decay = 0.005;
+  }
+}
+
+// ============ EXHIBIT RENDERERS ============
+// Each exhibit has: init(), frame(), resize? (handled outside)
+// They draw on ctx (global canvas context)
+
+let renderCtx = null; // current render module
+
+// ---- 01 HALFTONE DRIFT ----
+const renderHalftone = (() => {
+  const noise = new Noise2D(42);
+  let t = 0;
+  return {
+    init() { t = 0; },
+    frame() {
+      const p = state.params;
+      const size = p.dotSize;
+      const sp = p.spacing;
+      const pressure = p.pressure / 100;
+      const mx = state.mouse.x;
+      const my = state.mouse.y;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      ctx.fillStyle = p.inkColor;
+      t += 0.005;
+
+      for (let y = sp; y < CH; y += sp) {
+        for (let x = sp; x < CW; x += sp) {
+          // base size from pressure
+          let s = size * pressure;
+          // noise variation
+          const n = noise.fbm(x * 0.01 + t, y * 0.01 + t * 0.7, 3);
+          s *= (0.6 + n * 0.8);
+          // mouse influence
+          const dx = x - mx;
+          const dy = y - my;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < 120) {
+            const infl = 1 - d / 120;
+            if (state.mouse.down) s *= (1 + infl * 1.5);
+            else s *= (1 + infl * 0.5);
+          }
+          if (s > 0.5) {
+            ctx.beginPath();
+            ctx.arc(x, y, s, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // paper grain overlay
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#1a1210';
+      for (let i = 0; i < 80; i++) {
+        const gx = ((i * 97 + t * 50) % CW);
+        const gy = ((i * 53 + t * 30) % CH);
+        ctx.fillRect(gx, gy, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+  };
+})();
+
+// ---- 02 MISREGISTRATION ----
+const renderMisreg = (() => {
+  let t = 0;
+  const text1 = 'RISO';
+  const text2 = 'GRAPH';
+  let driftT = 0;
+
+  function drawLayer(text, fontSize, color, ox, oy, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, CW / 2 + ox, CH / 2 + oy - 40);
+    ctx.font = `bold ${fontSize * 0.6}px 'Courier New', monospace`;
+    ctx.fillText(text2, CW / 2 + ox, CH / 2 + oy + 40);
+    ctx.restore();
+  }
+
+  return {
+    init() { driftT = 0; },
+    frame() {
+      const p = state.params;
+      t += 0.02;
+      if (p.autoDrift) driftT += 0.015;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // rotate
+      ctx.save();
+      ctx.translate(CW / 2, CH / 2);
+      ctx.rotate((p.rotate * Math.PI) / 180);
+      ctx.translate(-CW / 2, -CH / 2);
+
+      ctx.globalCompositeOperation = 'multiply';
+      const fontSize = 140;
+      let oR = p.offsetR;
+      let oY = p.offsetY;
+      let oK = p.offsetK;
+
+      if (p.autoDrift) {
+        oR += Math.sin(driftT) * 8;
+        oY += Math.cos(driftT * 0.8) * 6;
+        oK += Math.sin(driftT * 1.3) * 3;
+      }
+
+      // black layer
+      drawLayer(text1, fontSize, '#1a1210', oK * 0.3, oK, 0.85);
+      // pink layer
+      drawLayer(text1, fontSize, '#FF4FA0', oR, -oR * 0.5, 0.8);
+      // yellow layer
+      drawLayer(text1, fontSize, '#e8c547', oY, oY * 0.3, 0.7);
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore();
+
+      // reference crosshair
+      ctx.strokeStyle = 'rgba(26,18,16,0.2)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(CW / 2, 30);
+      ctx.lineTo(CW / 2, CH - 30);
+      ctx.moveTo(30, CH / 2 - 40);
+      ctx.lineTo(CW - 30, CH / 2 - 40);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // small text
+      ctx.fillStyle = '#1a1210';
+      ctx.font = '11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('MISREGISTRATION EFFECT · 套色偏移 · THREE PLATES', CW / 2, CH - 30);
+    }
+  };
+})();
+
+// ---- 03 FLOW FIELD ----
+const renderFlowfield = (() => {
+  const noise = new Noise2D(7);
+  let particles = [];
+  let t = 0;
+
+  function initParticles(count) {
+    particles = [];
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * CW,
+        y: Math.random() * CH,
+        vx: 0, vy: 0,
+        life: Math.random(),
+        size: rand(0.8, 2.5),
+        color: Math.random() < 0.7 ? '#FF4FA0' : (Math.random() < 0.5 ? '#e8c547' : '#1a1210')
+      });
+    }
+  }
+
+  return {
+    init() {
+      t = 0;
+      initParticles(state.params.particles);
+    },
+    refresh() {
+      initParticles(state.params.particles);
+    },
+    frame() {
+      const p = state.params;
+      if (particles.length !== p.particles) initParticles(p.particles);
+
+      // trail fade
+      ctx.fillStyle = `rgba(245, 236, 217, ${p.trail})`;
+      ctx.fillRect(0, 0, CW, CH);
+
+      t += 0.003;
+      const ns = p.noiseScale;
+      const sp = p.speed;
+      const mf = p.mouseForce;
+      const mx = state.mouse.x;
+      const my = state.mouse.y;
+
+      ctx.globalCompositeOperation = 'multiply';
+
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+        // flow field angle from noise
+        const angle = noise.fbm(pt.x * ns + t, pt.y * ns + t * 0.5, 3) * Math.PI * 4;
+        pt.vx = Math.cos(angle) * sp;
+        pt.vy = Math.sin(angle) * sp;
+
+        // mouse force (repel)
+        if (mf > 0) {
+          const dx = pt.x - mx;
+          const dy = pt.y - my;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 10000 && d2 > 1) {
+            const d = Math.sqrt(d2);
+            const force = (mf / d) * 0.1;
+            pt.vx += (dx / d) * force;
+            pt.vy += (dy / d) * force;
+          }
+        }
+
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+
+        // wrap
+        if (pt.x < 0) pt.x = CW;
+        if (pt.x > CW) pt.x = 0;
+        if (pt.y < 0) pt.y = CH;
+        if (pt.y > CH) pt.y = 0;
+
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  };
+})();
+
+// ---- 04 FLUORESCENT GLOW ----
+const renderGlow = (() => {
+  let blobs = [];
+  let t = 0;
+
+  function addBlob(x, y) {
+    blobs.push({
+      x, y,
+      r: 30 + Math.random() * 50,
+      life: 1,
+      hue: Math.floor(Math.random() * 3),
+      pulse: Math.random() * Math.PI * 2,
+    });
+  }
+
+  return {
+    init() {
+      blobs = [];
+      t = 0;
+      for (let i = 0; i < 5; i++) {
+        addBlob(rand(100, CW - 100), rand(100, CH - 100));
+      }
+    },
+    click(x, y) {
+      addBlob(x, y);
+      if (blobs.length > 15) blobs.shift();
+    },
+    frame() {
+      const p = state.params;
+      t += 0.02;
+
+      ctx.fillStyle = '#1a1210';
+      ctx.fillRect(0, 0, CW, CH);
+
+      const colors = ['#FF4FA0', '#e8c547', '#ff7a2a'];
+
+      ctx.globalCompositeOperation = p.mode === 'multiply' ? 'multiply' :
+                                      p.mode === 'lighter' ? 'lighter' : 'screen';
+
+      for (let layer = 0; layer < p.layers; layer++) {
+        const layerOffset = (layer / p.layers) * p.spread * 0.3;
+        const angle = (layer / p.layers) * Math.PI * 2;
+
+        for (const b of blobs) {
+          const pulse = 1 + Math.sin(t + b.pulse + layer * 0.5) * 0.15;
+          const r = b.r * pulse + layerOffset * 2;
+          const bx = b.x + Math.cos(angle + t * 0.3) * p.spread * 0.2;
+          const by = b.y + Math.sin(angle + t * 0.3) * p.spread * 0.2;
+
+          const color = colors[b.hue % colors.length];
+          const grad = ctx.createRadialGradient(bx, by, 0, bx, by, r * (1 + p.glowIntensity / 30));
+          grad.addColorStop(0, color);
+          grad.addColorStop(0.4, color + 'cc');
+          grad.addColorStop(0.7, color + '33');
+          grad.addColorStop(1, color + '00');
+
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(bx, by, r * (1 + p.glowIntensity / 30), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // central text
+      ctx.fillStyle = 'rgba(245,236,217,0.9)';
+      ctx.font = 'bold 28px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('FLUORESCENT OVERPRINT', CW / 2, CH / 2 + 5);
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = 'rgba(245,236,217,0.6)';
+      ctx.fillText('点击画布添加荧光墨团', CW / 2, CH / 2 + 28);
+    }
+  };
+})();
+
+// ---- 05 SCANLINE MOIRE ----
+const renderScanline = (() => {
+  let t = 0;
+  return {
+    init() { t = 0; },
+    frame() {
+      const p = state.params;
+      t += p.animated ? 0.03 : 0;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      ctx.save();
+
+      // halftone dots base
+      const dotSize = 4;
+      const sp = 8;
+      const contrast = p.contrast / 100;
+
+      ctx.fillStyle = `rgba(26, 18, 16, ${0.5 + contrast * 0.4})`;
+      for (let y = sp; y < CH; y += sp) {
+        for (let x = sp; x < CW; x += sp) {
+          const dx = x - CW / 2;
+          const dy = y - CH / 2;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          const s = dotSize * (1 - d / 500) * (0.5 + contrast * 0.5);
+          if (s > 0.3) {
+            ctx.beginPath();
+            ctx.arc(x, y, s, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // scanlines with angle
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.translate(CW / 2, CH / 2);
+      ctx.rotate((p.lineAngle * Math.PI) / 180);
+      ctx.translate(-CW / 2, -CH / 2);
+
+      const linePhase = (state.mouse.x / CW) * 20 + t * 50;
+      const lineW = p.lineSpacing;
+
+      ctx.fillStyle = `rgba(255, 79, 160, ${0.3 + contrast * 0.3})`;
+      for (let y = -CH + (linePhase % lineW); y < CH * 2; y += lineW) {
+        ctx.fillRect(-CW, y, CW * 3, lineW * 0.4);
+      }
+
+      // moire interference layer (yellow)
+      ctx.fillStyle = `rgba(232, 197, 71, ${0.2 + contrast * 0.2})`;
+      const mFreq = p.moireFreq;
+      for (let y = -CH; y < CH * 2; y += mFreq) {
+        ctx.fillRect(-CW, y + Math.sin(y * 0.02 + t) * 3, CW * 3, mFreq * 0.3);
+      }
+
+      ctx.restore();
+
+      // center accent
+      ctx.fillStyle = '#FF4FA0';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('◉ MOIRE INTERFERENCE ◉', CW / 2, 50);
+    }
+  };
+})();
+
+// ---- 06 TYPE DECONSTRUCT ----
+const renderTextdecon = (() => {
+  let particles = [];
+  let textCache = '';
+  let fontSizeCache = 0;
+
+  function buildParticles(text, fontSize) {
+    // render text to offscreen canvas to sample
+    const off = document.createElement('canvas');
+    off.width = CW;
+    off.height = CH;
+    const oc = off.getContext('2d');
+    oc.fillStyle = '#000';
+    oc.font = `bold ${fontSize}px 'Courier New', monospace`;
+    oc.textAlign = 'center';
+    oc.textBaseline = 'middle';
+    oc.fillText(text, CW / 2, CH / 2);
+
+    const img = oc.getImageData(0, 0, CW, CH).data;
+    particles = [];
+    const step = Math.max(2, Math.floor(fontSize / 30));
+
+    for (let y = 0; y < CH; y += step) {
+      for (let x = 0; x < CW; x += step) {
+        const idx = (y * CW + x) * 4;
+        if (img[idx + 3] > 128) {
+          particles.push({
+            ox: x, oy: y,
+            x: x + rand(-50, 50),
+            y: y + rand(-50, 50),
+            vx: 0, vy: 0,
+            size: step * 0.6 + Math.random() * 0.4,
+            color: Math.random() < 0.6 ? '#FF4FA0' : (Math.random() < 0.5 ? '#e8c547' : '#1a1210'),
+          });
+        }
+      }
+    }
+    textCache = text;
+    fontSizeCache = fontSize;
+  }
+
+  return {
+    init() {
+      buildParticles(state.params.text, state.params.fontSize);
+    },
+    refresh() {
+      buildParticles(state.params.text, state.params.fontSize);
+    },
+    frame() {
+      const p = state.params;
+
+      // rebuild if text changed
+      if (p.text !== textCache || p.fontSize !== fontSizeCache) {
+        buildParticles(p.text, p.fontSize);
+      }
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      const mx = state.mouse.x;
+      const my = state.mouse.y;
+      const attract = p.mode === 'attract';
+      const force = p.force;
+      const scatter = p.scatter;
+
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+
+        // spring to origin
+        const dx = pt.ox - pt.x;
+        const dy = pt.oy - pt.y;
+        pt.vx += dx * 0.02;
+        pt.vy += dy * 0.02;
+
+        // mouse force
+        const mdx = pt.x - mx;
+        const mdy = pt.y - my;
+        const md2 = mdx * mdx + mdy * mdy;
+        if (md2 < 15000 && md2 > 1) {
+          const md = Math.sqrt(md2);
+          let f = force / (md + 20) * 0.5;
+          if (attract) f = -f;
+          pt.vx += (mdx / md) * f;
+          pt.vy += (mdy / md) * f;
+        }
+
+        // scatter (noise-like drift)
+        pt.vx += (Math.random() - 0.5) * scatter * 0.3;
+        pt.vy += (Math.random() - 0.5) * scatter * 0.3;
+
+        // damping
+        pt.vx *= 0.88;
+        pt.vy *= 0.88;
+
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+      }
+    }
+  };
+})();
+
+// ---- 07 COLOR SEPARATION ----
+const renderColorsep = (() => {
+  let t = 0;
+  const noise = new Noise2D(15);
+
+  return {
+    init() { t = 0; },
+    frame() {
+      const p = state.params;
+      t += 0.01;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // generate a simulated image with shapes
+      const thresh = p.threshold / 100;
+      const patterns = { dots: 0, lines: 1, crosshatch: 2 };
+      const pat = patterns[p.pattern] ?? 0;
+
+      function drawPattern(cx, cy, r, color, alpha, channel) {
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.globalCompositeOperation = 'multiply';
+
+        const sp = 5;
+        for (let y = -r; y <= r; y += sp) {
+          for (let x = -r; x <= r; x += sp) {
+            const dist = Math.sqrt(x * x + y * y);
+            if (dist > r) continue;
+            const n = noise.fbm((cx + x) * 0.02 + t, (cy + y) * 0.02, 2) * 0.5 + 0.5;
+            const intensity = 1 - dist / r;
+            const v = intensity * 0.7 + n * 0.3;
+
+            let size = 0;
+            if (channel === 'pink' && p.showPink) {
+              if (v > thresh * 0.5) size = sp * (v - thresh * 0.5) * 1.5;
+            } else if (channel === 'yellow' && p.showYellow) {
+              if (v > thresh * 0.7) size = sp * (v - thresh * 0.7) * 1.5;
+            } else if (channel === 'black' && p.showBlack) {
+              if (v > thresh) size = sp * (v - thresh) * 2;
+            }
+
+            if (size > 0.5) {
+              if (pat === 0) {
+                ctx.beginPath();
+                ctx.arc(cx + x, cy + y, size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+              } else if (pat === 1) {
+                ctx.fillRect(cx + x, cy + y - size * 0.3, sp, size * 0.4);
+              } else {
+                ctx.fillRect(cx + x, cy + y - size * 0.3, sp, size * 0.4);
+                ctx.fillRect(cx + x - size * 0.2, cy + y, size * 0.4, sp);
+              }
+            }
+          }
+        }
+        ctx.restore();
+      }
+
+      // shapes
+      const shapes = [
+        { x: CW / 2, y: CH / 2, r: 180 },
+        { x: 150, y: 150, r: 80 },
+        { x: CW - 120, y: CH - 140, r: 100 },
+        { x: 180, y: CH - 100, r: 60 },
+      ];
+
+      // draw each channel for each shape
+      for (const s of shapes) {
+        // offsets for misregistration
+        if (p.showBlack) drawPattern(s.x, s.y, s.r, '#1a1210', 0.85, 'black');
+        if (p.showPink) drawPattern(s.x + 6, s.y - 3, s.r, '#FF4FA0', 0.7, 'pink');
+        if (p.showYellow) drawPattern(s.x - 4, s.y + 5, s.r, '#e8c547', 0.6, 'yellow');
+      }
+
+      // labels
+      ctx.fillStyle = '#1a1210';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('COLOR SEPARATION · 色彩分离', CW / 2, 35);
+      ctx.font = '10px Courier New';
+      ctx.fillText(`K: ${p.showBlack ? '●' : '○'}  P: ${p.showPink ? '●' : '○'}  Y: ${p.showYellow ? '●' : '○'}`, CW / 2, 52);
+    }
+  };
+})();
+
+// ---- 08 INK BLEED ----
+const renderInkbleed = (() => {
+  const noise = new Noise2D(99);
+  let blots = [];
+  let autoTimer = 0;
+  let t = 0;
+
+  function addBlot(x, y) {
+    blots.push({
+      x, y,
+      r: 15,
+      maxR: 40 + Math.random() * 80,
+      life: 1,
+      fingers: [],
+    });
+    // generate initial finger directions
+    const nFingers = 5 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < nFingers; i++) {
+      blots[blots.length - 1].fingers.push({
+        angle: (i / nFingers) * Math.PI * 2 + rand(-0.3, 0.3),
+        len: 0,
+        speed: rand(0.3, 1),
+        active: Math.random() < 0.7,
+      });
+    }
+  }
+
+  return {
+    init() {
+      blots = [];
+      t = 0;
+      autoTimer = 0;
+      for (let i = 0; i < 3; i++) {
+        addBlot(rand(100, CW - 100), rand(100, CH - 100));
+      }
+    },
+    click(x, y) {
+      addBlot(x, y);
+      if (blots.length > 12) blots.shift();
+    },
+    frame() {
+      const p = state.params;
+      t += 0.01;
+
+      ctx.fillStyle = p.inkColor === '#f5ecd9' ? '#f5ecd9' :
+        (exhibits.find(e => e.id === 'inkbleed').params.inkColor.value || '#f5ecd9');
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // paper grain
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = '#1a1210';
+      const gs = p.grain;
+      for (let i = 0; i < 200 * gs; i++) {
+        const gx = ((i * 137 + t * 10) % CW);
+        const gy = ((i * 79 + t * 7) % CH);
+        ctx.fillRect(gx, gy, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+
+      // fiber lines
+      ctx.globalAlpha = 0.04 * p.grain;
+      ctx.strokeStyle = '#1a1210';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 30 * p.grain; i++) {
+        const fx = (i * 53 + t * 3) % CW;
+        const fy = (i * 91) % CH;
+        const fl = 20 + (i % 40);
+        ctx.beginPath();
+        ctx.moveTo(fx, fy);
+        ctx.lineTo(fx + fl, fy + Math.sin(i) * 3);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      const bleed = p.bleedRate;
+      const density = p.inkDensity / 100;
+      const color = p.inkColor;
+
+      // auto drip
+      if (p.autoDrip) {
+        autoTimer += 0.02;
+        if (autoTimer > 1.5) {
+          autoTimer = 0;
+          addBlot(rand(80, CW - 80), rand(80, CH - 80));
+          if (blots.length > 12) blots.shift();
+        }
+      }
+
+      // draw blots
+      ctx.fillStyle = color;
+      ctx.globalCompositeOperation = 'multiply';
+
+      for (const blot of blots) {
+        // grow
+        if (blot.r < blot.maxR) {
+          blot.r += bleed * 0.5;
+        }
+
+        // update fingers
+        for (const f of blot.fingers) {
+          if (f.active && f.len < blot.maxR * 0.8) {
+            f.len += f.speed * bleed * 0.8;
+            // random direction shift
+            f.angle += (Math.random() - 0.5) * 0.05 * bleed;
+          }
+          // sometimes activate new finger
+          if (!f.active && Math.random() < 0.002 * bleed) f.active = true;
+        }
+
+        // main blot with irregular edge
+        ctx.beginPath();
+        const steps = 40;
+        for (let i = 0; i <= steps; i++) {
+          const a = (i / steps) * Math.PI * 2;
+          // edge noise
+          const nEdge = noise.fbm(
+            blot.x * 0.01 + Math.cos(a) * 0.1 + t,
+            blot.y * 0.01 + Math.sin(a) * 0.1 + t,
+            3
+          );
+          let r = blot.r * (0.85 + nEdge * 0.3);
+
+          // add finger bulges
+          for (const f of blot.fingers) {
+            if (!f.active) continue;
+            const diff = Math.abs(a - f.angle);
+            if (diff < 0.4) {
+              const bulge = (1 - diff / 0.4) * f.len * 0.5;
+              r += bulge;
+            }
+          }
+
+          const px = blot.x + Math.cos(a) * r;
+          const py = blot.y + Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.globalAlpha = density * 0.8;
+        ctx.fill();
+
+        // inner darker core
+        ctx.beginPath();
+        ctx.arc(blot.x, blot.y, blot.r * 0.5, 0, Math.PI * 2);
+        ctx.globalAlpha = density * 0.3;
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+  };
+})();
+
+// ---- 09 PRINT PRESSURE ----
+const renderPressure = (() => {
+  let t = 0;
+  let rollerY = 0;
+
+  return {
+    init() { t = 0; rollerY = 0; },
+    frame() {
+      const p = state.params;
+      if (p.animated) t += 0.01 * p.speed;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // paper edges
+      ctx.strokeStyle = 'rgba(26,18,16,0.1)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(30, 30, CW - 60, CH - 60);
+
+      const pressure = p.pressure / 100;
+      const dMin = p.dotMin;
+      const dMax = p.dotMax;
+      const sp = 12;
+
+      // compute roller position
+      if (p.animated) {
+        rollerY = (Math.sin(t) * 0.5 + 0.5) * (CH - 120) + 60;
+      } else {
+        rollerY = clamp(state.mouse.y, 60, CH - 60);
+      }
+
+      // if mouse pressed, use mouse Y as roller
+      if (state.mouse.down) {
+        rollerY = clamp(state.mouse.y, 60, CH - 60);
+      }
+
+      // draw halftone with pressure gradient from roller
+      ctx.fillStyle = '#1a1210';
+
+      for (let y = 60; y < CH - 60; y += sp) {
+        for (let x = 60; x < CW - 60; x += sp) {
+          // distance from roller
+          const d = Math.abs(y - rollerY);
+          // pressure falloff (gaussian-like)
+          const pFactor = Math.exp(-d * d / 8000) * pressure;
+          // base pressure
+          const baseP = pressure * 0.3 + pFactor * 0.7;
+
+          // image-ish pattern: center bright shape
+          const cx = CW / 2;
+          const cy = CH / 2;
+          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+          const imgVal = 1 - dist / 250;
+
+          const dotSize = dMin + (dMax - dMin) * baseP * clamp(imgVal + 0.3, 0, 1);
+
+          if (dotSize > 0.3) {
+            ctx.beginPath();
+            ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // roller
+      ctx.fillStyle = 'rgba(255, 79, 160, 0.85)';
+      ctx.fillRect(20, rollerY - 8, CW - 40, 16);
+      ctx.fillStyle = '#1a1210';
+      ctx.fillRect(20, rollerY - 10, CW - 40, 2);
+      ctx.fillRect(20, rollerY + 8, CW - 40, 2);
+
+      // roller ends
+      ctx.fillStyle = '#1a1210';
+      ctx.fillRect(10, rollerY - 12, 15, 24);
+      ctx.fillRect(CW - 25, rollerY - 12, 15, 24);
+
+      // pressure label
+      ctx.fillStyle = '#FF4FA0';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`PRESSURE: ${p.pressure.toFixed(0)}%`, CW / 2, 50);
+
+      // side pressure scale
+      for (let i = 0; i < 10; i++) {
+        const sy = 100 + i * 35;
+        const sv = i / 9;
+        ctx.fillStyle = '#1a1210';
+        ctx.fillRect(10, sy, 8 + sv * 20, 2);
+      }
+    }
+  };
+})();
+
+// ---- 10 PAPER GRAIN ----
+const renderPapergrain = (() => {
+  const noise = new Noise2D(33);
+  let t = 0;
+
+  return {
+    init() { t = 0; },
+    frame() {
+      const p = state.params;
+      t += 0.005;
+
+      const paperColor = p.color;
+      ctx.fillStyle = paperColor;
+      ctx.fillRect(0, 0, CW, CH);
+
+      const gs = p.grainSize;
+      const dens = p.density;
+      const fiber = p.fiberNoise / 100;
+      const lightAngle = (p.lightAngle * Math.PI) / 180;
+
+      const lx = Math.cos(lightAngle);
+      const ly = Math.sin(lightAngle);
+
+      // grain dots
+      for (let i = 0; i < 400 * dens; i++) {
+        const gx = (i * 73) % CW;
+        const gy = Math.floor(i / (CW / 73)) % CH;
+
+        const n = noise.fbm(gx * 0.01 * gs + t, gy * 0.01 * gs, 2);
+        // light direction shading
+        const shade = 0.5 + 0.5 * (noise.fbm(gx * 0.005 + t, gy * 0.005, 3) * lx +
+                                   noise.fbm(gx * 0.005, gy * 0.005 + t, 3) * ly);
+
+        if (n > (1 - dens)) {
+          const v = (n - (1 - dens)) / dens;
+          const alpha = v * 0.3 * (0.5 + shade * 0.5);
+          ctx.fillStyle = `rgba(26, 18, 16, ${alpha})`;
+          ctx.fillRect(gx, gy, gs, gs);
+        }
+      }
+
+      // fiber strands
+      if (fiber > 0) {
+        ctx.strokeStyle = 'rgba(26, 18, 16, 0.08)';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 80 * fiber; i++) {
+          const fx = (i * 131) % CW;
+          const fy = ((i * 47) + t * 20) % CH;
+          const fl = 15 + (i % 30);
+          const fa = lightAngle + (i % 5 - 2) * 0.2;
+          ctx.beginPath();
+          ctx.moveTo(fx, fy);
+          ctx.lineTo(fx + Math.cos(fa) * fl, fy + Math.sin(fa) * fl);
+          ctx.stroke();
+        }
+      }
+
+      // highlight from light
+      const grad = ctx.createLinearGradient(
+        CW / 2 - lx * CW, CH / 2 - ly * CH,
+        CW / 2 + lx * CW, CH / 2 + ly * CH
+      );
+      grad.addColorStop(0, 'rgba(255,255,255,0.1)');
+      grad.addColorStop(1, 'rgba(26,18,16,0.05)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, CW, CH);
+
+      // sample swatches label
+      ctx.fillStyle = '#1a1210';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('PAPER GRAIN · 纸纹噪波 · PROCEDURAL TEXTURE', CW / 2, 30);
+
+      // magnified detail circle
+      const mx = state.mouse.x;
+      const my = state.mouse.y;
+      if (mx > 0 && mx < CW && my > 0 && my < CH) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, 60, 0, Math.PI * 2);
+        ctx.clip();
+        // draw magnified version
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.scale(2, 2);
+        ctx.translate(-mx, -my);
+        // re-render small portion
+        for (let i = 0; i < 150 * dens; i++) {
+          const gx = mx - 30 + (i % 60);
+          const gy = my - 30 + Math.floor(i / 60);
+          const n = noise.fbm(gx * 0.01 * gs + t, gy * 0.01 * gs, 2);
+          if (n > (1 - dens)) {
+            const v = (n - (1 - dens)) / dens;
+            ctx.fillStyle = `rgba(26, 18, 16, ${v * 0.4})`;
+            ctx.fillRect(gx, gy, gs, gs);
+          }
+        }
+        ctx.restore();
+        ctx.restore();
+
+        ctx.strokeStyle = '#FF4FA0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mx, my, 60, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#FF4FA0';
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('× 2 MAGNIFY', mx, my + 75);
+      }
+    }
+  };
+})();
+
+// ---- 11 GRADIENT MAP ----
+const renderGradmap = (() => {
+  let t = 0;
+
+  const palettes = {
+    pinky: ['#1a1210', '#FF4FA0', '#ff7a2a', '#e8c547', '#f5ecd9'],
+    sunset: ['#1a1210', '#ff7a2a', '#e8c547', '#f5ecd9'],
+    mono: ['#1a1210', '#5a4a42', '#a89580', '#d9c9a8', '#f5ecd9'],
+    citrus: ['#1a1210', '#ff7a2a', '#e8c547', '#9ab83e', '#f5ecd9'],
+  };
+
+  return {
+    init() { t = 0; },
+    frame() {
+      const p = state.params;
+      t += 0.01;
+
+      const bands = p.bands;
+      const noiseAmt = p.noise / 100;
+      const pal = palettes[p.palette] || palettes.pinky;
+      const o1 = p.offset1 / 100;
+      const o2 = p.offset2 / 100;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // Create gradient "image" data with shapes
+      const imgData = ctx.createImageData(CW, CH);
+      const data = imgData.data;
+
+      // generate a gradient + shape pattern
+      for (let y = 0; y < CH; y++) {
+        for (let x = 0; x < CW; x++) {
+          // radial gradient from center with offset
+          const cx = CW / 2 + Math.sin(t) * 50;
+          const cy = CH / 2 + Math.cos(t * 0.7) * 30;
+          const dx = x - cx;
+          const dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          // base gradient
+          let val = 1 - dist / 350;
+
+          // add wave distortion
+          val += Math.sin(x * 0.02 + t) * 0.1;
+          val += Math.cos(y * 0.025 + t * 0.8) * 0.08;
+
+          // noise dither
+          val += (Math.random() - 0.5) * noiseAmt * 0.5;
+
+          val = clamp(val, 0, 1);
+
+          // map to bands
+          const thresholds = [];
+          for (let i = 0; i < bands; i++) {
+            thresholds.push(i / (bands - 1));
+          }
+          // adjust with offset sliders
+          if (bands >= 2 && thresholds[1] !== undefined) {
+            thresholds[1] = o1;
+          }
+          if (bands >= 3 && thresholds[2] !== undefined) {
+            thresholds[2] = o2;
+          }
+
+          let bandIdx = 0;
+          for (let i = 0; i < bands; i++) {
+            if (val >= thresholds[i]) bandIdx = i;
+          }
+
+          const colorIdx = clamp(bandIdx, 0, pal.length - 1);
+          const color = pal[colorIdx];
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+
+          const idx = (y * CW + x) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+
+      // overlay halftone dots for print feel
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = '#1a1210';
+      const sp = 6;
+      for (let y = 0; y < CH; y += sp) {
+        for (let x = 0; x < CW; x += sp) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+
+      // labels
+      ctx.fillStyle = '#f5ecd9';
+      ctx.strokeStyle = '#1a1210';
+      ctx.lineWidth = 3;
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.strokeText('GRADIENT MAP · 渐变映射 · ' + bands + ' BANDS', CW / 2, 30);
+      ctx.fillText('GRADIENT MAP · 渐变映射 · ' + bands + ' BANDS', CW / 2, 30);
+    }
+  };
+})();
+
+// ---- 12 GRID PRINTER ----
+const renderGridprint = (() => {
+  let cells = [];
+  let printHead = 0;
+  let t = 0;
+  let needsRebuild = true;
+
+  function rebuild(cols, rows, pattern) {
+    cells = [];
+    for (let r = 0; r < rows; r++) {
+      const row = [];
+      for (let c = 0; c < cols; c++) {
+        let printed = false;
+        let density = 0;
+        let color = '#1a1210';
+
+        switch (pattern) {
+          case 'diagonal':
+            density = ((r + c) / (cols + rows)) * 0.8 + 0.2;
+            color = (r + c) % 3 === 0 ? '#FF4FA0' : (r + c) % 3 === 1 ? '#e8c547' : '#1a1210';
+            break;
+          case 'wave':
+            density = 0.3 + 0.7 * Math.abs(Math.sin(r * 0.3 + c * 0.2));
+            color = Math.sin(r * 0.2) > 0 ? '#FF4FA0' : '#e8c547';
+            break;
+          case 'checker':
+            density = (r + c) % 2 === 0 ? 0.8 : 0.2;
+            color = (r + c) % 2 === 0 ? '#1a1210' : '#FF4FA0';
+            break;
+          default: // random
+            density = Math.random() * 0.8 + 0.1;
+            color = Math.random() < 0.4 ? '#FF4FA0' : (Math.random() < 0.5 ? '#e8c547' : '#1a1210');
+        }
+        row.push({ printed, density, color, r, c });
+      }
+      cells.push(row);
+    }
+    printHead = 0;
+    needsRebuild = false;
+  }
+
+  return {
+    init() {
+      needsRebuild = true;
+      t = 0;
+    },
+    refresh() {
+      needsRebuild = true;
+    },
+    restart() {
+      needsRebuild = true;
+    },
+    frame() {
+      const p = state.params;
+      t += 0.016;
+
+      if (needsRebuild || cells.length !== p.rows || (cells[0] && cells[0].length !== p.cols)) {
+        rebuild(p.cols, p.rows, p.pattern);
+      }
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // margin
+      const mx = 50, my = 50;
+      const cw = CW - mx * 2;
+      const ch = CH - my * 2;
+      const cellW = cw / p.cols;
+      const cellH = ch / p.rows;
+
+      // advance print head
+      printHead += p.speed * 0.5;
+      const headY = printHead;
+
+      // print cells that the head has passed
+      let printedCount = 0;
+      const totalCells = p.rows * p.cols;
+
+      for (let r = 0; r < p.rows; r++) {
+        for (let c = 0; c < p.cols; c++) {
+          const cell = cells[r][c];
+          const cellCenterY = my + r * cellH + cellH / 2;
+          if (cellCenterY < headY && !cell.printed) {
+            cell.printed = true;
+          }
+          if (cell.printed) {
+            printedCount++;
+            const x = mx + c * cellW;
+            const y = my + r * cellH;
+            const d = cell.density;
+            const dotR = cellW * 0.35 * d;
+
+            ctx.fillStyle = cell.color;
+            ctx.globalCompositeOperation = 'multiply';
+            // dot
+            ctx.beginPath();
+            ctx.arc(x + cellW / 2, y + cellH / 2, dotR, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // print head bar
+      const barY = clamp(headY, my, my + ch);
+      ctx.fillStyle = '#FF4FA0';
+      ctx.fillRect(mx - 5, barY - 3, cw + 10, 6);
+      ctx.fillStyle = '#1a1210';
+      ctx.fillRect(mx - 5, barY - 1, cw + 10, 2);
+
+      // frame
+      ctx.strokeStyle = '#1a1210';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(mx, my, cw, ch);
+
+      // progress
+      const pct = Math.min(100, (printedCount / totalCells * 100)).toFixed(0);
+      ctx.fillStyle = '#1a1210';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`GRID PRINTER · 网格印版 · ${pct}%`, CW / 2, 35);
+
+      // reset when done
+      if (printHead > ch + 50) {
+        // loop
+        needsRebuild = true;
+        printHead = 0;
+      }
+    }
+  };
+})();
+
+// ---- 13 RISO MIX ----
+const renderRisomix = (() => {
+  let t = 0;
+  const noise = new Noise2D(77);
+  let particles = [];
+
+  function initParticles() {
+    particles = [];
+    for (let i = 0; i < 200; i++) {
+      particles.push({
+        x: Math.random() * CW,
+        y: Math.random() * CH,
+        vx: 0, vy: 0,
+        size: rand(1, 3),
+      });
+    }
+  }
+
+  return {
+    init() { t = 0; initParticles(); },
+    frame() {
+      const p = state.params;
+      t += 0.01;
+      const intensity = p.intensity / 100;
+
+      ctx.fillStyle = '#f5ecd9';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // === central shape ===
+      const cx = CW / 2;
+      const cy = CH / 2;
+      const baseR = 140;
+
+      // halftone dots layer
+      if (p.halftone) {
+        ctx.fillStyle = '#1a1210';
+        const sp = 10;
+        for (let y = 50; y < CH - 50; y += sp) {
+          for (let x = 50; x < CW - 50; x += sp) {
+            const dx = x - cx;
+            const dy = y - cy;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < baseR) {
+              const n = noise.fbm(x * 0.015 + t, y * 0.015, 3);
+              const dotSize = (1 - d / baseR) * sp * 0.45 * intensity * (0.5 + n * 0.5);
+              if (dotSize > 0.4) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+      }
+
+      // misregistration color layers
+      if (p.misregistration) {
+        ctx.globalCompositeOperation = 'multiply';
+        const off = 8 * intensity;
+
+        // pink layer
+        ctx.fillStyle = p.colorA;
+        ctx.globalAlpha = 0.6 * intensity;
+        const sp = 12;
+        for (let y = 50; y < CH - 50; y += sp) {
+          for (let x = 50; x < CW - 50; x += sp) {
+            const dx = x - cx - off;
+            const dy = y - cy + off * 0.5;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < baseR * 0.95) {
+              const dotSize = (1 - d / baseR) * sp * 0.4 * intensity;
+              if (dotSize > 0.4) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+
+        // yellow layer
+        ctx.fillStyle = p.colorB;
+        ctx.globalAlpha = 0.5 * intensity;
+        for (let y = 50; y < CH - 50; y += sp) {
+          for (let x = 50; x < CW - 50; x += sp) {
+            const dx = x - cx + off * 0.7;
+            const dy = y - cy - off * 0.8;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < baseR * 0.9) {
+              const dotSize = (1 - d / baseR) * sp * 0.35 * intensity;
+              if (dotSize > 0.4) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
+
+      // glow layer
+      if (p.glow) {
+        ctx.globalCompositeOperation = 'screen';
+        const glowR = baseR * 1.3 * intensity;
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+        grad.addColorStop(0, p.colorA + '80');
+        grad.addColorStop(0.5, p.colorB + '40');
+        grad.addColorStop(1, p.colorA + '00');
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // scanlines
+      if (p.scanlines) {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = 'rgba(255, 79, 160, 0.15)';
+        const lineW = 4;
+        for (let y = 0; y < CH; y += lineW * 2) {
+          ctx.fillRect(0, y, CW, lineW);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // grain
+      if (p.grain) {
+        ctx.fillStyle = 'rgba(26, 18, 16, 0.08)';
+        for (let i = 0; i < 300 * intensity; i++) {
+          const gx = (i * 73 + t * 20) % CW;
+          const gy = (i * 91 + t * 15) % CH;
+          ctx.fillRect(gx, gy, 1, 1);
+        }
+      }
+
+      // central text
+      ctx.fillStyle = '#1a1210';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('RISO MIX LAB', CW / 2, cy - 5);
+      ctx.font = '10px Courier New';
+      ctx.fillText('综合叠印实验台', CW / 2, cy + 12);
+
+      // mouse interactive ring
+      const mx = state.mouse.x;
+      const my = state.mouse.y;
+      ctx.strokeStyle = '#FF4FA0';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(mx - 50, my - 50, 100, 100);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#FF4FA0';
+      ctx.font = '9px Courier New';
+      ctx.fillText('PREVIEW', mx, my - 55);
+    }
+  };
+})();
+
+// Renderer map
+const renderers = {
+  halftone: renderHalftone,
+  misreg: renderMisreg,
+  flowfield: renderFlowfield,
+  glow: renderGlow,
+  scanline: renderScanline,
+  textdecon: renderTextdecon,
+  colorsep: renderColorsep,
+  inkbleed: renderInkbleed,
+  pressure: renderPressure,
+  papergrain: renderPapergrain,
+  gradmap: renderGradmap,
+  gridprint: renderGridprint,
+  risomix: renderRisomix,
+};
+
+// ============ CONTROLS BUILDER ============
+function buildControls(exhibit) {
+  const container = document.getElementById('controlsContent');
+  container.innerHTML = '';
+
+  for (const [key, param] of Object.entries(exhibit.params)) {
+    const group = document.createElement('div');
+    group.className = 'ctrl-group';
+
+    if (param.type === 'swatch') {
+      const label = document.createElement('div');
+      label.className = 'ctrl-label';
+      label.innerHTML = `<span>${param.label}</span><span class="ctrl-value">${param.value}</span>`;
+      group.appendChild(label);
+
+      const swatches = document.createElement('div');
+      swatches.className = 'color-swatches';
+      param.options.forEach(color => {
+        const sw = document.createElement('div');
+        sw.className = 'swatch' + (color === param.value ? ' active' : '');
+        sw.style.background = color;
+        sw.addEventListener('click', () => {
+          state.params[key].value = color;
+          swatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+          sw.classList.add('active');
+          label.querySelector('.ctrl-value').textContent = color;
+        });
+        swatches.appendChild(sw);
+      });
+      group.appendChild(swatches);
+    } else if (param.type === 'toggle') {
+      const toggle = document.createElement('div');
+      toggle.className = 'ctrl-toggle' + (param.value ? ' on' : '');
+      toggle.innerHTML = `<div class="toggle-switch"></div><span>${param.label}</span>`;
+      toggle.addEventListener('click', () => {
+        state.params[key].value = !state.params[key].value;
+        toggle.classList.toggle('on');
+      });
+      group.appendChild(toggle);
+    } else if (param.type === 'buttons') {
+      const label = document.createElement('div');
+      label.className = 'ctrl-label';
+      label.innerHTML = `<span>${param.label}</span>`;
+      group.appendChild(label);
+
+      const btns = document.createElement('div');
+      btns.className = 'ctrl-buttons';
+      param.options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'ctrl-btn' + (opt === param.value ? ' active' : '');
+        btn.textContent = opt;
+        btn.addEventListener('click', () => {
+          state.params[key].value = opt;
+          btns.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          if (renderCtx && renderCtx.refresh) renderCtx.refresh();
+        });
+        btns.appendChild(btn);
+      });
+      group.appendChild(btns);
+    } else if (param.type === 'text') {
+      const label = document.createElement('div');
+      label.className = 'ctrl-label';
+      label.innerHTML = `<span>${param.label}</span>`;
+      group.appendChild(label);
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = param.value;
+      input.style.cssText = 'width:100%;padding:8px;font-family:inherit;font-size:13px;border:2px solid var(--ink-black);background:var(--rice-white);cursor:none;outline:none;letter-spacing:2px;';
+      input.addEventListener('input', () => {
+        state.params[key].value = input.value;
+        if (renderCtx && renderCtx.refresh) renderCtx.refresh();
+      });
+      group.appendChild(input);
+    } else if (param.type === 'button') {
+      const btn = document.createElement('button');
+      btn.className = 'ctrl-btn primary';
+      btn.style.cssText = 'width:100%;padding:10px;';
+      btn.textContent = param.label;
+      btn.addEventListener('click', () => {
+        if (renderCtx && renderCtx[param.action]) renderCtx[param.action]();
+      });
+      group.appendChild(btn);
+    } else {
+      // slider
+      const label = document.createElement('div');
+      label.className = 'ctrl-label';
+      const valSpan = document.createElement('span');
+      valSpan.className = 'ctrl-value';
+      valSpan.textContent = typeof param.value === 'number'
+        ? (param.step < 1 ? param.value.toFixed(2) : param.value.toFixed(0))
+        : param.value;
+      label.innerHTML = `<span>${param.label}</span>`;
+      label.appendChild(valSpan);
+      group.appendChild(label);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'ctrl-slider';
+      slider.min = param.min;
+      slider.max = param.max;
+      slider.step = param.step;
+      slider.value = param.value;
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        state.params[key].value = v;
+        valSpan.textContent = param.step < 1 ? v.toFixed(2) : v.toFixed(0);
+        if (param.onChange) param.onChange();
+      });
+      group.appendChild(slider);
+    }
+
+    container.appendChild(group);
+  }
+
+  // re-setup cursor hovers for new elements
+  setupCursorHovers();
+}
+
+// ============ EXHIBIT LIST ============
+function buildExhibitList() {
+  const list = document.getElementById('exhibitList');
+  list.innerHTML = '';
+
+  exhibits.forEach((ex, idx) => {
+    const li = document.createElement('li');
+    li.className = 'exhibit-item' + (idx === state.currentExhibit ? ' active' : '');
+    li.innerHTML = `
+      <span class="exhibit-num">${ex.num}</span>
+      <span class="exhibit-name">${ex.name}</span>
+    `;
+    li.addEventListener('click', () => {
+      switchExhibit(idx);
+    });
+    list.appendChild(li);
+  });
+}
+
+// ============ SWITCH EXHIBIT ============
+function switchExhibit(idx) {
+  state.currentExhibit = idx;
+  const ex = exhibits[idx];
+
+  // deep copy params from template into state
+  state.params = {};
+  for (const [k, p] of Object.entries(ex.params)) {
+    state.params[k] = { value: p.value };
+    // copy all fields
+    Object.assign(state.params[k], p);
+  }
+
+  // update list active state
+  document.querySelectorAll('.exhibit-item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+
+  // update title
+  const titleEl = document.getElementById('stageTitle');
+  titleEl.textContent = ex.title;
+  titleEl.setAttribute('data-text', ex.title);
+  document.getElementById('stageDesc').textContent = ex.desc;
+  document.getElementById('stageHint').textContent = ex.hint;
+  document.getElementById('exhibitCount').textContent = `${ex.num} / ${exhibits.length.toString().padStart(2, '0')}`;
+
+  // build controls
+  buildControls(ex);
+
+  // init renderer
+  renderCtx = renderers[ex.id];
+  if (renderCtx && renderCtx.init) renderCtx.init();
+
+  // clear canvas
+  ctx.clearRect(0, 0, CW, CH);
+}
+
+// ============ CANVAS CLICK HANDLER ============
+canvas.addEventListener('click', (e) => {
+  canvasMouse(e);
+  if (renderCtx && renderCtx.click) {
+    renderCtx.click(state.mouse.x, state.mouse.y);
+  }
+});
+
+// ============ MAIN RAF LOOP ============
+function mainLoop(now) {
+  if (!state.running) return;
+
+  // fps
+  state.fpsFrames++;
+  if (now - state.fpsLast >= 1000) {
+    document.getElementById('fpsVal').textContent = state.fpsFrames;
+    state.fpsFrames = 0;
+    state.fpsLast = now;
+  }
+
+  tickCursor();
+
+  if (renderCtx && !state.reducedMotion) {
+    renderCtx.frame();
+  } else if (renderCtx && state.reducedMotion) {
+    // reduced motion: render one static frame per second (render once then stop)
+    // For reduced motion, render only first frame and stay static
+    if (!state._reducedRendered) {
+      renderCtx.frame();
+      state._reducedRendered = true;
+    }
+  }
+
+  state.mouse.pressed = false;
+  state.rafId = requestAnimationFrame(mainLoop);
+}
+
+// ============ VISIBILITY / CLEANUP ============
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    state.running = false;
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+  } else {
+    state.running = true;
+    state.fpsLast = performance.now();
+    state.fpsFrames = 0;
+    state.rafId = requestAnimationFrame(mainLoop);
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+});
+
+// ============ INIT ============
+function init() {
+  buildExhibitList();
+  switchExhibit(0);
+  state.rafId = requestAnimationFrame(mainLoop);
+}
+
+init();
+</script>
+</body>
+</html>
