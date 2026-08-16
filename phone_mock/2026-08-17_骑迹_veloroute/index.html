@@ -1,0 +1,3297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="creative-medium" content="interactive-prototype">
+  <title>骑迹 VeloRoute · 原生 App</title>
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    /* ============================================================
+       VeloRoute · 骑迹 — 原生 App V2
+       形态：原生 App
+       主配色：信号橙 #E8622C / 沥青深灰 #23252A / 荧光黄 #E8F04A / 暖白 #F7F5F0 / 石灰绿 #7A8B6F
+       ============================================================ */
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%;
+      font-family: 'Inter', -apple-system, 'SF Pro', system-ui, sans-serif;
+      background: #1A1B1F;
+      color: #23252A;
+      overflow: hidden;
+    }
+
+    /* --- Canvas / Showcase background --- */
+    .showcase {
+      width: 100vw; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(232,98,44,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 70%, rgba(232,240,74,0.08) 0%, transparent 50%),
+        #141518;
+      position: relative;
+    }
+
+    .showcase-title {
+      position: absolute; top: 32px; left: 48px;
+      color: #F7F5F0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .showcase-title .accent { color: #E8622C; opacity: 1; }
+
+    .showcase-meta {
+      position: absolute; top: 32px; right: 48px;
+      color: #F7F5F0;
+      font-size: 12px;
+      opacity: 0.5;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .device-wrapper {
+      position: relative;
+      transform: scale(1);
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .device-wrapper:hover { transform: scale(1.02); }
+
+    /* --- Custom Cursor --- */
+    .custom-cursor {
+      position: fixed;
+      width: 40px; height: 40px;
+      border: 2px solid #F7F5F0;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: width 0.2s, height 0.2s, border-color 0.2s, background 0.2s;
+      mix-blend-mode: difference;
+      opacity: 0.9;
+    }
+    .custom-cursor .cursor-dot {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 8px; height: 8px;
+      background: #E8622C;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 12px rgba(232,98,44,0.8), 0 0 24px rgba(232,98,44,0.4);
+    }
+    .custom-cursor.hover {
+      width: 60px; height: 60px;
+      border-color: #E8F04A;
+      background: rgba(232,240,74,0.15);
+    }
+    .cursor-ripple {
+      position: fixed;
+      border-radius: 50%;
+      background: rgba(232,98,44,0.4);
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%) scale(0);
+      animation: rippleExpand 0.6s ease-out forwards;
+    }
+    @keyframes rippleExpand {
+      to { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+    }
+
+    /* --- Typography utilities --- */
+    .font-display { font-family: 'Space Grotesk', sans-serif; font-weight: 700; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .text-warm { color: #F7F5F0; }
+    .text-asphalt { color: #23252A; }
+    .text-orange { color: #E8622C; }
+    .text-fluoro { color: #E8F04A; }
+    .text-sage { color: #7A8B6F; }
+
+    /* === iOS Frame overrides === */
+    .velo-app {
+      width: 100%; height: 100%;
+      background: #F7F5F0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Screen transition */
+    .screen {
+      position: absolute; inset: 0;
+      transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s;
+      will-change: transform;
+    }
+    .screen.enter-right { transform: translateX(100%); }
+    .screen.enter-left { transform: translateX(-100%); }
+    .screen.active { transform: translateX(0); }
+    .screen.exit-left { transform: translateX(-30%); opacity: 0.7; }
+    .screen.exit-right { transform: translateX(30%); opacity: 0.7; }
+
+    /* TabBar */
+    .tabbar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: calc(83px + var(--ios-safe-bottom, 34px));
+      padding-bottom: var(--ios-safe-bottom, 34px);
+      background: rgba(247,245,240,0.85);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-top: 0.5px solid rgba(35,37,42,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 40;
+    }
+    .tabbar.dark {
+      background: rgba(35,37,42,0.85);
+      border-top: 0.5px solid rgba(247,245,240,0.1);
+    }
+    .tab-item {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 4px;
+      padding: 8px 0;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .tab-item:active { transform: scale(0.85); }
+    .tab-item svg { transition: all 0.3s; }
+    .tab-item .tab-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+    .tab-item.active svg { stroke: #E8622C; color: #E8622C; }
+    .tab-item.dark .tab-label { color: rgba(247,245,240,0.6); }
+    .tab-item.dark.active .tab-label { color: #E8622C; }
+    .tab-item .tab-label { color: rgba(35,37,42,0.5); }
+    .tab-item.active .tab-label { color: #E8622C; font-weight: 600; }
+    .tab-center-btn {
+      position: absolute;
+      top: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #E8622C 0%, #F08A3E 100%);
+      box-shadow: 0 6px 20px rgba(232,98,44,0.5), 0 2px 6px rgba(232,98,44,0.3);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      z-index: 5;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+    }
+    .tab-center-btn:hover {
+      transform: translateX(-50%) scale(1.08);
+      box-shadow: 0 8px 28px rgba(232,98,44,0.6), 0 3px 10px rgba(232,98,44,0.4);
+    }
+    .tab-center-btn:active { transform: translateX(-50%) scale(0.92); }
+
+    /* Scroll container */
+    .scroll-wrap {
+      position: absolute; inset: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .scroll-wrap::-webkit-scrollbar { display: none; }
+
+    /* === HOME / DISCOVER PAGE === */
+    .home-hero {
+      position: relative;
+      height: 340px;
+      background: linear-gradient(180deg, #23252A 0%, #3A3D44 100%);
+      overflow: hidden;
+    }
+    .home-hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 70% 30%, rgba(232,98,44,0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 20% 80%, rgba(232,240,74,0.15) 0%, transparent 40%);
+    }
+    .home-hero-content {
+      position: relative;
+      padding: calc(var(--ios-safe-top, 62px) + 16px) 20px 0;
+      color: #F7F5F0;
+    }
+    .hero-greeting {
+      font-size: 13px;
+      opacity: 0.6;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+    .hero-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+    .hero-title .highlight {
+      background: linear-gradient(90deg, #E8F04A, #E8622C);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-search {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 14px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+    .hero-search input {
+      flex: 1;
+      background: none; border: none; outline: none;
+      color: #F7F5F0;
+      font-size: 15px;
+      font-family: inherit;
+    }
+    .hero-search input::placeholder { color: rgba(247,245,240,0.5); }
+
+    .hero-stats {
+      display: flex; gap: 12px;
+    }
+    .hero-stat {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .hero-stat-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #E8F04A;
+    }
+    .hero-stat-label {
+      font-size: 10px;
+      opacity: 0.6;
+      margin-top: 2px;
+    }
+
+    /* Category pills */
+    .categories {
+      display: flex; gap: 8px;
+      padding: 16px 20px 12px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .categories::-webkit-scrollbar { display: none; }
+    .cat-pill {
+      flex-shrink: 0;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      background: #ECEAE4;
+      color: #23252A;
+      cursor: pointer;
+      transition: all 0.25s;
+      white-space: nowrap;
+    }
+    .cat-pill.active {
+      background: #23252A;
+      color: #F7F5F0;
+      transform: scale(1.02);
+    }
+
+    /* Route cards */
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 20px 12px;
+    }
+    .section-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #23252A;
+    }
+    .section-more {
+      font-size: 13px;
+      color: #E8622C;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .route-card {
+      margin: 0 20px 16px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 4px 20px rgba(35,37,42,0.08);
+      cursor: pointer;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+      position: relative;
+    }
+    .route-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 30px rgba(35,37,42,0.12);
+    }
+    .route-card:active { transform: scale(0.98); }
+    .route-card-image {
+      height: 160px;
+      position: relative;
+      overflow: hidden;
+    }
+    .route-card-image::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.4) 100%);
+    }
+    .route-card-badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      background: rgba(232,240,74,0.95);
+      color: #23252A;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      z-index: 2;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .route-card-diff {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(35,37,42,0.7);
+      backdrop-filter: blur(10px);
+      color: #F7F5F0;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      z-index: 2;
+    }
+    .route-card-body {
+      padding: 14px 16px 16px;
+    }
+    .route-card-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #23252A;
+      margin-bottom: 6px;
+    }
+    .route-card-meta {
+      display: flex; gap: 14px;
+      font-size: 12px;
+      color: rgba(35,37,42,0.6);
+    }
+    .route-card-meta span {
+      display: flex; align-items: center; gap: 4px;
+    }
+
+    /* === ROUTE DETAIL PAGE === */
+    .detail-page {
+      background: #23252A;
+      color: #F7F5F0;
+    }
+    .detail-hero {
+      position: relative;
+      height: 320px;
+      overflow: hidden;
+    }
+    .detail-hero-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, #3A3D44 0%, #23252A 100%);
+    }
+    .detail-hero-bg::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 40%, rgba(232,98,44,0.4) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 70%, rgba(232,240,74,0.2) 0%, transparent 40%);
+    }
+    .detail-nav {
+      position: absolute;
+      top: calc(var(--ios-safe-top, 62px) + 12px);
+      left: 0; right: 0;
+      display: flex; justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+    }
+    .nav-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.25); }
+    .nav-actions { display: flex; gap: 10px; }
+
+    .detail-title-section {
+      padding: 20px 20px 0;
+    }
+    .detail-route-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 8px;
+    }
+    .detail-route-loc {
+      font-size: 14px;
+      opacity: 0.7;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .detail-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 0 20px 20px;
+    }
+    .detail-stat {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 14px 12px;
+      text-align: center;
+    }
+    .detail-stat-val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: #E8F04A;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .detail-stat-lbl {
+      font-size: 10px;
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .detail-section {
+      padding: 20px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .detail-section-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .detail-desc {
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.8;
+    }
+
+    .elevation-chart {
+      height: 100px;
+      position: relative;
+      margin-top: 12px;
+    }
+    .elevation-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(232,98,44,0.2) 0%, transparent 100%);
+      clip-path: polygon(0% 100%, 10% 60%, 25% 70%, 40% 30%, 55% 45%, 70% 20%, 85% 35%, 100% 10%, 100% 100%);
+    }
+    .elevation-line {
+      position: absolute; inset: 0;
+      stroke: #E8622C;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    /* Action buttons at bottom */
+    .detail-action-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 16px 20px calc(16px + var(--ios-safe-bottom, 34px));
+      background: linear-gradient(180deg, transparent 0%, #23252A 30%);
+      display: flex; gap: 12px;
+      z-index: 20;
+    }
+    .action-btn {
+      flex: 1;
+      height: 52px;
+      border-radius: 26px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.25s;
+    }
+    .action-btn.primary {
+      background: linear-gradient(135deg, #E8622C, #F08A3E);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(232,98,44,0.4);
+    }
+    .action-btn.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(232,98,44,0.5);
+    }
+    .action-btn.primary:active { transform: scale(0.96); }
+    .action-btn.secondary {
+      background: rgba(255,255,255,0.1);
+      color: #F7F5F0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .action-btn.secondary:hover { background: rgba(255,255,255,0.18); }
+
+    /* === RIDE RECORD PAGE === */
+    .ride-page {
+      background: #23252A;
+      color: #F7F5F0;
+      position: relative;
+    }
+    .ride-header {
+      padding: calc(var(--ios-safe-top, 62px) + 16px) 20px 0;
+      text-align: center;
+    }
+    .ride-page-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .ride-subtitle {
+      font-size: 12px;
+      opacity: 0.5;
+      margin-top: 4px;
+    }
+
+    .ride-timer {
+      text-align: center;
+      margin: 24px 0;
+    }
+    .ride-timer-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: -2px;
+      color: #E8F04A;
+      text-shadow: 0 0 40px rgba(232,240,74,0.3);
+    }
+    .ride-timer-ms {
+      font-size: 32px;
+      opacity: 0.7;
+    }
+    .ride-timer-label {
+      font-size: 11px;
+      opacity: 0.5;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .ride-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 0 20px;
+    }
+    .ride-stat-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ride-stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: #E8622C;
+    }
+    .ride-stat-card.speed::before { background: #E8F04A; }
+    .ride-stat-card.cal::before { background: #E8622C; }
+    .ride-stat-card.elev::before { background: #7A8B6F; }
+    .ride-stat-card.cad::before { background: #E8F04A; }
+    .ride-stat-card.heart::before { background: #E8622C; }
+
+    .ride-stat-label {
+      font-size: 11px;
+      opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .ride-stat-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .ride-stat-unit {
+      font-size: 13px;
+      opacity: 0.6;
+      margin-left: 4px;
+      font-weight: 400;
+    }
+
+    .ride-controls {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      padding: 28px 20px calc(20px + var(--ios-safe-bottom, 34px));
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: linear-gradient(180deg, transparent 0%, #23252A 40%);
+    }
+    .ride-btn {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      border: none;
+    }
+    .ride-btn:hover { transform: scale(1.1); }
+    .ride-btn:active { transform: scale(0.9); }
+    .ride-btn.lap {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #F7F5F0;
+    }
+    .ride-btn.play-pause {
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, #E8622C, #F08A3E);
+      box-shadow: 0 6px 24px rgba(232,98,44,0.5);
+    }
+    .ride-btn.play-pause.paused {
+      background: linear-gradient(135deg, #7A8B6F, #8FA083);
+      box-shadow: 0 6px 24px rgba(122,139,111,0.5);
+    }
+    .ride-btn.stop {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #F7F5F0;
+    }
+
+    .ride-map-mini {
+      height: 120px;
+      margin: 16px 20px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+      overflow: hidden;
+    }
+    .ride-map-route {
+      position: absolute; inset: 0;
+      stroke: #E8F04A;
+      stroke-width: 2.5;
+      fill: none;
+      filter: drop-shadow(0 0 4px rgba(232,240,74,0.5));
+    }
+
+    /* === COMMUNITY PAGE === */
+    .community-page { background: #F7F5F0; }
+    .community-header {
+      padding: calc(var(--ios-safe-top, 62px) + 12px) 20px 8px;
+      display: flex; justify-content: space-between; align-items: center;
+      background: #F7F5F0;
+    }
+    .community-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .community-plus {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: #23252A;
+      color: #F7F5F0;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .community-plus:active { transform: scale(0.9); background: #E8622C; }
+
+    .community-tabs {
+      display: flex; gap: 24px;
+      padding: 0 20px 12px;
+      border-bottom: 1px solid rgba(35,37,42,0.08);
+    }
+    .community-tab {
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(35,37,42,0.5);
+      padding-bottom: 8px;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
+    .community-tab.active {
+      color: #23252A;
+      font-weight: 600;
+    }
+    .community-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      height: 3px;
+      background: #E8622C;
+      border-radius: 3px;
+    }
+
+    .masonry-feed {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 12px 10px 100px;
+    }
+    .masonry-col { display: flex; flex-direction: column; gap: 10px; }
+    .feed-card {
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(35,37,42,0.06);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .feed-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(35,37,42,0.1); }
+    .feed-card:active { transform: scale(0.97); }
+    .feed-card-img {
+      width: 100%;
+      background: linear-gradient(135deg, #7A8B6F 0%, #5A6B4F 100%);
+      position: relative;
+    }
+    .feed-card-img.tall { height: 180px; }
+    .feed-card-img.short { height: 120px; }
+    .feed-card-img.medium { height: 150px; }
+    .feed-card-img::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 50%, rgba(255,255,255,0.1) 0%, transparent 50%);
+    }
+    .feed-card-body { padding: 10px 12px 12px; }
+    .feed-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #23252A;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+    .feed-card-author {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .feed-avatar {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #E8622C, #E8F04A);
+      flex-shrink: 0;
+    }
+    .feed-author-name {
+      font-size: 11px;
+      color: rgba(35,37,42,0.6);
+    }
+    .feed-card-stats {
+      display: flex; gap: 10px;
+      margin-top: 8px;
+      font-size: 10px;
+      color: rgba(35,37,42,0.5);
+    }
+    .feed-card-stats span { display: flex; align-items: center; gap: 3px; }
+
+    /* Pull to refresh */
+    .ptr-indicator {
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 28px; height: 28px;
+      border: 3px solid rgba(232,98,44,0.3);
+      border-top-color: #E8622C;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: translateX(-50%) rotate(360deg); } }
+
+    /* === PROFILE PAGE === */
+    .profile-page { background: #F7F5F0; }
+    .profile-cover {
+      height: 200px;
+      position: relative;
+      background: linear-gradient(135deg, #E8622C 0%, #F08A3E 50%, #E8F04A 100%);
+      overflow: hidden;
+    }
+    .profile-cover::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 60%, rgba(35,37,42,0.2) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 30%, rgba(255,255,255,0.15) 0%, transparent 40%);
+    }
+    .profile-top-nav {
+      position: absolute;
+      top: calc(var(--ios-safe-top, 62px) + 12px);
+      left: 0; right: 0;
+      display: flex; justify-content: space-between;
+      padding: 0 16px;
+      z-index: 5;
+    }
+    .profile-avatar-wrap {
+      position: absolute;
+      bottom: -40px;
+      left: 20px;
+      display: flex; align-items: flex-end; gap: 16px;
+    }
+    .profile-avatar {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #23252A, #3A3D44);
+      border: 4px solid #F7F5F0;
+      position: relative;
+      z-index: 2;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #E8F04A;
+    }
+    .profile-name-wrap {
+      padding-bottom: 8px;
+    }
+    .profile-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #F7F5F0;
+    }
+    .profile-username {
+      font-size: 12px;
+      opacity: 0.8;
+      color: #F7F5F0;
+    }
+
+    .profile-body {
+      padding-top: 56px;
+      padding-bottom: 100px;
+    }
+    .profile-follow-row {
+      display: flex; gap: 20px;
+      padding: 0 20px 16px;
+    }
+    .profile-follow-item {
+      text-align: center;
+    }
+    .profile-follow-num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #23252A;
+    }
+    .profile-follow-lbl {
+      font-size: 11px;
+      color: rgba(35,37,42,0.5);
+      margin-top: 2px;
+    }
+
+    .profile-action-row {
+      display: flex; gap: 10px;
+      padding: 0 20px 20px;
+    }
+    .profile-action-btn {
+      flex: 1;
+      height: 38px;
+      border-radius: 19px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .profile-action-btn.primary {
+      background: #23252A;
+      color: #F7F5F0;
+    }
+    .profile-action-btn.primary:hover { background: #E8622C; }
+    .profile-action-btn.secondary {
+      background: #ECEAE4;
+      color: #23252A;
+    }
+    .profile-action-btn.secondary:hover { background: #E0DED8; }
+
+    /* Achievement ring */
+    .achievement-ring-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .achievement-ring {
+      position: relative;
+      width: 180px; height: 180px;
+    }
+    .ring-svg {
+      transform: rotate(-90deg);
+    }
+    .ring-bg {
+      fill: none;
+      stroke: #ECEAE4;
+      stroke-width: 12;
+    }
+    .ring-progress {
+      fill: none;
+      stroke: url(#ringGradient);
+      stroke-width: 12;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .ring-content {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .ring-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 36px;
+      font-weight: 700;
+      color: #E8622C;
+    }
+    .ring-label {
+      font-size: 11px;
+      color: rgba(35,37,42,0.5);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 2px;
+    }
+
+    /* Profile list */
+    .profile-list {
+      margin: 0 20px;
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(35,37,42,0.04);
+    }
+    .profile-list-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(35,37,42,0.04);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .profile-list-row:last-child { border-bottom: none; }
+    .profile-list-row:active { background: #F7F5F0; }
+    .profile-list-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .profile-list-title {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+      color: #23252A;
+    }
+    .profile-list-chevron {
+      color: rgba(35,37,42,0.3);
+    }
+
+    /* === DESIGN SYSTEM PAGE === */
+    .ds-page {
+      background: #F7F5F0;
+      padding-bottom: 100px;
+    }
+    .ds-hero {
+      padding: calc(var(--ios-safe-top, 62px) + 20px) 20px 24px;
+      background: linear-gradient(135deg, #23252A 0%, #3A3D44 100%);
+      color: #F7F5F0;
+      position: relative;
+      overflow: hidden;
+    }
+    .ds-hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 90% 10%, rgba(232,98,44,0.3) 0%, transparent 50%);
+    }
+    .ds-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      position: relative;
+      margin-bottom: 4px;
+    }
+    .ds-subtitle {
+      font-size: 13px;
+      opacity: 0.6;
+      position: relative;
+    }
+    .ds-badge {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 4px 12px;
+      background: rgba(232,240,74,0.2);
+      border: 1px solid rgba(232,240,74,0.3);
+      border-radius: 20px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #E8F04A;
+      position: relative;
+    }
+
+    .ds-section {
+      padding: 20px;
+      border-bottom: 1px solid rgba(35,37,42,0.06);
+    }
+    .ds-section-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(35,37,42,0.5);
+      margin-bottom: 14px;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .color-swatch {
+      border-radius: 12px;
+      padding: 14px 12px;
+      display: flex; flex-direction: column;
+      gap: 6px;
+    }
+    .color-swatch .name {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .color-swatch .hex {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      opacity: 0.7;
+    }
+
+    .type-sample {
+      margin-bottom: 14px;
+    }
+    .type-label {
+      font-size: 10px;
+      color: rgba(35,37,42,0.4);
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .ds-buttons {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .ds-btn {
+      height: 48px;
+      border-radius: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .ds-btn:hover { transform: scale(1.02); }
+    .ds-btn:active { transform: scale(0.98); }
+    .ds-btn.btn-primary { background: #E8622C; color: #fff; }
+    .ds-btn.btn-secondary { background: #23252A; color: #F7F5F0; }
+    .ds-btn.btn-ghost { background: transparent; color: #23252A; border: 1.5px solid #23252A; }
+    .ds-btn.btn-fluoro { background: #E8F04A; color: #23252A; }
+
+    /* === API DOCS PAGE === */
+    .api-page {
+      background: #1A1B1F;
+      color: #F7F5F0;
+      font-family: 'JetBrains Mono', monospace;
+      padding-bottom: 100px;
+    }
+    .api-header {
+      padding: calc(var(--ios-safe-top, 62px) + 20px) 20px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: #23252A;
+    }
+    .api-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .api-subtitle {
+      font-size: 12px;
+      opacity: 0.5;
+    }
+    .api-endpoint {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .api-method {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 10px;
+    }
+    .api-method.get { background: #7A8B6F; color: #fff; }
+    .api-method.post { background: #E8622C; color: #fff; }
+    .api-method.put { background: #E8F04A; color: #23252A; }
+    .api-method.delete { background: #FF6B6B; color: #fff; }
+
+    .api-path {
+      font-size: 13px;
+      color: #E8F04A;
+    }
+    .api-desc {
+      font-size: 12px;
+      opacity: 0.6;
+      margin-top: 6px;
+      font-family: 'Inter', sans-serif;
+    }
+    .api-params {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      font-size: 11px;
+    }
+    .api-param-row {
+      display: flex; gap: 8px;
+      margin-bottom: 4px;
+    }
+    .api-param-row:last-child { margin-bottom: 0; }
+    .api-param-name { color: #E8622C; min-width: 80px; }
+    .api-param-type { color: #7A8B6F; opacity: 0.8; min-width: 60px; }
+    .api-param-desc { color: rgba(255,255,255,0.5); flex: 1; font-family: 'Inter', sans-serif; }
+
+    .api-tabs {
+      display: flex;
+      background: #23252A;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .api-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      color: rgba(255,255,255,0.5);
+      transition: color 0.2s;
+    }
+    .api-tab.active { color: #E8F04A; }
+    .api-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: #E8F04A;
+    }
+
+    /* === Page indicator (dots top) === */
+    .page-indicator {
+      position: absolute;
+      top: calc(var(--ios-safe-top, 62px) + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 4px;
+      z-index: 100;
+    }
+    .page-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transition: all 0.3s;
+    }
+    .page-dot.active {
+      background: #E8622C;
+      width: 16px;
+      border-radius: 2px;
+    }
+
+    /* === Entrance animations === */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.15); opacity: 0.8; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 10px rgba(232,98,44,0.4); }
+      50% { box-shadow: 0 0 25px rgba(232,98,44,0.7); }
+    }
+
+    .animate-slide-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .animate-fade-in { animation: fadeIn 0.5s ease both; }
+    .animate-scale-in { animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    .animate-float { animation: float 4s ease-in-out infinite; }
+    .animate-glow { animation: glow 2s ease-in-out infinite; }
+    .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+
+    .del-1 { animation-delay: 0.05s; }
+    .del-2 { animation-delay: 0.1s; }
+    .del-3 { animation-delay: 0.15s; }
+    .del-4 { animation-delay: 0.2s; }
+    .del-5 { animation-delay: 0.25s; }
+    .del-6 { animation-delay: 0.3s; }
+    .del-7 { animation-delay: 0.35s; }
+    .del-8 { animation-delay: 0.4s; }
+    .del-9 { animation-delay: 0.45s; }
+    .del-10 { animation-delay: 0.5s; }
+
+    /* Speed line / streak indicator */
+    .speed-ring {
+      position: absolute;
+      border: 2px solid rgba(232,240,74,0.3);
+      border-top-color: #E8F04A;
+      border-radius: 50%;
+      animation: spin 2s linear infinite;
+    }
+
+    /* Floating particle for hero areas */
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      background: #E8F04A;
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    /* Scroll reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .custom-cursor { display: none; }
+    }
+
+    /* Long press menu */
+    .longpress-menu {
+      position: absolute;
+      background: rgba(35,37,42,0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 14px;
+      padding: 6px;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      min-width: 140px;
+      animation: scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .longpress-item {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #F7F5F0;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+      transition: background 0.15s;
+    }
+    .longpress-item:hover { background: rgba(255,255,255,0.1); }
+    .longpress-item.danger { color: #FF6B6B; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+  const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+  // ============================================================
+  // DATA
+  // ============================================================
+  const ROUTES = [
+    {
+      id: 1, name: '西湖环山经典线', location: '杭州·西湖区',
+      distance: '28.6', elevation: '420', difficulty: '中等',
+      duration: '1h 52m', rating: 4.8, riders: '12.4k',
+      color: 'linear-gradient(135deg, #E8622C 0%, #F08A3E 100%)',
+      badge: '精选',
+      desc: '环绕西湖群山的经典骑行路线，途经龙井、梅家坞、灵隐寺等多个景点。路线以起伏路为主，适合有一定基础的骑行爱好者，春季沿途茶园风光秀丽。'
+    },
+    {
+      id: 2, name: '滨江绿道休闲骑', location: '杭州·滨江区',
+      distance: '15.2', elevation: '50', difficulty: '简单',
+      duration: '58m', rating: 4.6, riders: '8.9k',
+      color: 'linear-gradient(135deg, #7A8B6F 0%, #5A6B4F 100%)',
+      badge: '入门友好',
+      desc: '钱塘江边的平坦绿道，全程铺装路面，无机动车干扰。适合初学者和休闲骑行，沿途可欣赏钱塘江两岸城市天际线。'
+    },
+    {
+      id: 3, name: '莫干山挑战路线', location: '湖州·德清县',
+      distance: '45.8', elevation: '980', difficulty: '困难',
+      duration: '3h 8m', rating: 4.9, riders: '5.2k',
+      color: 'linear-gradient(135deg, #23252A 0%, #3A3D44 100%)',
+      badge: '进阶挑战',
+      desc: '莫干山经典爬坡路线，连续弯道攀升，海拔落差近千米。山顶可俯瞰竹海全景，是江浙沪骑友公认的实力证明路线。'
+    },
+    {
+      id: 4, name: '千岛湖环湖公路', location: '杭州·淳安县',
+      distance: '68.0', elevation: '560', difficulty: '中等',
+      duration: '4h 15m', rating: 4.9, riders: '7.8k',
+      color: 'linear-gradient(135deg, #E8F04A 0%, #C8D032 100%)',
+      badge: '风景绝赞',
+      desc: '140公里环湖绿道精华段，沿千岛湖岸蜿蜒前行。山水相映，岛礁点缀，被誉为"中国最美骑行绿道"，建议安排一整天。'
+    },
+  ];
+
+  const FEED_ITEMS = [
+    { id: 1, title: '今日晨骑50公里打卡，晨雾中的龙井美翻了', author: '骑行者·山风', likes: 234, comments: 18, height: 'tall', color: 'linear-gradient(135deg, #E8622C 0%, #C94E1E 100%)' },
+    { id: 2, title: '新车落地！TCR ADV SL 开箱', author: '碳架玩家', likes: 567, comments: 42, height: 'medium', color: 'linear-gradient(135deg, #23252A 0%, #4A4D55 100%)' },
+    { id: 3, title: '周末千岛湖环湖挑战完成', author: '追风少女', likes: 1024, comments: 89, height: 'short', color: 'linear-gradient(135deg, #7A8B6F 0%, #9AB08D 100%)' },
+    { id: 4, title: '夜骑装备推荐，这些你都备齐了吗', author: '骑行老炮', likes: 189, comments: 34, height: 'tall', color: 'linear-gradient(135deg, #E8F04A 0%, #B8C032 100%)' },
+    { id: 5, title: '爬坡训练第12周，FTP提升20W', author: '数据控', likes: 312, comments: 27, height: 'short', color: 'linear-gradient(135deg, #E8622C 0%, #F08A3E 100%)' },
+    { id: 6, title: '雨中骑行也别有一番风味', author: '雨衣骑士', likes: 145, comments: 12, height: 'medium', color: 'linear-gradient(135deg, #3A3D44 0%, #5A5D66 100%)' },
+  ];
+
+  const CATEGORIES = ['全部', '公路车', '山地车', '城市休闲', '爬坡', '长途', '通勤'];
+
+  const GEAR_ITEMS = [
+    { id: 1, name: 'TCR Advanced SL 0', brand: 'Giant', type: '公路车', price: '¥38,800', rating: 4.9, color: 'linear-gradient(135deg, #23252A 0%, #E8622C 100%)', featured: true },
+    { id: 2, name: 'Roval CLX 50 轮组', brand: 'Specialized', type: '轮组', price: '¥12,500', rating: 4.8, color: 'linear-gradient(135deg, #3A3D44 0%, #5A5D66 100%)' },
+    { id: 3, name: 'Power2Max NG 功率计', brand: 'Power2Max', type: '功率计', price: '¥8,900', rating: 4.7, color: 'linear-gradient(135deg, #E8F04A 0%, #C8D032 100%)' },
+    { id: 4, name: 'S-Works Prevail 3 头盔', brand: 'Specialized', type: '头盔', price: '¥1,890', rating: 4.8, color: 'linear-gradient(135deg, #7A8B6F 0%, #5A6B4F 100%)' },
+    { id: 5, name: 'Assos Equipe RS 骑行服', brand: 'Assos', type: '骑行服', price: '¥2,480', rating: 4.9, color: 'linear-gradient(135deg, #E8622C 0%, #C94E1E 100%)' },
+    { id: 6, name: 'Garmin Edge 1040 码表', brand: 'Garmin', type: '码表', price: '¥5,980', rating: 4.7, color: 'linear-gradient(135deg, #23252A 0%, #3A3D44 100%)' },
+  ];
+
+  // ============================================================
+  // ICONS (inline SVG)
+  // ============================================================
+  const Icon = {
+    Home: (active) => (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#E8622C' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9.5L12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z"/>
+      </svg>
+    ),
+    Compass: (active) => (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#E8622C' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+      </svg>
+    ),
+    Play: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" stroke="none">
+        <polygon points="8 5 19 12 8 19 8 5"/>
+      </svg>
+    ),
+    Pause: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" stroke="none">
+        <rect x="6" y="4" width="4" height="16"/>
+        <rect x="14" y="4" width="4" height="16"/>
+      </svg>
+    ),
+    Users: (active) => (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#E8622C' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    ),
+    User: (active) => (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#E8622C' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+    ),
+    Search: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <path d="m21 21-4.35-4.35"/>
+      </svg>
+    ),
+    Back: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    ),
+    Heart: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      </svg>
+    ),
+    Share: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+      </svg>
+    ),
+    More: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+      </svg>
+    ),
+    Pin: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+    ),
+    Clock: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+    Trending: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+        <polyline points="17 6 23 6 23 12"/>
+      </svg>
+    ),
+    Plus: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    ),
+    ChevronRight: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    ),
+    Settings: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    ),
+    Bike: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="5.5" cy="17.5" r="3.5"/>
+        <circle cx="18.5" cy="17.5" r="3.5"/>
+        <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+        <path d="M12 17.5V14l-3-3 4-3 2 3h3"/>
+      </svg>
+    ),
+    Flame: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+      </svg>
+    ),
+    Stop: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+        <rect x="6" y="6" width="12" height="12" rx="2"/>
+      </svg>
+    ),
+    Flag: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+        <line x1="4" y1="22" x2="4" y2="15"/>
+      </svg>
+    ),
+    Bookmark: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
+    Star: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    ),
+    Message: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
+  };
+
+  // ============================================================
+  // CUSTOM CURSOR (DOM-based, no React re-render per frame)
+  // ============================================================
+  function initCustomCursor() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const cursor = document.createElement('div');
+    cursor.className = 'custom-cursor';
+    cursor.innerHTML = '<div class="cursor-dot"></div>';
+    document.body.appendChild(cursor);
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let cursorX = mouseX;
+    let cursorY = mouseY;
+    let rafId = null;
+    let isVisible = true;
+
+    // initial position at screen center
+    cursor.style.left = mouseX + 'px';
+    cursor.style.top = mouseY + 'px';
+
+    function animate() {
+      if (!isVisible) { rafId = null; return; }
+      cursorX += (mouseX - cursorX) * 0.15;
+      cursorY += (mouseY - cursorY) * 0.15;
+      cursor.style.transform = `translate(${cursorX}px, ${cursorY}px) translate(-50%, -50%)`;
+      rafId = requestAnimationFrame(animate);
+    }
+
+    function onMove(e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (!rafId && isVisible) rafId = requestAnimationFrame(animate);
+    }
+
+    function onClick(e) {
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      ripple.style.width = '10px';
+      ripple.style.height = '10px';
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    }
+
+    function onOver(e) {
+      const t = e.target.closest('button, .tab-item, .route-card, .feed-card, .cat-pill, .nav-btn, .action-btn, .ride-btn, .profile-action-btn, .profile-list-row, .ds-btn, .api-tab, .community-tab, .section-more, .tab-center-btn, .community-plus');
+      if (t) cursor.classList.add('hover');
+    }
+    function onOut(e) {
+      const t = e.target.closest('button, .tab-item, .route-card, .feed-card, .cat-pill, .nav-btn, .action-btn, .ride-btn, .profile-action-btn, .profile-list-row, .ds-btn, .api-tab, .community-tab, .section-more, .tab-center-btn, .community-plus');
+      if (t) cursor.classList.remove('hover');
+    }
+
+    function onVisibility() {
+      if (document.hidden) {
+        isVisible = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      } else {
+        isVisible = true;
+        if (!rafId) rafId = requestAnimationFrame(animate);
+      }
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('click', onClick);
+    window.addEventListener('mouseover', onOver);
+    window.addEventListener('mouseout', onOut);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    window.__cleanupCursor = function() {
+      isVisible = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('mouseover', onOver);
+      window.removeEventListener('mouseout', onOut);
+      document.removeEventListener('visibilitychange', onVisibility);
+      cursor.remove();
+    };
+  }
+
+  // ============================================================
+  // NUMBER COUNTER HOOK (DOM-based)
+  // ============================================================
+  function useCountUp(target, duration = 1500, startDelay = 0) {
+    const ref = useRef(null);
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      let raf = null;
+      let timeoutId = null;
+
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduced) {
+        el.textContent = target;
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        const startTime = performance.now();
+        const startVal = 0;
+        function tick(now) {
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const val = startVal + (target - startVal) * eased;
+          el.textContent = Number.isInteger(target) ? Math.round(val) : val.toFixed(1);
+          if (progress < 1) raf = requestAnimationFrame(tick);
+          else el.textContent = target;
+        }
+        raf = requestAnimationFrame(tick);
+      }, startDelay);
+
+      return () => {
+        if (raf) cancelAnimationFrame(raf);
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }, [target, duration, startDelay]);
+    return ref;
+  }
+
+  // ============================================================
+  // PAGES
+  // ============================================================
+
+  // ---- HOME / DISCOVER ----
+  function HomePage({ onRouteClick }) {
+    const [activeCat, setActiveCat] = useState(0);
+    const scrollRef = useRef(null);
+
+    // Entrance sequence: stagger cards
+    useEffect(() => {
+      const cards = scrollRef.current?.querySelectorAll('.route-card, .cat-pill, .hero-stat, .section-header');
+      if (!cards) return;
+      cards.forEach((el, i) => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+          el.style.transition = 'opacity 0.6s cubic-bezier(0.16,1,0.3,1), transform 0.6s cubic-bezier(0.16,1,0.3,1)';
+          el.style.opacity = '1';
+          el.style.transform = 'translateY(0)';
+        }, 100 + i * 80);
+      });
+    }, []);
+
+    return (
+      <div className="velo-app">
+        <div className="scroll-wrap" ref={scrollRef}>
+          <div className="home-hero">
+            <div className="home-hero-content">
+              <div className="hero-greeting animate-slide-up del-1">早上好，骑行侠 👋</div>
+              <div className="hero-title animate-slide-up del-2">
+                今天骑哪条<br/>
+                <span className="highlight">路线？</span>
+              </div>
+              <div className="hero-search animate-slide-up del-3">
+                <span style={{ color: 'rgba(247,245,240,0.6)', display: 'flex' }}>{Icon.Search}</span>
+                <input placeholder="搜索路线、骑友或话题" />
+              </div>
+              <div className="hero-stats animate-slide-up del-4">
+                <div className="hero-stat">
+                  <div className="hero-stat-value">128</div>
+                  <div className="hero-stat-label">本月公里</div>
+                </div>
+                <div className="hero-stat">
+                  <div className="hero-stat-value">12</div>
+                  <div className="hero-stat-label">骑行次数</div>
+                </div>
+                <div className="hero-stat">
+                  <div className="hero-stat-value">3</div>
+                  <div className="hero-stat-label">连续天数</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="categories">
+            {CATEGORIES.map((cat, i) => (
+              <div
+                key={i}
+                className={`cat-pill ${activeCat === i ? 'active' : ''}`}
+                onClick={() => setActiveCat(i)}
+              >
+                {cat}
+              </div>
+            ))}
+          </div>
+
+          <div className="section-header">
+            <div className="section-title">推荐路线</div>
+            <div className="section-more">查看全部 ›</div>
+          </div>
+
+          {ROUTES.slice(0, 3).map((route, i) => (
+            <div
+              key={route.id}
+              className="route-card"
+              onClick={() => onRouteClick(route)}
+              onContextMenu={(e) => { e.preventDefault(); }}
+            >
+              <div className="route-card-image" style={{ background: route.color }}>
+                <div className="route-card-badge">{route.badge}</div>
+                <div className="route-card-diff">{route.difficulty}</div>
+                {/* decorative bike path */}
+                <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 60, opacity: 0.3 }} viewBox="0 0 200 60">
+                  <path d="M0 50 Q50 30 100 40 T200 20" stroke="#fff" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
+                </svg>
+              </div>
+              <div className="route-card-body">
+                <div className="route-card-name">{route.name}</div>
+                <div className="route-card-meta">
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-flex', color: '#E8622C' }}>{Icon.Bike}</span>
+                    {route.distance} km
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-flex' }}>{Icon.Clock}</span>
+                    {route.duration}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#E8622C' }}>
+                    {Icon.Star} {route.rating}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <div className="section-header">
+            <div className="section-title">附近热门</div>
+            <div className="section-more">更多 ›</div>
+          </div>
+
+          {ROUTES.slice(2, 4).map((route, i) => (
+            <div
+              key={'near-' + route.id}
+              className="route-card"
+              onClick={() => onRouteClick(route)}
+            >
+              <div className="route-card-image" style={{ height: 120, background: route.color }}>
+                <div className="route-card-diff">{route.distance} km</div>
+              </div>
+              <div className="route-card-body">
+                <div className="route-card-name" style={{ fontSize: 14 }}>{route.name}</div>
+                <div className="route-card-meta" style={{ fontSize: 11 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-flex' }}>{Icon.Pin}</span>
+                    {route.location}
+                  </span>
+                  <span>{route.riders} 人骑过</span>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ height: 100 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ---- ROUTE DETAIL ----
+  function RouteDetailPage({ route, onBack }) {
+    const scrollRef = useRef(null);
+    const [scrollY, setScrollY] = useState(0);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      let ticking = false;
+      const onScroll = () => {
+        if (!ticking) {
+          requestAnimationFrame(() => {
+            setScrollY(el.scrollTop);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+      el.addEventListener('scroll', onScroll, { passive: true });
+      return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    const heroScale = Math.max(1, 1 + scrollY * -0.003);
+    const heroOpacity = Math.max(0.3, 1 - scrollY / 200);
+
+    return (
+      <div className="velo-app detail-page">
+        <div className="scroll-wrap" ref={scrollRef}>
+          <div
+            className="detail-hero"
+            style={{
+              transform: `scale(${heroScale})`,
+              opacity: heroOpacity,
+              transformOrigin: 'center top',
+            }}
+          >
+            <div className="detail-hero-bg" style={{ background: route.color }}>
+              {/* decorative elevation lines */}
+              <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 140, opacity: 0.25 }} viewBox="0 0 400 140" preserveAspectRatio="none">
+                <path d="M0 120 Q50 80 100 90 T200 60 T300 40 T400 20" stroke="#fff" strokeWidth="1.5" fill="none"/>
+                <path d="M0 130 Q80 100 150 110 T300 70 T400 50" stroke="#fff" strokeWidth="1" fill="none" opacity="0.5"/>
+              </svg>
+            </div>
+          </div>
+
+          <div className="detail-nav" style={{ position: 'fixed' }}>
+            <div className="nav-btn" onClick={onBack}>{Icon.Back}</div>
+            <div className="nav-actions">
+              <div className="nav-btn" onClick={() => setSaved(!saved)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? '#E8F04A' : 'none'} stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div className="nav-btn">{Icon.Share}</div>
+            </div>
+          </div>
+
+          <div className="detail-title-section animate-slide-up del-1">
+            <div className="detail-route-name">{route.name}</div>
+            <div className="detail-route-loc">
+              <span style={{ display: 'inline-flex' }}>{Icon.Pin}</span>
+              {route.location}
+            </div>
+          </div>
+
+          <div className="detail-stats-row animate-slide-up del-2">
+            <div className="detail-stat">
+              <div className="detail-stat-val">{route.distance}</div>
+              <div className="detail-stat-lbl">公里</div>
+            </div>
+            <div className="detail-stat">
+              <div className="detail-stat-val">{route.elevation}</div>
+              <div className="detail-stat-lbl">爬升米</div>
+            </div>
+            <div className="detail-stat">
+              <div className="detail-stat-val">{route.rating}</div>
+              <div className="detail-stat-lbl">评分</div>
+            </div>
+          </div>
+
+          <div className="detail-section animate-slide-up del-3">
+            <div className="detail-section-title">海拔剖面图</div>
+            <div className="elevation-chart">
+              <div className="elevation-bg" />
+              <svg className="elevation-line" viewBox="0 0 360 100" preserveAspectRatio="none" width="100%" height="100%">
+                <path d="M0 80 Q36 60 72 65 T144 35 T216 50 T288 20 T360 10" stroke="#E8622C" strokeWidth="2" fill="none"/>
+                <circle cx="72" cy="65" r="4" fill="#E8F04A"/>
+                <circle cx="216" cy="50" r="4" fill="#E8F04A"/>
+                <circle cx="360" cy="10" r="4" fill="#7A8B6F"/>
+              </svg>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, opacity: 0.5, marginTop: 8 }}>
+              <span>起点</span>
+              <span>中途补给点</span>
+              <span>山顶观景点</span>
+              <span>终点</span>
+            </div>
+          </div>
+
+          <div className="detail-section animate-slide-up del-4">
+            <div className="detail-section-title">路线介绍</div>
+            <div className="detail-desc">{route.desc}</div>
+          </div>
+
+          <div className="detail-section animate-slide-up del-5">
+            <div className="detail-section-title">骑行建议</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { icon: '⛰️', text: '难度 ' + route.difficulty + '，建议有一定骑行基础' },
+                { icon: '🥤', text: '沿途有 3 个补给点，注意补水' },
+                { icon: '☀️', text: '最佳骑行时间：春秋季，清晨或傍晚' },
+              ].map((item, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px',
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 10,
+                  fontSize: 13,
+                }}>
+                  <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  <span style={{ opacity: 0.9 }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ height: 120 }} />
+        </div>
+
+        <div className="detail-action-bar">
+          <button className="action-btn secondary">
+            {Icon.Bookmark} 收藏
+          </button>
+          <button className="action-btn primary">
+            {Icon.Play} 开始骑行
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- RIDE RECORD ----
+  function RideRecordPage() {
+    const [isRunning, setIsRunning] = useState(true);
+    const [time, setTime] = useState(0);
+    const [distance, setDistance] = useState(0);
+    const [speed, setSpeed] = useState(0);
+    const rafRef = useRef(null);
+    const startTimeRef = useRef(null);
+    const isVisibleRef = useRef(true);
+
+    useEffect(() => {
+      startTimeRef.current = performance.now() - 4523000; // start at ~1:15:23
+      let prevTime = performance.now();
+
+      function tick(now) {
+        if (!isVisibleRef.current || !isRunning) { rafRef.current = null; return; }
+        const dt = now - prevTime;
+        prevTime = now;
+        setTime(t => t + dt);
+        // Simulated distance + speed variation
+        setSpeed(s => {
+          const baseSpeed = 24.5;
+          const variation = Math.sin(now / 3000) * 3 + Math.sin(now / 700) * 1.5;
+          return Math.max(18, baseSpeed + variation);
+        });
+        setDistance(d => d + (speed * 1000 / 3600) * (dt / 1000));
+        rafRef.current = requestAnimationFrame(tick);
+      }
+
+      if (isRunning) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+
+      const onVisibility = () => {
+        isVisibleRef.current = !document.hidden;
+        if (!document.hidden && isRunning && !rafRef.current) {
+          prevTime = performance.now();
+          rafRef.current = requestAnimationFrame(tick);
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+
+      return () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        document.removeEventListener('visibilitychange', onVisibility);
+      };
+    }, [isRunning, speed]);
+
+    const totalSeconds = Math.floor(time / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const ms = Math.floor((time % 1000) / 10);
+
+    const calories = Math.floor(distance * 35); // approx
+    const elevation = Math.floor(distance * 12);
+    const cadence = 85 + Math.round(Math.sin(time / 2000) * 8);
+
+    return (
+      <div className="velo-app ride-page">
+        <div className="scroll-wrap">
+          <div className="ride-header">
+            <div className="ride-page-title">正在骑行</div>
+            <div className="ride-subtitle">西湖环山经典线 · 实时追踪中</div>
+          </div>
+
+          <div className="ride-timer">
+            <div className="ride-timer-value">
+              {String(hours).padStart(2,'0')}:{String(minutes).padStart(2,'0')}:{String(seconds).padStart(2,'0')}
+              <span className="ride-timer-ms">{String(ms).padStart(2,'0')}</span>
+            </div>
+            <div className="ride-timer-label">骑行时长</div>
+          </div>
+
+          <div className="ride-map-mini">
+            <svg className="ride-map-route" viewBox="0 0 360 120">
+              <path
+                d="M20 90 Q60 30 120 50 T200 70 T260 30 T340 60"
+                stroke="#E8F04A"
+                strokeWidth="2.5"
+                fill="none"
+                strokeDasharray="1000"
+                strokeDashoffset={1000 - (distance / 28.6) * 500}
+                filter="drop-shadow(0 0 4px rgba(232,240,74,0.5))"
+              />
+              <circle cx="20" cy="90" r="5" fill="#7A8B6F"/>
+              <circle
+                cx={Math.min(340, 20 + (distance / 28.6) * 320)}
+                cy={90 - Math.sin((distance / 28.6) * Math.PI) * 40}
+                r="6"
+                fill="#E8622C"
+                className="animate-pulse"
+              />
+            </svg>
+          </div>
+
+          <div className="ride-stats-grid">
+            <div className="ride-stat-card speed">
+              <div className="ride-stat-label">当前速度</div>
+              <div className="ride-stat-value">
+                {speed.toFixed(1)}<span className="ride-stat-unit">km/h</span>
+              </div>
+            </div>
+            <div className="ride-stat-card">
+              <div className="ride-stat-label">骑行距离</div>
+              <div className="ride-stat-value">
+                {distance.toFixed(1)}<span className="ride-stat-unit">km</span>
+              </div>
+            </div>
+            <div className="ride-stat-card cal">
+              <div className="ride-stat-label">消耗热量</div>
+              <div className="ride-stat-value">
+                {calories}<span className="ride-stat-unit">kcal</span>
+              </div>
+            </div>
+            <div className="ride-stat-card elev">
+              <div className="ride-stat-label">累计爬升</div>
+              <div className="ride-stat-value">
+                {elevation}<span className="ride-stat-unit">m</span>
+              </div>
+            </div>
+            <div className="ride-stat-card cad">
+              <div className="ride-stat-label">踏频</div>
+              <div className="ride-stat-value">
+                {cadence}<span className="ride-stat-unit">rpm</span>
+              </div>
+            </div>
+            <div className="ride-stat-card heart">
+              <div className="ride-stat-label">心率</div>
+              <div className="ride-stat-value">
+                148<span className="ride-stat-unit">bpm</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 140 }} />
+        </div>
+
+        <div className="ride-controls">
+          <button className="ride-btn lap" title="计圈">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+          </button>
+          <button
+            className={`ride-btn play-pause ${!isRunning ? 'paused' : ''}`}
+            onClick={() => setIsRunning(!isRunning)}
+          >
+            {isRunning ? Icon.Pause : Icon.Play}
+          </button>
+          <button className="ride-btn stop" title="结束">
+            {Icon.Stop}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- COMMUNITY ----
+  function CommunityPage() {
+    const [activeTab, setActiveTab] = useState(0);
+    const [refreshing, setRefreshing] = useState(false);
+    const scrollRef = useRef(null);
+    const startYRef = useRef(0);
+    const pullRef = useRef(0);
+
+    const handleTouchStart = (e) => {
+      if (scrollRef.current?.scrollTop === 0) {
+        startYRef.current = e.touches[0].clientY;
+      }
+    };
+    const handleTouchMove = (e) => {
+      if (scrollRef.current?.scrollTop === 0 && startYRef.current) {
+        const diff = e.touches[0].clientY - startYRef.current;
+        if (diff > 0) {
+          pullRef.current = Math.min(diff * 0.5, 80);
+          scrollRef.current.style.transform = `translateY(${pullRef.current}px)`;
+        }
+      }
+    };
+    const handleTouchEnd = () => {
+      if (pullRef.current > 50) {
+        setRefreshing(true);
+        setTimeout(() => {
+          setRefreshing(false);
+          pullRef.current = 0;
+          if (scrollRef.current) scrollRef.current.style.transform = 'translateY(0)';
+        }, 1500);
+      } else {
+        pullRef.current = 0;
+        if (scrollRef.current) scrollRef.current.style.transform = 'translateY(0)';
+      }
+      startYRef.current = 0;
+    };
+
+    const tabs = ['推荐', '关注', '附近', '话题'];
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Split feed into 2 columns for masonry
+    const col1 = FEED_ITEMS.filter((_, i) => i % 2 === 0);
+    const col2 = FEED_ITEMS.filter((_, i) => i % 2 === 1);
+
+    return (
+      <div className="velo-app community-page">
+        <div className="community-header">
+          <div className="community-title">骑行圈</div>
+          <div className="community-plus">{Icon.Plus}</div>
+        </div>
+
+        <div className="community-tabs">
+          {tabs.map((tab, i) => (
+            <div
+              key={i}
+              className={`community-tab ${activeTab === i ? 'active' : ''}`}
+              onClick={() => setActiveTab(i)}
+            >
+              {tab}
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="scroll-wrap"
+          ref={scrollRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{ transition: pullRef.current === 0 ? 'transform 0.3s' : 'none' }}
+        >
+          {refreshing && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+              <div className="ptr-indicator" style={{ position: 'static', transform: 'none' }} />
+            </div>
+          )}
+          <div className="masonry-feed">
+            <div className="masonry-col">
+              {col1.map((item, i) => (
+                <div key={item.id} className="feed-card animate-slide-up" style={{ animationDelay: `${i * 0.1}s` }}>
+                  <div className={`feed-card-img ${item.height}`} style={{ background: item.color }}>
+                    <svg style={{ position: 'absolute', bottom: 10, right: 10, opacity: 0.3 }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5">
+                      <circle cx="5.5" cy="17.5" r="3.5"/>
+                      <circle cx="18.5" cy="17.5" r="3.5"/>
+                      <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+                      <path d="M12 17.5V14l-3-3 4-3 2 3h3"/>
+                    </svg>
+                  </div>
+                  <div className="feed-card-body">
+                    <div className="feed-card-title">{item.title}</div>
+                    <div className="feed-card-author">
+                      <div className="feed-avatar" />
+                      <div className="feed-author-name">{item.author}</div>
+                    </div>
+                    <div className="feed-card-stats">
+                      <span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#E8622C" stroke="#E8622C" strokeWidth="1">
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                        {item.likes}
+                      </span>
+                      <span>
+                        {Icon.Message} {item.comments}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="masonry-col">
+              {col2.map((item, i) => (
+                <div key={item.id} className="feed-card animate-slide-up" style={{ animationDelay: `${i * 0.1 + 0.05}s` }}>
+                  <div className={`feed-card-img ${item.height}`} style={{ background: item.color }}>
+                    <svg style={{ position: 'absolute', bottom: 10, right: 10, opacity: 0.3 }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5">
+                      <circle cx="5.5" cy="17.5" r="3.5"/>
+                      <circle cx="18.5" cy="17.5" r="3.5"/>
+                      <path d="M12 17.5V14l-3-3 4-3 2 3h3"/>
+                    </svg>
+                  </div>
+                  <div className="feed-card-body">
+                    <div className="feed-card-title">{item.title}</div>
+                    <div className="feed-card-author">
+                      <div className="feed-avatar" />
+                      <div className="feed-author-name">{item.author}</div>
+                    </div>
+                    <div className="feed-card-stats">
+                      <span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#E8622C" stroke="#E8622C" strokeWidth="1">
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                        {item.likes}
+                      </span>
+                      <span>
+                        {Icon.Message} {item.comments}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ height: 20, textAlign: 'center', fontSize: 11, color: 'rgba(35,37,42,0.4)' }}>
+            — 到底了 —
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- GEAR / EQUIPMENT ----
+  function GearPage({ onBack }) {
+    const [activeCat, setActiveCat] = useState(0);
+    const gearCats = ['全部', '整车', '轮组', '套件', '头盔', '骑行服', '配件'];
+
+    return (
+      <div className="velo-app" style={{ background: '#F7F5F0' }}>
+        <div className="scroll-wrap">
+          {/* Diagonal hero section */}
+          <div style={{
+            position: 'relative',
+            height: 260,
+            background: 'linear-gradient(135deg, #E8622C 0%, #F08A3E 60%, #E8F04A 100%)',
+            overflow: 'hidden',
+          }}>
+            {/* Diagonal split pattern */}
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} viewBox="0 0 400 260" preserveAspectRatio="none">
+              <path d="M0 180 L400 100 L400 260 L0 260 Z" fill="rgba(35,37,42,0.15)"/>
+              <path d="M0 220 L400 160 L400 260 L0 260 Z" fill="rgba(35,37,42,0.1)"/>
+            </svg>
+
+            <div style={{ position: 'relative', padding: 'calc(var(--ios-safe-top, 54px) + 12px) 20px 0', color: '#F7F5F0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div className="nav-btn" onClick={onBack} style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                  </svg>
+                </div>
+                <div style={{ fontFamily: 'Space Grotesk', fontSize: 22, fontWeight: 700 }}>装备库</div>
+              </div>
+
+              <div className="animate-slide-up del-2">
+                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 6 }}>专业骑行装备评测与选购指南</div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
+                  <div style={{
+                    flex: 1,
+                    background: 'rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(10px)',
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}>
+                    <div style={{ fontFamily: 'Space Grotesk', fontSize: 20, fontWeight: 700 }}>248</div>
+                    <div style={{ fontSize: 10, opacity: 0.8 }}>装备评测</div>
+                  </div>
+                  <div style={{
+                    flex: 1,
+                    background: 'rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(10px)',
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}>
+                    <div style={{ fontFamily: 'Space Grotesk', fontSize: 20, fontWeight: 700, color: '#E8F04A' }}>12</div>
+                    <div style={{ fontSize: 10, opacity: 0.8 }}>我的装备</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Horizontal category scroll */}
+          <div className="categories" style={{ paddingTop: 16 }}>
+            {gearCats.map((cat, i) => (
+              <div
+                key={i}
+                className={`cat-pill ${activeCat === i ? 'active' : ''}`}
+                onClick={() => setActiveCat(i)}
+                style={{ fontSize: 12, padding: '7px 14px' }}
+              >
+                {cat}
+              </div>
+            ))}
+          </div>
+
+          {/* Featured gear - large card */}
+          <div style={{ padding: '0 20px 16px' }} className="animate-slide-up del-3">
+            <div style={{
+              borderRadius: 20,
+              overflow: 'hidden',
+              background: '#23252A',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'transform 0.3s',
+            }}>
+              <div style={{
+                height: 160,
+                background: 'linear-gradient(135deg, #23252A 0%, #E8622C 100%)',
+                position: 'relative',
+              }}>
+                <div style={{
+                  position: 'absolute', top: 14, left: 14,
+                  background: '#E8F04A',
+                  color: '#23252A',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontFamily: 'JetBrains Mono',
+                }}>本周精选</div>
+                <svg style={{ position: 'absolute', right: 20, bottom: 20, opacity: 0.2 }} width="100" height="60" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1">
+                  <circle cx="5.5" cy="17.5" r="3.5"/>
+                  <circle cx="18.5" cy="17.5" r="3.5"/>
+                  <path d="M12 17.5V14l-3-3 4-3 2 3h3"/>
+                </svg>
+              </div>
+              <div style={{ padding: '14px 16px', color: '#F7F5F0' }}>
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>Giant · 公路车</div>
+                <div style={{ fontFamily: 'Space Grotesk', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+                  TCR Advanced SL 0
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, opacity: 0.7 }}>
+                    <span style={{ color: '#E8F04A' }}>★ 4.9</span>
+                    <span>·</span>
+                    <span>238 条评测</span>
+                  </div>
+                  <div style={{ fontFamily: 'Space Grotesk', fontSize: 18, fontWeight: 700, color: '#E8F04A' }}>¥38,800</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section title */}
+          <div className="section-header" style={{ paddingTop: 4, paddingBottom: 8 }}>
+            <div className="section-title" style={{ fontSize: 16 }}>热门装备</div>
+            <div className="section-more">排行榜 ›</div>
+          </div>
+
+          {/* Gear grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 12,
+            padding: '0 20px 100px',
+          }}>
+            {GEAR_ITEMS.slice(1).map((item, i) => (
+              <div
+                key={item.id}
+                className="animate-slide-up"
+                style={{
+                  animationDelay: `${i * 0.08}s`,
+                  background: '#fff',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 12px rgba(35,37,42,0.06)',
+                  cursor: 'pointer',
+                  transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div style={{ height: 110, background: item.color, position: 'relative' }}>
+                  <svg style={{ position: 'absolute', right: 10, bottom: 10, opacity: 0.2 }} width="50" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1">
+                    <circle cx="5.5" cy="17.5" r="3.5"/>
+                    <circle cx="18.5" cy="17.5" r="3.5"/>
+                    <path d="M12 17.5V14l-3-3 4-3 2 3h3"/>
+                  </svg>
+                  <div style={{
+                    position: 'absolute', top: 8, right: 8,
+                    fontSize: 10, color: '#E8622C',
+                    background: 'rgba(255,255,255,0.9)',
+                    padding: '2px 8px',
+                    borderRadius: 10,
+                    fontWeight: 600,
+                  }}>
+                    ★ {item.rating}
+                  </div>
+                </div>
+                <div style={{ padding: '10px 12px 12px' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(35,37,42,0.5)', marginBottom: 2 }}>{item.brand} · {item.type}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#23252A', marginBottom: 6, lineHeight: 1.3 }}>{item.name}</div>
+                  <div style={{ fontFamily: 'Space Grotesk', fontSize: 15, fontWeight: 700, color: '#E8622C' }}>{item.price}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- PROFILE ----
+  function ProfilePage({ onGearClick }) {
+    const [ringProgress, setRingProgress] = useState(0);
+    const scrollRef = useRef(null);
+    const [scrollY, setScrollY] = useState(0);
+
+    useEffect(() => {
+      // animate ring on mount
+      const t = setTimeout(() => setRingProgress(0.72), 300);
+      return () => clearTimeout(t);
+    }, []);
+
+    useEffect(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      let ticking = false;
+      const onScroll = () => {
+        if (!ticking) {
+          requestAnimationFrame(() => {
+            setScrollY(el.scrollTop);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+      el.addEventListener('scroll', onScroll, { passive: true });
+      return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    const coverScale = Math.max(1, 1 + scrollY * -0.002);
+
+    const menuItems = [
+      { icon: '🚴', title: '我的骑行记录', color: '#E8622C' },
+      { icon: '⭐', title: '收藏的路线', color: '#E8F04A' },
+      { icon: '🛡️', title: '装备库', color: '#7A8B6F', action: 'gear' },
+      { icon: '🏆', title: '成就徽章', color: '#E8622C' },
+      { icon: '👥', title: '我的好友', color: '#23252A' },
+      { icon: '⚙️', title: '设置', color: '#7A8B6F' },
+    ];
+
+    return (
+      <div className="velo-app profile-page">
+        <div className="scroll-wrap" ref={scrollRef}>
+          <div
+            className="profile-cover"
+            style={{ transform: `scale(${coverScale})`, transformOrigin: 'center top' }}
+          >
+            {/* decorative pattern */}
+            <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 100, opacity: 0.15 }} viewBox="0 0 400 100" preserveAspectRatio="none">
+              <path d="M0 80 Q100 40 200 60 T400 30 L400 100 L0 100 Z" fill="#fff"/>
+            </svg>
+          </div>
+
+          <div className="profile-top-nav">
+            <div className="nav-btn" style={{ background: 'rgba(255,255,255,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6"/>
+              </svg>
+            </div>
+            <div className="nav-btn" style={{ background: 'rgba(255,255,255,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.25.75.95 1.2 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </div>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <div className="profile-avatar-wrap animate-slide-up del-1">
+              <div className="profile-avatar">L</div>
+              <div className="profile-name-wrap">
+                <div className="profile-name">骑行侠·凌风</div>
+                <div className="profile-username">@lingfeng_rider</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="profile-body">
+            <div className="profile-follow-row animate-slide-up del-2">
+              <div className="profile-follow-item">
+                <div className="profile-follow-num">2,847</div>
+                <div className="profile-follow-lbl">关注</div>
+              </div>
+              <div className="profile-follow-item">
+                <div className="profile-follow-num">12.4k</div>
+                <div className="profile-follow-lbl">粉丝</div>
+              </div>
+              <div className="profile-follow-item">
+                <div className="profile-follow-num">86</div>
+                <div className="profile-follow-lbl">获赞</div>
+              </div>
+            </div>
+
+            <div className="profile-action-row animate-slide-up del-3">
+              <button className="profile-action-btn primary">编辑资料</button>
+              <button className="profile-action-btn secondary">分享主页</button>
+            </div>
+
+            {/* Ring achievement */}
+            <div className="achievement-ring-wrap animate-slide-up del-4">
+              <div className="achievement-ring">
+                <svg className="ring-svg" width="180" height="180" viewBox="0 0 180 180">
+                  <defs>
+                    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#E8622C"/>
+                      <stop offset="100%" stopColor="#E8F04A"/>
+                    </linearGradient>
+                  </defs>
+                  <circle className="ring-bg" cx="90" cy="90" r="70"/>
+                  <circle
+                    className="ring-progress"
+                    cx="90" cy="90" r="70"
+                    strokeDasharray={2 * Math.PI * 70}
+                    strokeDashoffset={2 * Math.PI * 70 * (1 - ringProgress)}
+                  />
+                </svg>
+                <div className="ring-content">
+                  <div className="ring-value">72%</div>
+                  <div className="ring-label">年度目标</div>
+                  <div style={{ fontSize: 11, color: 'rgba(35,37,42,0.4)', marginTop: 6 }}>
+                    3,680 / 5,000 km
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '0 20px 12px' }} className="animate-slide-up del-5">
+              <div style={{ fontFamily: 'Space Grotesk', fontSize: 14, fontWeight: 700, color: '#23252A' }}>
+                我的数据
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+              padding: '0 20px 20px',
+            }} className="animate-slide-up del-6">
+              {[
+                { label: '总里程', value: '3,682 km', color: '#E8622C' },
+                { label: '总时长', value: '218 h', color: '#7A8B6F' },
+                { label: '单次最长', value: '168 km', color: '#E8F04A' },
+                { label: '累计爬升', value: '42,180 m', color: '#23252A' },
+              ].map((s, i) => (
+                <div key={i} style={{
+                  background: '#fff',
+                  borderRadius: 14,
+                  padding: '14px 16px',
+                  boxShadow: '0 2px 10px rgba(35,37,42,0.04)',
+                  borderLeft: `3px solid ${s.color}`,
+                }}>
+                  <div style={{ fontSize: 11, color: 'rgba(35,37,42,0.5)', marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontFamily: 'Space Grotesk', fontSize: 20, fontWeight: 700, color: '#23252A' }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '0 20px 12px' }} className="animate-slide-up del-7">
+              <div style={{ fontFamily: 'Space Grotesk', fontSize: 14, fontWeight: 700, color: '#23252A' }}>
+                功能菜单
+              </div>
+            </div>
+
+            <div className="profile-list animate-slide-up del-8">
+              {menuItems.map((item, i) => (
+                <div key={i} className="profile-list-row" onClick={() => item.action === 'gear' && onGearClick?.()}>
+                  <div className="profile-list-icon" style={{ background: `${item.color}15`, color: item.color, fontSize: 16 }}>
+                    {item.icon}
+                  </div>
+                  <div className="profile-list-title">{item.title}</div>
+                  <div className="profile-list-chevron">{Icon.ChevronRight}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ height: 40 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- DESIGN SYSTEM ----
+  function DesignSystemPage() {
+    return (
+      <div className="velo-app ds-page">
+        <div className="scroll-wrap">
+          <div className="ds-hero">
+            <div className="ds-title">设计规范</div>
+            <div className="ds-subtitle">VeloRoute Design System v1.0</div>
+            <div className="ds-badge">形态：原生 App</div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">色彩系统</div>
+            <div className="color-grid">
+              {[
+                { name: '信号橙', hex: '#E8622C', bg: '#E8622C', text: '#fff' },
+                { name: '荧光黄', hex: '#E8F04A', bg: '#E8F04A', text: '#23252A' },
+                { name: '沥青深灰', hex: '#23252A', bg: '#23252A', text: '#F7F5F0' },
+                { name: '暖白', hex: '#F7F5F0', bg: '#F7F5F0', text: '#23252A' },
+                { name: '石灰绿', hex: '#7A8B6F', bg: '#7A8B6F', text: '#fff' },
+                { name: '深灰辅助', hex: '#3A3D44', bg: '#3A3D44', text: '#F7F5F0' },
+              ].map((c, i) => (
+                <div
+                  key={i}
+                  className="color-swatch"
+                  style={{ background: c.bg, color: c.text }}
+                >
+                  <span className="name">{c.name}</span>
+                  <span className="hex" style={{ color: c.text, opacity: 0.8 }}>{c.hex}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">字体系统</div>
+            <div className="type-sample">
+              <div className="type-label">Display / Space Grotesk Bold</div>
+              <div style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: 28, color: '#23252A' }}>骑迹 VeloRoute</div>
+            </div>
+            <div className="type-sample">
+              <div className="type-label">Body / Inter Regular</div>
+              <div style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 15, color: '#23252A', lineHeight: 1.6 }}>
+                环绕西湖群山的经典骑行路线，途经龙井、梅家坞、灵隐寺等多个景点。
+              </div>
+            </div>
+            <div className="type-sample">
+              <div className="type-label">Mono / JetBrains Mono</div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: '#E8622C' }}>
+                GET /api/v1/routes
+              </div>
+            </div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">按钮组件</div>
+            <div className="ds-buttons">
+              <button className="ds-btn btn-primary">主要按钮</button>
+              <button className="ds-btn btn-secondary">次要按钮</button>
+              <button className="ds-btn btn-ghost">幽灵按钮</button>
+              <button className="ds-btn btn-fluoro">荧光强调</button>
+            </div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">间距系统</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              {[4, 8, 12, 16, 24, 32].map((s, i) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: 32, height: s,
+                    background: i % 2 === 0 ? '#E8622C' : '#7A8B6F',
+                    borderRadius: 4, margin: '0 auto 4px',
+                  }}/>
+                  <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono', color: 'rgba(35,37,42,0.5)' }}>{s}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">圆角规范</div>
+            <div style={{ display: 'flex', gap: 16 }}>
+              {[
+                { label: 'sm', r: 8 },
+                { label: 'md', r: 14 },
+                { label: 'lg', r: 20 },
+                { label: 'xl', r: 26 },
+                { label: 'full', r: 999 },
+              ].map((c, i) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: 44, height: 44,
+                    background: '#23252A',
+                    borderRadius: c.r,
+                    marginBottom: 4,
+                  }}/>
+                  <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono', color: 'rgba(35,37,42,0.5)' }}>{c.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="ds-section">
+            <div className="ds-section-title">阴影层级</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {[
+                { label: 'sm', shadow: '0 2px 8px rgba(35,37,42,0.06)' },
+                { label: 'md', shadow: '0 4px 20px rgba(35,37,42,0.08)' },
+                { label: 'lg', shadow: '0 8px 32px rgba(35,37,42,0.12)' },
+                { label: 'xl', shadow: '0 16px 48px rgba(35,37,42,0.18)' },
+              ].map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{
+                    width: 80, height: 48,
+                    background: '#fff',
+                    borderRadius: 12,
+                    boxShadow: s.shadow,
+                  }}/>
+                  <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: 'rgba(35,37,42,0.5)' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ height: 40, textAlign: 'center', fontSize: 11, color: 'rgba(35,37,42,0.3)', paddingBottom: 20 }}>
+            VeloRoute Design System · 形态：原生 App
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- API DOCS ----
+  function ApiDocsPage() {
+    const [activeTab, setActiveTab] = useState(0);
+    const tabs = ['Routes', 'Rides', 'Users'];
+
+    const endpoints = {
+      0: [
+        { method: 'GET', path: '/api/v1/routes', desc: '获取路线列表，支持分页、筛选和排序', params: [
+          { name: 'page', type: 'int', desc: '页码，默认1' },
+          { name: 'limit', type: 'int', desc: '每页数量，默认20' },
+          { name: 'city', type: 'string', desc: '城市筛选' },
+          { name: 'difficulty', type: 'string', desc: '难度等级' },
+          { name: 'sort', type: 'string', desc: '排序字段' },
+        ]},
+        { method: 'GET', path: '/api/v1/routes/:id', desc: '获取单条路线详情', params: [
+          { name: 'id', type: 'string', desc: '路线ID（路径参数）' },
+        ]},
+        { method: 'POST', path: '/api/v1/routes', desc: '创建新路线（需登录）', params: [
+          { name: 'name', type: 'string', desc: '路线名称' },
+          { name: 'distance', type: 'float', desc: '距离，单位公里' },
+          { name: 'elevation', type: 'int', desc: '累计爬升，单位米' },
+          { name: 'gpx_file', type: 'file', desc: 'GPX轨迹文件' },
+        ]},
+        { method: 'PUT', path: '/api/v1/routes/:id', desc: '更新路线信息', params: [
+          { name: 'id', type: 'string', desc: '路线ID' },
+          { name: 'name', type: 'string', desc: '路线名称（可选）' },
+          { name: 'desc', type: 'string', desc: '路线描述（可选）' },
+        ]},
+        { method: 'DELETE', path: '/api/v1/routes/:id', desc: '删除路线', params: [
+          { name: 'id', type: 'string', desc: '路线ID' },
+        ]},
+      ],
+      1: [
+        { method: 'GET', path: '/api/v1/rides', desc: '获取当前用户骑行记录列表', params: [
+          { name: 'page', type: 'int', desc: '页码' },
+          { name: 'period', type: 'string', desc: '时间范围：week/month/year' },
+        ]},
+        { method: 'POST', path: '/api/v1/rides/start', desc: '开始一次骑行', params: [
+          { name: 'route_id', type: 'string', desc: '关联路线ID（可选）' },
+          { name: 'device', type: 'string', desc: '设备类型' },
+        ]},
+        { method: 'POST', path: '/api/v1/rides/:id/pause', desc: '暂停骑行', params: [
+          { name: 'id', type: 'string', desc: '骑行记录ID' },
+        ]},
+        { method: 'POST', path: '/api/v1/rides/:id/finish', desc: '结束骑行并保存记录', params: [
+          { name: 'id', type: 'string', desc: '骑行记录ID' },
+          { name: 'distance', type: 'float', desc: '最终距离' },
+          { name: 'duration', type: 'int', desc: '总时长（秒）' },
+          { name: 'avg_speed', type: 'float', desc: '平均速度' },
+          { name: 'calories', type: 'int', desc: '消耗卡路里' },
+        ]},
+      ],
+      2: [
+        { method: 'GET', path: '/api/v1/users/:id', desc: '获取用户信息', params: [
+          { name: 'id', type: 'string', desc: '用户ID' },
+        ]},
+        { method: 'GET', path: '/api/v1/users/:id/stats', desc: '获取用户骑行统计数据', params: [
+          { name: 'id', type: 'string', desc: '用户ID' },
+          { name: 'range', type: 'string', desc: '统计范围' },
+        ]},
+        { method: 'PUT', path: '/api/v1/users/me', desc: '更新当前用户资料', params: [
+          { name: 'nickname', type: 'string', desc: '昵称' },
+          { name: 'avatar', type: 'file', desc: '头像图片' },
+          { name: 'bio', type: 'string', desc: '个人简介' },
+        ]},
+        { method: 'POST', path: '/api/v1/users/follow', desc: '关注用户', params: [
+          { name: 'target_id', type: 'string', desc: '目标用户ID' },
+        ]},
+      ],
+    };
+
+    return (
+      <div className="velo-app api-page">
+        <div className="scroll-wrap">
+          <div className="api-header">
+            <div className="api-title">API 文档</div>
+            <div className="api-subtitle">VeloRoute Open API v1.0 · RESTful</div>
+          </div>
+
+          <div className="api-tabs">
+            {tabs.map((tab, i) => (
+              <div
+                key={i}
+                className={`api-tab ${activeTab === i ? 'active' : ''}`}
+                onClick={() => setActiveTab(i)}
+              >
+                {tab}
+              </div>
+            ))}
+          </div>
+
+          {endpoints[activeTab].map((ep, i) => (
+            <div key={i} className="api-endpoint animate-slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className={`api-method ${ep.method.toLowerCase()}`}>{ep.method}</span>
+                <span className="api-path">{ep.path}</span>
+              </div>
+              <div className="api-desc">{ep.desc}</div>
+              <div className="api-params">
+                {ep.params.map((p, j) => (
+                  <div key={j} className="api-param-row">
+                    <span className="api-param-name">{p.name}</span>
+                    <span className="api-param-type">{p.type}</span>
+                    <span className="api-param-desc">{p.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div style={{ padding: 20, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{
+              fontFamily: 'Space Grotesk',
+              fontSize: 13, fontWeight: 600,
+              marginBottom: 10,
+              color: '#E8F04A',
+            }}>
+              响应示例
+            </div>
+            <pre style={{
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: 8,
+              padding: 12,
+              fontSize: 11,
+              lineHeight: 1.5,
+              overflowX: 'auto',
+              color: 'rgba(255,255,255,0.8)',
+            }}>{`{
+  "code": 0,
+  "data": {
+    "id": "rt_01H...",
+    "name": "西湖环山经典线",
+    "distance": 28.6,
+    "elevation": 420,
+    "difficulty": "medium",
+    "rating": 4.8,
+    "riders_count": 12400
+  },
+  "msg": "ok"
+}`}</pre>
+          </div>
+
+          <div style={{ height: 40 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // TABBAR
+  // ============================================================
+  function TabBar({ activeTab, onTabClick, onCenterClick, dark = false }) {
+    const tabs = [
+      { key: 'home', label: '发现', icon: Icon.Home },
+      { key: 'gear', label: '装备', icon: (active) => (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#E8622C' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.25.75.95 1.2 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      )},
+      { key: 'center', label: '', icon: null },
+      { key: 'community', label: '骑行圈', icon: Icon.Users },
+      { key: 'profile', label: '我的', icon: Icon.User },
+    ];
+
+    return (
+      <div className={`tabbar ${dark ? 'dark' : ''}`}>
+        {tabs.map((tab, i) => {
+          if (tab.key === 'center') {
+            return (
+              <div key="center" style={{ flex: 1, position: 'relative' }}>
+                <div className="tab-center-btn" onClick={onCenterClick}>
+                  {Icon.Bike}
+                </div>
+              </div>
+            );
+          }
+          const isActive = activeTab === tab.key;
+          return (
+            <div
+              key={tab.key}
+              className={`tab-item ${isActive ? 'active' : ''} ${dark ? 'dark' : ''}`}
+              onClick={() => onTabClick(tab.key)}
+            >
+              {typeof tab.icon === 'function' ? tab.icon(isActive) : null}
+              <span className="tab-label">{tab.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ============================================================
+  // MAIN APP
+  // ============================================================
+  function App() {
+    const [activeTab, setActiveTab] = useState('home');
+    const [navStack, setNavStack] = useState([{ screen: 'home' }]);
+    const [pageTransition, setPageTransition] = useState('');
+    const [showRideModal, setShowRideModal] = useState(false);
+    const [showDesignSystem, setShowDesignSystem] = useState(false);
+    const [darkTabBar, setDarkTabBar] = useState(false);
+
+    const currentScreen = navStack[navStack.length - 1]?.screen || 'home';
+
+    // Custom cursor init
+    useEffect(() => {
+      initCustomCursor();
+      return () => {
+        if (window.__cleanupCursor) window.__cleanupCursor();
+      };
+    }, []);
+
+    // Update dark tab bar based on current screen
+    useEffect(() => {
+      const darkScreens = ['detail', 'ride'];
+      setDarkTabBar(darkScreens.includes(currentScreen));
+    }, [currentScreen]);
+
+    const goToRouteDetail = (route) => {
+      setPageTransition('push');
+      setTimeout(() => {
+        setNavStack([...navStack, { screen: 'detail', route }]);
+        setPageTransition('');
+      }, 50);
+    };
+
+    const goBack = () => {
+      if (navStack.length > 1) {
+        setPageTransition('pop');
+        setTimeout(() => {
+          setNavStack(navStack.slice(0, -1));
+          setPageTransition('');
+        }, 50);
+      }
+    };
+
+    const handleTabClick = (key) => {
+      if (key === 'docs') {
+        setShowDesignSystem(true);
+        return;
+      }
+      if (key === 'gear') {
+        setNavStack([{ screen: 'gear' }]);
+        setActiveTab('gear');
+        return;
+      }
+      if (navStack[0]?.screen !== key) {
+        setNavStack([{ screen: key }]);
+        setActiveTab(key);
+      }
+    };
+
+    const handleCenterClick = () => {
+      setShowRideModal(true);
+    };
+
+    const closeRideModal = () => {
+      setShowRideModal(false);
+    };
+
+    // Render main content
+    const renderScreen = () => {
+      const top = navStack[navStack.length - 1];
+      switch (top.screen) {
+        case 'home':
+          return <HomePage onRouteClick={goToRouteDetail} />;
+        case 'community':
+          return <CommunityPage />;
+        case 'profile':
+          return <ProfilePage onGearClick={() => {
+            setPageTransition('push');
+            setTimeout(() => {
+              setNavStack([...navStack, { screen: 'gear' }]);
+              setPageTransition('');
+            }, 50);
+          }} />;
+        case 'detail':
+          return <RouteDetailPage route={top.route} onBack={goBack} />;
+        case 'gear':
+          return <GearPage onBack={goBack} />;
+        default:
+          return <HomePage onRouteClick={goToRouteDetail} />;
+      }
+    };
+
+    return (
+      <div className="showcase">
+        <div className="showcase-title">
+          <span className="accent">骑迹</span> VeloRoute · 原生 App V2
+        </div>
+        <div className="showcase-meta">
+          形态：原生 App · 8 Pages · iOS
+        </div>
+
+        <div className="device-wrapper">
+          {/* Device Frame - custom build with proper safe areas */}
+          <div style={{
+            width: 390, height: 844, borderRadius: 48, overflow: 'hidden',
+            position: 'relative', background: '#000',
+            border: '1px solid #3A3D44',
+            boxShadow: '0 30px 80px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.3)',
+            fontFamily: 'Inter, -apple-system, system-ui, sans-serif',
+            '--ios-safe-top': '54px',
+            '--ios-safe-bottom': '34px',
+          }}>
+            {/* Dynamic Island */}
+            <div style={{
+              position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+              width: 120, height: 35, borderRadius: 22, background: '#000', zIndex: 100,
+            }}/>
+
+            {/* Status Bar */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '18px 28px 0',
+              color: darkTabBar ? '#fff' : '#23252A',
+              fontFamily: '-apple-system, system-ui',
+              fontWeight: 600, fontSize: 15,
+              pointerEvents: 'none',
+              transition: 'color 0.3s',
+            }}>
+              <span>9:41</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <svg width="17" height="11" viewBox="0 0 17 11">
+                  <rect x="0" y="7" width="3" height="4" rx="0.6" fill="currentColor"/>
+                  <rect x="4.7" y="4.5" width="3" height="6.5" rx="0.6" fill="currentColor"/>
+                  <rect x="9.3" y="2" width="3" height="9" rx="0.6" fill="currentColor"/>
+                  <rect x="14" y="0" width="3" height="11" rx="0.6" fill="currentColor"/>
+                </svg>
+                <svg width="16" height="11" viewBox="0 0 16 11">
+                  <path d="M8 2.5c1.8 0 3.5 0.6 4.8 1.7L13.9 3.1C12.3 1.6 10.2 0.8 8 0.8S3.7 1.6 2.1 3.1L3.2 4.2C4.5 3.1 6.2 2.5 8 2.5z" fill="currentColor"/>
+                  <path d="M8 5.8c1 0 1.9 0.3 2.7 1L11.8 5.8C10.7 4.8 9.4 4.2 8 4.2S5.3 4.8 4.2 5.8L5.3 6.8C6.1 6.1 7 5.8 8 5.8z" fill="currentColor"/>
+                  <circle cx="8" cy="9" r="1.2" fill="currentColor"/>
+                </svg>
+                <svg width="25" height="12" viewBox="0 0 25 12">
+                  <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeOpacity="0.4" fill="none"/>
+                  <rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/>
+                  <path d="M23 4v4c0.7-0.3 1-1.1 1-2s-0.3-1.7-1-2z" fill="currentColor" fillOpacity="0.4"/>
+                </svg>
+              </div>
+            </div>
+
+            {/* Screen Container */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              overflow: 'hidden',
+            }}>
+              {renderScreen()}
+
+              {/* TabBar - only show on root screens */}
+              {navStack.length === 1 && activeTab !== 'docs' && (
+                <TabBar
+                  activeTab={activeTab}
+                  onTabClick={handleTabClick}
+                  onCenterClick={handleCenterClick}
+                  dark={darkTabBar}
+                />
+              )}
+
+              {/* Ride Recording Modal (full-screen) */}
+              {showRideModal && (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  zIndex: 200,
+                  animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}>
+                  <RideRecordPage />
+                  {/* Custom close button in status bar area */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 20, right: 16,
+                      zIndex: 210,
+                      width: 32, height: 32,
+                      borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.15)',
+                      backdropFilter: 'blur(10px)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                    onClick={closeRideModal}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F7F5F0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </div>
+                </div>
+              )}
+
+              {/* Design System / Docs Modal */}
+              {showDesignSystem && (
+                <DesignSystemModal onClose={() => setShowDesignSystem(false)} />
+              )}
+            </div>
+
+            {/* Home Indicator */}
+            <div style={{
+              position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+              width: 134, height: 5, borderRadius: 100,
+              background: darkTabBar ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
+              zIndex: 95,
+              transition: 'background 0.3s',
+            }}/>
+          </div>
+        </div>
+
+        {/* Page selector dots below device */}
+        <div style={{
+          position: 'absolute',
+          bottom: 40, left: '50%', transform: 'translateX(-50%)',
+          display: 'flex', gap: 8,
+          alignItems: 'center',
+        }}>
+          {['home', 'detail', 'ride', 'gear', 'community', 'profile', 'design-system', 'api-docs'].map((page, i) => (
+            <div
+              key={page}
+              style={{
+                width: 8, height: 8,
+                borderRadius: '50%',
+                background: i === 0 ? '#E8622C' : 'rgba(247,245,240,0.2)',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+              }}
+              onClick={() => {
+                if (page === 'home') { setActiveTab('home'); setNavStack([{ screen: 'home' }]); setShowDesignSystem(false); setShowRideModal(false); }
+                if (page === 'detail') { setActiveTab('home'); setNavStack([{ screen: 'home' }, { screen: 'detail', route: ROUTES[0] }]); setShowDesignSystem(false); setShowRideModal(false); }
+                if (page === 'ride') { setShowRideModal(true); setShowDesignSystem(false); }
+                if (page === 'gear') { setActiveTab('gear'); setNavStack([{ screen: 'gear' }]); setShowDesignSystem(false); setShowRideModal(false); }
+                if (page === 'community') { setActiveTab('community'); setNavStack([{ screen: 'community' }]); setShowDesignSystem(false); setShowRideModal(false); }
+                if (page === 'profile') { setActiveTab('profile'); setNavStack([{ screen: 'profile' }]); setShowDesignSystem(false); setShowRideModal(false); }
+                if (page === 'design-system') { setShowDesignSystem(true); setShowRideModal(false); }
+                if (page === 'api-docs') { setShowDesignSystem(true); }
+              }}
+              title={page}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Design System Modal (slides up with 2 sub-screens)
+  function DesignSystemModal({ onClose }) {
+    const [subPage, setSubPage] = useState('design'); // 'design' | 'api'
+
+    return (
+      <div style={{
+        position: 'absolute', inset: 0,
+        zIndex: 200,
+        animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+      }}>
+        {subPage === 'design' ? <DesignSystemPage /> : <ApiDocsPage />}
+
+        {/* Top close + tabs */}
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          paddingTop: 'var(--ios-safe-top)',
+          zIndex: 10,
+          display: 'flex', alignItems: 'center',
+          padding: 'calc(var(--ios-safe-top, 54px) + 4px) 16px 0',
+          gap: 12,
+          pointerEvents: 'none',
+        }}>
+          <div
+            style={{
+              width: 32, height: 32,
+              borderRadius: '50%',
+              background: subPage === 'design' ? 'rgba(247,245,240,0.9)' : 'rgba(255,255,255,0.15)',
+              backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+            onClick={onClose}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={subPage === 'design' ? '#23252A' : '#F7F5F0'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </div>
+          <div style={{
+            flex: 1,
+            display: 'flex', justifyContent: 'center',
+            gap: 4,
+            pointerEvents: 'auto',
+          }}>
+            <div
+              style={{
+                padding: '6px 14px',
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: subPage === 'design'
+                  ? (subPage === 'design' ? '#23252A' : 'rgba(255,255,255,0.2)')
+                  : 'rgba(255,255,255,0.1)',
+                color: subPage === 'design' ? '#F7F5F0' : 'rgba(255,255,255,0.5)',
+              }}
+              onClick={() => setSubPage('design')}
+            >
+              设计规范
+            </div>
+            <div
+              style={{
+                padding: '6px 14px',
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: subPage === 'api' ? '#E8F04A' : 'rgba(255,255,255,0.1)',
+                color: subPage === 'api' ? '#23252A' : 'rgba(255,255,255,0.5)',
+              }}
+              onClick={() => setSubPage('api')}
+            >
+              API 文档
+            </div>
+          </div>
+          <div style={{ width: 32 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Render
+  // ============================================================
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<App />);
+
+  // Announce upgrade capability
+  function announceUpgrade() {
+    window.parent?.postMessage?.({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+  </script>
+</body>
+</html>
