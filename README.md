@@ -46,4 +46,4 @@ Arc/
 
 ## 自动生成
 
-由 [Arc 每日设计 Mock](https://aily.feishu.cn/autopilots/auto_4kunaef1pp0a4) 定时任务每天 19:37 自动生成并推送，风格每天随机重抽。
+由 [Arc 每日设计 Mock](https://aily.feishu.cn/autopilots/auto_4kunaef1pp0a4) 定时任务每天自动生成并推送，风格每天随机重抽。
