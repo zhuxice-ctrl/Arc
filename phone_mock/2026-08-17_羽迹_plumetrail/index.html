@@ -1,0 +1,2389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>羽迹 PlumeTrail — 观鸟记录与鸟种图鉴 iOS 原生 App</title>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@300;400;500;700&family=Inter:wght@400;500;600&display=swap" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #E8E3D5; font-family: 'Noto Sans SC', 'Inter', system-ui, sans-serif; }
+  #root { width: 100%; height: 100%; }
+
+  /* ── Custom cursor ── */
+  .custom-cursor {
+    position: fixed; top: 50%; left: 50%;
+    width: 32px; height: 32px;
+    border: 2.5px solid #fff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 99999;
+    mix-blend-mode: difference;
+    transition: width .25s cubic-bezier(.2,.9,.3,1.2), height .25s cubic-bezier(.2,.9,.3,1.2),
+                border-color .2s ease, opacity .3s ease;
+    box-shadow: 0 0 12px rgba(217,126,54,.6), 0 0 24px rgba(217,126,54,.3);
+    will-change: transform, width, height;
+  }
+  .custom-cursor::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 6px; height: 6px; background: #D97E36; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width .2s ease, height .2s ease, background .2s ease;
+  }
+  .custom-cursor.hover { width: 52px; height: 52px; border-color: #D97E36; }
+  .custom-cursor.hover::after { width: 10px; height: 10px; }
+  .custom-cursor.click { animation: cursorRipple .5s ease-out forwards; }
+  @keyframes cursorRipple {
+    0% { width: 32px; height: 32px; opacity: 1; }
+    50% { width: 70px; height: 70px; opacity: .6; }
+    100% { width: 32px; height: 32px; opacity: 1; }
+  }
+
+  /* ── Ripple effect ── */
+  .ripple-btn { position: relative; overflow: hidden; }
+  .ripple-wave {
+    position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,.4);
+    transform: scale(0); animation: rippleAnim .6s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes rippleAnim {
+    to { transform: scale(4); opacity: 0; }
+  }
+
+  /* ── Stage layout ── */
+  .stage {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 20% 20%, rgba(217,126,54,.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(34,64,47,.2) 0%, transparent 50%),
+      linear-gradient(180deg, #E8E3D5 0%, #D9D3C1 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .stage::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(34,64,47,.08) 1px, transparent 0);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+
+  .stage-label {
+    position: absolute; top: 32px; left: 48px;
+    display: flex; flex-direction: column; gap: 6px;
+    z-index: 10;
+  }
+  .stage-label .brand {
+    font-family: 'Noto Serif SC', serif; font-weight: 900;
+    font-size: 28px; color: #22402F; letter-spacing: 2px;
+  }
+  .stage-label .sub {
+    font-size: 13px; color: #8CA08B; letter-spacing: 3px;
+    text-transform: uppercase; font-weight: 500;
+  }
+
+  .stage-nav {
+    position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; z-index: 10;
+    background: rgba(255,255,255,.6); backdrop-filter: blur(20px);
+    padding: 8px 16px; border-radius: 999px;
+    border: 1px solid rgba(34,64,47,.1);
+    box-shadow: 0 8px 32px rgba(34,64,47,.12);
+  }
+  .stage-nav button {
+    border: none; background: transparent; cursor: pointer;
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 500; color: #8CA08B;
+    font-family: inherit;
+    transition: all .25s ease;
+  }
+  .stage-nav button.active {
+    background: #22402F; color: #F4F1E9;
+    box-shadow: 0 2px 8px rgba(34,64,47,.3);
+  }
+  .stage-nav button:hover:not(.active) { color: #22402F; }
+
+  .device-wrap {
+    position: relative; z-index: 5;
+    filter: drop-shadow(0 30px 80px rgba(18,21,15,.35));
+  }
+
+  /* ── Feather particle background ── */
+  .feather-particle {
+    position: absolute;
+    width: 8px; height: 14px;
+    background: linear-gradient(180deg, rgba(217,126,54,.35) 0%, rgba(34,64,47,.2) 100%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    pointer-events: none;
+    opacity: .6;
+    animation: featherFloat linear infinite;
+  }
+  @keyframes featherFloat {
+    0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+    10% { opacity: .6; }
+    90% { opacity: .6; }
+    100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+  }
+
+  /* ── iOS device inner screen ── */
+  .app-screen {
+    position: relative;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #F4F1E9;
+    font-family: 'Noto Sans SC', 'Inter', system-ui, sans-serif;
+    color: #12150F;
+  }
+
+  .page-content {
+    position: absolute; inset: 0;
+    overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .page-content::-webkit-scrollbar { display: none; }
+
+  .safe-top { padding-top: var(--ios-safe-top, 54px); }
+  .safe-bottom { padding-bottom: var(--ios-safe-bottom, 34px); }
+
+  /* ── Page transitions ── */
+  .page-enter { animation: pageSlideIn .38s cubic-bezier(.2,.8,.2,1) forwards; }
+  .page-exit { animation: pageSlideOut .28s cubic-bezier(.4,0,1,1) forwards; }
+  @keyframes pageSlideIn {
+    from { transform: translateX(30%); opacity: .6; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes pageSlideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(-20%); opacity: .6; }
+  }
+
+  /* ── Modal sheet ── */
+  .sheet-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(18,21,15,.4); backdrop-filter: blur(4px);
+    z-index: 30;
+    animation: fadeIn .3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .bottom-sheet {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: #F4F1E9;
+    border-radius: 24px 24px 0 0;
+    z-index: 31;
+    max-height: 85%;
+    animation: sheetSlideUp .35s cubic-bezier(.2,.9,.3,1);
+    box-shadow: 0 -10px 40px rgba(18,21,15,.2);
+  }
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .sheet-handle {
+    width: 40px; height: 5px;
+    background: rgba(34,64,47,.2);
+    border-radius: 3px;
+    margin: 10px auto 4px;
+  }
+
+  /* ── Stagger fade-in ── */
+  .stagger-item { opacity: 0; transform: translateY(20px); animation: staggerIn .6s cubic-bezier(.2,.8,.2,1) forwards; }
+  @keyframes staggerIn { to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Number counter pulse ── */
+  .count-pulse { display: inline-block; animation: countPop .4s ease; }
+  @keyframes countPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); color: #D97E36; }
+    100% { transform: scale(1); }
+  }
+
+  /* ── Heart favorite ── */
+  .heart-icon {
+    transition: transform .2s cubic-bezier(.2,.9,.3,1.4);
+    cursor: pointer;
+  }
+  .heart-icon.liked {
+    animation: heartBounce .4s cubic-bezier(.2,.9,.3,1.4);
+  }
+  @keyframes heartBounce {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.3); }
+    60% { transform: scale(.9); }
+    100% { transform: scale(1); }
+  }
+
+  /* ── Tab bar dot bounce ── */
+  .tab-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #D97E36;
+    margin-top: 2px;
+    transform: scale(0);
+    transition: transform .3s cubic-bezier(.2,.9,.3,1.4);
+  }
+  .tab-item.active .tab-dot { transform: scale(1); }
+
+  /* ── Shimmer skeleton ── */
+  .shimmer {
+    background: linear-gradient(90deg, rgba(34,64,47,.06) 0%, rgba(34,64,47,.12) 50%, rgba(34,64,47,.06) 100%);
+    background-size: 200% 100%;
+    animation: shimmerMove 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmerMove {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── Map pulse dot ── */
+  .map-pulse {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #D97E36;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+  }
+  .map-pulse::before, .map-pulse::after {
+    content: ''; position: absolute; inset: 0;
+    border-radius: 50%;
+    background: rgba(217,126,54,.4);
+    animation: mapPulse 2s ease-out infinite;
+  }
+  .map-pulse::after { animation-delay: 1s; }
+  @keyframes mapPulse {
+    0% { transform: scale(1); opacity: .7; }
+    100% { transform: scale(3); opacity: 0; }
+  }
+
+  /* ── Ring progress ── */
+  .ring-progress circle { transition: stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1); }
+
+  /* ── Tilt card ── */
+  .tilt-card {
+    transform-style: preserve-3d;
+    transition: transform .1s ease;
+    will-change: transform;
+  }
+
+  /* ── Pull to refresh ── */
+  .pull-indicator {
+    display: flex; align-items: center; justify-content: center;
+    height: 0; overflow: hidden;
+    color: #8CA08B; font-size: 13px;
+    transition: height .3s ease;
+  }
+  .pull-indicator.show { height: 50px; }
+  .pull-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(34,64,47,.15);
+    border-top-color: #D97E36;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Sound wave bars ── */
+  .sound-wave { display: flex; align-items: end; gap: 2px; height: 24px; }
+  .sound-bar {
+    width: 3px; background: #D97E36; border-radius: 2px;
+    animation: soundBounce 1.2s ease-in-out infinite;
+  }
+  @keyframes soundBounce {
+    0%, 100% { height: 4px; }
+    50% { height: 20px; }
+  }
+
+  /* ── FAB button ── */
+  .fab-btn {
+    position: absolute;
+    right: 20px; bottom: calc(var(--ios-safe-bottom, 34px) + 80px);
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #D97E36 0%, #C46928 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(217,126,54,.45), 0 2px 6px rgba(217,126,54,.3);
+    z-index: 25;
+    cursor: pointer;
+    transition: transform .2s cubic-bezier(.2,.9,.3,1.4), box-shadow .2s ease;
+  }
+  .fab-btn:hover { transform: scale(1.08); box-shadow: 0 12px 32px rgba(217,126,54,.55); }
+  .fab-btn:active { transform: scale(.92); }
+
+  /* ── Navigation bar (large title) ── */
+  .nav-large {
+    padding: 8px 20px 12px;
+    font-family: 'Noto Serif SC', serif;
+    font-weight: 900;
+    font-size: 34px;
+    color: #22402F;
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+  .nav-subtitle {
+    padding: 0 20px 12px;
+    font-size: 13px;
+    color: #8CA08B;
+    letter-spacing: 1px;
+  }
+
+  /* ── Card styles ── */
+  .card-paper {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(34,64,47,.06), 0 1px 3px rgba(34,64,47,.04);
+    overflow: hidden;
+  }
+
+  /* ── Glass pill ── */
+  .glass-pill {
+    background: rgba(255,255,255,.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.5);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    .custom-cursor { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="custom-cursor" id="customCursor"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ──────────────────────────────────────────────────────────────
+   ASSET DATA — real bird species
+   ────────────────────────────────────────────────────────────── */
+const BIRDS = [
+  {
+    id: 'crested-ibis',
+    name: '朱鹮',
+    latin: 'Nipponia nippon',
+    status: '濒危 EN',
+    statusColor: '#D97E36',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhfvu7epu_ve_miaoda',
+    family: '鹮科',
+    size: '体长约 79cm',
+    habitat: '湿地、稻田、河滩',
+    call: '低沉的 o-huh 鸣叫声',
+    description: '朱鹮是东亚特有的珍稀鸟类，通体白色，繁殖期羽冠和颈部染成灰黑色。喙长而下弯，呈黑色，尖端和面部皮肤呈鲜艳的朱红色。曾广泛分布于中国、日本、朝鲜半岛，后因栖息地破坏几近灭绝，经数十年保护种群逐渐恢复。',
+    distribution: ['陕西洋县', '河南董寨', '浙江德清'],
+    observations: 127,
+    rarity: 5,
+  },
+  {
+    id: 'kingfisher',
+    name: '普通翠鸟',
+    latin: 'Alcedo atthis',
+    status: '无危 LC',
+    statusColor: '#22402F',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhfsr3wes_ve_miaoda',
+    family: '翠鸟科',
+    size: '体长约 16cm',
+    habitat: '淡水湖泊、溪流、池塘',
+    call: '尖锐的 tseee 声',
+    description: '普通翠鸟是体型小巧的色彩艳丽鸟类，背部呈金属般的翠蓝色，腹部橙棕色。常栖息于水边树枝或岩石上，俯冲入水捕食小鱼。其独特的悬停觅食行为和极速俯冲令人叹为观止。',
+    distribution: ['全国大部分地区', '长江流域', '珠江流域'],
+    observations: 842,
+    rarity: 2,
+  },
+  {
+    id: 'hoopoe',
+    name: '戴胜',
+    latin: 'Upupa epops',
+    status: '无危 LC',
+    statusColor: '#22402F',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhj76p6fw_ve_miaoda',
+    family: '戴胜科',
+    size: '体长约 28cm',
+    habitat: '开阔林地、农田、园林',
+    call: '低沉的 hoop-hoop-hoop',
+    description: '戴胜以其独特的扇形羽冠和细长下弯的喙著称。受惊或兴奋时羽冠展开如扇，羽冠末端具黑色斑。体羽粉棕色，翅上有黑白相间的横纹。常在地面觅食昆虫，喙插入土中探取猎物。',
+    distribution: ['华北地区', '长江中下游', '西南山地'],
+    observations: 356,
+    rarity: 3,
+  },
+  {
+    id: 'red-billed-magpie',
+    name: '红嘴蓝鹊',
+    latin: 'Urocissa erythroryncha',
+    status: '无危 LC',
+    statusColor: '#22402F',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhhvdicju_ve_miaoda',
+    family: '鸦科',
+    size: '体长约 68cm（含尾）',
+    habitat: '山地森林、林缘、村落',
+    call: '粗哑的 kraa 声与哨音',
+    description: '红嘴蓝鹊是鸦科中羽色最艳丽的种类之一。头黑色，头顶至后颈有白色块斑，嘴和脚鲜红色。背和尾呈紫蓝色，中央尾羽特别长，末端白色。性喧闹，常结小群活动，食性杂。',
+    distribution: ['华东山区', '华南森林', '西南横断山区'],
+    observations: 521,
+    rarity: 2,
+  },
+  {
+    id: 'spoon-sandpiper',
+    name: '勺嘴鹬',
+    latin: 'Calidris pygmaea',
+    status: '极危 CR',
+    statusColor: '#C4392B',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhbmoxkju_ve_miaoda',
+    family: '鹬科',
+    size: '体长约 15cm',
+    habitat: '沿海滩涂、河口湿地',
+    call: '清脆的 preep 声',
+    description: '勺嘴鹬是世界上最稀有的鸻鹬类之一，以其独特的勺形喙闻名。繁殖期体羽呈锈红色，非繁殖期灰白。在滩涂上来回扫动喙部觅食小型无脊椎动物。全球种群数量不足 700 只，是极危物种。',
+    distribution: ['江苏盐城', '上海崇明东滩', '福建闽江口'],
+    observations: 23,
+    rarity: 5,
+  },
+  {
+    id: 'chinese-bulbul',
+    name: '白头鹎',
+    latin: 'Pycnonotus sinensis',
+    status: '无危 LC',
+    statusColor: '#22402F',
+    img: '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhhq2ziiw_ve_miaoda',
+    family: '鹎科',
+    size: '体长约 19cm',
+    habitat: '城市公园、林地、村落',
+    call: '响亮多变的啾鸣声',
+    description: '白头鹎是中国最常见的城市鸟类之一。头顶黑色，后头及枕部白色，形成明显的白色领环。上体橄榄绿色，下体灰白色。性活泼，不甚畏人，常于树冠层鸣唱，杂食性。',
+    distribution: ['全国大部分城市', '华东地区', '华南地区'],
+    observations: 2147,
+    rarity: 1,
+  },
+];
+
+const RECENT_SIGHTINGS = [
+  { id: 's1', birdId: 'crested-ibis', location: '陕西·洋县华阳镇', date: '8月15日 06:42', notes: '清晨稻田边发现3只成鸟带1只幼鸟觅食，距离约20米。', likes: 47 },
+  { id: 's2', birdId: 'kingfisher', location: '杭州·西溪湿地', date: '8月14日 14:18', notes: '翠鸟在芦苇间快速俯冲捕鱼，连续成功3次。', likes: 23 },
+  { id: 's3', birdId: 'hoopoe', location: '北京·奥林匹克森林公园', date: '8月13日 09:05', notes: '草坪上戴胜展开羽冠，疑似发现了蚁群。', likes: 31 },
+  { id: 's4', birdId: 'spoon-sandpiper', location: '江苏·盐城珍禽保护区', date: '8月12日 07:30', notes: '秋季迁徙先头部队到达，记录到2只成鸟繁殖羽。', likes: 128 },
+];
+
+const TABS = [
+  { key: 'home', label: '首页', icon: 'home' },
+  { key: 'map', label: '分布', icon: 'map' },
+  { key: 'record', label: '记录', icon: 'plus' },
+  { key: 'field', label: '图鉴', icon: 'book' },
+  { key: 'profile', label: '我的', icon: 'user' },
+];
+
+const SPEC_TOKENS = {
+  color: [
+    { name: '雾白', hex: '#F4F1E9', role: '主底色' },
+    { name: '深松绿', hex: '#22402F', role: '主色/文字' },
+    { name: '赭橙', hex: '#D97E36', role: '强调色' },
+    { name: '墨黑', hex: '#12150F', role: '正文' },
+    { name: '灰绿', hex: '#8CA08B', role: '辅助/次要文字' },
+    { name: '松针浅绿', hex: '#E0E7DB', role: '分隔线/底色' },
+  ],
+  font: [
+    { name: 'Noto Serif SC', role: '标题/品牌展示', weight: '900 / 600' },
+    { name: 'Noto Sans SC', role: '正文/界面文字', weight: '300–700' },
+    { name: 'Inter', role: '数字/拉丁字母', weight: '400–600' },
+  ],
+};
+
+const API_DOCS = [
+  { method: 'GET', path: '/api/v2/birds', desc: '获取鸟种列表（支持分页与筛选）', params: ['page', 'limit', 'family', 'status'] },
+  { method: 'GET', path: '/api/v2/birds/:id', desc: '获取单个鸟种详细信息', params: ['id'] },
+  { method: 'GET', path: '/api/v2/sightings', desc: '获取观测记录时间线', params: ['page', 'birdId', 'location', 'date_from', 'date_to'] },
+  { method: 'POST', path: '/api/v2/sightings', desc: '提交新的观测记录', params: ['birdId', 'location', 'time', 'photos', 'notes'] },
+  { method: 'GET', path: '/api/v2/map/distribution', desc: '获取鸟类分布热力图数据', params: ['birdId', 'zoom', 'bounds'] },
+  { method: 'POST', path: '/api/v2/identify', desc: 'AI 鸟类识别（上传图片）', params: ['image', 'location'] },
+];
+
+/* ──────────────────────────────────────────────────────────────
+   ICONS (inline SVG)
+   ────────────────────────────────────────────────────────────── */
+const Icon = ({ name, size = 22, color = '#22402F', stroke = 2 }) => {
+  const icons = {
+    home: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1V9.5z"/></svg>,
+    map: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16"/><path d="M15 5v16"/></svg>,
+    plus: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>,
+    book: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>,
+    user: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>,
+    back: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>,
+    search: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>,
+    heart: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>,
+    heartFilled: <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>,
+    location: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-7-7.5-7-12a7 7 0 1 1 14 0c0 4.5-7 12-7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>,
+    clock: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>,
+    camera: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2v11z"/><circle cx="12" cy="13" r="4"/></svg>,
+    mic: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg>,
+    star: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1L12 2z"/></svg>,
+    chevron: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>,
+    close: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>,
+    settings: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>,
+    share: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>,
+    check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>,
+    filter: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>,
+    pin: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s7-7 7-12a7 7 0 1 0-14 0c0 5 7 12 7 12z"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+/* ──────────────────────────────────────────────────────────────
+   RIPPLE HELPER
+   ────────────────────────────────────────────────────────────── */
+function createRipple(e) {
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const size = Math.max(rect.width, rect.height);
+  const wave = document.createElement('span');
+  wave.className = 'ripple-wave';
+  wave.style.width = wave.style.height = size + 'px';
+  wave.style.left = x - size / 2 + 'px';
+  wave.style.top = y - size / 2 + 'px';
+  btn.appendChild(wave);
+  setTimeout(() => wave.remove(), 600);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   HERO PAGE (Home)
+   ────────────────────────────────────────────────────────────── */
+function HomePage({ onBirdClick, onSightingClick }) {
+  const [scrolled, setScrolled] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const pageRef = useRef(null);
+  const startY = useRef(0);
+  const pullDist = useRef(0);
+  const heroImg = '/spark/app/app_17c8angpxrm/runtime/api/v1/storage/object/bucket_aadkqhpsbwudu_static/static%2Faadkqhju76ibs_ve_miaoda';
+
+  const handleScroll = (e) => {
+    const s = e.target.scrollTop;
+    setScrolled(s);
+  };
+
+  const handleTouchStart = (e) => {
+    if (pageRef.current?.scrollTop <= 0) {
+      startY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (pageRef.current?.scrollTop <= 0 && startY.current) {
+      const dy = e.touches[0].clientY - startY.current;
+      if (dy > 0) {
+        pullDist.current = Math.min(dy * 0.5, 80);
+        setPulling(true);
+        if (pageRef.current) pageRef.current.style.transform = `translateY(${pullDist.current}px)`;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDist.current > 60) {
+      setRefreshing(true);
+      if (pageRef.current) pageRef.current.style.transform = 'translateY(50px)';
+      setTimeout(() => {
+        setRefreshing(false);
+        setPulling(false);
+        pullDist.current = 0;
+        if (pageRef.current) pageRef.current.style.transform = '';
+      }, 1500);
+    } else {
+      setPulling(false);
+      pullDist.current = 0;
+      if (pageRef.current) pageRef.current.style.transform = '';
+    }
+    startY.current = 0;
+  };
+
+  const heroParallax = Math.min(scrolled * 0.4, 120);
+  const titleOpacity = Math.max(1 - scrolled / 200, 0);
+  const titleScale = 1 - Math.min(scrolled / 800, 0.15);
+
+  return (
+    <div
+      ref={pageRef}
+      className="page-content"
+      onScroll={handleScroll}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ scrollBehavior: 'smooth' }}
+    >
+      {/* Pull to refresh indicator */}
+      <div className={'pull-indicator ' + (refreshing ? 'show' : pulling ? 'show' : '')}>
+        {refreshing ? <><div className="pull-spinner"></div>正在刷新观测数据…</> :
+         pulling ? '松开刷新' : ''}
+      </div>
+
+      {/* Hero section with parallax */}
+      <div style={{ position: 'relative', height: 380, overflow: 'hidden' }}>
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `url(${heroImg})`,
+          backgroundSize: 'cover', backgroundPosition: 'center',
+          transform: `translateY(${heroParallax}px) scale(1.1)`,
+          transition: 'transform .1s linear',
+        }} />
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(180deg, rgba(34,64,47,.15) 0%, rgba(18,21,15,.6) 100%)',
+        }} />
+        {/* Top nav with search */}
+        <div className="safe-top" style={{ padding: '8px 20px 0', position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ color: '#fff', fontFamily: "'Noto Serif SC', serif", fontWeight: 900, fontSize: 20, letterSpacing: 1.5 }}>
+            羽迹
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,.2)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="search" size={18} color="#fff" />
+            </div>
+          </div>
+        </div>
+        {/* Hero title */}
+        <div style={{
+          position: 'absolute', bottom: 24, left: 20, right: 20,
+          opacity: titleOpacity, transform: `scale(${titleScale})`, transformOrigin: 'left bottom',
+          transition: 'opacity .1s linear',
+        }}>
+          <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 12, letterSpacing: 2, marginBottom: 6 }} className="stagger-item" style={{animationDelay: '.2s'}}>
+            NATURE · 2026 年 8 月
+          </div>
+          <div style={{ color: '#fff', fontFamily: "'Noto Serif SC', serif", fontWeight: 900, fontSize: 32, lineHeight: 1.2, letterSpacing: 1.5 }} className="stagger-item" style={{animationDelay: '.3s'}}>
+            晨雾中的飞羽
+          </div>
+          <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, marginTop: 6, maxWidth: 260 }} className="stagger-item" style={{animationDelay: '.4s'}}>
+            今日推荐观测地：秦岭洋县，朱鹮繁殖期最后一周
+          </div>
+        </div>
+      </div>
+
+      {/* Quick stats */}
+      <div style={{ padding: '16px 20px', display: 'flex', gap: 12 }}>
+        {[
+          { label: '本周观测', value: 23, unit: '次', color: '#22402F' },
+          { label: '新记录鸟种', value: 3, unit: '种', color: '#D97E36' },
+          { label: '累计图鉴', value: 147, unit: '种', color: '#22402F' },
+        ].map((s, i) => (
+          <div key={i} className="stagger-item card-paper" style={{
+            flex: 1, padding: '14px 12px',
+            animationDelay: `${0.4 + i * 0.1}s`,
+          }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: s.color, fontFamily: "'Inter', sans-serif" }} className="count-pulse">
+              {s.value}<span style={{ fontSize: 13, fontWeight: 500, marginLeft: 2, color: s.color, opacity: .7 }}>{s.unit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 4 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Featured bird - large featured card */}
+      <div style={{ padding: '4px 20px 16px' }}>
+        <div className="section-label stagger-item" style={{ animationDelay: '.7s', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 18, fontFamily: "'Noto Serif SC', serif", fontWeight: 700, color: '#22402F' }}>今日焦点</span>
+          <span style={{ fontSize: 12, color: '#D97E36' }}>查看全部 →</span>
+        </div>
+        <div
+          className="stagger-item tilt-card"
+          style={{ animationDelay: '.8s', position: 'relative', borderRadius: 20, overflow: 'hidden', cursor: 'pointer' }}
+          onClick={() => onBirdClick(BIRDS[0])}
+          onMouseMove={(e) => {
+            const el = e.currentTarget;
+            const rect = el.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width - 0.5;
+            const y = (e.clientY - rect.top) / rect.height - 0.5;
+            el.style.transform = `perspective(800px) rotateY(${x * 6}deg) rotateX(${-y * 6}deg)`;
+          }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = ''; }}
+        >
+          <div style={{ height: 220, backgroundImage: `url(${BIRDS[0].img})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, transparent 40%, rgba(18,21,15,.85) 100%)',
+          }} />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 18px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 600, color: '#fff',
+                background: 'rgba(217,126,54,.9)', padding: '3px 10px', borderRadius: 999,
+                letterSpacing: .5,
+              }}>濒危物种</span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.7)', letterSpacing: 1 }}>鹮科</span>
+            </div>
+            <div style={{ color: '#fff', fontFamily: "'Noto Serif SC', serif", fontWeight: 900, fontSize: 26, letterSpacing: 1 }}>
+              {BIRDS[0].name}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,.6)', fontSize: 12, fontStyle: 'italic', marginTop: 2 }}>
+              {BIRDS[0].latin}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,.8)', fontSize: 12, marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="location" size={13} color="rgba(255,255,255,.7)" />
+              陕西洋县 · 127 次观测记录
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent sightings - timeline feed */}
+      <div style={{ padding: '4px 20px 100px' }}>
+        <div className="section-label stagger-item" style={{ animationDelay: '.9s', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 18, fontFamily: "'Noto Serif SC', serif", fontWeight: 700, color: '#22402F' }}>最新观测</span>
+          <span style={{ fontSize: 12, color: '#D97E36' }}>时间线 →</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {RECENT_SIGHTINGS.map((s, i) => {
+            const bird = BIRDS.find(b => b.id === s.birdId);
+            return (
+              <div
+                key={s.id}
+                className="stagger-item card-paper"
+                style={{
+                  animationDelay: `${1 + i * 0.1}s`,
+                  padding: 14, display: 'flex', gap: 12, cursor: 'pointer',
+                  transition: 'transform .2s ease, box-shadow .2s ease',
+                }}
+                onClick={() => onSightingClick(s)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(34,64,47,.12)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = '';
+                  e.currentTarget.style.boxShadow = '';
+                }}
+              >
+                <div style={{
+                  width: 64, height: 64, borderRadius: 12, flexShrink: 0,
+                  backgroundImage: `url(${bird.img})`, backgroundSize: 'cover', backgroundPosition: 'center',
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 600, color: '#22402F', fontSize: 15 }}>{bird.name}</span>
+                    <span style={{ fontSize: 11, color: '#8CA08B' }}>{s.date.split(' ')[0]}</span>
+                  </div>
+                  <div style={{ fontSize: 10, fontStyle: 'italic', color: '#8CA08B', marginTop: 1 }}>{bird.latin}</div>
+                  <div style={{ fontSize: 12, color: '#5A6B59', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Icon name="location" size={12} color="#8CA08B" />
+                    {s.location}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#5A6B59', marginTop: 4, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {s.notes}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   MAP PAGE — distribution map with pulse markers
+   ────────────────────────────────────────────────────────────── */
+function MapPage({ onBirdClick }) {
+  const [selectedBird, setSelectedBird] = useState(BIRDS[0].id);
+  const [showFilter, setShowFilter] = useState(false);
+  const markers = useMemo(() => [
+    { x: '35%', y: '42%', birdId: 'crested-ibis' },
+    { x: '48%', y: '55%', birdId: 'kingfisher' },
+    { x: '55%', y: '30%', birdId: 'hoopoe' },
+    { x: '62%', y: '58%', birdId: 'red-billed-magpie' },
+    { x: '65%', y: '45%', birdId: 'spoon-sandpiper' },
+    { x: '70%', y: '50%', birdId: 'chinese-bulbul' },
+    { x: '42%', y: '65%', birdId: 'kingfisher' },
+    { x: '28%', y: '52%', birdId: 'hoopoe' },
+  ], []);
+
+  const bird = BIRDS.find(b => b.id === selectedBird);
+  const filteredMarkers = markers.filter(m => m.birdId === selectedBird);
+  const allMarkers = selectedBird === 'all' ? markers : filteredMarkers;
+
+  return (
+    <div className="page-content safe-top" style={{ background: '#E8E3D5' }}>
+      {/* Large title nav */}
+      <div style={{ padding: '4px 20px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div className="nav-large" style={{ padding: 0, fontSize: 30 }}>分布地图</div>
+          <div className="nav-subtitle" style={{ padding: 0 }}>实时观测分布 · 全国 3,241 个观测点</div>
+        </div>
+        <div
+          style={{
+            width: 40, height: 40, borderRadius: '50%',
+            background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 12px rgba(34,64,47,.1)',
+            cursor: 'pointer',
+          }}
+          onClick={() => setShowFilter(true)}
+        >
+          <Icon name="filter" size={18} color="#22402F" />
+        </div>
+      </div>
+
+      {/* Bird filter chips */}
+      <div style={{ padding: '0 20px 12px', display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {[{ id: 'all', name: '全部' }, ...BIRDS].map((b, i) => (
+          <div
+            key={b.id}
+            className="stagger-item ripple-btn"
+            style={{
+              animationDelay: `${i * 0.05}s`,
+              flexShrink: 0,
+              padding: '8px 16px',
+              borderRadius: 999,
+              fontSize: 13, fontWeight: 500,
+              background: selectedBird === b.id ? '#22402F' : '#fff',
+              color: selectedBird === b.id ? '#F4F1E9' : '#22402F',
+              cursor: 'pointer',
+              transition: 'all .25s ease',
+              boxShadow: selectedBird === b.id ? '0 4px 12px rgba(34,64,47,.3)' : '0 2px 8px rgba(34,64,47,.06)',
+            }}
+            onClick={(e) => { createRipple(e); setSelectedBird(b.id); }}
+          >
+            {b.name}
+          </div>
+        ))}
+      </div>
+
+      {/* Map canvas */}
+      <div style={{ margin: '8px 20px 0', borderRadius: 20, overflow: 'hidden', height: 400, position: 'relative', background: '#D9DCC9' }}>
+        {/* Simplified stylized map background */}
+        <svg viewBox="0 0 400 300" style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }} preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <pattern id="mapGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(34,64,47,.08)" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="400" height="300" fill="url(#mapGrid)" />
+          {/* Stylized China map shape */}
+          <path d="M 80 80 Q 120 60 180 70 Q 240 50 300 70 Q 340 90 350 130 Q 360 180 340 220 Q 320 250 280 260 Q 240 270 200 250 Q 160 260 120 240 Q 80 230 60 190 Q 40 150 60 110 Q 70 90 80 80 Z"
+            fill="#E0E7DB" stroke="#8CA08B" strokeWidth="1" />
+          {/* Rivers */}
+          <path d="M 100 150 Q 150 160 200 140 Q 250 130 320 150" fill="none" stroke="#A8C8E6" strokeWidth="2" opacity=".6"/>
+          <path d="M 150 200 Q 200 210 260 200 Q 300 195 340 210" fill="none" stroke="#A8C8E6" strokeWidth="1.5" opacity=".5"/>
+        </svg>
+        {/* Markers */}
+        {allMarkers.map((m, i) => {
+          const b = BIRDS.find(bd => bd.id === m.birdId);
+          return (
+            <div
+              key={i}
+              className="map-pulse"
+              style={{ left: m.x, top: m.y }}
+              onClick={() => onBirdClick(b)}
+            />
+          );
+        })}
+        {/* Map controls */}
+        <div style={{ position: 'absolute', right: 14, bottom: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {['+', '−', '⟲'].map((c, i) => (
+            <div key={i} style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18, fontWeight: 600, color: '#22402F',
+              boxShadow: '0 2px 8px rgba(34,64,47,.15)',
+              cursor: 'pointer',
+            }}>{c}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Selected bird summary card */}
+      <div className="stagger-item" style={{ animationDelay: '.3s', margin: '16px 20px 100px' }}>
+        <div className="card-paper" style={{ padding: 16, display: 'flex', gap: 14 }} onClick={() => onBirdClick(bird)}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 14, flexShrink: 0,
+            backgroundImage: `url(${bird.img})`, backgroundSize: 'cover', backgroundPosition: 'center',
+          }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: '#22402F', fontFamily: "'Noto Serif SC', serif" }}>{bird.name}</span>
+              <span style={{ fontSize: 10, color: '#fff', background: bird.statusColor, padding: '2px 8px', borderRadius: 999 }}>{bird.status}</span>
+            </div>
+            <div style={{ fontSize: 11, fontStyle: 'italic', color: '#8CA08B' }}>{bird.latin}</div>
+            <div style={{ fontSize: 12, color: '#5A6B59', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Icon name="location" size={12} color="#D97E36" />
+                {bird.distribution.length} 个分布地
+              </span>
+              <span style={{ color: '#E0E7DB' }}>|</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Icon name="eye" size={12} color="#D97E36" />
+                {bird.observations} 次观测
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter bottom sheet */}
+      {showFilter && (
+        <>
+          <div className="sheet-backdrop" onClick={() => setShowFilter(false)} />
+          <div className="bottom-sheet" style={{ padding: '0 20px 30px' }}>
+            <div className="sheet-handle" />
+            <div style={{ fontSize: 18, fontWeight: 700, padding: '12px 0', fontFamily: "'Noto Serif SC', serif", color: '#22402F' }}>筛选条件</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 20 }}>
+              {['保护级别', '栖息环境', '观察季节', '分布区域'].map((f, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: 13, color: '#8CA08B', marginBottom: 8 }}>{f}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {['全部', '选项一', '选项二', '选项三'].map((o, j) => (
+                      <div key={j} style={{
+                        padding: '6px 14px', borderRadius: 999, fontSize: 12,
+                        background: j === 0 ? '#22402F' : '#E0E7DB',
+                        color: j === 0 ? '#F4F1E9' : '#5A6B59',
+                        cursor: 'pointer',
+                      }}>{o}</div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1, padding: '14px 0', textAlign: 'center', borderRadius: 14, background: '#E0E7DB', color: '#22402F', fontSize: 15, fontWeight: 500, cursor: 'pointer' }} onClick={() => setShowFilter(false)}>重置</div>
+              <div style={{ flex: 2, padding: '14px 0', textAlign: 'center', borderRadius: 14, background: '#22402F', color: '#F4F1E9', fontSize: 15, fontWeight: 500, cursor: 'pointer' }} onClick={() => setShowFilter(false)}>应用筛选</div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   BIRD DETAIL PAGE — full-screen hero with parallax
+   ────────────────────────────────────────────────────────────── */
+function BirdDetailPage({ bird, onBack }) {
+  const [scrolled, setScrolled] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const pageRef = useRef(null);
+  const parallax = Math.min(scrolled * 0.5, 150);
+  const headerOpacity = Math.min(scrolled / 250, 1);
+
+  return (
+    <div
+      ref={pageRef}
+      className="page-content"
+      onScroll={(e) => setScrolled(e.target.scrollTop)}
+      style={{ background: '#F4F1E9' }}
+    >
+      {/* Hero image with parallax */}
+      <div style={{ position: 'relative', height: 420, overflow: 'hidden' }}>
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `url(${bird.img})`,
+          backgroundSize: 'cover', backgroundPosition: 'center',
+          transform: `translateY(${parallax}px) scale(1.1)`,
+        }} />
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(180deg, rgba(18,21,15,.3) 0%, transparent 40%, rgba(18,21,15,.7) 100%)',
+        }} />
+
+        {/* Collapsing nav bar */}
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10,
+          paddingTop: 'var(--ios-safe-top, 54px)',
+          paddingBottom: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingLeft: 16, paddingRight: 16,
+          background: headerOpacity > .5 ? 'rgba(244,241,233,.92)' : 'transparent',
+          backdropFilter: headerOpacity > .5 ? 'blur(20px)' : 'none',
+          transition: 'background .3s ease',
+        }}>
+          <div
+            style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: 'rgba(255,255,255,.25)', backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              border: headerOpacity > .5 ? '1px solid rgba(34,64,47,.1)' : 'none',
+            }}
+            onClick={onBack}
+          >
+            <Icon name="back" size={18} color={headerOpacity > .5 ? '#22402F' : '#fff'} />
+          </div>
+          <div style={{
+            fontSize: 17, fontWeight: 700, color: headerOpacity > .5 ? '#22402F' : 'transparent',
+            transition: 'color .3s ease',
+            fontFamily: "'Noto Serif SC', serif",
+          }}>
+            {bird.name}
+          </div>
+          <div
+            className="heart-icon liked"
+            style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: 'rgba(255,255,255,.25)', backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              border: headerOpacity > .5 ? '1px solid rgba(34,64,47,.1)' : 'none',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setLiked(!liked);
+            }}
+          >
+            <Icon name={liked ? 'heartFilled' : 'heart'} size={18} color={liked ? '#D97E36' : (headerOpacity > .5 ? '#22402F' : '#fff')} />
+          </div>
+        </div>
+
+        {/* Hero title */}
+        <div style={{ position: 'absolute', bottom: 24, left: 20, right: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: '#fff',
+              background: bird.statusColor, padding: '4px 12px', borderRadius: 999,
+            }}>{bird.status}</span>
+            <span className="glass-pill" style={{ color: '#fff', background: 'rgba(255,255,255,.2)' }}>{bird.family}</span>
+          </div>
+          <div style={{ color: '#fff', fontFamily: "'Noto Serif SC', serif", fontWeight: 900, fontSize: 36, letterSpacing: 2 }}>
+            {bird.name}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 14, fontStyle: 'italic', marginTop: 2 }}>
+            {bird.latin}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ padding: '20px 20px 0', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        {[
+          { label: '体长', value: bird.size.split(' ')[1], unit: 'cm' },
+          { label: '观测次数', value: bird.observations, unit: '次' },
+          { label: '稀有度', value: bird.rarity, unit: '★' },
+        ].map((s, i) => (
+          <div key={i} className="card-paper" style={{ padding: '14px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#22402F', fontFamily: "'Inter', sans-serif" }}>
+              {s.value}<span style={{ fontSize: 12, fontWeight: 500, color: '#8CA08B', marginLeft: 2 }}>{s.unit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 4 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bird call section with sound wave */}
+      <div style={{ margin: '16px 20px 0' }}>
+        <div className="card-paper" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#22402F' }}>鸟鸣声 · {bird.call}</div>
+            <div
+              style={{
+                width: 40, height: 40, borderRadius: '50%',
+                background: '#D97E36', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(217,126,54,.3)',
+                transition: 'transform .2s ease',
+              }}
+              onClick={() => setPlaying(!playing)}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = ''}
+            >
+              <Icon name="mic" size={18} color="#fff" />
+            </div>
+          </div>
+          <div className="sound-wave" style={{ height: 32 }}>
+            {Array.from({ length: 32 }).map((_, i) => (
+              <div
+                key={i}
+                className="sound-bar"
+                style={{
+                  animationDelay: `${i * 0.04}s`,
+                  animationDuration: `${0.8 + Math.random() * 0.6}s`,
+                  opacity: playing ? 1 : .3,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 10, fontFamily: "'Noto Serif SC', serif" }}>物种简介</div>
+        <div style={{ fontSize: 14, color: '#5A6B59', lineHeight: 1.7, textAlign: 'justify' }}>
+          {bird.description}
+        </div>
+      </div>
+
+      {/* Distribution */}
+      <div style={{ padding: '24px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>主要分布地</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {bird.distribution.map((d, i) => (
+            <div key={i} className="card-paper" style={{
+              padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(217,126,54,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="pin" size={16} color="#D97E36" />
+              </div>
+              <div style={{ flex: 1, fontSize: 14, color: '#22402F', fontWeight: 500 }}>{d}</div>
+              <Icon name="chevron" size={16} color="#8CA08B" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Habitat */}
+      <div style={{ padding: '24px 20px 100px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 10, fontFamily: "'Noto Serif SC', serif" }}>栖息环境</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {bird.habitat.split('、').map((h, i) => (
+            <div key={i} style={{
+              padding: '8px 16px', borderRadius: 999,
+              background: 'rgba(34,64,47,.08)', color: '#22402F',
+              fontSize: 13, fontWeight: 500,
+            }}>
+              {h}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom action bar */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        background: 'rgba(244,241,233,.95)', backdropFilter: 'blur(20px)',
+        padding: '12px 20px calc(12px + var(--ios-safe-bottom, 34px))',
+        display: 'flex', gap: 12,
+        borderTop: '1px solid rgba(34,64,47,.08)',
+        zIndex: 5,
+      }}>
+        <div style={{
+          flex: 1, padding: '14px 0', textAlign: 'center',
+          borderRadius: 14, background: '#22402F', color: '#F4F1E9',
+          fontSize: 15, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+          <Icon name="camera" size={18} color="#F4F1E9" />
+          记录观测
+        </div>
+        <div style={{
+          width: 50, height: 'auto', aspectRatio: 1, borderRadius: 14,
+          background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: '1px solid rgba(34,64,47,.08)',
+          cursor: 'pointer',
+        }}>
+          <Icon name="share" size={18} color="#22402F" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   FIELD GUIDE PAGE — grid gallery layout
+   ────────────────────────────────────────────────────────────── */
+function FieldGuidePage({ onBirdClick }) {
+  const [activeCat, setActiveCat] = useState('all');
+  const categories = ['全部', '涉禽', '鸣禽', '猛禽', '攀禽', '陆禽'];
+
+  return (
+    <div className="page-content safe-top" style={{ background: '#F4F1E9' }}>
+      <div className="nav-large">图鉴</div>
+      <div className="nav-subtitle">已收录 1,247 种鸟类</div>
+
+      {/* Search bar */}
+      <div style={{ margin: '0 20px 16px', padding: '10px 14px', background: '#fff', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 2px 8px rgba(34,64,47,.04)' }}>
+        <Icon name="search" size={18} color="#8CA08B" />
+        <span style={{ color: '#8CA08B', fontSize: 14 }}>搜索鸟种、鸣声或栖息地…</span>
+        <div style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 8, background: 'rgba(217,126,54,.12)', color: '#D97E36', fontSize: 11, fontWeight: 500 }}>AI 识别</div>
+      </div>
+
+      {/* Category tabs */}
+      <div style={{ padding: '0 20px 12px', display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {categories.map((c, i) => (
+          <div
+            key={i}
+            className="ripple-btn"
+            style={{
+              flexShrink: 0, padding: '8px 18px', borderRadius: 999,
+              fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              background: activeCat === c ? '#22402F' : 'rgba(34,64,47,.08)',
+              color: activeCat === c ? '#F4F1E9' : '#22402F',
+              transition: 'all .25s ease',
+            }}
+            onClick={(e) => { createRipple(e); setActiveCat(c); }}
+          >
+            {c}
+          </div>
+        ))}
+      </div>
+
+      {/* Masonry grid */}
+      <div style={{ padding: '8px 20px 100px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {BIRDS.map((b, i) => (
+            <div
+              key={b.id}
+              className="stagger-item"
+              style={{
+                animationDelay: `${i * 0.08}s`,
+                borderRadius: 16, overflow: 'hidden',
+                background: '#fff', cursor: 'pointer',
+                boxShadow: '0 2px 12px rgba(34,64,47,.06)',
+                gridRow: i % 3 === 1 ? 'span 2' : 'span 1.5',
+                transition: 'transform .2s ease',
+              }}
+              onClick={() => onBirdClick(b)}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = ''; }}
+            >
+              <div style={{
+                height: i % 3 === 1 ? 200 : 130,
+                backgroundImage: `url(${b.img})`, backgroundSize: 'cover', backgroundPosition: 'center',
+              }} />
+              <div style={{ padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#22402F' }}>{b.name}</span>
+                  <span style={{
+                    fontSize: 9, color: '#fff',
+                    background: b.statusColor, padding: '2px 6px', borderRadius: 4,
+                  }}>{b.status.split(' ')[1]}</span>
+                </div>
+                <div style={{ fontSize: 10, fontStyle: 'italic', color: '#8CA08B', marginTop: 2 }}>{b.latin}</div>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Icon name="location" size={10} color="#8CA08B" />
+                  {b.observations} 次
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Load more */}
+        <div style={{ textAlign: 'center', padding: '20px 0', color: '#8CA08B', fontSize: 13 }}>
+          — 已加载全部 6 种 —
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   PROFILE PAGE — ring progress + achievements
+   ────────────────────────────────────────────────────────────── */
+function ProfilePage() {
+  const [tab, setTab] = useState('achievements');
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const progress = 147 / 500; // 147 species out of 500 goal
+  const offset = circumference * (1 - progress);
+
+  const achievements = [
+    { id: 1, name: '飞羽初心者', desc: '记录首个鸟种', icon: '🌟', earned: true },
+    { id: 2, name: '清晨守望者', desc: '黎明时段记录 10 次', icon: '🌅', earned: true },
+    { id: 3, name: '朱鹮守护者', desc: '记录濒危物种朱鹮', icon: '🦩', earned: true },
+    { id: 4, name: '百鸟集', desc: '图鉴累计 100 种', icon: '📖', earned: true },
+    { id: 5, name: '夜行猎手', desc: '记录鸮形目鸟类', icon: '🦉', earned: false },
+    { id: 6, name: '海疆巡礼', desc: '沿海记录 20 种水鸟', icon: '🌊', earned: false },
+  ];
+
+  return (
+    <div className="page-content" style={{ background: '#F4F1E9' }}>
+      {/* Header with profile */}
+      <div style={{
+        position: 'relative', padding: 'calc(var(--ios-safe-top, 54px) + 20px) 20px 30px',
+        background: 'linear-gradient(135deg, #22402F 0%, #2D5540 100%)',
+        color: '#F4F1E9',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{
+            width: 68, height: 68, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #D97E36, #C46928)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 28, fontWeight: 700, color: '#fff',
+            fontFamily: "'Noto Serif SC', serif",
+            border: '3px solid rgba(255,255,255,.2)',
+          }}>
+            羽
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>林间观鸟人</div>
+            <div style={{ fontSize: 12, opacity: .7, marginTop: 2 }}>观鸟第 387 天 · Lv.7 飞羽学徒</div>
+            <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,.2)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: '67%', height: '100%', background: '#D97E36', borderRadius: 2 }} />
+              </div>
+              <span style={{ fontSize: 10, opacity: .7 }}>67%</span>
+            </div>
+          </div>
+          <div style={{
+            width: 38, height: 38, borderRadius: '50%',
+            background: 'rgba(255,255,255,.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Icon name="settings" size={18} color="#F4F1E9" />
+          </div>
+        </div>
+      </div>
+
+      {/* Ring progress section */}
+      <div style={{ margin: '-20px 20px 0', position: 'relative', zIndex: 2 }}>
+        <div className="card-paper" style={{ padding: 24, display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ position: 'relative', width: 160, height: 160, flexShrink: 0 }}>
+            <svg className="ring-progress" width={160} height={160} viewBox="0 0 160 160">
+              <circle cx={80} cy={80} r={radius} fill="none" stroke="#E0E7DB" strokeWidth={12} />
+              <circle
+                cx={80} cy={80} r={radius} fill="none"
+                stroke="#D97E36" strokeWidth={12} strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                transform="rotate(-90 80 80)"
+              />
+            </svg>
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: '#22402F', fontFamily: "'Inter', sans-serif" }} className="count-pulse">147</div>
+              <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 2 }}>目标 500 种</div>
+            </div>
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[
+              { label: '总观测次数', value: 1842, color: '#22402F' },
+              { label: '本年新种', value: 53, color: '#D97E36' },
+              { label: '珍稀鸟种', value: 7, color: '#C4392B' },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#8CA08B' }}>{s.label}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontFamily: "'Inter', sans-serif" }}>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div style={{ margin: '20px 20px 0', display: 'flex', background: 'rgba(34,64,47,.08)', borderRadius: 14, padding: 4 }}>
+        {[
+          { key: 'achievements', label: '成就徽章' },
+          { key: 'history', label: '观测历史' },
+          { key: 'favorites', label: '我的收藏' },
+        ].map(t => (
+          <div
+            key={t.key}
+            className="ripple-btn"
+            style={{
+              flex: 1, padding: '10px 0', textAlign: 'center', borderRadius: 10,
+              fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              background: tab === t.key ? '#fff' : 'transparent',
+              color: tab === t.key ? '#22402F' : '#8CA08B',
+              boxShadow: tab === t.key ? '0 2px 8px rgba(34,64,47,.08)' : 'none',
+              transition: 'all .25s ease',
+            }}
+            onClick={(e) => { createRipple(e); setTab(t.key); }}
+          >
+            {t.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Achievements grid */}
+      {tab === 'achievements' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {achievements.map((a, i) => (
+              <div
+                key={a.id}
+                className="stagger-item card-paper"
+                style={{
+                  animationDelay: `${i * 0.06}s`,
+                  padding: '14px 10px', textAlign: 'center',
+                  opacity: a.earned ? 1 : .4,
+                  filter: a.earned ? 'none' : 'grayscale(1)',
+                  transition: 'transform .2s ease',
+                }}
+                onMouseEnter={(e) => a.earned && (e.currentTarget.style.transform = 'scale(1.05)')}
+                onMouseLeave={(e) => e.currentTarget.style.transform = ''}
+              >
+                <div style={{ fontSize: 32, marginBottom: 6 }}>{a.icon}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#22402F' }}>{a.name}</div>
+                <div style={{ fontSize: 10, color: '#8CA08B', marginTop: 3, lineHeight: 1.3 }}>{a.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {RECENT_SIGHTINGS.map((s, i) => {
+              const bird = BIRDS.find(b => b.id === s.birdId);
+              return (
+                <div key={s.id} className="stagger-item card-paper" style={{
+                  animationDelay: `${i * 0.05}s`,
+                  padding: 12, display: 'flex', gap: 12,
+                }}>
+                  <div style={{
+                    width: 50, height: 50, borderRadius: 10, flexShrink: 0,
+                    backgroundImage: `url(${bird.img})`, backgroundSize: 'cover', backgroundPosition: 'center',
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 600, color: '#22402F', fontSize: 14 }}>{bird.name}</span>
+                      <span style={{ fontSize: 11, color: '#8CA08B' }}>{s.date}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Icon name="location" size={10} color="#8CA08B" /> {s.location}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'favorites' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {BIRDS.slice(0, 4).map((b, i) => (
+              <div key={b.id} className="stagger-item" style={{
+                animationDelay: `${i * 0.08}s`,
+                borderRadius: 14, overflow: 'hidden', background: '#fff',
+                boxShadow: '0 2px 8px rgba(34,64,47,.06)',
+                cursor: 'pointer',
+              }}>
+                <div style={{ height: 110, backgroundImage: `url(${b.img})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                <div style={{ padding: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#22402F' }}>{b.name}</div>
+                  <div style={{ fontSize: 10, fontStyle: 'italic', color: '#8CA08B' }}>{b.latin}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   RECORD PAGE — FAB + quick record form (modal style)
+   ────────────────────────────────────────────────────────────── */
+function RecordPage() {
+  const [mode, setMode] = useState('photo'); // photo, audio, manual
+
+  return (
+    <div className="page-content safe-top" style={{ background: '#F4F1E9' }}>
+      <div className="nav-large">记录观测</div>
+      <div className="nav-subtitle">快速添加你的观鸟记录</div>
+
+      {/* Record mode selector */}
+      <div style={{ margin: '8px 20px 20px', display: 'flex', gap: 10 }}>
+        {[
+          { key: 'photo', label: '拍照识别', icon: 'camera', desc: 'AI 自动识别' },
+          { key: 'audio', label: '录音识别', icon: 'mic', desc: '通过鸣声识别' },
+          { key: 'manual', label: '手动记录', icon: 'book', desc: '手动选择鸟种' },
+        ].map(m => (
+          <div
+            key={m.key}
+            className="ripple-btn"
+            style={{
+              flex: 1, padding: '16px 10px', borderRadius: 16,
+              background: mode === m.key ? '#22402F' : '#fff',
+              cursor: 'pointer',
+              transition: 'all .25s ease',
+              boxShadow: mode === m.key ? '0 4px 16px rgba(34,64,47,.3)' : '0 2px 8px rgba(34,64,47,.06)',
+              textAlign: 'center',
+            }}
+            onClick={(e) => { createRipple(e); setMode(m.key); }}
+          >
+            <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center' }}>
+              <Icon name={m.icon} size={24} color={mode === m.key ? '#F4F1E9' : '#22402F'} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: mode === m.key ? '#F4F1E9' : '#22402F' }}>{m.label}</div>
+            <div style={{ fontSize: 10, opacity: .6, color: mode === m.key ? '#F4F1E9' : '#8CA08B', marginTop: 2 }}>{m.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Record area */}
+      {mode === 'photo' && (
+        <div style={{ margin: '0 20px', borderRadius: 20, overflow: 'hidden', background: '#22402F', aspectRatio: '4/3', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', color: '#F4F1E9' }}>
+            <div style={{ width: 80, height: 80, margin: '0 auto 16px', borderRadius: '50%', background: 'rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="camera" size={36} color="#F4F1E9" />
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>拍摄或上传照片</div>
+            <div style={{ fontSize: 12, opacity: .6, marginTop: 6 }}>AI 将自动识别鸟类品种</div>
+          </div>
+          {/* Viewfinder frame */}
+          <div style={{
+            position: 'absolute', top: 20, left: 20, right: 20, bottom: 20,
+            border: '2px solid rgba(255,255,255,.2)', borderRadius: 8,
+          }}>
+            {[['top', 'left'], ['top', 'right'], ['bottom', 'left'], ['bottom', 'right']].map(([t, l], i) => (
+              <div key={i} style={{
+                position: 'absolute', [t]: -1, [l]: -1,
+                width: 20, height: 20,
+                borderTop: t === 'top' ? '2px solid #D97E36' : 'none',
+                borderBottom: t === 'bottom' ? '2px solid #D97E36' : 'none',
+                borderLeft: l === 'left' ? '2px solid #D97E36' : 'none',
+                borderRight: l === 'right' ? '2px solid #D97E36' : 'none',
+              }} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {mode === 'audio' && (
+        <div style={{ margin: '0 20px', borderRadius: 20, background: '#fff', padding: 30, textAlign: 'center', boxShadow: '0 2px 12px rgba(34,64,47,.06)' }}>
+          <div style={{
+            width: 100, height: 100, margin: '0 auto 20px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #D97E36, #C46928)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(217,126,54,.4)',
+            cursor: 'pointer',
+            transition: 'transform .2s ease',
+          }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = ''}
+          >
+            <Icon name="mic" size={42} color="#fff" />
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#22402F' }}>点击开始录音</div>
+          <div style={{ fontSize: 13, color: '#8CA08B', marginTop: 6, marginBottom: 20 }}>录制鸟鸣声进行识别分析</div>
+          <div className="sound-wave" style={{ justifyContent: 'center', height: 40 }}>
+            {Array.from({ length: 20 }).map((_, i) => (
+              <div
+                key={i}
+                className="sound-bar"
+                style={{
+                  animationDelay: `${i * 0.05}s`,
+                  animationDuration: `${0.7 + Math.random() * 0.8}s`,
+                  width: 4,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {mode === 'manual' && (
+        <div style={{ margin: '0 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {[
+            { label: '选择鸟种', value: '白头鹎' },
+            { label: '观测地点', value: '北京 · 奥林匹克森林公园' },
+            { label: '观测时间', value: '2026-08-17 08:30' },
+            { label: '数量', value: '3 只' },
+            { label: '行为描述', value: '树冠层觅食…' },
+          ].map((f, i) => (
+            <div key={i} className="card-paper" style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 14, color: '#8CA08B' }}>{f.label}</span>
+              <span style={{ fontSize: 14, color: '#22402F', fontWeight: 500 }}>{f.value} <Icon name="chevron" size={14} color="#8CA08B" /></span>
+            </div>
+          ))}
+          <div style={{ height: 100, borderRadius: 16, background: '#fff', padding: 14, boxShadow: '0 2px 8px rgba(34,64,47,.06)' }}>
+            <div style={{ fontSize: 12, color: '#8CA08B', marginBottom: 8 }}>备注</div>
+            <div style={{ fontSize: 13, color: '#5A6B59' }}>记录天气、生境、行为细节等…</div>
+          </div>
+        </div>
+      )}
+
+      {/* Submit button */}
+      <div style={{ margin: '24px 20px 100px', padding: '16px 0', textAlign: 'center', borderRadius: 16, background: '#D97E36', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 20px rgba(217,126,54,.35)' }} className="ripple-btn" onClick={createRipple}>
+        保存记录
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   DESIGN SPEC PAGE
+   ────────────────────────────────────────────────────────────── */
+function DesignSpecPage() {
+  return (
+    <div className="page-content safe-top" style={{ background: '#F4F1E9' }}>
+      <div className="nav-large">设计规范</div>
+      <div className="nav-subtitle">羽迹 PlumeTrail · iOS 设计系统</div>
+
+      {/* Color tokens */}
+      <div style={{ padding: '8px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>色彩系统</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {SPEC_TOKENS.color.map((c, i) => (
+            <div key={i} className="stagger-item card-paper" style={{
+              animationDelay: `${i * 0.05}s`,
+              overflow: 'hidden',
+            }}>
+              <div style={{ height: 56, background: c.hex }} />
+              <div style={{ padding: '10px 12px' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#22402F' }}>{c.name}</div>
+                <div style={{ fontSize: 10, color: '#8CA08B', fontFamily: "'Inter', sans-serif", marginTop: 2 }}>{c.hex}</div>
+                <div style={{ fontSize: 10, color: '#5A6B59', marginTop: 4 }}>{c.role}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Typography */}
+      <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>字体系统</div>
+        <div className="card-paper" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {SPEC_TOKENS.font.map((f, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: i < SPEC_TOKENS.font.length - 1 ? '1px solid #E0E7DB' : 'none', paddingBottom: i < SPEC_TOKENS.font.length - 1 ? 14 : 0 }}>
+              <div>
+                <div style={{ fontSize: i === 0 ? 26 : i === 1 ? 18 : 16, fontWeight: i === 0 ? 900 : i === 1 ? 700 : 600, color: '#22402F', fontFamily: f.name.includes('Serif') ? "'Noto Serif SC', serif" : f.name.includes('Sans') ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
+                  飞羽 ABC 123
+                </div>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 4 }}>{f.name}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: '#5A6B59' }}>{f.role}</div>
+                <div style={{ fontSize: 10, color: '#8CA08B', marginTop: 2 }}>{f.weight}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Components preview */}
+      <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>组件展示</div>
+        <div className="card-paper" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: '#8CA08B', marginBottom: 10 }}>按钮</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ padding: '10px 24px', borderRadius: 12, background: '#22402F', color: '#F4F1E9', fontSize: 14, fontWeight: 500 }}>主按钮</div>
+            <div style={{ padding: '10px 24px', borderRadius: 12, background: '#D97E36', color: '#fff', fontSize: 14, fontWeight: 500 }}>强调按钮</div>
+            <div style={{ padding: '10px 24px', borderRadius: 12, background: '#E0E7DB', color: '#22402F', fontSize: 14, fontWeight: 500 }}>次要按钮</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Spacing */}
+      <div style={{ padding: '20px 20px 0' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>间距系统</div>
+        <div className="card-paper" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { name: 'xs', value: 4 },
+            { name: 'sm', value: 8 },
+            { name: 'md', value: 12 },
+            { name: 'lg', value: 20 },
+            { name: 'xl', value: 32 },
+            { name: '2xl', value: 48 },
+          ].map((s, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 11, color: '#8CA08B', width: 30 }}>{s.name}</span>
+              <div style={{ height: 16, width: s.value * 3, background: '#22402F', borderRadius: 2 }} />
+              <span style={{ fontSize: 11, color: '#5A6B59', marginLeft: 'auto' }}>{s.value}px</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Native interactions */}
+      <div style={{ padding: '20px 20px 100px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>端侧交互语言</div>
+        <div className="card-paper" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[
+            { name: '底部 TabBar', desc: '原生质感底部导航，选中弹跳动效' },
+            { name: '大标题导航栏', desc: '滚动时标题折叠变小，导航栏毛玻璃' },
+            { name: '下拉刷新', desc: '弹性下拉刷新，弹簧物理动效' },
+            { name: '底部抽屉 Sheet', desc: '半屏模态弹层，支持下拉关闭' },
+            { name: '悬浮操作按钮 FAB', desc: '快捷记录入口，渐变阴影' },
+            { name: '返回栈导航', desc: '左滑 / 返回键，页面从右侧推入' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: i < 5 ? 12 : 0, borderBottom: i < 5 ? '1px solid #E0E7DB' : 'none' }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: 'rgba(217,126,54,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#D97E36', fontWeight: 700, fontSize: 12,
+              }}>
+                {i + 1}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#22402F' }}>{item.name}</div>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 2 }}>{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   API DOCS PAGE
+   ────────────────────────────────────────────────────────────── */
+function ApiDocPage() {
+  const [expanded, setExpanded] = useState(0);
+  const methodColor = {
+    GET: '#22402F',
+    POST: '#D97E36',
+    PUT: '#8CA08B',
+    DELETE: '#C4392B',
+  };
+
+  return (
+    <div className="page-content safe-top" style={{ background: '#F4F1E9' }}>
+      <div className="nav-large">接口文档</div>
+      <div className="nav-subtitle">PlumeTrail API v2.0 · 共 6 个端点</div>
+
+      {/* Base URL */}
+      <div style={{ margin: '8px 20px 16px', padding: 14, borderRadius: 14, background: '#12150F', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ fontSize: 10, color: '#8CA08B', marginBottom: 6 }}>BASE URL</div>
+        <div style={{ fontSize: 13, color: '#D97E36' }}>https://api.plumetrail.cn/v2</div>
+      </div>
+
+      {/* Endpoint list */}
+      <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {API_DOCS.map((api, i) => (
+          <div key={i} className="card-paper" style={{ overflow: 'hidden' }}>
+            <div
+              style={{
+                padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
+                cursor: 'pointer',
+                background: expanded === i ? 'rgba(34,64,47,.04)' : 'transparent',
+                transition: 'background .2s ease',
+              }}
+              onClick={() => setExpanded(expanded === i ? -1 : i)}
+            >
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: '#fff',
+                background: methodColor[api.method],
+                padding: '4px 10px', borderRadius: 6,
+                minWidth: 50, textAlign: 'center',
+                fontFamily: "'Inter', sans-serif",
+              }}>{api.method}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#22402F', fontFamily: "'Inter', sans-serif", wordBreak: 'break-all' }}>{api.path}</div>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 2 }}>{api.desc}</div>
+              </div>
+              <Icon name="chevron" size={16} color="#8CA08B" />
+            </div>
+            {expanded === i && (
+              <div style={{ padding: '0 16px 16px', borderTop: '1px solid #E0E7DB' }}>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 12, marginBottom: 8 }}>参数</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {api.params.map((p, j) => (
+                    <span key={j} style={{
+                      fontSize: 11, padding: '4px 10px', borderRadius: 6,
+                      background: 'rgba(34,64,47,.08)', color: '#22402F',
+                      fontFamily: "'Inter', sans-serif",
+                    }}>{p}</span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#8CA08B', marginTop: 14, marginBottom: 8 }}>示例请求</div>
+                <div style={{
+                  padding: 12, borderRadius: 10, background: '#12150F',
+                  fontSize: 11, color: '#D97E36', fontFamily: "'Inter', monospace",
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>
+{`curl -X ${api.method} \\
+  https://api.plumetrail.cn/v2${api.path.replace(':id', '{id}')} \\
+  -H "Authorization: Bearer <token>" \\
+  -H "Content-Type: application/json"`}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Error codes */}
+      <div style={{ padding: '20px 20px 100px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#22402F', marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>错误码</div>
+        <div className="card-paper" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            { code: 200, text: '成功', color: '#22402F' },
+            { code: 400, text: '请求参数错误', color: '#D97E36' },
+            { code: 401, text: '未授权 / Token 失效', color: '#D97E36' },
+            { code: 404, text: '资源不存在', color: '#C4392B' },
+            { code: 429, text: '请求频率超限', color: '#C4392B' },
+            { code: 500, text: '服务器内部错误', color: '#C4392B' },
+          ].map((e, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: i < 5 ? 10 : 0, borderBottom: i < 5 ? '1px solid #E0E7DB' : 'none' }}>
+              <span style={{
+                fontSize: 12, fontWeight: 700, color: e.color,
+                fontFamily: "'Inter', sans-serif", minWidth: 40,
+              }}>{e.code}</span>
+              <span style={{ fontSize: 13, color: '#5A6B59' }}>{e.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   SIGHTING DETAIL — bottom sheet modal
+   ────────────────────────────────────────────────────────────── */
+function SightingSheet({ sighting, onClose }) {
+  const bird = BIRDS.find(b => b.id === sighting.birdId);
+
+  return (
+    <>
+      <div className="sheet-backdrop" onClick={onClose} />
+      <div className="bottom-sheet">
+        <div className="sheet-handle" />
+        <div style={{ padding: '0 20px 30px' }}>
+          {/* Bird image header */}
+          <div style={{
+            height: 200, borderRadius: 16, marginTop: 8, marginBottom: 16,
+            backgroundImage: `url(${bird.img})`, backgroundSize: 'cover', backgroundPosition: 'center',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{
+              position: 'absolute', bottom: 12, left: 12,
+              background: 'rgba(255,255,255,.8)', backdropFilter: 'blur(10px)',
+              padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, color: '#22402F',
+            }}>
+              {bird.name}
+            </div>
+            <div
+              style={{
+                position: 'absolute', top: 12, right: 12,
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'rgba(0,0,0,.4)', backdropFilter: 'blur(10px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={onClose}
+            >
+              <Icon name="close" size={16} color="#fff" />
+            </div>
+          </div>
+
+          {/* Meta info */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5A6B59' }}>
+              <Icon name="location" size={14} color="#D97E36" />
+              {sighting.location}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5A6B59' }}>
+              <Icon name="clock" size={14} color="#D97E36" />
+              {sighting.date}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ fontSize: 14, color: '#5A6B59', lineHeight: 1.7, marginBottom: 20, textAlign: 'justify' }}>
+            {sighting.notes}
+          </div>
+
+          {/* Stats row */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+            <div style={{ flex: 1, textAlign: 'center', padding: '12px 0', background: 'rgba(34,64,47,.06)', borderRadius: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#22402F' }}>{sighting.likes}</div>
+              <div style={{ fontSize: 10, color: '#8CA08B' }}>点赞</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center', padding: '12px 0', background: 'rgba(34,64,47,.06)', borderRadius: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#22402F' }}>12</div>
+              <div style={{ fontSize: 10, color: '#8CA08B' }}>评论</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center', padding: '12px 0', background: 'rgba(34,64,47,.06)', borderRadius: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#22402F' }}>4</div>
+              <div style={{ fontSize: 10, color: '#8CA08B' }}>收藏</div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1, padding: '14px 0', textAlign: 'center', borderRadius: 14, background: '#22402F', color: '#F4F1E9', fontSize: 15, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Icon name="heart" size={18} color="#F4F1E9" />
+              点赞
+            </div>
+            <div style={{ width: 50, borderRadius: 14, background: '#fff', border: '1px solid rgba(34,64,47,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Icon name="share" size={18} color="#22402F" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   TAB BAR
+   ────────────────────────────────────────────────────────────── */
+function TabBar({ active, onChange, extraPages, onExtraChange }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 0, left: 0, right: 0,
+      background: 'rgba(244,241,233,.92)', backdropFilter: 'blur(20px)',
+      borderTop: '1px solid rgba(34,64,47,.08)',
+      paddingBottom: 'var(--ios-safe-bottom, 34px)',
+      paddingTop: 6, paddingBottom: 'calc(6px + var(--ios-safe-bottom, 34px))',
+      zIndex: 20,
+      display: 'flex',
+    }}>
+      {TABS.map((tab) => {
+        const isActive = active === tab.key;
+        return (
+          <div
+            key={tab.key}
+            className={'tab-item ripple-btn ' + (isActive ? 'active' : '')}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: '6px 0',
+            }}
+            onClick={(e) => { createRipple(e); onChange(tab.key); }}
+          >
+            {tab.key === 'record' ? (
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #D97E36, #C46928)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                marginTop: -20, marginBottom: 4,
+                boxShadow: '0 6px 16px rgba(217,126,54,.4)',
+                transition: 'transform .2s cubic-bezier(.2,.9,.3,1.4)',
+              }}>
+                <Icon name="plus" size={22} color="#fff" stroke={2.5} />
+              </div>
+            ) : (
+              <Icon name={tab.icon} size={22} color={isActive ? '#22402F' : '#8CA08B'} stroke={isActive ? 2.5 : 2} />
+            )}
+            <span style={{
+              fontSize: 10, marginTop: 2,
+              color: isActive ? '#22402F' : '#8CA08B',
+              fontWeight: isActive ? 600 : 400,
+            }}>{tab.label}</span>
+            <div className="tab-dot" />
+          </div>
+        );
+      })}
+      {/* Extra pages: spec & api */}
+      <div
+        className={'tab-item ripple-btn ' + (active === 'spec' || active === 'api' ? 'active' : '')}
+        style={{
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', padding: '6px 0',
+        }}
+        onClick={(e) => { createRipple(e); onExtraChange(); }}
+      >
+        <Icon name="book" size={22} color={active === 'spec' || active === 'api' ? '#22402F' : '#8CA08B'} />
+        <span style={{
+          fontSize: 10, marginTop: 2,
+          color: active === 'spec' || active === 'api' ? '#22402F' : '#8CA08B',
+          fontWeight: active === 'spec' || active === 'api' ? 600 : 400,
+        }}>文档</span>
+        <div className="tab-dot" />
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   MAIN APP SHELL
+   ────────────────────────────────────────────────────────────── */
+function PlumeTrailApp() {
+  const [tab, setTab] = useState('home');
+  const [prevTab, setPrevTab] = useState('home');
+  const [detailBird, setDetailBird] = useState(null);
+  const [sightingSheet, setSightingSheet] = useState(null);
+  const [pageKey, setPageKey] = useState(0);
+  const [showDocsMenu, setShowDocsMenu] = useState(false);
+  const [animClass, setAnimClass] = useState('page-enter');
+
+  const changeTab = useCallback((newTab) => {
+    if (newTab === tab) return;
+    setPrevTab(tab);
+    setTab(newTab);
+    setDetailBird(null);
+    setShowDocsMenu(false);
+    setPageKey(k => k + 1);
+    setAnimClass('page-enter');
+  }, [tab]);
+
+  const handleExtra = useCallback(() => {
+    setShowDocsMenu(!showDocsMenu);
+  }, [showDocsMenu]);
+
+  const goToDoc = (which) => {
+    setShowDocsMenu(false);
+    setTab(which);
+    setDetailBird(null);
+    setPageKey(k => k + 1);
+    setAnimClass('page-enter');
+  };
+
+  const handleBirdClick = (bird) => {
+    setDetailBird(bird);
+    setPageKey(k => k + 1);
+    setAnimClass('page-enter');
+  };
+
+  const handleBackFromDetail = () => {
+    setDetailBird(null);
+    setPageKey(k => k + 1);
+    setAnimClass('page-exit');
+    setTimeout(() => setAnimClass('page-enter'), 280);
+  };
+
+  // Render current page content
+  const renderPage = () => {
+    if (detailBird) {
+      return <BirdDetailPage key={pageKey} bird={detailBird} onBack={handleBackFromDetail} />;
+    }
+    switch (tab) {
+      case 'home':
+        return <HomePage key={pageKey} onBirdClick={handleBirdClick} onSightingClick={setSightingSheet} />;
+      case 'map':
+        return <MapPage key={pageKey} onBirdClick={handleBirdClick} />;
+      case 'record':
+        return <RecordPage key={pageKey} />;
+      case 'field':
+        return <FieldGuidePage key={pageKey} onBirdClick={handleBirdClick} />;
+      case 'profile':
+        return <ProfilePage key={pageKey} />;
+      case 'spec':
+        return <DesignSpecPage key={pageKey} />;
+      case 'api':
+        return <ApiDocPage key={pageKey} />;
+      default:
+        return null;
+    }
+  };
+
+  const mainTabs = ['home', 'map', 'record', 'field', 'profile'].includes(tab);
+  const showTabBar = !detailBird && mainTabs;
+
+  return (
+    <div className="app-screen">
+      <div className={animClass} style={{ position: 'absolute', inset: 0 }}>
+        {renderPage()}
+      </div>
+
+      {/* Floating action button on home */}
+      {tab === 'home' && !detailBird && (
+        <div
+          className="fab-btn ripple-btn"
+          onClick={(e) => { createRipple(e); changeTab('record'); }}
+        >
+          <Icon name="plus" size={24} color="#fff" stroke={2.5} />
+        </div>
+      )}
+
+      {/* Tab bar */}
+      {showTabBar && (
+        <TabBar
+          active={tab}
+          onChange={changeTab}
+          onExtraChange={handleExtra}
+        />
+      )}
+
+      {/* Docs menu popover */}
+      {showDocsMenu && (
+        <>
+          <div style={{ position: 'absolute', inset: 0, zIndex: 21 }} onClick={() => setShowDocsMenu(false)} />
+          <div style={{
+            position: 'absolute', right: 20, bottom: 'calc(var(--ios-safe-bottom, 34px) + 70px)',
+            background: '#fff', borderRadius: 16,
+            boxShadow: '0 12px 40px rgba(34,64,47,.2)',
+            zIndex: 22, overflow: 'hidden',
+            minWidth: 140,
+            animation: 'fadeIn .2s ease',
+          }}>
+            {[
+              { key: 'spec', label: '设计规范', icon: 'star' },
+              { key: 'api', label: '接口文档', icon: 'settings' },
+            ].map(item => (
+              <div
+                key={item.key}
+                className="ripple-btn"
+                style={{
+                  padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10,
+                  cursor: 'pointer', fontSize: 14, color: '#22402F', fontWeight: 500,
+                  borderBottom: item.key === 'spec' ? '1px solid #E0E7DB' : 'none',
+                }}
+                onClick={(e) => { createRipple(e); goToDoc(item.key); }}
+              >
+                <Icon name={item.icon} size={16} color="#D97E36" />
+                {item.label}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Sighting bottom sheet */}
+      {sightingSheet && (
+        <SightingSheet sighting={sightingSheet} onClose={() => setSightingSheet(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   STAGE — device + background + feathers
+   ────────────────────────────────────────────────────────────── */
+const IOSFrame = ({ children, dark = false }) => {
+  // Simplified inline iOS frame
+  return (
+    <div style={{
+      width: 390, height: 844,
+      borderRadius: 52,
+      background: '#12150F',
+      padding: 12,
+      position: 'relative',
+      boxShadow: 'inset 0 0 0 2px #2a2d2a',
+    }}>
+      {/* Device bezel detail */}
+      <div style={{
+        position: 'absolute', inset: 2,
+        borderRadius: 50,
+        background: 'linear-gradient(145deg, #3a3d3a 0%, #1a1d1a 100%)',
+      }} />
+      {/* Screen */}
+      <div style={{
+        position: 'relative',
+        width: '100%', height: '100%',
+        borderRadius: 42,
+        overflow: 'hidden',
+        background: dark ? '#12150F' : '#F4F1E9',
+      }}>
+        {/* Dynamic Island */}
+        <div style={{
+          position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+          width: 120, height: 35, borderRadius: 20,
+          background: '#000', zIndex: 100,
+        }} />
+        {/* Status bar spacer (safe area top) */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 28px 0', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: dark ? '#fff' : '#12150F', fontFamily: '-apple-system, system-ui' }}>9:41</span>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            {/* signal */}
+            <svg width="17" height="12" viewBox="0 0 17 12">
+              <rect x="0" y="8" width="3" height="4" rx="0.5" fill={dark ? '#fff' : '#000'} />
+              <rect x="4.5" y="6" width="3" height="6" rx="0.5" fill={dark ? '#fff' : '#000'} />
+              <rect x="9" y="3" width="3" height="9" rx="0.5" fill={dark ? '#fff' : '#000'} />
+              <rect x="13.5" y="0" width="3" height="12" rx="0.5" fill={dark ? '#fff' : '#000'} />
+            </svg>
+            {/* wifi */}
+            <svg width="15" height="12" viewBox="0 0 15 12">
+              <path d="M7.5 2.5c2.6 0 5 1 6.8 2.7l1.2-1.2C13.6 2 10.7 0.5 7.5 0.5S1.4 2 -0.5 4l1.2 1.2C2.5 3.5 4.9 2.5 7.5 2.5Z" fill={dark ? '#fff' : '#000'}/>
+              <path d="M7.5 6c1.6 0 3 .6 4.1 1.6l1.2-1.2C11.4 4.9 9.6 4 7.5 4S3.6 4.9 2.2 6.4L3.4 7.6C4.5 6.6 5.9 6 7.5 6Z" fill={dark ? '#fff' : '#000'}/>
+              <circle cx="7.5" cy="10" r="1.8" fill={dark ? '#fff' : '#000'}/>
+            </svg>
+            {/* battery */}
+            <svg width="25" height="12" viewBox="0 0 25 12">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke={dark ? '#fff' : '#000'} strokeOpacity=".4"/>
+              <rect x="2" y="2" width="18" height="8" rx="2" fill={dark ? '#fff' : '#000'}/>
+              <rect x="22.5" y="4" width="1.5" height="4" rx="0.75" fill={dark ? '#fff' : '#000'} opacity=".4"/>
+            </svg>
+          </div>
+        </div>
+        {/* Content */}
+        <div style={{ position: 'absolute', inset: 0, '--ios-safe-top': '54px', '--ios-safe-bottom': '34px' }}>
+          {children}
+        </div>
+        {/* Home indicator */}
+        <div style={{
+          position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+          width: 134, height: 5, borderRadius: 3,
+          background: dark ? 'rgba(255,255,255,.3)' : 'rgba(0,0,0,.3)',
+          zIndex: 100,
+        }} />
+      </div>
+    </div>
+  );
+};
+
+function Stage() {
+  const [bgVariant, setBgVariant] = useState(0);
+  const featherCount = 12;
+
+  useEffect(() => {
+    // Set CSS variable for safe area
+    document.documentElement.style.setProperty('--ios-safe-top', '54px');
+    document.documentElement.style.setProperty('--ios-safe-bottom', '34px');
+  }, []);
+
+  return (
+    <div className="stage">
+      {/* Feather particles */}
+      {Array.from({ length: featherCount }).map((_, i) => (
+        <div
+          key={i}
+          className="feather-particle"
+          style={{
+            left: `${Math.random() * 100}%`,
+            animationDuration: `${12 + Math.random() * 10}s`,
+            animationDelay: `${Math.random() * -15}s`,
+            width: `${4 + Math.random() * 8}px`,
+            height: `${8 + Math.random() * 14}px`,
+            opacity: 0.3 + Math.random() * 0.4,
+          }}
+        />
+      ))}
+
+      <div className="stage-label">
+        <div className="brand">羽迹 · PlumeTrail</div>
+        <div className="sub">iOS Native App · Birdwatching Journal</div>
+      </div>
+
+      <div className="device-wrap">
+        <IOSFrame>
+          <PlumeTrailApp />
+        </IOSFrame>
+      </div>
+
+      <div className="stage-nav">
+        <button className="active">羽迹 iOS</button>
+        <button>设计规范</button>
+        <button>接口文档</button>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   CUSTOM CURSOR CONTROLLER
+   ────────────────────────────────────────────────────────────── */
+function setupCustomCursor() {
+  const cursor = document.getElementById('customCursor');
+  if (!cursor) return;
+
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let cursorX = mouseX;
+  let cursorY = mouseY;
+  let rafId = null;
+  let visible = false;
+  let isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (isReduced) {
+    cursor.style.display = 'none';
+    return;
+  }
+
+  const animate = () => {
+    if (document.hidden) { rafId = null; return; }
+    // Spring-like follow
+    cursorX += (mouseX - cursorX) * 0.18;
+    cursorY += (mouseY - cursorY) * 0.18;
+    cursor.style.left = cursorX + 'px';
+    cursor.style.top = cursorY + 'px';
+    rafId = requestAnimationFrame(animate);
+  };
+
+  const startAnim = () => {
+    if (!rafId && !document.hidden) {
+      rafId = requestAnimationFrame(animate);
+    }
+  };
+
+  const stopAnim = () => {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
+
+  // Initialize at center
+  cursor.style.left = mouseX + 'px';
+  cursor.style.top = mouseY + 'px';
+  cursor.style.opacity = '0';
+
+  const handleMove = (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (!visible) {
+      visible = true;
+      cursor.style.opacity = '1';
+    }
+    startAnim();
+  };
+
+  const handleClick = () => {
+    cursor.classList.remove('click');
+    void cursor.offsetWidth; // reflow
+    cursor.classList.add('click');
+  };
+
+  const handleOver = (e) => {
+    const target = e.target.closest('button, a, [role="button"], .card-paper, .ripple-btn, .fab-btn, .tab-item, .tilt-card');
+    if (target) {
+      cursor.classList.add('hover');
+    }
+  };
+
+  const handleOut = (e) => {
+    const target = e.target.closest('button, a, [role="button"], .card-paper, .ripple-btn, .fab-btn, .tab-item, .tilt-card');
+    if (target) {
+      cursor.classList.remove('hover');
+    }
+  };
+
+  // Visibility change handling
+  const handleVisibility = () => {
+    if (document.hidden) {
+      stopAnim();
+    } else {
+      startAnim();
+    }
+  };
+
+  window.addEventListener('mousemove', handleMove);
+  window.addEventListener('click', handleClick);
+  document.addEventListener('mouseover', handleOver);
+  document.addEventListener('mouseout', handleOut);
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  // Start immediately
+  startAnim();
+
+  // Cleanup store for potential unmount
+  window.__cursorCleanup = () => {
+    stopAnim();
+    window.removeEventListener('mousemove', handleMove);
+    window.removeEventListener('click', handleClick);
+    document.removeEventListener('mouseover', handleOver);
+    document.removeEventListener('mouseout', handleOut);
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────
+   RENDER
+   ────────────────────────────────────────────────────────────── */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<Stage />);
+
+// Setup custom cursor after mount
+setTimeout(setupCustomCursor, 100);
+
+// Announce upgrade capability
+function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) {}
+}
+announceUpgrade();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', announceUpgrade, { once: true });
+}
+</script>
+</body>
+</html>
