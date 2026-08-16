@@ -1,0 +1,3099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>GLITCH · 信号故障实验室</title>
+<style>
+/* ============================================================
+   GLITCH 信号故障实验室 — 设计系统
+   配色：炭黑 #101216 / 信号青 #00FFD1 / 警示橙 #FF4D00 / 银白 #E8EAED
+   ============================================================ */
+
+:root {
+  --charcoal: #101216;
+  --charcoal-2: #161922;
+  --charcoal-3: #1e2230;
+  --charcoal-line: #2a2f40;
+  --signal: #00FFD1;
+  --signal-dim: rgba(0, 255, 209, 0.3);
+  --signal-glow: rgba(0, 255, 209, 0.15);
+  --warning: #FF4D00;
+  --warning-dim: rgba(255, 77, 0, 0.3);
+  --warning-glow: rgba(255, 77, 0, 0.12);
+  --silver: #E8EAED;
+  --silver-dim: rgba(232, 234, 237, 0.5);
+  --silver-soft: rgba(232, 234, 237, 0.15);
+
+  --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --display: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif;
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--charcoal);
+  color: var(--silver);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  cursor: none;
+}
+
+/* 背景噪点层 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* 自定义光标容器 */
+#cursor-root {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.cursor-ring {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--silver);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s ease, height 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  will-change: transform;
+  mix-blend-mode: difference;
+}
+
+.cursor-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--signal);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px var(--signal), 0 0 16px var(--signal-dim);
+  transition: width 0.15s ease, height 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  will-change: transform;
+}
+
+.cursor-ring.hover {
+  width: 52px;
+  height: 52px;
+  border-color: var(--warning);
+  background: var(--warning-dim);
+  box-shadow: 0 0 20px var(--warning-dim), inset 0 0 20px var(--warning-glow);
+}
+
+.cursor-ring.click {
+  width: 64px;
+  height: 64px;
+  border-color: var(--signal);
+}
+
+.cursor-ripple {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 2px solid var(--signal);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 1;
+  pointer-events: none;
+  animation: rippleAnim 0.6s ease-out forwards;
+}
+
+@keyframes rippleAnim {
+  0% { width: 0; height: 0; opacity: 1; }
+  100% { width: 80px; height: 80px; opacity: 0; }
+}
+
+/* ============================================================
+   顶部导航
+   ============================================================ */
+.top-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  background: linear-gradient(to bottom, var(--charcoal) 0%, rgba(16, 18, 22, 0.85) 70%, transparent 100%);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--charcoal-line);
+}
+
+.logo-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.logo-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: var(--silver);
+}
+
+.logo-subtitle {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--signal);
+  margin-top: 3px;
+}
+
+.top-stats {
+  display: flex;
+  gap: 24px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.stat-label {
+  color: var(--silver-dim);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  color: var(--signal);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.warn { color: var(--warning); }
+
+.top-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.nav-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--charcoal-line);
+  color: var(--silver-dim);
+  cursor: none;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-btn:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+  box-shadow: 0 0 12px var(--signal-glow), inset 0 0 12px var(--signal-glow);
+}
+
+.nav-btn.active {
+  background: var(--signal);
+  color: var(--charcoal);
+  border-color: var(--signal);
+  font-weight: 700;
+  box-shadow: 0 0 16px var(--signal-dim);
+}
+
+/* ============================================================
+   HERO 区域
+   ============================================================ */
+.hero {
+  position: relative;
+  padding: 140px 40px 60px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.hero-title {
+  font-family: var(--display);
+  font-size: clamp(48px, 8vw, 112px);
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 0.95;
+  position: relative;
+  display: inline-block;
+  color: var(--silver);
+}
+
+.hero-title .glitch-layer {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.hero-title .glitch-r {
+  color: var(--warning);
+  mix-blend-mode: screen;
+  clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  animation: glitchR 3s infinite steps(2);
+}
+
+.hero-title .glitch-b {
+  color: var(--signal);
+  mix-blend-mode: screen;
+  clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  animation: glitchB 2.5s infinite steps(3);
+}
+
+@keyframes glitchR {
+  0%, 92%, 100% { transform: translate(0, 0); }
+  93% { transform: translate(-3px, 1px); }
+  95% { transform: translate(4px, -2px); }
+  97% { transform: translate(-2px, 0); }
+  98% { transform: translate(1px, 1px); }
+}
+
+@keyframes glitchB {
+  0%, 90%, 100% { transform: translate(0, 0); }
+  91% { transform: translate(3px, -1px); }
+  94% { transform: translate(-4px, 2px); }
+  96% { transform: translate(2px, 0); }
+  99% { transform: translate(-1px, -1px); }
+}
+
+.hero-subtitle {
+  margin-top: 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--signal);
+  text-transform: uppercase;
+}
+
+.hero-desc {
+  max-width: 560px;
+  margin: 20px auto 0;
+  color: var(--silver-dim);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.hero-meta {
+  margin-top: 36px;
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.meta-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-chip .num {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--silver);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta-chip .num.cyan { color: var(--signal); }
+.meta-chip .num.orange { color: var(--warning); }
+
+.meta-chip .lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--silver-dim);
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   展区网格
+   ============================================================ */
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 20px;
+  padding: 40px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.exhibit {
+  position: relative;
+  background: var(--charcoal-2);
+  border: 1px solid var(--charcoal-line);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.exhibit:hover {
+  border-color: var(--signal);
+  box-shadow: 0 0 30px var(--signal-glow);
+}
+
+.exhibit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--charcoal-line);
+  background: var(--charcoal-3);
+}
+
+.exhibit-id {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--signal);
+}
+
+.exhibit-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--silver);
+}
+
+.exhibit-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--charcoal-line);
+  color: var(--silver-dim);
+  letter-spacing: 1px;
+}
+
+.exhibit-stage {
+  position: relative;
+  height: 220px;
+  overflow: hidden;
+  background: var(--charcoal);
+}
+
+.exhibit-stage canvas,
+.exhibit-stage .stage-content {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.exhibit-controls {
+  padding: 14px 16px;
+  border-top: 1px solid var(--charcoal-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.control-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--silver-dim);
+  letter-spacing: 1px;
+  min-width: 70px;
+  text-transform: uppercase;
+}
+
+.control-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--charcoal-line);
+  outline: none;
+  cursor: none;
+}
+
+.control-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--signal);
+  border: 2px solid var(--charcoal);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--signal-dim);
+  transition: transform 0.15s ease;
+}
+
+.control-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+}
+
+.control-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--signal);
+  border: 2px solid var(--charcoal);
+  border-radius: 50%;
+  cursor: none;
+}
+
+.control-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--signal);
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.control-btn {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid var(--charcoal-line);
+  color: var(--silver-dim);
+  cursor: none;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+}
+
+.control-btn:hover {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.control-btn.active {
+  background: var(--signal);
+  color: var(--charcoal);
+  border-color: var(--signal);
+  font-weight: 700;
+}
+
+/* ============================================================
+   页脚 / 状态条
+   ============================================================ */
+.footer-bar {
+  padding: 20px 40px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--silver-dim);
+  letter-spacing: 1px;
+  border-top: 1px solid var(--charcoal-line);
+  margin: 20px 40px 0;
+}
+
+.footer-left, .footer-right {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 6px var(--signal);
+  animation: pulseDot 2s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============================================================
+   扫描线叠层（全局装饰）
+   ============================================================ */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.06;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    #000 2px,
+    #000 3px
+  );
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* ============================================================
+   reduced-motion 降级
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .hero-title .glitch-r,
+  .hero-title .glitch-b {
+    animation: none;
+    transform: translate(0, 0) !important;
+  }
+
+  .dot { animation: none; }
+  body { cursor: auto; }
+  #cursor-root { display: none; }
+}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 900px) {
+  .top-bar { padding: 12px 16px; flex-wrap: wrap; gap: 10px; }
+  .top-nav { order: 3; width: 100%; justify-content: center; }
+  .top-stats { display: none; }
+  .hero { padding: 120px 20px 40px; }
+  .lab-grid { padding: 20px; grid-template-columns: 1fr; }
+  .footer-bar { flex-direction: column; gap: 10px; margin: 0 20px; padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div id="cursor-root" aria-hidden="true">
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="cursor-dot" id="cursorDot"></div>
+</div>
+
+<!-- 全局装饰 -->
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- 顶部导航 -->
+<header class="top-bar">
+  <div class="logo-block">
+    <div class="logo-mark">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="8" width="32" height="24" stroke="#00FFD1" stroke-width="1.5"/>
+        <line x1="4" y1="16" x2="36" y2="16" stroke="#FF4D00" stroke-width="1" stroke-dasharray="4 2"/>
+        <line x1="4" y1="24" x2="36" y2="24" stroke="#00FFD1" stroke-width="1"/>
+        <circle cx="20" cy="20" r="3" fill="#00FFD1"/>
+        <path d="M8 12 L14 28 M26 12 L32 28" stroke="#E8EAED" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <span class="logo-title">GLITCH.LAB</span>
+      <span class="logo-subtitle">SIGNAL FAULT MUSEUM</span>
+    </div>
+  </div>
+
+  <nav class="top-nav">
+    <button class="nav-btn active" data-nav="scan">展区</button>
+    <button class="nav-btn" data-nav="archive">档案</button>
+    <button class="nav-btn" data-nav="signal">信号</button>
+    <button class="nav-btn" data-nav="about">关于</button>
+  </nav>
+
+  <div class="top-stats">
+    <div class="stat-item">
+      <span class="stat-label">Signal</span>
+      <span class="stat-value" id="statSignal">98.4%</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Noise Floor</span>
+      <span class="stat-value warn" id="statNoise">−42 dB</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Latency</span>
+      <span class="stat-value" id="statLatency">13ms</span>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-title" data-text="SIGNAL FAULT LAB">
+    SIGNAL FAULT LAB
+    <span class="glitch-layer glitch-r" aria-hidden="true">SIGNAL FAULT LAB</span>
+    <span class="glitch-layer glitch-b" aria-hidden="true">SIGNAL FAULT LAB</span>
+  </div>
+  <div class="hero-subtitle">信 号 故 障 美 学 实 验 室</div>
+  <p class="hero-desc">
+    十二台独立运转的故障装置，每一台都是一次对信号完整性的蓄意破坏。
+    拖动滑块、移动探针、按下按钮 —— 亲手制造失真、紊乱与失控之美。
+  </p>
+  <div class="hero-meta">
+    <div class="meta-chip">
+      <span class="num cyan">12</span>
+      <span class="lbl">Exhibit Units</span>
+    </div>
+    <div class="meta-chip">
+      <span class="num">∞</span>
+      <span class="lbl">Fault Combos</span>
+    </div>
+    <div class="meta-chip">
+      <span class="num orange">0</span>
+      <span class="lbl">Undo Buffer</span>
+    </div>
+    <div class="meta-chip">
+      <span class="num">24/7</span>
+      <span class="lbl">Signal Stream</span>
+    </div>
+  </div>
+</section>
+
+<!-- 展区网格 -->
+<main class="lab-grid" id="labGrid">
+  <!-- 展区由 JS 动态生成 -->
+</main>
+
+<!-- 页脚 -->
+<footer class="footer-bar">
+  <div class="footer-left">
+    <span class="dot"></span>
+    <span>LIVE FEED ACTIVE</span>
+    <span>CH: 07</span>
+  </div>
+  <div class="footer-right">
+    <span id="footerTime">--:--:--</span>
+    <span>FRAME: <span id="footerFrame">0000</span></span>
+    <span>v3.0.0 / GLITCH.CORE</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   GLITCH 信号故障实验室 — 核心逻辑
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  // ---- 工具：减少 motion 检测 ----
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- 动画帧管理 ----
+  const animRegistry = new Set();
+  let globalRafId = null;
+  let isVisible = !document.hidden;
+
+  function registerAnim(fn) {
+    animRegistry.add(fn);
+    if (!globalRafId && isVisible && !prefersReduced) {
+      startLoop();
+    }
+    return fn;
+  }
+
+  function unregisterAnim(fn) {
+    animRegistry.delete(fn);
+    if (animRegistry.size === 0 && globalRafId) {
+      cancelAnimationFrame(globalRafId);
+      globalRafId = null;
+    }
+  }
+
+  function startLoop() {
+    if (prefersReduced) return;
+    function tick(ts) {
+      globalRafId = requestAnimationFrame(tick);
+      animRegistry.forEach(fn => {
+        try { fn(ts); } catch (e) { /* 单个故障不影响全局 */ }
+      });
+    }
+    globalRafId = requestAnimationFrame(tick);
+  }
+
+  function stopLoop() {
+    if (globalRafId) {
+      cancelAnimationFrame(globalRafId);
+      globalRafId = null;
+    }
+  }
+
+  // 页面可见性切换
+  document.addEventListener('visibilitychange', function () {
+    isVisible = !document.hidden;
+    if (isVisible && animRegistry.size > 0) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function () {
+    stopLoop();
+    animRegistry.clear();
+  });
+
+  // ============================================================
+  // 自定义光标
+  // ============================================================
+  const cursorRoot = document.getElementById('cursor-root');
+  const cursorRing = document.getElementById('cursorRing');
+  const cursorDot = document.getElementById('cursorDot');
+
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let ringX = mouseX;
+  let ringY = mouseY;
+
+  if (!prefersReduced) {
+    document.addEventListener('mousemove', function (e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      // dot 直接跟随
+      cursorDot.style.transform = 'translate(' + mouseX + 'px, ' + mouseY + 'px) translate(-50%, -50%)';
+    });
+
+    // ring 缓动跟随（rAF 中更新）
+    registerAnim(function cursorRingFollow() {
+      ringX += (mouseX - ringX) * 0.15;
+      ringY += (mouseY - ringY) * 0.15;
+      cursorRing.style.transform = 'translate(' + ringX + 'px, ' + ringY + 'px) translate(-50%, -50%)';
+    });
+
+    // 初始位置
+    cursorDot.style.transform = 'translate(' + mouseX + 'px, ' + mouseY + 'px) translate(-50%, -50%)';
+    cursorRing.style.transform = 'translate(' + mouseX + 'px, ' + mouseY + 'px) translate(-50%, -50%)';
+
+    // hover 可交互元素时变形
+    const interactiveSelector = 'button, .control-slider, .nav-btn, .control-btn, .exhibit, a, input';
+
+    document.addEventListener('mouseover', function (e) {
+      if (e.target.closest(interactiveSelector)) {
+        cursorRing.classList.add('hover');
+      }
+    });
+
+    document.addEventListener('mouseout', function (e) {
+      if (e.target.closest(interactiveSelector)) {
+        cursorRing.classList.remove('hover');
+      }
+    });
+
+    // 点击涟漪
+    document.addEventListener('mousedown', function (e) {
+      cursorRing.classList.add('click');
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      cursorRoot.appendChild(ripple);
+      setTimeout(function () { ripple.remove(); }, 600);
+    });
+
+    document.addEventListener('mouseup', function () {
+      cursorRing.classList.remove('click');
+    });
+  }
+
+  // ============================================================
+  // 顶部导航交互
+  // ============================================================
+  const navBtns = document.querySelectorAll('.nav-btn');
+  navBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      navBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      // 视觉反馈：信号闪烁
+      flashSignal();
+    });
+  });
+
+  function flashSignal() {
+    const stat = document.getElementById('statSignal');
+    if (!stat) return;
+    const orig = stat.textContent;
+    stat.textContent = '00.0%';
+    stat.classList.add('warn');
+    setTimeout(function () {
+      stat.textContent = '98.4%';
+      stat.classList.remove('warn');
+    }, 150);
+    setTimeout(function () {
+      stat.textContent = '87.2%';
+      stat.classList.add('warn');
+    }, 300);
+    setTimeout(function () {
+      stat.textContent = orig;
+      stat.classList.remove('warn');
+    }, 450);
+  }
+
+  // 顶部数据微小波动
+  if (!prefersReduced) {
+    registerAnim(function updateStats(ts) {
+      // 每 2 秒波动一次
+      if (Math.floor(ts / 2000) !== Math.floor((ts - 16) / 2000)) {
+        const signal = document.getElementById('statSignal');
+        const noise = document.getElementById('statNoise');
+        const latency = document.getElementById('statLatency');
+        if (signal) signal.textContent = (97 + Math.random() * 2.5).toFixed(1) + '%';
+        if (noise) noise.textContent = '−' + Math.floor(40 + Math.random() * 8) + ' dB';
+        if (latency) latency.textContent = Math.floor(10 + Math.random() * 8) + 'ms';
+      }
+    });
+  }
+
+  // 页脚时间和帧计数
+  let frameCount = 0;
+  function pad(n, len) { return String(n).padStart(len, '0'); }
+  registerAnim(function updateFooter(ts) {
+    frameCount++;
+    const ft = document.getElementById('footerTime');
+    const ff = document.getElementById('footerFrame');
+    if (ft) {
+      const d = new Date();
+      ft.textContent = pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2) + ':' + pad(d.getSeconds(), 2);
+    }
+    if (ff) ff.textContent = pad(frameCount % 10000, 4);
+  });
+
+  // ============================================================
+  // 展区定义
+  // ============================================================
+  const exhibits = [
+    {
+      id: 'EX-01',
+      name: 'RGB CHANNEL SPLIT',
+      tag: '色散',
+      build: buildRgbSplit
+    },
+    {
+      id: 'EX-02',
+      name: 'SCANLINE INTERFERENCE',
+      tag: '扫描线',
+      build: buildScanlines
+    },
+    {
+      id: 'EX-03',
+      name: 'PIXEL SORTING MATRIX',
+      tag: '像素排序',
+      build: buildPixelSort
+    },
+    {
+      id: 'EX-04',
+      name: 'DATABEND NOISE',
+      tag: '数据弯折',
+      build: buildDatabend
+    },
+    {
+      id: 'EX-05',
+      name: 'CHARACTER STORM',
+      tag: '字符乱流',
+      build: buildCharStorm
+    },
+    {
+      id: 'EX-06',
+      name: 'VHS TEAR SHIFT',
+      tag: '画面撕裂',
+      build: buildVhsTear
+    },
+    {
+      id: 'EX-07',
+      name: 'MAGNETIC DISTORTION',
+      tag: '磁力形变',
+      build: buildMagnetic
+    },
+    {
+      id: 'EX-08',
+      name: 'SPECTRUM GLITCH',
+      tag: '频谱故障',
+      build: buildSpectrum
+    },
+    {
+      id: 'EX-09',
+      name: 'BIT CRUSH VISUAL',
+      tag: '位压缩',
+      build: buildBitCrush
+    },
+    {
+      id: 'EX-10',
+      name: 'SIGNAL WAVEFORM',
+      tag: '波形故障',
+      build: buildWaveform
+    },
+    {
+      id: 'EX-11',
+      name: 'MOSAIC DECODE',
+      tag: '马赛克解码',
+      build: buildMosaic
+    },
+    {
+      id: 'EX-12',
+      name: 'SLOWDOWN BLOOM',
+      tag: '拖尾残影',
+      build: buildBloom
+    }
+  ];
+
+  const labGrid = document.getElementById('labGrid');
+
+  exhibits.forEach(function (ex, idx) {
+    const card = document.createElement('div');
+    card.className = 'exhibit';
+    card.setAttribute('data-screen-label', ex.id);
+
+    card.innerHTML = `
+      <div class="exhibit-header">
+        <span class="exhibit-id">${ex.id}</span>
+        <span class="exhibit-name">${ex.name}</span>
+        <span class="exhibit-tag">${ex.tag}</span>
+      </div>
+      <div class="exhibit-stage" data-stage="${ex.id}"></div>
+      <div class="exhibit-controls" data-controls="${ex.id}"></div>
+    `;
+
+    labGrid.appendChild(card);
+    ex.build(card, ex, idx);
+  });
+
+  // ============================================================
+  // EX-01: RGB 通道分离
+  // ============================================================
+  function buildRgbSplit(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let offset = 8;
+    let intensity = 50;
+    let angle = 0;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    // 绘制源图形：一个带文字的圆形信号
+    function drawSource(t) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) * 0.35;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // 外环
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r - i * 12, 0, Math.PI * 2);
+        ctx.strokeStyle = i === 0 ? '#00FFD1' : (i === 1 ? '#FF4D00' : '#E8EAED');
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6 - i * 0.15;
+        ctx.stroke();
+      }
+
+      // 旋转刻度
+      ctx.rotate(t * 0.0003);
+      for (let i = 0; i < 60; i++) {
+        ctx.beginPath();
+        ctx.moveTo(r + 8, 0);
+        ctx.lineTo(r + (i % 5 === 0 ? 16 : 12), 0);
+        ctx.strokeStyle = '#E8EAED';
+        ctx.globalAlpha = i % 10 === 0 ? 0.8 : 0.3;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.rotate((Math.PI * 2) / 60);
+      }
+
+      ctx.restore();
+
+      // 中心文字
+      ctx.save();
+      ctx.font = 'bold 28px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#E8EAED';
+      ctx.fillText('GLITCH', cx, cy - 8);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#00FFD1';
+      ctx.fillText('RGB SPLIT v2.1', cx, cy + 16);
+      ctx.restore();
+    }
+
+    function render(t) {
+      angle += 0.005;
+      ctx.clearRect(0, 0, w, h);
+
+      // 三层分离
+      const off = offset * (1 + Math.sin(t * 0.002) * 0.3);
+      const alpha = intensity / 100;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+
+      // Red
+      ctx.save();
+      ctx.translate(off * Math.cos(angle), off * Math.sin(angle));
+      ctx.globalAlpha = alpha;
+      ctx.filter = 'url(#none)';
+      // 手动红色调：先画再合成
+      ctx.globalCompositeOperation = 'source-over';
+      drawSourceRed(t);
+      ctx.restore();
+
+      // Green (信号青)
+      ctx.save();
+      ctx.translate(-off * Math.cos(angle + 2), off * Math.sin(angle + 2) * 0.5);
+      ctx.globalAlpha = alpha;
+      drawSourceCyan(t);
+      ctx.restore();
+
+      // Blue-ish (银白)
+      ctx.save();
+      ctx.translate(off * Math.cos(angle + 4) * 0.5, -off * Math.sin(angle + 4));
+      ctx.globalAlpha = alpha * 0.7;
+      drawSourceWhite(t);
+      ctx.restore();
+
+      ctx.restore();
+
+      // 随机断裂条
+      if (Math.random() < 0.03 * (intensity / 50)) {
+        const y = Math.random() * h;
+        const sh = 2 + Math.random() * 4;
+        const sx = (Math.random() - 0.5) * 30;
+        ctx.fillStyle = 'rgba(0, 255, 209, 0.3)';
+        ctx.fillRect(sx, y, w, sh);
+      }
+    }
+
+    function drawSourceRed(t) {
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.35;
+      ctx.strokeStyle = '#FF4D00';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = 'bold 28px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#FF4D00';
+      ctx.fillText('GLITCH', cx, cy - 8);
+    }
+
+    function drawSourceCyan(t) {
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.35;
+      ctx.strokeStyle = '#00FFD1';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#00FFD1';
+      ctx.fillText('RGB SPLIT v2.1', cx, cy + 16);
+    }
+
+    function drawSourceWhite(t) {
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.35;
+      ctx.strokeStyle = '#E8EAED';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - 24, 0, Math.PI * 2);
+      ctx.stroke();
+      // 刻度
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t * 0.0003);
+      for (let i = 0; i < 30; i++) {
+        ctx.beginPath();
+        ctx.moveTo(r - 30, 0);
+        ctx.lineTo(r - 38, 0);
+        ctx.strokeStyle = '#E8EAED';
+        ctx.globalAlpha = 0.5;
+        ctx.stroke();
+        ctx.rotate((Math.PI * 2) / 30);
+      }
+      ctx.restore();
+    }
+
+    if (!prefersReduced) {
+      registerAnim(render);
+    } else {
+      drawSourceWhite(0);
+    }
+
+    // 控制器
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">偏移量</span>
+        <input type="range" class="control-slider" data-param="offset" min="0" max="40" value="${offset}">
+        <span class="control-value" data-value="offset">${offset}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">强度</span>
+        <input type="range" class="control-slider" data-param="intensity" min="10" max="100" value="${intensity}">
+        <span class="control-value" data-value="intensity">${intensity}</span>
+      </div>
+      <div class="control-btns">
+        <button class="control-btn" data-mode="slow">慢扫描</button>
+        <button class="control-btn active" data-mode="normal">标准</button>
+        <button class="control-btn" data-mode="fast">快速</button>
+      </div>
+    `;
+
+    let speed = 1;
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const param = s.dataset.param;
+        const val = parseFloat(s.value);
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) valEl.textContent = val.toFixed(0);
+        if (param === 'offset') offset = val;
+        if (param === 'intensity') intensity = val;
+      });
+    });
+
+    controls.querySelectorAll('.control-btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        controls.querySelectorAll('.control-btn').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        const m = b.dataset.mode;
+        if (m === 'slow') speed = 0.3;
+        else if (m === 'fast') speed = 2.5;
+        else speed = 1;
+        // 用 speed 影响 angle 变化 — 替换 render 函数中的增量
+        // 简单做法：通过全局变量控制
+        ex._speed = speed;
+      });
+    });
+
+    // 覆盖 render 以支持 speed
+    unregisterAnim(render);
+    function renderWithSpeed(t) {
+      angle += 0.005 * (ex._speed || 1);
+      ctx.clearRect(0, 0, w, h);
+
+      const off = offset * (1 + Math.sin(t * 0.002) * 0.3);
+      const alpha = intensity / 100;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.save();
+      ctx.translate(off * Math.cos(angle), off * Math.sin(angle));
+      ctx.globalAlpha = alpha;
+      drawSourceRed(t);
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(-off * Math.cos(angle + 2), off * Math.sin(angle + 2) * 0.5);
+      ctx.globalAlpha = alpha;
+      drawSourceCyan(t);
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(off * Math.cos(angle + 4) * 0.5, -off * Math.sin(angle + 4));
+      ctx.globalAlpha = alpha * 0.7;
+      drawSourceWhite(t);
+      ctx.restore();
+      ctx.restore();
+
+      if (Math.random() < 0.03 * (intensity / 50) * (ex._speed || 1)) {
+        const y = Math.random() * h;
+        const sh = 2 + Math.random() * 4;
+        const sx = (Math.random() - 0.5) * 30;
+        ctx.fillStyle = 'rgba(0, 255, 209, 0.3)';
+        ctx.fillRect(sx, y, w, sh);
+      }
+    }
+    if (!prefersReduced) registerAnim(renderWithSpeed);
+  }
+
+  // ============================================================
+  // EX-02: 扫描线干涉
+  // ============================================================
+  function buildScanlines(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let lineDensity = 3;
+    let driftSpeed = 1;
+    let interference = 40;
+    let driftY = 0;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function render() {
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      // 渐变背景模拟信号
+      const grad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.6);
+      grad.addColorStop(0, 'rgba(0, 255, 209, 0.15)');
+      grad.addColorStop(1, 'rgba(16, 18, 22, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // 扫描线
+      const lineH = lineDensity;
+      const gap = lineDensity * 1.5;
+      const totalLines = Math.ceil(h / (lineH + gap));
+
+      for (let i = 0; i < totalLines; i++) {
+        const y = ((i * (lineH + gap)) + driftY) % (h + gap) - gap;
+
+        // 干涉：根据 y 位置添加水平偏移
+        const wave = Math.sin(y * 0.02 + driftY * 0.01) * (interference * 0.3);
+        const noise = (Math.random() - 0.5) * interference * 0.5;
+        const offsetX = wave + noise;
+
+        const alpha = 0.3 + Math.sin(y * 0.05 + driftY * 0.02) * 0.2;
+        ctx.fillStyle = 'rgba(0, 255, 209, ' + alpha.toFixed(2) + ')';
+        ctx.fillRect(offsetX, y, w + Math.abs(offsetX) * 2, lineH);
+      }
+
+      // 水平干涉带
+      for (let i = 0; i < 3; i++) {
+        const bandY = (driftY * (1 + i * 0.5) + i * h / 3) % h;
+        const bandH = 20 + Math.sin(driftY * 0.01 + i) * 10;
+        ctx.fillStyle = 'rgba(255, 77, 0, 0.08)';
+        ctx.fillRect(0, bandY - bandH / 2, w, bandH);
+      }
+
+      // 中心十字准星
+      ctx.strokeStyle = 'rgba(232, 234, 237, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h / 2 - 20);
+      ctx.lineTo(w / 2, h / 2 + 20);
+      ctx.moveTo(w / 2 - 20, h / 2);
+      ctx.lineTo(w / 2 + 20, h / 2);
+      ctx.stroke();
+
+      driftY += driftSpeed;
+    }
+
+    if (!prefersReduced) registerAnim(render);
+    else render();
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">线密度</span>
+        <input type="range" class="control-slider" data-param="density" min="1" max="8" step="0.5" value="${lineDensity}">
+        <span class="control-value" data-value="density">${lineDensity}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">漂移速度</span>
+        <input type="range" class="control-slider" data-param="drift" min="0.1" max="4" step="0.1" value="${driftSpeed}">
+        <span class="control-value" data-value="drift">${driftSpeed}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">干涉强度</span>
+        <input type="range" class="control-slider" data-param="interf" min="0" max="100" value="${interference}">
+        <span class="control-value" data-value="interf">${interference}</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) valEl.textContent = val.toFixed(param === 'drift' ? 1 : 0);
+        if (param === 'density') lineDensity = val;
+        if (param === 'drift') driftSpeed = val;
+        if (param === 'interf') interference = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-03: 像素排序
+  // ============================================================
+  function buildPixelSort(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = 1; // 像素排序用低分辨率更有感觉
+    let threshold = 100;
+    let sortAmount = 30;
+    let seed = 0;
+
+    function resize() {
+      w = Math.floor(stage.clientWidth / 2);
+      h = Math.floor(stage.clientHeight / 2);
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.imageRendering = 'pixelated';
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    // 生成源图像：几何图形 + 渐变
+    function generateSource() {
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      // 渐变圆
+      const cx = w / 2 + Math.sin(seed) * 20;
+      const cy = h / 2 + Math.cos(seed * 0.7) * 15;
+      const r = Math.min(w, h) * 0.4;
+
+      for (let i = 0; i < 5; i++) {
+        const rr = r - i * 15;
+        if (rr < 0) continue;
+        const alpha = 0.8 - i * 0.15;
+        ctx.beginPath();
+        ctx.arc(cx + i * 8, cy + i * 5, rr, 0, Math.PI * 2);
+        if (i === 0) ctx.fillStyle = 'rgba(0, 255, 209, ' + alpha + ')';
+        else if (i === 1) ctx.fillStyle = 'rgba(255, 77, 0, ' + alpha * 0.8 + ')';
+        else ctx.fillStyle = 'rgba(232, 234, 237, ' + alpha * 0.6 + ')';
+        ctx.fill();
+      }
+
+      // 文字
+      ctx.font = 'bold 20px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#101216';
+      ctx.fillText('PX.SORT', cx, cy + 6);
+
+      // 随机噪点
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 30;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // 像素排序：按行对亮度高于阈值的连续像素排序
+    function pixelSort() {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      const sortCount = Math.floor(sortAmount / 100 * h);
+
+      // 随机选行进行排序
+      const rows = [];
+      for (let i = 0; i < sortCount; i++) {
+        rows.push(Math.floor(Math.random() * h));
+      }
+
+      rows.forEach(function (row) {
+        const start = row * w * 4;
+        const rowPixels = [];
+
+        // 找到所有高于阈值的连续段
+        let inSegment = false;
+        let segStart = 0;
+        const segments = [];
+
+        for (let x = 0; x < w; x++) {
+          const idx = start + x * 4;
+          const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+          if (brightness > threshold && !inSegment) {
+            inSegment = true;
+            segStart = x;
+          } else if (brightness <= threshold && inSegment) {
+            inSegment = false;
+            if (x - segStart > 2) {
+              segments.push([segStart, x]);
+            }
+          }
+        }
+        if (inSegment && w - segStart > 2) {
+          segments.push([segStart, w]);
+        }
+
+        // 对每段按亮度排序
+        segments.forEach(function (seg) {
+          const pixels = [];
+          for (let x = seg[0]; x < seg[1]; x++) {
+            const idx = start + x * 4;
+            pixels.push({
+              r: data[idx], g: data[idx + 1], b: data[idx + 2],
+              brightness: (data[idx] + data[idx + 1] + data[idx + 2]) / 3
+            });
+          }
+          pixels.sort(function (a, b) { return a.brightness - b.brightness; });
+          for (let x = seg[0]; x < seg[1]; x++) {
+            const idx = start + x * 4;
+            const p = pixels[x - seg[0]];
+            data[idx] = p.r;
+            data[idx + 1] = p.g;
+            data[idx + 2] = p.b;
+          }
+        });
+      });
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    let lastRegen = 0;
+    function render(t) {
+      // 每 3 秒重新生成源
+      if (t - lastRegen > 3000) {
+        seed += 0.5;
+        generateSource();
+        lastRegen = t;
+      }
+      pixelSort();
+    }
+
+    generateSource();
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">亮度阈值</span>
+        <input type="range" class="control-slider" data-param="threshold" min="20" max="230" value="${threshold}">
+        <span class="control-value" data-value="threshold">${threshold}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">排序行数</span>
+        <input type="range" class="control-slider" data-param="amount" min="5" max="100" value="${sortAmount}">
+        <span class="control-value" data-value="amount">${sortAmount}%</span>
+      </div>
+      <div class="control-btns">
+        <button class="control-btn" data-action="regenerate">重新生成</button>
+        <button class="control-btn" data-action="reset">重置</button>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'amount' ? val + '%' : val.toFixed(0);
+        }
+        if (param === 'threshold') threshold = val;
+        if (param === 'amount') sortAmount = val;
+      });
+    });
+
+    controls.querySelectorAll('.control-btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (b.dataset.action === 'regenerate') {
+          seed += 1;
+          generateSource();
+        } else if (b.dataset.action === 'reset') {
+          seed = 0;
+          generateSource();
+        }
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-04: 数据弯折 (Databend)
+  // ============================================================
+  function buildDatabend(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let bendAmount = 30;
+    let sliceCount = 8;
+    let chaos = 50;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    // 源图像：一个彩色渐变方块网格
+    function drawSource() {
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      const cols = 6;
+      const rows = 4;
+      const cw = w / cols;
+      const ch = h / rows;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = c * cw;
+          const y = r * ch;
+          const hue = (r * cols + c) * 20;
+          const grad = ctx.createLinearGradient(x, y, x + cw, y + ch);
+          grad.addColorStop(0, `hsla(${170 + (r + c) * 10}, 100%, 60%, 0.8)`);
+          grad.addColorStop(1, `hsla(${15 + (r + c) * 8}, 100%, 55%, 0.6)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(x + 2, y + 2, cw - 4, ch - 4);
+        }
+      }
+
+      // 文字叠加
+      ctx.font = 'bold 32px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(16, 18, 22, 0.85)';
+      ctx.fillText('DATA.BEND', w / 2, h / 2);
+    }
+
+    // 数据弯折：随机水平切片位移
+    function bendImage(t) {
+      const slices = Math.floor(sliceCount);
+      const bendPx = (bendAmount / 100) * w * 0.4;
+
+      const imgData = ctx.getImageData(0, 0, Math.floor(w * dpr), Math.floor(h * dpr));
+      const data = imgData.data;
+      const wPx = Math.floor(w * dpr);
+      const hPx = Math.floor(h * dpr);
+
+      // 创建目标缓冲区
+      const result = new Uint8ClampedArray(data);
+
+      for (let i = 0; i < slices; i++) {
+        const sliceY = Math.floor((i / slices + (t * 0.0001 * (i % 2 === 0 ? 1 : -1)) % 1) * hPx) % hPx;
+        const sliceH = Math.max(2, Math.floor(hPx / slices * 0.3 * (chaos / 50)));
+        const offset = Math.floor((Math.sin(t * 0.001 + i) * bendPx * dpr) * (chaos / 50));
+
+        for (let y = sliceY; y < sliceY + sliceH && y < hPx; y++) {
+          if (y < 0) continue;
+          for (let x = 0; x < wPx; x++) {
+            const srcX = (x - offset + wPx) % wPx;
+            const srcIdx = (y * wPx + srcX) * 4;
+            const dstIdx = (y * wPx + x) * 4;
+            result[dstIdx] = data[srcIdx];
+            result[dstIdx + 1] = data[srcIdx + 1];
+            result[dstIdx + 2] = data[srcIdx + 2];
+            result[dstIdx + 3] = data[srcIdx + 3];
+          }
+        }
+      }
+
+      // 随机颜色通道反转（数据损坏感）
+      if (Math.random() < bendAmount / 200) {
+        const startY = Math.floor(Math.random() * hPx);
+        const endY = Math.min(hPx, startY + Math.floor(Math.random() * 30 * dpr));
+        const channel = Math.floor(Math.random() * 3);
+        for (let y = startY; y < endY; y++) {
+          for (let x = 0; x < wPx; x++) {
+            const idx = (y * wPx + x) * 4;
+            result[idx + channel] = 255 - result[idx + channel];
+          }
+        }
+      }
+
+      // 复制回 data
+      for (let i = 0; i < data.length; i++) {
+        data[i] = result[i];
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    function render(t) {
+      drawSource();
+      bendImage(t);
+    }
+
+    drawSource();
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">弯折量</span>
+        <input type="range" class="control-slider" data-param="bend" min="0" max="100" value="${bendAmount}">
+        <span class="control-value" data-value="bend">${bendAmount}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">切片数</span>
+        <input type="range" class="control-slider" data-param="slices" min="1" max="30" value="${sliceCount}">
+        <span class="control-value" data-value="slices">${sliceCount}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">混乱度</span>
+        <input type="range" class="control-slider" data-param="chaos" min="10" max="100" value="${chaos}">
+        <span class="control-value" data-value="chaos">${chaos}</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) valEl.textContent = val.toFixed(0);
+        if (param === 'bend') bendAmount = val;
+        if (param === 'slices') sliceCount = val;
+        if (param === 'chaos') chaos = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-05: 字符乱流
+  // ============================================================
+  function buildCharStorm(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let fallSpeed = 2;
+    let density = 40;
+    let fontSize = 14;
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~`アイウエオカキクケコサシスセソ';
+
+    let columns = [];
+    let charW = 12;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initColumns();
+    }
+
+    function initColumns() {
+      const colCount = Math.floor(w / charW) + 1;
+      columns = [];
+      const activeCols = Math.floor(colCount * (density / 100));
+      for (let i = 0; i < activeCols; i++) {
+        columns.push({
+          x: Math.floor(Math.random() * colCount) * charW,
+          y: Math.random() * h * -1,
+          speed: 1 + Math.random() * 3,
+          chars: generateColumnChars(15 + Math.floor(Math.random() * 20))
+        });
+      }
+    }
+
+    function generateColumnChars(len) {
+      const arr = [];
+      for (let i = 0; i < len; i++) {
+        arr.push(chars[Math.floor(Math.random() * chars.length)]);
+      }
+      return arr;
+    }
+
+    function render() {
+      // 拖尾效果
+      ctx.fillStyle = 'rgba(16, 18, 22, 0.15)';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.font = fontSize + 'px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+
+      columns.forEach(function (col, idx) {
+        col.chars.forEach(function (ch, i) {
+          const y = col.y + i * (fontSize + 2);
+          if (y < -fontSize || y > h + fontSize) return;
+
+          if (i === 0) {
+            // 头部亮
+            ctx.fillStyle = '#E8EAED';
+            ctx.shadowColor = '#00FFD1';
+            ctx.shadowBlur = 10;
+          } else if (i < 3) {
+            ctx.fillStyle = '#00FFD1';
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = '#00FFD1';
+          } else {
+            const alpha = Math.max(0.1, 1 - i / col.chars.length);
+            ctx.fillStyle = 'rgba(0, 255, 209, ' + alpha.toFixed(2) + ')';
+            ctx.shadowBlur = 0;
+          }
+
+          ctx.fillText(ch, col.x + charW / 2, y);
+        });
+
+        col.y += col.speed * fallSpeed;
+
+        // 随机字符变化
+        if (Math.random() < 0.1) {
+          const randIdx = Math.floor(Math.random() * col.chars.length);
+          col.chars[randIdx] = chars[Math.floor(Math.random() * chars.length)];
+        }
+
+        // 循环
+        if (col.y - col.chars.length * (fontSize + 2) > h) {
+          col.y = -col.chars.length * (fontSize + 2) - Math.random() * h;
+          col.chars = generateColumnChars(col.chars.length);
+        }
+      });
+
+      ctx.shadowBlur = 0;
+    }
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">流速</span>
+        <input type="range" class="control-slider" data-param="speed" min="0.2" max="6" step="0.1" value="${fallSpeed}">
+        <span class="control-value" data-value="speed">${fallSpeed}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">密度</span>
+        <input type="range" class="control-slider" data-param="density" min="5" max="100" value="${density}">
+        <span class="control-value" data-value="density">${density}%</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">字号</span>
+        <input type="range" class="control-slider" data-param="size" min="8" max="24" value="${fontSize}">
+        <span class="control-value" data-value="size">${fontSize}px</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'size' ? val + 'px' : (param === 'density' ? val + '%' : val.toFixed(1));
+        }
+        if (param === 'speed') fallSpeed = val;
+        if (param === 'density') { density = val; initColumns(); }
+        if (param === 'size') {
+          fontSize = val;
+          charW = fontSize * 0.7;
+          initColumns();
+        }
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-06: VHS 画面撕裂
+  // ============================================================
+  function buildVhsTear(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let tearFreq = 3;
+    let tearSize = 40;
+    let hueShift = 20;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function drawScene(t) {
+      // 背景
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      // 一个旋转的电视测试图案
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) * 0.4;
+
+      // 彩色圆环
+      const colors = ['#FF4D00', '#00FFD1', '#E8EAED', '#FF4D00', '#00FFD1', '#E8EAED', '#FF4D00'];
+      for (let i = 0; i < colors.length; i++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - i * (r / colors.length), 0, Math.PI * 2);
+        ctx.fillStyle = colors[i];
+        ctx.fill();
+      }
+
+      // 内部圆
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#101216';
+      ctx.fill();
+
+      // 水平线
+      for (let i = 0; i < 8; i++) {
+        const y = cy - r + (i + 0.5) * (2 * r / 8);
+        ctx.beginPath();
+        ctx.moveTo(cx - r, y);
+        ctx.lineTo(cx + r, y);
+        ctx.strokeStyle = 'rgba(16, 18, 22, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // 中心文字
+      ctx.font = 'bold 14px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#E8EAED';
+      ctx.fillText('VHS.TEAR', cx, cy - 8);
+      ctx.fillText('CH-07', cx, cy + 10);
+    }
+
+    function applyTear(t) {
+      const imgData = ctx.getImageData(0, 0, Math.floor(w * dpr), Math.floor(h * dpr));
+      const data = imgData.data;
+      const wPx = Math.floor(w * dpr);
+      const hPx = Math.floor(h * dpr);
+
+      const result = new Uint8ClampedArray(data);
+      const numTears = Math.floor(tearFreq);
+
+      for (let i = 0; i < numTears; i++) {
+        const tearY = Math.floor(((t * 0.05 * (1 + i * 0.3)) % hPx + i * hPx / numTears) % hPx);
+        const tearH = Math.max(2, Math.floor(tearSize * (0.5 + Math.random() * 0.5)));
+        const offset = Math.floor((Math.random() - 0.5) * tearSize * 2);
+
+        for (let y = tearY; y < tearY + tearH && y < hPx; y++) {
+          if (y < 0) continue;
+          for (let x = 0; x < wPx; x++) {
+            const srcX = ((x + offset) % wPx + wPx) % wPx;
+            const srcIdx = (y * wPx + srcX) * 4;
+            const dstIdx = (y * wPx + x) * 4;
+            result[dstIdx] = data[srcIdx];
+            result[dstIdx + 1] = data[srcIdx + 1];
+            result[dstIdx + 2] = data[srcIdx + 2];
+            result[dstIdx + 3] = data[srcIdx + 3];
+          }
+        }
+
+        // 撕裂边缘发光
+        for (let x = 0; x < wPx; x++) {
+          const idx = (tearY * wPx + x) * 4;
+          if (tearY >= 0 && tearY < hPx) {
+            result[idx] = Math.min(255, result[idx] + 50);
+            result[idx + 1] = Math.min(255, result[idx + 1] + 100);
+            result[idx + 2] = Math.min(255, result[idx + 2] + 80);
+          }
+        }
+      }
+
+      // 整体色度偏移（VHS 感）
+      if (hueShift > 0) {
+        for (let i = 0; i < data.length; i += 4) {
+          const r = result[i];
+          const g = result[i + 1];
+          const b = result[i + 2];
+          // 简单的色调偏移近似
+          const shift = hueShift / 100;
+          result[i] = Math.min(255, r + g * shift * 0.3);
+          result[i + 1] = Math.min(255, g + b * shift * 0.2);
+          result[i + 2] = Math.min(255, b + r * shift * 0.3);
+        }
+      }
+
+      for (let i = 0; i < data.length; i++) data[i] = result[i];
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    function render(t) {
+      drawScene(t);
+      applyTear(t);
+    }
+
+    drawScene(0);
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">撕裂频率</span>
+        <input type="range" class="control-slider" data-param="freq" min="1" max="15" value="${tearFreq}">
+        <span class="control-value" data-value="freq">${tearFreq}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">撕裂幅度</span>
+        <input type="range" class="control-slider" data-param="size" min="5" max="100" value="${tearSize}">
+        <span class="control-value" data-value="size">${tearSize}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">色度偏移</span>
+        <input type="range" class="control-slider" data-param="hue" min="0" max="60" value="${hueShift}">
+        <span class="control-value" data-value="hue">${hueShift}</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) valEl.textContent = val.toFixed(0);
+        if (param === 'freq') tearFreq = val;
+        if (param === 'size') tearSize = val;
+        if (param === 'hue') hueShift = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-07: 磁力形变（光标互动）
+  // ============================================================
+  function buildMagnetic(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let strength = 80;
+    let radius = 80;
+    let gridSize = 12;
+
+    let mouseX = -1000;
+    let mouseY = -1000;
+    let points = [];
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initPoints();
+    }
+
+    function initPoints() {
+      points = [];
+      const cols = Math.ceil(w / gridSize) + 1;
+      const rows = Math.ceil(h / gridSize) + 1;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          points.push({
+            ox: c * gridSize,
+            oy: r * gridSize,
+            x: c * gridSize,
+            y: r * gridSize,
+            vx: 0,
+            vy: 0,
+            col: c,
+            row: r
+          });
+        }
+      }
+    }
+
+    // 光标跟踪
+    stage.addEventListener('mousemove', function (e) {
+      const rect = stage.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+    });
+
+    stage.addEventListener('mouseleave', function () {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+
+    function render() {
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      const cols = Math.ceil(w / gridSize) + 1;
+
+      // 更新点
+      points.forEach(function (p) {
+        const dx = mouseX - p.ox;
+        const dy = mouseY - p.oy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < radius && dist > 0) {
+          const force = (1 - dist / radius) * strength * 0.01;
+          p.vx += dx * force;
+          p.vy += dy * force;
+        }
+
+        // 弹簧回弹
+        p.vx += (p.ox - p.x) * 0.05;
+        p.vy += (p.oy - p.y) * 0.05;
+
+        // 阻尼
+        p.vx *= 0.85;
+        p.vy *= 0.85;
+
+        p.x += p.vx;
+        p.y += p.vy;
+      });
+
+      // 绘制网格线
+      ctx.strokeStyle = 'rgba(0, 255, 209, 0.4)';
+      ctx.lineWidth = 1;
+
+      // 水平线
+      const rows = Math.ceil(h / gridSize) + 1;
+      for (let r = 0; r < rows; r++) {
+        ctx.beginPath();
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (idx >= points.length) continue;
+          const p = points[idx];
+          if (c === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      }
+
+      // 垂直线
+      for (let c = 0; c < cols; c++) {
+        ctx.beginPath();
+        for (let r = 0; r < rows; r++) {
+          const idx = r * cols + c;
+          if (idx >= points.length) continue;
+          const p = points[idx];
+          if (r === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      }
+
+      // 绘制节点
+      points.forEach(function (p) {
+        const dist = Math.sqrt((p.x - mouseX) ** 2 + (p.y - mouseY) ** 2);
+        if (dist < radius * 0.6) {
+          ctx.fillStyle = '#FF4D00';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 磁场范围指示
+      if (mouseX > 0 && mouseY > 0) {
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 77, 0, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#FF4D00';
+        ctx.fill();
+      }
+    }
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">磁力强度</span>
+        <input type="range" class="control-slider" data-param="strength" min="10" max="200" value="${strength}">
+        <span class="control-value" data-value="strength">${strength}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">作用半径</span>
+        <input type="range" class="control-slider" data-param="radius" min="20" max="200" value="${radius}">
+        <span class="control-value" data-value="radius">${radius}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">网格密度</span>
+        <input type="range" class="control-slider" data-param="grid" min="6" max="30" value="${gridSize}">
+        <span class="control-value" data-value="grid">${gridSize}px</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'grid' ? val + 'px' : val.toFixed(0);
+        }
+        if (param === 'strength') strength = val;
+        if (param === 'radius') radius = val;
+        if (param === 'grid') { gridSize = val; initPoints(); }
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-08: 频谱故障
+  // ============================================================
+  function buildSpectrum(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let barCount = 48;
+    let glitchChance = 30;
+    let ampBase = 50;
+
+    // 虚拟频谱数据
+    let spectrumData = [];
+    let time = 0;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function generateSpectrum() {
+      spectrumData = [];
+      for (let i = 0; i < barCount; i++) {
+        // 模拟真实频谱：低频高、高频低
+        const base = ampBase * (1 - i / barCount) * 0.7;
+        const noise = Math.sin(time * 0.003 + i * 0.3) * 20 + Math.sin(time * 0.01 + i * 0.1) * 15;
+        let val = Math.max(5, base + noise + Math.random() * 10);
+
+        // 故障：随机爆冲
+        if (Math.random() < glitchChance / 1000) {
+          val = Math.min(h, val + Math.random() * h * 0.6);
+        }
+
+        spectrumData.push(val);
+      }
+    }
+
+    function render(t) {
+      time = t;
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      generateSpectrum();
+
+      const barW = (w - 20) / barCount - 2;
+      const baseY = h - 20;
+
+      // 绘制反射面
+      ctx.strokeStyle = 'rgba(0, 255, 209, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(10, baseY);
+      ctx.lineTo(w - 10, baseY);
+      ctx.stroke();
+
+      spectrumData.forEach(function (val, i) {
+        const x = 10 + i * (barW + 2);
+        const barH = val * (h - 40) / 100;
+        const y = baseY - barH;
+
+        // 故障条：随机颜色、随机错位
+        const isGlitch = Math.random() < glitchChance / 100 * 0.3;
+        let color, xOffset = 0;
+
+        if (isGlitch) {
+          const glitchType = Math.floor(Math.random() * 3);
+          if (glitchType === 0) { color = '#FF4D00'; xOffset = (Math.random() - 0.5) * 8; }
+          else if (glitchType === 1) { color = '#E8EAED'; xOffset = (Math.random() - 0.5) * 4; }
+          else { color = '#00FFD1'; }
+        } else {
+          color = '#00FFD1';
+        }
+
+        // 渐变条
+        const grad = ctx.createLinearGradient(0, y, 0, baseY);
+        if (isGlitch) {
+          grad.addColorStop(0, color);
+          grad.addColorStop(1, 'rgba(255, 77, 0, 0.3)');
+        } else {
+          grad.addColorStop(0, color);
+          grad.addColorStop(1, 'rgba(0, 255, 209, 0.2)');
+        }
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(x + xOffset, y, barW, barH);
+
+        // 倒影
+        ctx.fillStyle = isGlitch
+          ? 'rgba(255, 77, 0, 0.15)'
+          : 'rgba(0, 255, 209, 0.1)';
+        ctx.fillRect(x + xOffset, baseY, barW, barH * 0.3);
+
+        // 峰值点
+        ctx.fillStyle = isGlitch ? '#FF4D00' : '#E8EAED';
+        ctx.fillRect(x + xOffset, y - 2, barW, 2);
+      });
+
+      // 频率标签
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(232, 234, 237, 0.4)';
+      ctx.textAlign = 'left';
+      ctx.fillText('20Hz', 10, h - 5);
+      ctx.textAlign = 'right';
+      ctx.fillText('20kHz', w - 10, h - 5);
+      ctx.textAlign = 'center';
+      ctx.fillText('SPECTRUM  GLITCH', w / 2, 16);
+    }
+
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">频段数</span>
+        <input type="range" class="control-slider" data-param="bars" min="16" max="96" value="${barCount}">
+        <span class="control-value" data-value="bars">${barCount}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">故障概率</span>
+        <input type="range" class="control-slider" data-param="glitch" min="0" max="80" value="${glitchChance}">
+        <span class="control-value" data-value="glitch">${glitchChance}%</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">基础振幅</span>
+        <input type="range" class="control-slider" data-param="amp" min="10" max="100" value="${ampBase}">
+        <span class="control-value" data-value="amp">${ampBase}</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'glitch' ? val + '%' : val.toFixed(0);
+        }
+        if (param === 'bars') barCount = Math.floor(val);
+        if (param === 'glitch') glitchChance = val;
+        if (param === 'amp') ampBase = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-09: 位压缩 (Bit Crush)
+  // ============================================================
+  function buildBitCrush(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let bits = 4;
+    let pixelate = 8;
+    let ditherOn = true;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function drawSource(t) {
+      // 画一个复杂的源图像
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // 多层渐变
+      for (let i = 5; i >= 0; i--) {
+        const r = 30 + i * 25;
+        const hue = 170 + Math.sin(t * 0.001 + i) * 20 + i * 10;
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0, `hsla(${hue}, 100%, 60%, ${0.8 - i * 0.12})`);
+        grad.addColorStop(1, `hsla(${hue + 30}, 100%, 50%, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx + Math.sin(t * 0.002 + i) * 10, cy + Math.cos(t * 0.0015 + i) * 8, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 文字
+      ctx.font = 'bold 22px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#101216';
+      ctx.fillText('BIT.CRUSH', cx, cy - 6);
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#E8EAED';
+      ctx.fillText(bits + 'bit · ' + pixelate + 'px', cx, cy + 12);
+    }
+
+    function applyBitCrush() {
+      const source = ctx.getImageData(0, 0, Math.floor(w * dpr), Math.floor(h * dpr));
+      const data = source.data;
+      const wPx = Math.floor(w * dpr);
+      const hPx = Math.floor(h * dpr);
+
+      // 像素化：按块采样
+      const blockSize = Math.max(1, Math.floor(pixelate * dpr));
+      const levels = Math.pow(2, bits) - 1;
+
+      for (let by = 0; by < hPx; by += blockSize) {
+        for (let bx = 0; bx < wPx; bx += blockSize) {
+          // 取块中心像素
+          const sx = Math.min(wPx - 1, bx + Math.floor(blockSize / 2));
+          const sy = Math.min(hPx - 1, by + Math.floor(blockSize / 2));
+          const idx = (sy * wPx + sx) * 4;
+
+          let r = data[idx];
+          let g = data[idx + 1];
+          let b = data[idx + 2];
+
+          // 位压缩：量化到更少的色阶
+          r = Math.round(r / 255 * levels) / levels * 255;
+          g = Math.round(g / 255 * levels) / levels * 255;
+          b = Math.round(b / 255 * levels) / levels * 255;
+
+          // 抖动（Floyd-Steinberg 简化版 — 块间误差扩散）
+          if (ditherOn) {
+            const ditherNoise = (Math.random() - 0.5) * (255 / levels) * 0.5;
+            r = Math.max(0, Math.min(255, r + ditherNoise));
+            g = Math.max(0, Math.min(255, g + ditherNoise));
+            b = Math.max(0, Math.min(255, b + ditherNoise));
+            r = Math.round(r / 255 * levels) / levels * 255;
+            g = Math.round(g / 255 * levels) / levels * 255;
+            b = Math.round(b / 255 * levels) / levels * 255;
+          }
+
+          // 填充块
+          for (let py = by; py < by + blockSize && py < hPx; py++) {
+            for (let px = bx; px < bx + blockSize && px < wPx; px++) {
+              const pidx = (py * wPx + px) * 4;
+              data[pidx] = r;
+              data[pidx + 1] = g;
+              data[pidx + 2] = b;
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(source, 0, 0);
+    }
+
+    function render(t) {
+      drawSource(t);
+      applyBitCrush();
+    }
+
+    drawSource(0);
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">色深</span>
+        <input type="range" class="control-slider" data-param="bits" min="1" max="8" value="${bits}">
+        <span class="control-value" data-value="bits">${bits}-bit</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">像素块</span>
+        <input type="range" class="control-slider" data-param="pixel" min="1" max="30" value="${pixelate}">
+        <span class="control-value" data-value="pixel">${pixelate}px</span>
+      </div>
+      <div class="control-btns">
+        <button class="control-btn ${ditherOn ? 'active' : ''}" data-dither="on">抖动 开</button>
+        <button class="control-btn ${!ditherOn ? 'active' : ''}" data-dither="off">抖动 关</button>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'bits' ? val + '-bit' : val + 'px';
+        }
+        if (param === 'bits') bits = val;
+        if (param === 'pixel') pixelate = val;
+      });
+    });
+
+    controls.querySelectorAll('[data-dither]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ditherOn = b.dataset.dither === 'on';
+        controls.querySelectorAll('[data-dither]').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-10: 波形故障
+  // ============================================================
+  function buildWaveform(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let freq = 2;
+    let amp = 40;
+    let noiseAmt = 20;
+    let phase = 0;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function render(t) {
+      ctx.fillStyle = 'rgba(16, 18, 22, 0.25)';
+      ctx.fillRect(0, 0, w, h);
+
+      const cy = h / 2;
+      const midX = w / 2;
+
+      // 网格背景
+      ctx.strokeStyle = 'rgba(42, 47, 64, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < w; x += 30) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      }
+      for (let y = 0; y < h; y += 30) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+
+      // 中心线
+      ctx.strokeStyle = 'rgba(232, 234, 237, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(0, cy);
+      ctx.lineTo(w, cy);
+      ctx.stroke();
+
+      // 绘制多层波形
+      const waveforms = [
+        { color: 'rgba(0, 255, 209, 0.8)', width: 2, offset: 0, ampMult: 1 },
+        { color: 'rgba(255, 77, 0, 0.5)', width: 1.5, offset: 0.3, ampMult: 0.7 },
+        { color: 'rgba(232, 234, 237, 0.3)', width: 1, offset: 0.6, ampMult: 0.5 }
+      ];
+
+      waveforms.forEach(function (wf, wi) {
+        ctx.beginPath();
+        ctx.strokeStyle = wf.color;
+        ctx.lineWidth = wf.width;
+
+        for (let x = 0; x < w; x++) {
+          const norm = x / w;
+          let y = cy;
+
+          // 主波形：正弦 + 谐波
+          const mainWave = Math.sin(norm * Math.PI * 2 * freq + phase + wf.offset * Math.PI * 2) * amp * wf.ampMult;
+          const harm2 = Math.sin(norm * Math.PI * 4 * freq + phase * 1.5) * amp * 0.2 * wf.ampMult;
+          const harm3 = Math.sin(norm * Math.PI * 6 * freq + phase * 2) * amp * 0.1 * wf.ampMult;
+
+          y += mainWave + harm2 + harm3;
+
+          // 故障噪声：随机尖峰
+          if (Math.random() < noiseAmt / 1000) {
+            y += (Math.random() - 0.5) * amp * 2;
+          }
+
+          // 低频抖动
+          y += Math.sin(t * 0.002 + wi) * 5;
+
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+
+      // 触发同步标记
+      const triggerX = (phase / (Math.PI * 2 * freq)) % 1 * w;
+      if (triggerX >= 0 && triggerX < w) {
+        ctx.strokeStyle = 'rgba(255, 77, 0, 0.6)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(triggerX, 0);
+        ctx.lineTo(triggerX, h);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // 标签
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(0, 255, 209, 0.7)';
+      ctx.textAlign = 'left';
+      ctx.fillText('CH1 ' + freq.toFixed(1) + 'Hz', 10, 20);
+      ctx.fillStyle = 'rgba(255, 77, 0, 0.7)';
+      ctx.fillText('CH2 ' + (freq * 0.8).toFixed(1) + 'Hz', 10, 34);
+      ctx.fillStyle = 'rgba(232, 234, 237, 0.5)';
+      ctx.textAlign = 'right';
+      ctx.fillText(amp.toFixed(0) + 'mV/div', w - 10, 20);
+
+      phase += 0.02 * freq;
+    }
+
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">频率</span>
+        <input type="range" class="control-slider" data-param="freq" min="0.5" max="10" step="0.1" value="${freq}">
+        <span class="control-value" data-value="freq">${freq}Hz</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">振幅</span>
+        <input type="range" class="control-slider" data-param="amp" min="5" max="80" value="${amp}">
+        <span class="control-value" data-value="amp">${amp}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">噪声</span>
+        <input type="range" class="control-slider" data-param="noise" min="0" max="80" value="${noiseAmt}">
+        <span class="control-value" data-value="noise">${noiseAmt}%</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'freq' ? val + 'Hz' : (param === 'noise' ? val + '%' : val.toFixed(0));
+        }
+        if (param === 'freq') freq = val;
+        if (param === 'amp') amp = val;
+        if (param === 'noise') noiseAmt = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-11: 马赛克解码
+  // ============================================================
+  function buildMosaic(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let blockSize = 16;
+    let decodeProgress = 40;
+    let scanSpeed = 1;
+
+    let scanY = 0;
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    function drawSource() {
+      // 清晰源图
+      ctx.fillStyle = '#101216';
+      ctx.fillRect(0, 0, w, h);
+
+      // 一个"信号"图像：几何图形
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // 背景渐变
+      const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.5);
+      bg.addColorStop(0, 'rgba(0, 255, 209, 0.2)');
+      bg.addColorStop(1, 'rgba(16, 18, 22, 0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+
+      // 六边形
+      ctx.save();
+      ctx.translate(cx, cy);
+      for (let i = 0; i < 6; i++) {
+        ctx.rotate(Math.PI / 3);
+        ctx.beginPath();
+        ctx.moveTo(40, 0);
+        ctx.lineTo(20, -35);
+        ctx.lineTo(-20, -35);
+        ctx.lineTo(-40, 0);
+        ctx.lineTo(-20, 35);
+        ctx.lineTo(20, 35);
+        ctx.closePath();
+        ctx.strokeStyle = i % 2 === 0 ? '#00FFD1' : '#FF4D00';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 中心文字
+      ctx.font = 'bold 24px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#E8EAED';
+      ctx.fillText('DECODE', cx, cy - 6);
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#00FFD1';
+      ctx.fillText('SIGNAL RECOVERY', cx, cy + 14);
+
+      // 装饰点
+      for (let i = 0; i < 20; i++) {
+        const angle = i * 0.5;
+        const r = 70 + i * 3;
+        ctx.fillStyle = i % 3 === 0 ? '#FF4D00' : '#00FFD1';
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function applyMosaic() {
+      const imgData = ctx.getImageData(0, 0, Math.floor(w * dpr), Math.floor(h * dpr));
+      const data = imgData.data;
+      const wPx = Math.floor(w * dpr);
+      const hPx = Math.floor(h * dpr);
+
+      const bs = Math.max(1, Math.floor(blockSize * dpr));
+      const decodePx = Math.floor(decodeProgress / 100 * hPx);
+      const scanPx = Math.floor(scanY * dpr);
+
+      for (let by = 0; by < hPx; by += bs) {
+        for (let bx = 0; bx < wPx; bx += bs) {
+          const blockY = by + Math.floor(bs / 2);
+          const isDecoded = blockY < decodePx;
+          const inScanZone = Math.abs(blockY - scanPx) < bs * 2;
+
+          if (!isDecoded || inScanZone) {
+            // 计算块平均色
+            let r = 0, g = 0, b = 0, count = 0;
+            for (let py = by; py < by + bs && py < hPx; py++) {
+              for (let px = bx; px < bx + bs && px < wPx; px++) {
+                const idx = (py * wPx + px) * 4;
+                r += data[idx];
+                g += data[idx + 1];
+                b += data[idx + 2];
+                count++;
+              }
+            }
+            r = Math.floor(r / count);
+            g = Math.floor(g / count);
+            b = Math.floor(b / count);
+
+            // 马赛克化
+            const blockSizeAdj = isDecoded ? bs * 0.3 : bs;
+            const actualBs = Math.max(1, Math.floor(blockSizeAdj));
+
+            for (let py = by; py < by + bs && py < hPx; py++) {
+              for (let px = bx; px < bx + bs && px < wPx; px++) {
+                const idx = (py * wPx + px) * 4;
+                if (Math.floor((py - by) / actualBs) * actualBs === (py - by) &&
+                    Math.floor((px - bx) / actualBs) * actualBs === (px - bx)) {
+                  // 保持平均色
+                }
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+              }
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+
+      // 扫描线
+      const scanYDisplay = scanY;
+      ctx.strokeStyle = 'rgba(0, 255, 209, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#00FFD1';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(0, scanYDisplay);
+      ctx.lineTo(w, scanYDisplay);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function render() {
+      drawSource();
+      applyMosaic();
+
+      scanY += scanSpeed;
+      if (scanY > h + 20) scanY = -20;
+    }
+
+    drawSource();
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">块大小</span>
+        <input type="range" class="control-slider" data-param="block" min="2" max="40" value="${blockSize}">
+        <span class="control-value" data-value="block">${blockSize}px</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">解码进度</span>
+        <input type="range" class="control-slider" data-param="decode" min="0" max="100" value="${decodeProgress}">
+        <span class="control-value" data-value="decode">${decodeProgress}%</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">扫描速度</span>
+        <input type="range" class="control-slider" data-param="scan" min="0.2" max="5" step="0.1" value="${scanSpeed}">
+        <span class="control-value" data-value="scan">${scanSpeed}</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'block' ? val + 'px' :
+                               param === 'decode' ? val + '%' : val.toFixed(1);
+        }
+        if (param === 'block') blockSize = val;
+        if (param === 'decode') decodeProgress = val;
+        if (param === 'scan') scanSpeed = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // EX-12: 拖尾残影
+  // ============================================================
+  function buildBloom(card, ex) {
+    const stage = card.querySelector('[data-stage]');
+    const controls = card.querySelector('[data-controls]');
+
+    const canvas = document.createElement('canvas');
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let trailLen = 20;
+    let particleCount = 8;
+    let glow = 60;
+
+    let particles = [];
+
+    function resize() {
+      w = stage.clientWidth;
+      h = stage.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initParticles();
+    }
+
+    function initParticles() {
+      particles = [];
+      for (let i = 0; i < particleCount; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 2,
+          vy: (Math.random() - 0.5) * 2,
+          radius: 4 + Math.random() * 8,
+          color: i % 3 === 0 ? '#FF4D00' : '#00FFD1',
+          trail: []
+        });
+      }
+    }
+
+    function render() {
+      // 拖尾背景淡化
+      ctx.fillStyle = 'rgba(16, 18, 22, ' + (1 - trailLen / 100).toFixed(2) + ')';
+      ctx.fillRect(0, 0, w, h);
+
+      particles.forEach(function (p) {
+        // 更新位置
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // 边界反弹
+        if (p.x < p.radius || p.x > w - p.radius) p.vx *= -1;
+        if (p.y < p.radius || p.y > h - p.radius) p.vy *= -1;
+        p.x = Math.max(p.radius, Math.min(w - p.radius, p.x));
+        p.y = Math.max(p.radius, Math.min(h - p.radius, p.y));
+
+        // 记录拖尾
+        p.trail.push({ x: p.x, y: p.y });
+        if (p.trail.length > trailLen) p.trail.shift();
+
+        // 绘制拖尾
+        p.trail.forEach(function (t, i) {
+          const alpha = (i / p.trail.length) * 0.6;
+          const r = p.radius * (0.3 + i / p.trail.length * 0.7);
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = alpha;
+          ctx.fill();
+        });
+
+        ctx.globalAlpha = 1;
+
+        // 发光核心
+        const glowR = p.radius * (1 + glow / 50);
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(0.3, p.color);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 1;
+        // 核心点
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = '#E8EAED';
+        ctx.fill();
+      });
+
+      // 粒子之间的连接线（距离近时）
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 80) {
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = 'rgba(0, 255, 209, ' + (1 - dist / 80) * 0.3 + ')';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(stage);
+
+    if (!prefersReduced) registerAnim(render);
+
+    controls.innerHTML = `
+      <div class="control-row">
+        <span class="control-label">拖尾长度</span>
+        <input type="range" class="control-slider" data-param="trail" min="5" max="60" value="${trailLen}">
+        <span class="control-value" data-value="trail">${trailLen}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">粒子数</span>
+        <input type="range" class="control-slider" data-param="count" min="3" max="20" value="${particleCount}">
+        <span class="control-value" data-value="count">${particleCount}</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">光晕强度</span>
+        <input type="range" class="control-slider" data-param="glow" min="10" max="100" value="${glow}">
+        <span class="control-value" data-value="glow">${glow}%</span>
+      </div>
+    `;
+
+    controls.querySelectorAll('.control-slider').forEach(function (s) {
+      s.addEventListener('input', function () {
+        const val = parseFloat(s.value);
+        const param = s.dataset.param;
+        const valEl = controls.querySelector('[data-value="' + param + '"]');
+        if (valEl) {
+          valEl.textContent = param === 'glow' ? val + '%' : val.toFixed(0);
+        }
+        if (param === 'trail') trailLen = val;
+        if (param === 'count') { particleCount = Math.floor(val); initParticles(); }
+        if (param === 'glow') glow = val;
+      });
+    });
+  }
+
+  // ============================================================
+  // 宣告可升级
+  // ============================================================
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) { /* 静默 */ }
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+})();
+</script>
+
+</body>
+</html>
