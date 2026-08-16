@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>INKFLOW 墨流实验室 · V3</title>
+<style>
+  /* ========== RESET & BASE ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #F7F2E7;
+    color: #161412;
+    font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+  body {
+    min-height: 100vh;
+    position: relative;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(212,61,42,0.04) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 80%, rgba(201,162,75,0.05) 0%, transparent 45%);
+  }
+
+  /* Paper texture with noise overlay via layered gradients */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(22,20,18,0.015) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgba(22,20,18,0.015) 0 1px, transparent 1px 3px);
+    z-index: 1;
+  }
+
+  /* Scanline / halftone filter (toggleable) */
+  .scanlines::after {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 9998;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(22,20,18,0.08) 0px,
+      rgba(22,20,18,0.08) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    mix-blend-mode: multiply;
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  #cursor-outer {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 36px; height: 36px;
+    border: 2px solid #161412;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 99999;
+    transition: width 0.25s cubic-bezier(.2,.8,.2,1),
+                height 0.25s cubic-bezier(.2,.8,.2,1),
+                border-color 0.25s ease,
+                background 0.25s ease;
+    mix-blend-mode: difference;
+    border-color: #fff;
+  }
+  #cursor-inner {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: #D43D2A;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 99999;
+    box-shadow: 0 0 12px rgba(212,61,42,0.7), 0 0 24px rgba(212,61,42,0.3);
+    transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+  }
+  #cursor-outer.hover {
+    width: 60px; height: 60px;
+    border-color: #C9A24B;
+    background: rgba(201,162,75,0.12);
+  }
+  #cursor-inner.hover {
+    width: 4px; height: 4px;
+    background: #C9A24B;
+    box-shadow: 0 0 16px rgba(201,162,75,0.8);
+  }
+  #cursor-outer.active {
+    width: 20px; height: 20px;
+    border-color: #D43D2A;
+    background: rgba(212,61,42,0.2);
+  }
+  #cursor-inner.active {
+    width: 2px; height: 2px;
+  }
+
+  /* cursor trail ink particles */
+  .ink-trailing {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99998;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(22,20,18,0.6) 0%, rgba(22,20,18,0) 70%);
+    mix-blend-mode: multiply;
+  }
+
+  /* click ripple */
+  .click-ripple {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99997;
+    border: 1.5px solid #D43D2A;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.7;
+    animation: ripple-grow 0.8s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes ripple-grow {
+    0% { width: 0; height: 0; opacity: 0.7; border-width: 2px; }
+    100% { width: 120px; height: 120px; opacity: 0; border-width: 0.5px; }
+  }
+
+  /* ========== HEADER / NAV ========== */
+  .lab-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 48px;
+    z-index: 100;
+    background: linear-gradient(180deg, rgba(247,242,231,0.92) 0%, rgba(247,242,231,0) 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .lab-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 4px;
+  }
+  .lab-logo-seal {
+    width: 36px; height: 36px;
+    background: #D43D2A;
+    color: #F7F2E7;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    font-weight: 900;
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(212,61,42,0.3);
+    transform: rotate(-2deg);
+    transition: transform 0.4s cubic-bezier(.34,1.56,.64,1);
+  }
+  .lab-logo-seal:hover { transform: rotate(0deg) scale(1.08); }
+  .lab-nav {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+  .lab-nav li {
+    position: relative;
+    font-size: 14px;
+    letter-spacing: 2px;
+    padding: 6px 2px;
+    cursor: none;
+    transition: color 0.3s;
+  }
+  .lab-nav li::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 0; height: 2px;
+    background: #161412;
+    transition: width 0.4s cubic-bezier(.2,.8,.2,1);
+  }
+  .lab-nav li:hover { color: #D43D2A; }
+  .lab-nav li:hover::after { width: 100%; background: #D43D2A; }
+  .lab-toggle {
+    width: 40px; height: 40px;
+    border: 1.5px solid #161412;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: none;
+    transition: all 0.3s ease;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+  .lab-toggle:hover {
+    background: #161412;
+    color: #F7F2E7;
+    transform: scale(1.1);
+  }
+
+  /* ========== HERO / INTRO ========== */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    text-align: center;
+    padding: 120px 40px 80px;
+    overflow: hidden;
+  }
+  .hero-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.6;
+  }
+  .hero-title {
+    font-size: clamp(72px, 12vw, 180px);
+    font-weight: 900;
+    letter-spacing: 20px;
+    line-height: 1;
+    position: relative;
+    z-index: 2;
+    margin-bottom: 24px;
+  }
+  .hero-title .char {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(40px);
+    transition: all 0.8s cubic-bezier(.2,.8,.2,1);
+  }
+  .hero-title .char.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hero-subtitle {
+    font-size: 16px;
+    letter-spacing: 8px;
+    color: #5a5550;
+    position: relative;
+    z-index: 2;
+    margin-bottom: 16px;
+  }
+  .hero-tagline {
+    font-size: 14px;
+    letter-spacing: 4px;
+    color: #8a8580;
+    position: relative;
+    z-index: 2;
+    max-width: 600px;
+    line-height: 2;
+  }
+  .hero-scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: #8a8580;
+    z-index: 2;
+    animation: float-down 2s ease-in-out infinite;
+  }
+  .hero-scroll-hint::after {
+    content: "";
+    display: block;
+    width: 1px; height: 40px;
+    background: linear-gradient(180deg, #8a8580 0%, transparent 100%);
+    margin: 12px auto 0;
+    animation: line-grow 2s ease-in-out infinite;
+  }
+  @keyframes float-down {
+    0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.5; }
+    50% { transform: translateX(-50%) translateY(6px); opacity: 1; }
+  }
+  @keyframes line-grow {
+    0% { height: 10px; opacity: 0.3; }
+    50% { height: 40px; opacity: 1; }
+    100% { height: 10px; opacity: 0.3; }
+  }
+
+  /* ========== SECTION LABELS ========== */
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 6px;
+    color: #D43D2A;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+    line-height: 1.3;
+  }
+  .section-desc {
+    font-size: 14px;
+    line-height: 2;
+    color: #6a6560;
+    max-width: 480px;
+  }
+
+  /* ========== EXHIBITS LAYOUT ========== */
+  .exhibits {
+    padding: 120px 60px;
+    position: relative;
+    z-index: 2;
+  }
+  .exhibits-header {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+  .exhibits-header .section-desc { margin: 0 auto; }
+
+  .exhibit-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .exhibit {
+    position: relative;
+    background: #fff;
+    border: 1px solid rgba(22,20,18,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.4s cubic-bezier(.2,.8,.2,1),
+                box-shadow 0.4s ease;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+  }
+  .exhibit:hover {
+    box-shadow: 0 20px 60px rgba(22,20,18,0.12), 0 4px 12px rgba(22,20,18,0.06);
+  }
+  .exhibit-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .exhibit-body {
+    position: relative;
+    z-index: 2;
+    padding: 28px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    min-height: 280px;
+  }
+  .exhibit-num {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #C9A24B;
+    font-weight: 600;
+  }
+  .exhibit-name {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .exhibit-desc {
+    font-size: 12px;
+    line-height: 1.8;
+    color: #7a7570;
+    letter-spacing: 1px;
+  }
+  .exhibit-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid rgba(22,20,18,0.2);
+    border-radius: 20px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #6a6560;
+    width: fit-content;
+  }
+
+  /* Size variants */
+  .exhibit.tall { grid-column: span 4; grid-row: span 2; }
+  .exhibit.wide { grid-column: span 8; grid-row: span 1; }
+  .exhibit.medium { grid-column: span 4; grid-row: span 1; }
+  .exhibit.large { grid-column: span 6; grid-row: span 1; }
+
+  /* ========== EXHIBIT 1: INK DROP ========== */
+  #ex-inkdrop {
+    background: #F7F2E7;
+    min-height: 380px;
+  }
+  #ex-inkdrop .exhibit-body { pointer-events: none; }
+
+  /* ========== EXHIBIT 2: SEAL MAGNET ========== */
+  #ex-seal {
+    background: linear-gradient(135deg, #F7F2E7 0%, #EDE6D6 100%);
+  }
+  .seal-target {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 140px; height: 140px;
+    background: #D43D2A;
+    color: #F7F2E7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(212,61,42,0.25);
+    transition: transform 0.15s ease-out, box-shadow 0.3s ease;
+    z-index: 3;
+    cursor: none;
+    pointer-events: auto;
+  }
+  .seal-target:active {
+    transform: translate(-50%, -50%) scale(0.92);
+    box-shadow: 0 2px 8px rgba(212,61,42,0.4);
+  }
+  .seal-target .seal-sub {
+    font-size: 11px;
+    letter-spacing: 4px;
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+  .seal-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 180px; height: 180px;
+    border: 2px solid #D43D2A;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .seal-ring.pulse {
+    animation: seal-ring-pulse 1.2s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes seal-ring-pulse {
+    0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.8; border-width: 3px; }
+    100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; border-width: 0.5px; }
+  }
+
+  /* ========== EXHIBIT 3: GOLD SPECTRUM ========== */
+  #ex-spectrum {
+    background: #161412;
+    color: #F7F2E7;
+  }
+  #ex-spectrum .exhibit-num { color: #C9A24B; }
+  #ex-spectrum .exhibit-desc { color: #a09070; }
+  .spectrum-bars {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 0 24px 24px;
+    z-index: 1;
+  }
+  .spectrum-bar {
+    flex: 1;
+    background: linear-gradient(180deg, #C9A24B 0%, #E8D58A 50%, #8B7028 100%);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.6;
+    box-shadow: 0 0 8px rgba(201,162,75,0.3);
+    transition: height 0.1s ease-out;
+  }
+  .spectrum-bar.sparkle {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(201,162,75,0.8), 0 0 32px rgba(201,162,75,0.4);
+  }
+
+  /* ========== EXHIBIT 4: FLOW FIELD ========== */
+  #ex-flowfield {
+    background: #F7F2E7;
+    min-height: 380px;
+  }
+
+  /* ========== EXHIBIT 5: CHARACTER DECONSTRUCT ========== */
+  #ex-char {
+    background: linear-gradient(180deg, #161412 0%, #2a2420 100%);
+    color: #F7F2E7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 380px;
+  }
+  #ex-char .exhibit-body { position: absolute; z-index: 2; }
+  #ex-char .exhibit-desc { color: #a09080; }
+  #ex-char .exhibit-num { color: #D43D2A; }
+  .char-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .char-big {
+    font-size: 200px;
+    font-weight: 900;
+    letter-spacing: 0;
+    color: rgba(247,242,231,0.9);
+    position: relative;
+    cursor: none;
+    pointer-events: auto;
+    user-select: none;
+    transition: opacity 0.4s ease;
+  }
+  .char-particles-canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* ========== EXHIBIT 6: TILT CARD ========== */
+  #ex-tilt {
+    background: #F7F2E7;
+    min-height: 380px;
+  }
+  .tilt-card-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1200px;
+    z-index: 1;
+  }
+  .tilt-card {
+    width: 220px; height: 300px;
+    background: linear-gradient(135deg, #161412 0%, #3a3430 100%);
+    border-radius: 8px;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.15s ease-out;
+    box-shadow: 0 20px 60px rgba(22,20,18,0.3);
+    cursor: none;
+    pointer-events: auto;
+    overflow: hidden;
+  }
+  .tilt-card::before {
+    content: "";
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at 50% 50%, rgba(201,162,75,0.15) 0%, transparent 60%);
+    transform: translate(var(--glare-x, 0), var(--glare-y, 0));
+    pointer-events: none;
+    transition: transform 0.15s ease-out;
+  }
+  .tilt-card-content {
+    position: absolute;
+    inset: 0;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: #F7F2E7;
+    transform: translateZ(30px);
+  }
+  .tilt-card-seal {
+    width: 50px; height: 50px;
+    background: #D43D2A;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 900;
+    color: #F7F2E7;
+  }
+  .tilt-card-title {
+    font-size: 18px;
+    letter-spacing: 3px;
+    font-weight: 700;
+  }
+  .tilt-card-sub {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #C9A24B;
+    margin-top: 6px;
+  }
+
+  /* ========== EXHIBIT 7: GLOSSY SWEEP ========== */
+  #ex-glossy {
+    background: #F7F2E7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .glossy-text {
+    font-size: 56px;
+    font-weight: 900;
+    letter-spacing: 8px;
+    background: linear-gradient(90deg, #161412 0%, #161412 40%, #C9A24B 50%, #161412 60%, #161412 100%);
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: background-position 1.2s cubic-bezier(.2,.8,.2,1);
+    cursor: none;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .glossy-text:hover {
+    background-position: 0 0;
+  }
+
+  /* ========== EXHIBIT 8: COUNTER ========== */
+  #ex-counter {
+    background: linear-gradient(135deg, #D43D2A 0%, #B02D1E 100%);
+    color: #F7F2E7;
+  }
+  #ex-counter .exhibit-num { color: #F7E2D6; }
+  #ex-counter .exhibit-desc { color: rgba(247,242,231,0.7); }
+  .counter-display {
+    position: absolute;
+    bottom: 28px;
+    right: 28px;
+    font-size: 72px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    z-index: 1;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 4px 20px rgba(22,20,18,0.2);
+  }
+  .counter-trigger {
+    position: absolute;
+    bottom: 28px;
+    left: 28px;
+    padding: 8px 16px;
+    border: 1.5px solid rgba(247,242,231,0.6);
+    border-radius: 20px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    background: transparent;
+    color: #F7F2E7;
+    cursor: none;
+    pointer-events: auto;
+    transition: all 0.3s ease;
+    z-index: 3;
+  }
+  .counter-trigger:hover {
+    background: #F7F2E7;
+    color: #D43D2A;
+  }
+
+  /* ========== EXHIBIT 9: PARALLAX ========== */
+  #ex-parallax {
+    background: #F7F2E7;
+    min-height: 380px;
+    overflow: hidden;
+  }
+  .parallax-layer {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .parallax-layer.l1 { /* back */
+    width: 300px; height: 300px;
+    border: 1px solid rgba(22,20,18,0.1);
+    border-radius: 50%;
+  }
+  .parallax-layer.l2 {
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(201,162,75,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .parallax-layer.l3 {
+    width: 140px; height: 140px;
+    background: #161412;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #F7F2E7;
+    font-size: 36px;
+    font-weight: 900;
+  }
+  .parallax-layer.l4 { /* front: dust particles */
+    width: 100%; height: 100%;
+  }
+  .dust-particle {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: #C9A24B;
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+
+  /* ========== FOOTER ========== */
+  .lab-footer {
+    padding: 80px 60px 60px;
+    text-align: center;
+    border-top: 1px solid rgba(22,20,18,0.08);
+    margin-top: 60px;
+    position: relative;
+    z-index: 2;
+  }
+  .footer-text {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: #8a8580;
+    margin-bottom: 8px;
+  }
+  .footer-seal {
+    display: inline-block;
+    width: 48px; height: 48px;
+    background: #D43D2A;
+    color: #F7F2E7;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 900;
+    border-radius: 4px;
+    margin: 24px auto;
+    box-shadow: 0 4px 16px rgba(212,61,42,0.25);
+    cursor: none;
+    transition: transform 0.4s cubic-bezier(.34,1.56,.64,1);
+  }
+  .footer-seal:hover { transform: scale(1.15) rotate(5deg); }
+
+  /* ========== SCROLL REVEAL ========== */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s cubic-bezier(.2,.8,.2,1),
+                transform 0.8s cubic-bezier(.2,.8,.2,1);
+  }
+  .reveal.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 { transition-delay: 0.08s; }
+  .reveal-delay-2 { transition-delay: 0.16s; }
+  .reveal-delay-3 { transition-delay: 0.24s; }
+  .reveal-delay-4 { transition-delay: 0.32s; }
+
+  /* ========== TYPEWRITER ========== */
+  .typewriter-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: #161412;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* ========== PULSE AVATAR (SEAL PULSE) ========== */
+  .pulse-seal {
+    position: relative;
+    width: 64px; height: 64px;
+    cursor: none;
+    pointer-events: auto;
+  }
+  .pulse-seal-core {
+    position: absolute;
+    inset: 0;
+    background: #D43D2A;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #F7F2E7;
+    font-size: 24px;
+    font-weight: 900;
+    z-index: 2;
+  }
+  .pulse-seal-wave {
+    position: absolute;
+    inset: -4px;
+    border: 2px solid #D43D2A;
+    border-radius: 6px;
+    opacity: 0;
+    z-index: 1;
+  }
+  .pulse-seal:hover .pulse-seal-wave {
+    animation: pulse-wave 1.5s ease-out infinite;
+  }
+  @keyframes pulse-wave {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+
+  /* ========== REDUCED MOTION ========== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    #cursor-outer, #cursor-inner { transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+    .hero-title .char { opacity: 1; transform: none; }
+    body { cursor: auto; }
+    #cursor-outer, #cursor-inner { display: none; }
+  }
+</style>
+</head>
+<body class="scanlines">
+
+<!-- CUSTOM CURSOR -->
+<div id="cursor-outer"></div>
+<div id="cursor-inner"></div>
+
+<!-- HEADER -->
+<header class="lab-header">
+  <div class="lab-logo">
+    <div class="lab-logo-seal" data-hoverable>墨</div>
+    <span>INKFLOW</span>
+  </div>
+  <nav>
+    <ul class="lab-nav">
+      <li data-hoverable data-scroll-to="#exhibits">展区</li>
+      <li data-hoverable>理念</li>
+      <li data-hoverable>工具</li>
+      <li data-hoverable>关于</li>
+    </ul>
+  </nav>
+  <div class="lab-toggle" id="scanline-toggle" data-hoverable>纹</div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <canvas class="hero-canvas" id="heroCanvas"></canvas>
+  <div class="hero-subtitle reveal" data-reveal>東 方 水 墨 特 效 实 验 室</div>
+  <h1 class="hero-title" id="heroTitle">
+    <span class="char">墨</span><span class="char">流</span><span class="char">实</span><span class="char">验</span><span class="char">室</span>
+  </h1>
+  <p class="hero-tagline reveal reveal-delay-2" data-reveal>
+    <span id="typewriter"></span><span class="typewriter-cursor"></span>
+  </p>
+  <div class="hero-scroll-hint">下 滑 观 展</div>
+</section>
+
+<!-- EXHIBITS -->
+<section class="exhibits" id="exhibits">
+  <div class="exhibits-header">
+    <div class="section-label reveal" data-reveal>展 品 目 录</div>
+    <h2 class="section-title reveal reveal-delay-1" data-reveal>十 二 件 水 墨 装 置</h2>
+    <p class="section-desc reveal reveal-delay-2" data-reveal>
+      每件装置都是独立的交互实验。<br />
+      悬停、点击、拖动 —— 亲手搅动墨池。
+    </p>
+  </div>
+
+  <div class="exhibit-grid">
+
+    <!-- EXHIBIT 1: INK DROP (WIDE) -->
+    <article class="exhibit wide reveal" id="ex-inkdrop" data-reveal data-hoverable>
+      <canvas class="exhibit-canvas" id="inkdropCanvas"></canvas>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">01 — 墨 滴</div>
+          <h3 class="exhibit-name" style="color:#161412;">入 水 扩 散</h3>
+          <p class="exhibit-desc">点击板面，墨滴落入宣纸，有机扩散晕染。<br />每一滴都是独一无二的水墨瞬间。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag" style="color:#5a5550;">点 击 下 墨</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 2: SEAL MAGNET (MEDIUM) -->
+    <article class="exhibit medium reveal reveal-delay-1" id="ex-seal" data-reveal data-hoverable>
+      <div class="seal-target" id="sealTarget" data-hoverable>
+        印
+        <div class="seal-sub">朱 砂</div>
+      </div>
+      <div class="seal-ring" id="sealRing"></div>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">02 — 朱 砂</div>
+          <h3 class="exhibit-name">磁 吸 印 章</h3>
+          <p class="exhibit-desc">光标靠近即被磁力吸引，按下落印。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag">磁 性 引 力</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 3: GOLD SPECTRUM (MEDIUM) -->
+    <article class="exhibit medium reveal reveal-delay-2" id="ex-spectrum" data-reveal data-hoverable>
+      <div class="spectrum-bars" id="spectrumBars"></div>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">03 — 金 箔</div>
+          <h3 class="exhibit-name" style="color:#F7F2E7;">频 谱 闪 烁</h3>
+          <p class="exhibit-desc">金箔碎粒随波振动，光与影的交响。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag" style="border-color: rgba(201,162,75,0.4); color: #C9A24B;">悬 停 观 察</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 4: FLOW FIELD (TALL) -->
+    <article class="exhibit tall reveal" id="ex-flowfield" data-reveal data-hoverable>
+      <canvas class="exhibit-canvas" id="flowfieldCanvas"></canvas>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">04 — 流 场</div>
+          <h3 class="exhibit-name">噪 波 墨 流</h3>
+          <p class="exhibit-desc">Perlin 噪声驱动的墨粒漂流场。<br />移动光标搅动暗流。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag">噪 声 函 数</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 5: CHAR DECONSTRUCT (TALL) -->
+    <article class="exhibit tall reveal reveal-delay-1" id="ex-char" data-reveal data-hoverable>
+      <div class="char-stage" id="charStage">
+        <canvas class="char-particles-canvas" id="charCanvas"></canvas>
+        <div class="char-big" id="charBig" data-hoverable>墨</div>
+      </div>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">05 — 解 构</div>
+          <h3 class="exhibit-name" style="color:#F7F2E7;">文 字 裂 变</h3>
+          <p class="exhibit-desc">悬停触发文字分解为墨粒飞散。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag" style="border-color: rgba(247,242,231,0.2); color: rgba(247,242,231,0.6);">粒 子 系 统</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 6: TILT CARD (MEDIUM) -->
+    <article class="exhibit medium reveal reveal-delay-2" id="ex-tilt" data-reveal data-hoverable>
+      <div class="tilt-card-stage">
+        <div class="tilt-card" id="tiltCard" data-hoverable>
+          <div class="tilt-card-content">
+            <div class="tilt-card-seal">墨</div>
+            <div>
+              <div class="tilt-card-title">玄 玉</div>
+              <div class="tilt-card-sub">INK · 2026</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">06 — 倾 斜</div>
+          <h3 class="exhibit-name">磁 性 3D 卡</h3>
+          <p class="exhibit-desc">弹簧物理驱动的三维倾斜 + 光泽追踪。</p>
+        </div>
+        <div></div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 7: GLOSSY SWEEP (LARGE) -->
+    <article class="exhibit large reveal" id="ex-glossy" data-reveal data-hoverable>
+      <div class="exhibit-body" style="justify-content:center;align-items:center;min-height:auto;">
+        <div class="glossy-text" data-hoverable>金 玉 满 堂</div>
+      </div>
+    </article>
+
+    <!-- EXHIBIT 8: COUNTER (LARGE) -->
+    <article class="exhibit large reveal reveal-delay-1" id="ex-counter" data-reveal data-hoverable>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">08 — 计 数</div>
+          <h3 class="exhibit-name" style="color:#F7F2E7;">墨 滴 累 积</h3>
+          <p class="exhibit-desc">缓动数字滚动，模拟计数精度。</p>
+        </div>
+        <div></div>
+      </div>
+      <div class="counter-display" id="counterDisplay">00000</div>
+      <button class="counter-trigger" id="counterBtn" data-hoverable>重 新 计 数</button>
+    </article>
+
+    <!-- EXHIBIT 9: PARALLAX (MEDIUM) -->
+    <article class="exhibit medium reveal reveal-delay-2" id="ex-parallax" data-reveal data-hoverable>
+      <div class="parallax-layer l4" id="parallaxDust"></div>
+      <div class="parallax-layer l1" data-parallax="0.05"></div>
+      <div class="parallax-layer l2" data-parallax="0.1"></div>
+      <div class="parallax-layer l3" data-parallax="0.2">墨</div>
+      <div class="exhibit-body">
+        <div>
+          <div class="exhibit-num">09 — 视 差</div>
+          <h3 class="exhibit-name">深 度 图 层</h3>
+          <p class="exhibit-desc">四层深度，随鼠标移动产生视差位移。</p>
+        </div>
+        <div>
+          <span class="exhibit-tag">多 层 深 度</span>
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="lab-footer">
+  <div class="footer-seal" data-hoverable>墨</div>
+  <div class="footer-text">INKFLOW LAB · 墨 流 实 验 室</div>
+  <div class="footer-text" style="font-size:10px;opacity:0.6;">
+    宣 纸 白 · 浓 墨 黑 · 朱 砂 红 · 金 箔 黄
+  </div>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============ REDUCED MOTION CHECK ============
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+  // ============ GLOBAL STATE ============
+  const state = {
+    mouseX: window.innerWidth / 2,
+    mouseY: window.innerHeight / 2,
+    targetMouseX: window.innerWidth / 2,
+    targetMouseY: window.innerHeight / 2,
+    isVisible: true,
+    rafIds: new Set(),
+    timeouts: new Set(),
+    intervals: new Set()
+  };
+
+  // Safe RAF management
+  function safeRAF(fn) {
+    let id;
+    const wrapped = function() {
+      if (!state.isVisible) {
+        // pause; resume on visibility
+        id = null;
+        return;
+      }
+      fn();
+      id = requestAnimationFrame(wrapped);
+    };
+    id = requestAnimationFrame(wrapped);
+    state.rafIds.add(id);
+    return {
+      cancel: function() {
+        if (id) cancelAnimationFrame(id);
+        state.rafIds.delete(id);
+      }
+    };
+  }
+
+  function safeTimeout(fn, delay) {
+    const id = setTimeout(function() {
+      state.timeouts.delete(id);
+      fn();
+    }, delay);
+    state.timeouts.add(id);
+    return id;
+  }
+
+  function clearAllTimers() {
+    state.rafIds.forEach(function(id) { cancelAnimationFrame(id); });
+    state.rafIds.clear();
+    state.timeouts.forEach(function(id) { clearTimeout(id); });
+    state.timeouts.clear();
+    state.intervals.forEach(function(id) { clearInterval(id); });
+    state.intervals.clear();
+  }
+
+  // Visibility change
+  document.addEventListener('visibilitychange', function() {
+    state.isVisible = !document.hidden;
+    // restart paused animations
+    if (state.isVisible) {
+      // Re-trigger RAF-driven animations
+      if (typeof restartAnimations === 'function') restartAnimations();
+    }
+  });
+
+  window.addEventListener('beforeunload', clearAllTimers);
+
+  // ============ CUSTOM CURSOR ============
+  if (!prefersReducedMotion && !IS_MOBILE) {
+    const cursorOuter = document.getElementById('cursor-outer');
+    const cursorInner = document.getElementById('cursor-inner');
+
+    // Smooth follow (lerp)
+    let cursorX = window.innerWidth / 2;
+    let cursorY = window.innerHeight / 2;
+
+    function updateCursor() {
+      if (!state.isVisible) return;
+      cursorX += (state.targetMouseX - cursorX) * 0.18;
+      cursorY += (state.targetMouseY - cursorY) * 0.18;
+
+      cursorOuter.style.left = cursorX + 'px';
+      cursorOuter.style.top = cursorY + 'px';
+      cursorInner.style.left = state.targetMouseX + 'px';
+      cursorInner.style.top = state.targetMouseY + 'px';
+
+      requestAnimationFrame(updateCursor);
+    }
+    updateCursor();
+
+    // Ink trail particles
+    let lastTrailTime = 0;
+    const TRAIL_INTERVAL = 40; // ms
+
+    document.addEventListener('mousemove', function(e) {
+      state.targetMouseX = e.clientX;
+      state.targetMouseY = e.clientY;
+
+      // spawn ink trail
+      const now = performance.now();
+      if (now - lastTrailTime > TRAIL_INTERVAL) {
+        spawnInkTrail(e.clientX, e.clientY);
+        lastTrailTime = now;
+      }
+    });
+
+    function spawnInkTrail(x, y) {
+      const el = document.createElement('div');
+      el.className = 'ink-trailing';
+      const size = 8 + Math.random() * 14;
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+      el.style.left = (x - size / 2) + 'px';
+      el.style.top = (y - size / 2) + 'px';
+      el.style.opacity = 0.5 + Math.random() * 0.3;
+      document.body.appendChild(el);
+
+      // fade + grow
+      let opacity = parseFloat(el.style.opacity);
+      let scale = 1;
+      let grow = 0.04;
+      let fade = 0.02;
+
+      function animate() {
+        opacity -= fade;
+        scale += grow;
+        grow *= 0.96;
+        el.style.opacity = opacity;
+        el.style.transform = 'scale(' + scale + ')';
+        if (opacity > 0) {
+          requestAnimationFrame(animate);
+        } else {
+          el.remove();
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    // Click ripple
+    document.addEventListener('mousedown', function(e) {
+      const ripple = document.createElement('div');
+      ripple.className = 'click-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      document.body.appendChild(ripple);
+      setTimeout(function() { ripple.remove(); }, 800);
+
+      cursorOuter.classList.add('active');
+      cursorInner.classList.add('active');
+    });
+    document.addEventListener('mouseup', function() {
+      cursorOuter.classList.remove('active');
+      cursorInner.classList.remove('active');
+    });
+
+    // Hover detection
+    function setupHoverables() {
+      const hoverables = document.querySelectorAll('[data-hoverable]');
+      hoverables.forEach(function(el) {
+        el.addEventListener('mouseenter', function() {
+          cursorOuter.classList.add('hover');
+          cursorInner.classList.add('hover');
+        });
+        el.addEventListener('mouseleave', function() {
+          cursorOuter.classList.remove('hover');
+          cursorInner.classList.remove('hover');
+        });
+      });
+    }
+    setupHoverables();
+
+    // Scanline toggle
+    const scanToggle = document.getElementById('scanline-toggle');
+    scanToggle.addEventListener('click', function() {
+      document.body.classList.toggle('scanlines');
+      scanToggle.textContent = document.body.classList.contains('scanlines') ? '纹' : '净';
+    });
+  } else {
+    // Fallback: show default cursor
+    document.body.style.cursor = 'auto';
+    document.getElementById('cursor-outer').style.display = 'none';
+    document.getElementById('cursor-inner').style.display = 'none';
+  }
+
+  // ============ NAV SCROLL ============
+  document.querySelectorAll('[data-scroll-to]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      const target = document.querySelector(el.getAttribute('data-scroll-to'));
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  // ============ SCROLL REVEAL ============
+  const revealEls = document.querySelectorAll('[data-reveal]');
+  function checkReveal() {
+    const windowHeight = window.innerHeight;
+    revealEls.forEach(function(el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < windowHeight * 0.85) {
+        el.classList.add('in');
+      }
+    });
+  }
+  window.addEventListener('scroll', function() {
+    requestAnimationFrame(checkReveal);
+  }, { passive: true });
+  // initial check
+  setTimeout(checkReveal, 200);
+
+  // ============ HERO TITLE REVEAL ============
+  const heroChars = document.querySelectorAll('.hero-title .char');
+  heroChars.forEach(function(ch, i) {
+    safeTimeout(function() {
+      ch.classList.add('show');
+    }, 400 + i * 120);
+  });
+
+  // ============ TYPEWRITER EFFECT ============
+  const typewriterEl = document.getElementById('typewriter');
+  const typeText = '以 东 方 水 墨 为 语 ， 以 代 码 为 笔 ， 探 索 视 觉 边 界 。';
+  let typeIndex = 0;
+  function typeNext() {
+    if (typeIndex < typeText.length) {
+      typewriterEl.textContent += typeText[typeIndex];
+      typeIndex++;
+      safeTimeout(typeNext, 80 + Math.random() * 60);
+    }
+  }
+  safeTimeout(typeNext, 1200);
+
+  // ============ EXHIBIT 1: INK DROP DIFFUSION ============
+  (function inkDropExhibit() {
+    const canvas = document.getElementById('inkdropCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const parent = canvas.parentElement;
+
+    function resize() {
+      const rect = parent.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const drops = [];
+    let running = true;
+
+    function addDrop(x, y) {
+      drops.push({
+        x: x,
+        y: y,
+        radius: 0,
+        maxRadius: 80 + Math.random() * 80,
+        alpha: 0.6 + Math.random() * 0.3,
+        growth: 0.8 + Math.random() * 0.6,
+        // organic irregularities
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.02 + Math.random() * 0.02,
+        tendrils: Math.floor(Math.random() * 5) + 3,
+        age: 0
+      });
+    }
+
+    // seed drops
+    const rect0 = parent.getBoundingClientRect();
+    for (let i = 0; i < 3; i++) {
+      addDrop(
+        rect0.width * (0.2 + Math.random() * 0.6),
+        rect0.height * (0.2 + Math.random() * 0.6)
+      );
+    }
+
+    parent.addEventListener('click', function(e) {
+      const rect = parent.getBoundingClientRect();
+      addDrop(e.clientX - rect.left, e.clientY - rect.top);
+    });
+
+    function draw() {
+      if (!running || !state.isVisible) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = drops.length - 1; i >= 0; i--) {
+        const d = drops[i];
+        d.age++;
+        d.wobble += d.wobbleSpeed;
+
+        // radial gradient ink
+        if (d.radius < d.maxRadius) {
+          d.radius += d.growth;
+          d.growth *= 0.985; // damping
+        }
+        d.alpha -= 0.002;
+
+        if (d.alpha <= 0.02 || d.radius > d.maxRadius * 1.5) {
+          drops.splice(i, 1);
+          continue;
+        }
+
+        // main drop body
+        ctx.save();
+        ctx.globalAlpha = d.alpha * 0.7;
+        ctx.fillStyle = '#161412';
+        ctx.beginPath();
+
+        // irregular shape with wobble
+        const points = 24;
+        for (let j = 0; j <= points; j++) {
+          const angle = (j / points) * Math.PI * 2;
+          const wob = Math.sin(angle * d.tendrils + d.wobble) * 8 +
+                     Math.sin(angle * 2 + d.wobble * 1.3) * 4;
+          const r = d.radius + wob;
+          const px = d.x + Math.cos(angle) * r;
+          const py = d.y + Math.sin(angle) * r;
+          if (j === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // inner darker core
+        ctx.globalAlpha = d.alpha * 0.9;
+        ctx.fillStyle = '#0d0c0a';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.radius * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // soft edge halo
+        const gradient = ctx.createRadialGradient(d.x, d.y, d.radius * 0.5, d.x, d.y, d.radius * 1.3);
+        gradient.addColorStop(0, 'rgba(22,20,18,0)');
+        gradient.addColorStop(0.7, 'rgba(22,20,18,0.15)');
+        gradient.addColorStop(1, 'rgba(22,20,18,0)');
+        ctx.globalAlpha = d.alpha * 0.6;
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.radius * 1.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // keep at least 2 drops
+      if (drops.length < 2 && Math.random() < 0.01) {
+        const rect = parent.getBoundingClientRect();
+        addDrop(
+          rect.width * (0.2 + Math.random() * 0.6),
+          rect.height * (0.2 + Math.random() * 0.6)
+        );
+      }
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    window.restartAnimations = (function(prev) {
+      return function() {
+        if (prev) prev();
+        running = true;
+        draw();
+      };
+    })(window.restartAnimations);
+  })();
+
+  // ============ EXHIBIT 2: SEAL MAGNET ============
+  (function sealMagnet() {
+    const seal = document.getElementById('sealTarget');
+    const ring = document.getElementById('sealRing');
+    if (!seal) return;
+    const parent = seal.parentElement;
+
+    let targetX = 0, targetY = 0;
+    let currentX = 0, currentY = 0;
+    let scale = 1;
+    let targetScale = 1;
+
+    parent.addEventListener('mousemove', function(e) {
+      const rect = parent.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 150;
+
+      if (dist < maxDist) {
+        // magnetic pull: stronger when closer
+        const strength = (1 - dist / maxDist) * 30;
+        targetX = (dx / dist) * strength * 0.5;
+        targetY = (dy / dist) * strength * 0.5;
+      } else {
+        targetX = 0;
+        targetY = 0;
+      }
+    });
+
+    parent.addEventListener('mouseleave', function() {
+      targetX = 0;
+      targetY = 0;
+      targetScale = 1;
+    });
+
+    parent.addEventListener('mouseenter', function() {
+      targetScale = 1.05;
+    });
+
+    seal.addEventListener('mousedown', function() {
+      targetScale = 0.9;
+      // trigger ring pulse
+      ring.classList.remove('pulse');
+      void ring.offsetWidth;
+      ring.classList.add('pulse');
+    });
+
+    document.addEventListener('mouseup', function() {
+      targetScale = 1.05;
+    });
+
+    function animate() {
+      if (!state.isVisible) { requestAnimationFrame(animate); return; }
+      // spring physics
+      currentX += (targetX - currentX) * 0.12;
+      currentY += (targetY - currentY) * 0.12;
+      scale += (targetScale - scale) * 0.15;
+
+      seal.style.transform =
+        'translate(calc(-50% + ' + currentX + 'px), calc(-50% + ' + currentY + 'px)) scale(' + scale + ')';
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  })();
+
+  // ============ EXHIBIT 3: GOLD SPECTRUM ============
+  (function goldSpectrum() {
+    const container = document.getElementById('spectrumBars');
+    if (!container) return;
+    const BAR_COUNT = 28;
+    const bars = [];
+
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'spectrum-bar';
+      bar.style.height = '10%';
+      container.appendChild(bar);
+      bars.push({
+        el: bar,
+        height: 10 + Math.random() * 20,
+        target: 10 + Math.random() * 20,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.02 + Math.random() * 0.04
+      });
+    }
+
+    let running = true;
+    let sparkleTimer = 0;
+
+    function animate() {
+      if (!running || !state.isVisible) return;
+      sparkleTimer++;
+
+      for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        b.phase += b.speed;
+
+        // organic wave
+        const wave = Math.sin(b.phase) * 30 + Math.sin(b.phase * 1.7 + i * 0.3) * 15;
+        b.target = Math.max(5, 40 + wave);
+
+        // ease toward target
+        b.height += (b.target - b.height) * 0.08;
+        b.el.style.height = b.height + '%';
+
+        // sparkle effect
+        if (b.height > 55 && Math.random() < 0.05) {
+          b.el.classList.add('sparkle');
+          setTimeout(function() { b.el.classList.remove('sparkle'); }, 100);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    window.restartAnimations = (function(prev) {
+      return function() {
+        if (prev) prev();
+        running = true;
+        animate();
+      };
+    })(window.restartAnimations);
+  })();
+
+  // ============ EXHIBIT 4: NOISE FLOW FIELD ============
+  (function flowField() {
+    const canvas = document.getElementById('flowfieldCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const parent = canvas.parentElement;
+
+    function resize() {
+      const rect = parent.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    resize();
+    window.addEventListener('resize', function() {
+      resize();
+      initParticles();
+    });
+
+    // Simple pseudo-noise (sin/cos combo)
+    function noise(x, y, t) {
+      return (
+        Math.sin(x * 0.01 + t * 0.0003) *
+        Math.cos(y * 0.012 + t * 0.0004) *
+        Math.sin((x + y) * 0.008 + t * 0.0002)
+      );
+    }
+
+    let particles = [];
+    function initParticles() {
+      particles = [];
+      const rect = parent.getBoundingClientRect();
+      const count = Math.floor(rect.width * rect.height / 800);
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * rect.width,
+          y: Math.random() * rect.height,
+          vx: 0,
+          vy: 0,
+          life: Math.random() * 200 + 100,
+          maxLife: 300,
+          size: 0.8 + Math.random() * 1.5,
+          alpha: 0.3 + Math.random() * 0.5
+        });
+      }
+    }
+    initParticles();
+
+    let running = true;
+    let time = 0;
+    let mouseInfluence = { x: -9999, y: -9999 };
+
+    parent.addEventListener('mousemove', function(e) {
+      const rect = parent.getBoundingClientRect();
+      mouseInfluence.x = e.clientX - rect.left;
+      mouseInfluence.y = e.clientY - rect.top;
+    });
+    parent.addEventListener('mouseleave', function() {
+      mouseInfluence.x = -9999;
+      mouseInfluence.y = -9999;
+    });
+
+    function draw() {
+      if (!running || !state.isVisible) return;
+      time++;
+      const rect = parent.getBoundingClientRect();
+
+      // fade trail
+      ctx.fillStyle = 'rgba(247,242,231,0.05)';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const n = noise(p.x, p.y, time);
+        const angle = n * Math.PI * 2;
+        const speed = 0.8 + n * 0.5;
+
+        p.vx += Math.cos(angle) * speed * 0.1;
+        p.vy += Math.sin(angle) * speed * 0.1;
+
+        // mouse repulsion / attraction
+        const mdx = p.x - mouseInfluence.x;
+        const mdy = p.y - mouseInfluence.y;
+        const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+        if (mdist < 100 && mdist > 0) {
+          const force = (100 - mdist) / 100 * 2;
+          p.vx += (mdx / mdist) * force * 0.3;
+          p.vy += (mdy / mdist) * force * 0.3;
+        }
+
+        // damping
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+
+        // draw trail point
+        ctx.globalAlpha = p.alpha * (p.life / p.maxLife);
+        ctx.fillStyle = '#161412';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // respawn
+        if (p.life <= 0 || p.x < -10 || p.x > rect.width + 10 || p.y < -10 || p.y > rect.height + 10) {
+          p.x = Math.random() * rect.width;
+          p.y = Math.random() * rect.height;
+          p.vx = 0;
+          p.vy = 0;
+          p.life = p.maxLife;
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    window.restartAnimations = (function(prev) {
+      return function() {
+        if (prev) prev();
+        running = true;
+        draw();
+      };
+    })(window.restartAnimations);
+  })();
+
+  // ============ EXHIBIT 5: CHARACTER DECONSTRUCT ============
+  (function charDeconstruct() {
+    const canvas = document.getElementById('charCanvas');
+    const charBig = document.getElementById('charBig');
+    const stage = document.getElementById('charStage');
+    if (!canvas || !charBig) return;
+    const ctx = canvas.getContext('2d');
+    const parent = canvas.parentElement;
+
+    function resize() {
+      const rect = stage.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let particles = [];
+    let isDeconstructing = false;
+    let opacityTarget = 1;
+
+    // sample pixels from the character to create particles
+    function sampleCharPixels() {
+      const rect = stage.getBoundingClientRect();
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = rect.width;
+      tempCanvas.height = rect.height;
+      const tctx = tempCanvas.getContext('2d');
+      tctx.fillStyle = '#fff';
+      tctx.font = '900 200px "Songti SC", "STSong", serif';
+      tctx.textAlign = 'center';
+      tctx.textBaseline = 'middle';
+      tctx.fillText('墨', rect.width / 2, rect.height / 2);
+
+      const imageData = tctx.getImageData(0, 0, rect.width, rect.height);
+      const data = imageData.data;
+      const points = [];
+      const step = 4; // sampling density
+
+      for (let y = 0; y < rect.height; y += step) {
+        for (let x = 0; x < rect.width; x += step) {
+          const idx = (y * rect.width + x) * 4;
+          if (data[idx + 3] > 128) {
+            points.push({ x: x, y: y });
+          }
+        }
+      }
+
+      // create particles from sampled points
+      particles = [];
+      const maxParticles = 400;
+      const skip = Math.max(1, Math.floor(points.length / maxParticles));
+      for (let i = 0; i < points.length; i += skip) {
+        const p = points[i];
+        particles.push({
+          ox: p.x, // original x
+          oy: p.y,
+          x: p.x,
+          y: p.y,
+          vx: 0,
+          vy: 0,
+          size: 1.5 + Math.random() * 2,
+          alpha: 1
+        });
+      }
+    }
+
+    let sampled = false;
+    function ensureSampled() {
+      if (!sampled) {
+        sampleCharPixels();
+        sampled = true;
+      }
+    }
+
+    // trigger on hover
+    charBig.addEventListener('mouseenter', function() {
+      ensureSampled();
+      isDeconstructing = true;
+      opacityTarget = 0;
+    });
+    charBig.addEventListener('mouseleave', function() {
+      isDeconstructing = false;
+      opacityTarget = 1;
+    });
+
+    let running = true;
+    let charOpacity = 1;
+
+    function draw() {
+      if (!running || !state.isVisible) return;
+      const rect = stage.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      // animate character opacity
+      charOpacity += (opacityTarget - charOpacity) * 0.1;
+      charBig.style.opacity = charOpacity;
+
+      if (particles.length > 0) {
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+
+          if (isDeconstructing) {
+            // explode outward with some randomness
+            const dx = p.x - rect.width / 2;
+            const dy = p.y - rect.height / 2;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            p.vx += (dx / dist) * 0.15 + (Math.random() - 0.5) * 0.5;
+            p.vy += (dy / dist) * 0.15 + (Math.random() - 0.5) * 0.5;
+            p.vy += 0.03; // slight gravity
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.alpha = Math.max(0, p.alpha - 0.003);
+          } else {
+            // return to original position (spring)
+            const dx = p.ox - p.x;
+            const dy = p.oy - p.y;
+            p.vx += dx * 0.02;
+            p.vy += dy * 0.02;
+            p.vx *= 0.85;
+            p.vy *= 0.85;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.alpha = Math.min(1, p.alpha + 0.02);
+          }
+
+          if (p.alpha > 0) {
+            ctx.globalAlpha = p.alpha * 0.8;
+            ctx.fillStyle = '#F7F2E7';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    // initial sample after layout
+    setTimeout(ensureSampled, 500);
+
+    window.restartAnimations = (function(prev) {
+      return function() {
+        if (prev) prev();
+        running = true;
+        draw();
+      };
+    })(window.restartAnimations);
+  })();
+
+  // ============ EXHIBIT 6: 3D TILT CARD ============
+  (function tiltCard() {
+    const card = document.getElementById('tiltCard');
+    if (!card) return;
+    const parent = card.parentElement;
+
+    let targetRotX = 0, targetRotY = 0;
+    let currentRotX = 0, currentRotY = 0;
+    let glareX = 0, glareY = 0;
+    let targetGlareX = 0, targetGlareY = 0;
+
+    parent.addEventListener('mousemove', function(e) {
+      const rect = card.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const maxTilt = 18;
+      targetRotY = (dx / (rect.width / 2)) * maxTilt;
+      targetRotX = -(dy / (rect.height / 2)) * maxTilt;
+      targetGlareX = (dx / rect.width) * 100;
+      targetGlareY = (dy / rect.height) * 100;
+    });
+
+    parent.addEventListener('mouseleave', function() {
+      targetRotX = 0;
+      targetRotY = 0;
+    });
+
+    function animate() {
+      if (!state.isVisible) { requestAnimationFrame(animate); return; }
+      // spring
+      currentRotX += (targetRotX - currentRotX) * 0.1;
+      currentRotY += (targetRotY - currentRotY) * 0.1;
+      glareX += (targetGlareX - glareX) * 0.1;
+      glareY += (targetGlareY - glareY) * 0.1;
+
+      card.style.transform =
+        'rotateX(' + currentRotX + 'deg) rotateY(' + currentRotY + 'deg)';
+      card.style.setProperty('--glare-x', glareX + '%');
+      card.style.setProperty('--glare-y', glareY + '%');
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  })();
+
+  // ============ EXHIBIT 8: COUNTER ============
+  (function counter() {
+    const display = document.getElementById('counterDisplay');
+    const btn = document.getElementById('counterBtn');
+    if (!display) return;
+
+    let current = 0;
+    let target = 28473;
+    let rafId = null;
+
+    function format(num) {
+      return String(Math.floor(num)).padStart(5, '0');
+    }
+
+    function animate() {
+      const diff = target - current;
+      if (Math.abs(diff) < 0.5) {
+        current = target;
+        display.textContent = format(current);
+        rafId = null;
+        return;
+      }
+      current += diff * 0.06; // ease-out
+      display.textContent = format(current);
+      rafId = requestAnimationFrame(animate);
+    }
+
+    function start() {
+      if (rafId) cancelAnimationFrame(rafId);
+      current = 0;
+      target = 10000 + Math.floor(Math.random() * 50000);
+      animate();
+    }
+
+    btn.addEventListener('click', start);
+
+    // auto start when in view
+    const observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting && !rafId && current === 0) {
+          start();
+        }
+      });
+    }, { threshold: 0.5 });
+    observer.observe(display.parentElement);
+  })();
+
+  // ============ EXHIBIT 9: PARALLAX ============
+  (function parallax() {
+    const container = document.getElementById('ex-parallax');
+    if (!container) return;
+    const layers = container.querySelectorAll('[data-parallax]');
+    const dustContainer = document.getElementById('parallaxDust');
+
+    // create dust particles
+    const dustCount = 30;
+    const dustParticles = [];
+    for (let i = 0; i < dustCount; i++) {
+      const d = document.createElement('div');
+      d.className = 'dust-particle';
+      const x = Math.random() * 100;
+      const y = Math.random() * 100;
+      const size = 1 + Math.random() * 3;
+      d.style.left = x + '%';
+      d.style.top = y + '%';
+      d.style.width = size + 'px';
+      d.style.height = size + 'px';
+      d.style.opacity = 0.3 + Math.random() * 0.6;
+      dustContainer.appendChild(d);
+      dustParticles.push({
+        el: d,
+        baseX: x,
+        baseY: y,
+        depth: 0.05 + Math.random() * 0.2
+      });
+    }
+
+    let targetX = 0, targetY = 0;
+    let currentX = 0, currentY = 0;
+
+    container.addEventListener('mousemove', function(e) {
+      const rect = container.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      targetX = (e.clientX - cx) / rect.width;
+      targetY = (e.clientY - cy) / rect.height;
+    });
+
+    container.addEventListener('mouseleave', function() {
+      targetX = 0;
+      targetY = 0;
+    });
+
+    function animate() {
+      if (!state.isVisible) { requestAnimationFrame(animate); return; }
+      currentX += (targetX - currentX) * 0.08;
+      currentY += (targetY - currentY) * 0.08;
+
+      layers.forEach(function(layer) {
+        const depth = parseFloat(layer.getAttribute('data-parallax'));
+        const dx = currentX * depth * 60;
+        const dy = currentY * depth * 60;
+        layer.style.transform =
+          'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+      });
+
+      // dust
+      dustParticles.forEach(function(d) {
+        const dx = currentX * d.depth * 120;
+        const dy = currentY * d.depth * 120;
+        d.el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+      });
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  })();
+
+  // ============ HERO BACKGROUND INK FLOW ============
+  (function heroBg() {
+    const canvas = document.getElementById('heroCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth * window.devicePixelRatio;
+      canvas.height = window.innerHeight * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Ink blobs floating
+    const blobs = [];
+    for (let i = 0; i < 6; i++) {
+      blobs.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        radius: 100 + Math.random() * 200,
+        alpha: 0.04 + Math.random() * 0.06,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.005 + Math.random() * 0.01
+      });
+    }
+
+    let running = true;
+    let time = 0;
+
+    function draw() {
+      if (!running || !state.isVisible) return;
+      time++;
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      for (let i = 0; i < blobs.length; i++) {
+        const b = blobs[i];
+        b.wobble += b.wobbleSpeed;
+        b.x += b.vx + Math.sin(b.wobble) * 0.2;
+        b.y += b.vy + Math.cos(b.wobble * 1.3) * 0.2;
+
+        // wrap
+        if (b.x < -b.radius) b.x = window.innerWidth + b.radius;
+        if (b.x > window.innerWidth + b.radius) b.x = -b.radius;
+        if (b.y < -b.radius) b.y = window.innerHeight + b.radius;
+        if (b.y > window.innerHeight + b.radius) b.y = -b.radius;
+
+        const gradient = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius);
+        gradient.addColorStop(0, 'rgba(22,20,18,' + b.alpha + ')');
+        gradient.addColorStop(0.6, 'rgba(22,20,18,' + (b.alpha * 0.4) + ')');
+        gradient.addColorStop(1, 'rgba(22,20,18,0)');
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    window.restartAnimations = (function(prev) {
+      return function() {
+        if (prev) prev();
+        running = true;
+        draw();
+      };
+    })(window.restartAnimations);
+  })();
+
+  // ============ EXHIBIT HOVER LIFT (spring) ============
+  (function exhibitHover() {
+    const exhibits = document.querySelectorAll('.exhibit');
+    exhibits.forEach(function(ex) {
+      let targetY = 0;
+      let currentY = 0;
+      let targetShadow = 0;
+      let currentShadow = 0;
+
+      ex.addEventListener('mouseenter', function() {
+        targetY = -4;
+        targetShadow = 1;
+      });
+      ex.addEventListener('mouseleave', function() {
+        targetY = 0;
+        targetShadow = 0;
+      });
+
+      // Direct CSS transform manipulation (no React)
+      function animate() {
+        currentY += (targetY - currentY) * 0.1;
+        currentShadow += (targetShadow - currentShadow) * 0.1;
+        ex.style.transform = 'translateY(' + currentY + 'px)';
+        if (currentShadow > 0.01) {
+          ex.style.boxShadow = '0 ' + (12 + currentShadow * 20) + 'px ' +
+            (30 + currentShadow * 40) + 'px rgba(22,20,18,' + (0.08 + currentShadow * 0.06) + ')';
+        }
+        requestAnimationFrame(animate);
+      }
+      animate();
+    });
+  })();
+
+  // ============ STAMP EFFECT ON FOOTER SEAL ============
+  (function footerSeal() {
+    const seal = document.querySelector('.footer-seal');
+    if (!seal) return;
+
+    seal.addEventListener('click', function() {
+      // scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  })();
+
+  // Initial visibility
+  state.isVisible = !document.hidden;
+
+})();
+</script>
+</body>
+</html>
