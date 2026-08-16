@@ -30,20 +30,29 @@ function App() {
 
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
+  // 用 ref 同步 currentTrackIndex，供 interval 读取最新值
+  const trackIdxRef = useRef(currentTrackIndex);
+  useEffect(() => {
+    trackIdxRef.current = currentTrackIndex;
+  }, [currentTrackIndex]);
+
   // 进度条动画
   useEffect(() => {
     if (!isPlaying || !currentAlbum) return;
-    const currentTrack = currentAlbum.tracks[currentTrackIndex];
-    if (!currentTrack) return;
+    const track = currentAlbum.tracks[trackIdxRef.current];
+    if (!track) return;
 
-    const totalSec = parseDuration(currentTrack.duration);
     const interval = setInterval(() => {
       setProgress((p) => {
-        const newP = p + 0.5 / totalSec;
+        const t = currentAlbum.tracks[trackIdxRef.current];
+        if (!t) return p;
+        const secs = parseDuration(t.duration);
+        const newP = p + 0.5 / secs;
         if (newP >= 1) {
-          // 下一首
-          if (currentTrackIndex < currentAlbum.tracks.length - 1) {
-            setCurrentTrackIndex((i) => i + 1);
+          // 自动播放下一首
+          if (trackIdxRef.current < currentAlbum.tracks.length - 1) {
+            trackIdxRef.current += 1;
+            setCurrentTrackIndex(trackIdxRef.current);
             return 0;
           } else {
             setIsPlaying(false);
@@ -55,7 +64,7 @@ function App() {
     }, 500);
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentAlbum, currentTrackIndex]);
+  }, [isPlaying, currentAlbum]);
 
   // 初始化 favorites
   useEffect(() => {
@@ -66,9 +75,11 @@ function App() {
     setFavorites(favs);
   }, []);
 
-  // 自定义光标
+  // 自定义光标 — 使用 ref 管理 RAF 循环，避免泄漏
+  const rafRef = useRef(null);
+  const cursorInitedRef = useRef(false);
+
   useEffect(() => {
-    if (!t.showCursor) return;
     const outer = document.getElementById('cursorOuter');
     const inner = document.getElementById('cursorInner');
     if (!outer || !inner) return;
@@ -77,6 +88,7 @@ function App() {
     let mouseY = window.innerHeight / 2;
     let outerX = mouseX;
     let outerY = mouseY;
+    let running = true;
 
     const handleMove = (e) => {
       mouseX = e.clientX;
@@ -85,40 +97,67 @@ function App() {
     };
 
     const animate = () => {
+      if (!running) return;
       outerX += (mouseX - outerX) * 0.18;
       outerY += (mouseY - outerY) * 0.18;
       outer.style.transform = `translate(${outerX}px, ${outerY}px) translate(-50%, -50%)`;
-      requestAnimationFrame(animate);
+      rafRef.current = requestAnimationFrame(animate);
     };
 
     const handleOver = (e) => {
       const target = e.target.closest('button, .album-card, .chip, .list-row, .playlist-card, .artist-card, .trend-item, .track-row, .featured-card, .album-list-item, .api-card');
-      if (target) {
-        outer.classList.add('hover');
-      }
+      if (target) outer.classList.add('hover');
     };
     const handleOut = (e) => {
       const target = e.target.closest('button, .album-card, .chip, .list-row, .playlist-card, .artist-card, .trend-item, .track-row, .featured-card, .album-list-item, .api-card');
-      if (target) {
-        outer.classList.remove('hover');
-      }
+      if (target) outer.classList.remove('hover');
     };
 
-    window.addEventListener('mousemove', handleMove);
-    document.addEventListener('mouseover', handleOver);
-    document.addEventListener('mouseout', handleOut);
-    animate();
+    // 显示/隐藏逻辑
+    const visible = t.showCursor;
+    outer.style.display = visible ? 'block' : 'none';
+    inner.style.display = visible ? 'block' : 'none';
+
+    // 只初始化一次 RAF 循环
+    if (!cursorInitedRef.current) {
+      cursorInitedRef.current = true;
+      window.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseover', handleOver);
+      document.addEventListener('mouseout', handleOut);
+      animate();
+    }
 
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      document.removeEventListener('mouseover', handleOver);
-      document.removeEventListener('mouseout', handleOut);
+      // 注意：这里只控制显示，真正的 cleanup 在下面的空依赖 effect 里
     };
   }, [t.showCursor]);
 
+  // 全局光标清理：组件卸载时彻底停止 RAF
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      cursorInitedRef.current = false;
+    };
+  }, []);
+
+  const toastTimerRef = useRef(null);
   const showToast = useCallback((message) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 2000);
+    toastTimerRef.current = setTimeout(() => {
+      setToast({ message: '', visible: false });
+      toastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  // 卸载时清理 toast 定时器
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   const handleAlbumClick = useCallback((album) => {
@@ -154,8 +193,8 @@ function App() {
   const handleTrackClick = useCallback((idx) => {
     setCurrentTrackIndex(idx);
     setProgress(0);
-    if (!isPlaying) setIsPlaying(true);
-  }, [isPlaying]);
+    setIsPlaying(true);
+  }, []);
 
   const handleTrackNext = useCallback(() => {
     if (!currentAlbum) return;

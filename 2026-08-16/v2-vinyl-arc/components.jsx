@@ -80,31 +80,103 @@ function VinylDisc({ src, spinning = false, size = 200, showLabel = true }) {
 
 // --- 唱片卡片 ---
 function AlbumCard({ album, size = 140, onClick, showVinyl = false }) {
-  const [hovered, setHovered] = useState(false);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const cardRef = useRef(null);
+  const tiltRef = useRef(null);
+  const vinylRef = useRef(null);
+  const coverRef = useRef(null);
+  const hoveredRef = useRef(false);
+  const rafRef = useRef(null);
+  const targetTiltRef = useRef({ x: 0, y: 0 });
+  const currentTiltRef = useRef({ x: 0, y: 0 });
+  const leaveTimerRef = useRef(null);
 
-  const handleMove = (e) => {
-    if (!cardRef.current) return;
+  // 使用 RAF 平滑插值，避免每次 mousemove 都触发重渲染
+  const animateTilt = useCallback(() => {
+    if (!tiltRef.current) return;
+    const ct = currentTiltRef.current;
+    const tt = targetTiltRef.current;
+    ct.x += (tt.x - ct.x) * 0.2;
+    ct.y += (tt.y - ct.y) * 0.2;
+    tiltRef.current.style.transform = `perspective(600px) rotateX(${ct.x}deg) rotateY(${ct.y}deg)`;
+    rafRef.current = requestAnimationFrame(animateTilt);
+  }, []);
+
+  const handleEnter = useCallback(() => {
+    hoveredRef.current = true;
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    if (tiltRef.current) {
+      tiltRef.current.style.transition = 'none';
+    }
+    if (vinylRef.current) {
+      vinylRef.current.style.right = '-40%';
+    }
+    if (coverRef.current) {
+      coverRef.current.style.boxShadow = '0 12px 32px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.3)';
+    }
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(animateTilt);
+    }
+  }, [animateTilt]);
+
+  const handleMove = useCallback((e) => {
+    if (!cardRef.current || !hoveredRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const dx = (e.clientX - cx) / (rect.width / 2);
     const dy = (e.clientY - cy) / (rect.height / 2);
-    setTilt({ x: -dy * 6, y: dx * 8 });
-  };
+    targetTiltRef.current = { x: -dy * 6, y: dx * 8 };
+  }, []);
 
-  const handleLeave = () => {
-    setTilt({ x: 0, y: 0 });
-    setHovered(false);
-  };
+  const handleLeave = useCallback(() => {
+    hoveredRef.current = false;
+    targetTiltRef.current = { x: 0, y: 0 };
+    if (tiltRef.current) {
+      tiltRef.current.style.transition = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+    }
+    if (vinylRef.current) {
+      vinylRef.current.style.right = '-15%';
+    }
+    if (coverRef.current) {
+      coverRef.current.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    }
+    // 缓慢回到 0 后停止 RAF
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = setTimeout(() => {
+      leaveTimerRef.current = null;
+      if (!hoveredRef.current && rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+        if (tiltRef.current) {
+          tiltRef.current.style.transform = 'perspective(600px) rotateX(0deg) rotateY(0deg)';
+        }
+      }
+    }, 500);
+  }, []);
+
+  // 卸载时清理
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div
       ref={cardRef}
       className="album-card"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={handleEnter}
       onMouseMove={handleMove}
       onMouseLeave={handleLeave}
       style={{
@@ -117,21 +189,23 @@ function AlbumCard({ album, size = 140, onClick, showVinyl = false }) {
       }}
     >
       <div
+        ref={tiltRef}
         style={{
           position: 'relative',
           width: '100%',
           paddingTop: '100%',
-          transform: `perspective(600px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-          transition: hovered ? 'transform 0.1s ease' : 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+          transform: 'perspective(600px) rotateX(0deg) rotateY(0deg)',
+          transformStyle: 'preserve-3d',
         }}
       >
         {/* 黑胶露出效果 */}
         {showVinyl && (
           <div
+            ref={vinylRef}
             style={{
               position: 'absolute',
               top: 0,
-              right: hovered ? '-40%' : '-15%',
+              right: '-15%',
               width: '85%',
               height: '100%',
               borderRadius: '50%',
@@ -158,6 +232,7 @@ function AlbumCard({ album, size = 140, onClick, showVinyl = false }) {
         )}
         {/* 封面 */}
         <div
+          ref={coverRef}
           style={{
             position: 'absolute',
             top: 0,
@@ -166,9 +241,7 @@ function AlbumCard({ album, size = 140, onClick, showVinyl = false }) {
             height: '100%',
             borderRadius: 4,
             overflow: 'hidden',
-            boxShadow: hovered
-              ? '0 12px 32px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.3)'
-              : '0 4px 12px rgba(0,0,0,0.3)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
             transition: 'box-shadow 0.3s ease',
           }}
         >
@@ -249,7 +322,7 @@ function Waveform({ active = false, color = "#C86A3E", bars = 24, height = 28 })
       setHeights(
         Array(bars).fill(0).map(() => 0.25 + Math.random() * 0.75)
       );
-    }, 120);
+    }, 180);
     return () => clearInterval(interval);
   }, [active, bars]);
 
