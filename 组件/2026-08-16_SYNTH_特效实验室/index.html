@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>SYNTH · 特效实验室</title>
+<style>
+/* =========================================================
+   SYNTH · Effects Lab
+   Palette: charcoal black + neon magenta + acid lime + silver
+   ========================================================= */
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-stage: #111118;
+  --bg-panel: #16161f;
+  --bg-inset: #0d0d13;
+  --line-subtle: rgba(232, 232, 240, 0.06);
+  --line-soft: rgba(232, 232, 240, 0.1);
+  --line-med: rgba(232, 232, 240, 0.18);
+  --line-strong: rgba(232, 232, 240, 0.3);
+  --text-primary: #E8E8F0;
+  --text-secondary: #8A8A9A;
+  --text-tertiary: #525264;
+  --text-dim: #2E2E3C;
+  --magenta: #FF2E9E;
+  --magenta-dim: rgba(255, 46, 158, 0.4);
+  --magenta-glow: rgba(255, 46, 158, 0.25);
+  --lime: #B6FF3C;
+  --lime-dim: rgba(182, 255, 60, 0.4);
+  --lime-glow: rgba(182, 255, 60, 0.2);
+  --silver: #E8E8F0;
+  --font-display: 'Courier New', 'Menlo', 'Consolas', monospace;
+  --font-body: 'Courier New', 'Menlo', 'Consolas', monospace;
+  --font-mono: 'Courier New', 'Menlo', 'Consolas', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.02em;
+}
+* { cursor: none !important; }
+::selection { background: var(--magenta); color: var(--bg-deep); }
+
+/* =========================================================
+   Custom Cursor
+   ========================================================= */
+.cursor-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; }
+.cursor-ring {
+  position: fixed; width: 36px; height: 36px;
+  border: 1.5px solid var(--silver);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 18px rgba(232,232,240,0.15), inset 0 0 12px rgba(232,232,240,0.06);
+  transition: width .22s cubic-bezier(.2,.8,.2,1), height .22s cubic-bezier(.2,.8,.2,1),
+              border-color .2s, box-shadow .2s, border-radius .2s;
+}
+.cursor-ring.hover {
+  width: 52px; height: 52px;
+  border-color: var(--magenta);
+  box-shadow: 0 0 28px var(--magenta-glow), inset 0 0 16px rgba(255,46,158,0.12);
+}
+.cursor-dot {
+  position: fixed; width: 6px; height: 6px;
+  background: var(--magenta);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px var(--magenta), 0 0 24px var(--magenta-dim);
+  transition: width .15s, height .15s;
+}
+.cursor-dot.hover { width: 4px; height: 4px; }
+.cursor-ripple {
+  position: fixed; width: 36px; height: 36px;
+  border: 1px solid rgba(232,232,240,0.6);
+  border-radius: 50%;
+  transform: translate(-50%,-50%) scale(1);
+  animation: ripple .55s cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes ripple {
+  0% { transform: translate(-50%,-50%) scale(1); opacity: .85; border-width: 1.5px; }
+  100% { transform: translate(-50%,-50%) scale(3); opacity: 0; border-width: .5px; }
+}
+
+/* =========================================================
+   App shell
+   ========================================================= */
+.app {
+  position: relative; width: 100vw; height: 100vh;
+  background: radial-gradient(ellipse at 50% 40%, #181824 0%, #0e0e15 55%, #07070a 100%);
+  overflow: hidden;
+}
+.app::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(232,232,240,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,232,240,0.018) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none; z-index: 0;
+}
+.app::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.9  0 0 0 0 0.2  0 0 0 0 0.6  0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.4; mix-blend-mode: overlay; pointer-events: none; z-index: 1;
+}
+
+/* Scanlines (subtle CRT feel) */
+.scanlines {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(255,46,158,0.015) 2px,
+    rgba(255,46,158,0.015) 3px
+  );
+}
+
+/* =========================================================
+   Top bar
+   ========================================================= */
+.topbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; z-index: 100;
+  border-bottom: 1px solid var(--line-subtle);
+  background: linear-gradient(180deg, rgba(10,10,15,0.85) 0%, rgba(10,10,15,0) 100%);
+  backdrop-filter: blur(8px);
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-svg { width: 28px; height: 28px; }
+.brand-name {
+  font-family: var(--font-display); font-weight: 700; font-size: 16px;
+  letter-spacing: .35em; color: var(--text-primary);
+}
+.brand-sub {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .15em;
+  color: var(--text-tertiary); margin-left: 2px;
+}
+.topmeta { display: flex; align-items: center; gap: 28px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .18em;
+  color: var(--text-tertiary); text-transform: uppercase; }
+.meta-item { display: flex; align-items: center; gap: 8px; }
+.meta-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--magenta);
+  box-shadow: 0 0 8px var(--magenta);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* =========================================================
+   Left nav
+   ========================================================= */
+.exhibit-nav {
+  position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 12px; z-index: 50;
+}
+.nav-item {
+  position: relative; display: flex; align-items: center; gap: 12px;
+  padding: 9px 14px 9px 10px;
+  border: 1px solid var(--line-subtle);
+  background: rgba(20,20,28,0.4);
+  backdrop-filter: blur(4px);
+  transition: all .3s cubic-bezier(.2,.8,.2,1);
+  min-width: 170px;
+}
+.nav-item::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: transparent; transition: background .3s, box-shadow .3s;
+}
+.nav-item:hover {
+  border-color: var(--line-med);
+  background: rgba(28,28,38,0.7);
+  transform: translateX(3px);
+}
+.nav-item.active {
+  border-color: var(--magenta-dim);
+  background: rgba(255,46,158,0.05);
+}
+.nav-item.active::before {
+  background: var(--magenta);
+  box-shadow: 0 0 10px var(--magenta);
+}
+.nav-num {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-tertiary); letter-spacing: .1em; min-width: 22px;
+}
+.nav-label {
+  font-family: var(--font-body); font-size: 12px; font-weight: 500;
+  letter-spacing: .05em; color: var(--text-secondary);
+  transition: color .3s;
+}
+.nav-item.active .nav-label { color: var(--text-primary); }
+.nav-item:hover .nav-label { color: var(--text-primary); }
+
+/* =========================================================
+   Stage
+   ========================================================= */
+.stage {
+  position: absolute; top: 64px; left: 240px; right: 290px; bottom: 68px;
+  display: flex; align-items: center; justify-content: center; z-index: 10;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.stage::before {
+  content: ''; position: absolute; inset: 0;
+  border: 1px solid var(--line-subtle);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+}
+.stage-canvas { display: block; width: 100%; height: 100%; }
+.stage-canvas.fade-in { animation: fade-in .55s cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(16px) scale(.98); filter: blur(8px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+/* Stage corner marks */
+.corner-mark {
+  position: absolute; width: 16px; height: 16px;
+  border-color: var(--magenta-dim);
+  z-index: 6;
+  pointer-events: none;
+}
+.corner-tl { top: 10px; left: 10px; border-top: 1px solid var(--magenta-dim); border-left: 1px solid var(--magenta-dim); }
+.corner-tr { top: 10px; right: 10px; border-top: 1px solid var(--magenta-dim); border-right: 1px solid var(--magenta-dim); }
+.corner-bl { bottom: 10px; left: 10px; border-bottom: 1px solid var(--magenta-dim); border-left: 1px solid var(--magenta-dim); }
+.corner-br { bottom: 10px; right: 10px; border-bottom: 1px solid var(--magenta-dim); border-right: 1px solid var(--magenta-dim); }
+
+/* =========================================================
+   Right panel
+   ========================================================= */
+.right-panel {
+  position: absolute; right: 0; top: 64px; bottom: 68px; width: 290px;
+  border-left: 1px solid var(--line-subtle);
+  background: linear-gradient(180deg, rgba(16,16,22,0.95) 0%, rgba(12,12,18,0.95) 100%);
+  backdrop-filter: blur(8px);
+  z-index: 40;
+  overflow-y: auto; overflow-x: hidden;
+}
+.panel-section { padding: 22px 22px; border-bottom: 1px solid var(--line-subtle); }
+.panel-section.fade-in { animation: panel-in .45s cubic-bezier(.2,.8,.2,1) backwards; }
+@keyframes panel-in { 0% { opacity: 0; transform: translateX(16px); } 100% { opacity: 1; transform: translateX(0); } }
+
+.panel-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--text-tertiary); margin-bottom: 14px;
+}
+.exhibit-title {
+  font-family: var(--font-display); font-size: 20px; font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px; letter-spacing: .08em;
+}
+.exhibit-subtitle {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--magenta);
+  letter-spacing: .12em; line-height: 1.6;
+  text-transform: uppercase;
+}
+.exhibit-desc {
+  margin-top: 12px; font-family: var(--font-body); font-size: 12px;
+  line-height: 1.7; color: var(--text-secondary);
+}
+
+/* Sliders */
+.slider-group { display: flex; flex-direction: column; gap: 16px; }
+.slider-item { display: flex; flex-direction: column; gap: 7px; }
+.slider-header { display: flex; justify-content: space-between; align-items: baseline; }
+.slider-name {
+  font-family: var(--font-body); font-size: 12px; font-weight: 500;
+  color: var(--text-secondary); letter-spacing: .04em;
+}
+.slider-value {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  color: var(--lime);
+  letter-spacing: .05em; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px var(--lime-glow);
+}
+.slider-value .unit { font-size: 10px; color: var(--text-tertiary); margin-left: 2px; text-shadow: none; }
+.slider-track {
+  position: relative; height: 2px;
+  background: var(--line-soft); border-radius: 1px;
+}
+.slider-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--magenta);
+  box-shadow: 0 0 10px var(--magenta-glow);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.slider-thumb {
+  position: absolute; top: 50%;
+  width: 13px; height: 13px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--magenta);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px var(--magenta-glow);
+  transition: transform .15s, box-shadow .15s;
+}
+.slider-thumb:hover,
+.slider-thumb.dragging {
+  transform: translate(-50%, -50%) scale(1.3);
+  box-shadow: 0 0 18px var(--magenta-glow);
+}
+
+/* Feature tags */
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.tag {
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: .1em; text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft);
+  color: var(--text-tertiary);
+  border-radius: 2px;
+}
+.tag.accent {
+  border-color: var(--magenta-dim);
+  color: var(--magenta);
+  background: rgba(255,46,158,0.08);
+}
+
+/* Readouts */
+.readout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.readout {
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-subtle);
+}
+.readout-label {
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: .15em; text-transform: uppercase;
+  color: var(--text-tertiary); margin-bottom: 5px;
+}
+.readout-value {
+  font-family: var(--font-mono); font-size: 15px; font-weight: 600;
+  color: var(--text-primary); letter-spacing: .03em;
+  font-variant-numeric: tabular-nums;
+}
+.readout-value .unit { font-size: 10px; color: var(--text-tertiary); margin-left: 3px; font-weight: 400; }
+.readout-wide { grid-column: span 2; }
+
+/* Right panel scrollbar */
+.right-panel::-webkit-scrollbar { width: 3px; }
+.right-panel::-webkit-scrollbar-track { background: transparent; }
+.right-panel::-webkit-scrollbar-thumb { background: var(--line-soft); border-radius: 2px; }
+.right-panel::-webkit-scrollbar-thumb:hover { background: var(--line-med); }
+
+/* =========================================================
+   Bottom bar
+   ========================================================= */
+.bottombar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 68px;
+  border-top: 1px solid var(--line-subtle);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; z-index: 50;
+  background: linear-gradient(0deg, rgba(10,10,15,0.8) 0%, rgba(10,10,15,0) 100%);
+  backdrop-filter: blur(6px);
+}
+.bottom-left { display: flex; align-items: center; gap: 28px; }
+.bottom-right { display: flex; align-items: center; gap: 18px; }
+.progress-indicator { display: flex; align-items: center; gap: 10px; }
+.progress-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .15em;
+  color: var(--text-tertiary); text-transform: uppercase;
+}
+.progress-dots { display: flex; gap: 5px; }
+.progress-dot {
+  width: 20px; height: 2px; background: var(--line-soft);
+  border-radius: 1px; transition: background .4s, box-shadow .4s;
+}
+.progress-dot.active { background: var(--magenta); box-shadow: 0 0 8px var(--magenta); }
+
+.hint-text {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: .08em; color: var(--text-dim);
+}
+.hint-text kbd {
+  font-family: var(--font-mono); font-size: 10px;
+  padding: 2px 6px; border: 1px solid var(--line-soft);
+  border-radius: 2px; color: var(--text-tertiary);
+  background: var(--bg-inset); margin: 0 2px;
+}
+
+/* =========================================================
+   Reduced motion
+   ========================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .cursor-ring, .cursor-dot { transition: none; }
+  .nav-item, .nav-item::before, .nav-label { transition: none; }
+  .slider-thumb { transition: none; }
+  .stage-canvas.fade-in, .panel-section.fade-in { animation: none; }
+  .meta-dot { animation: none; }
+  .cursor-ripple { animation: none; display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="scanlines"></div>
+
+  <!-- Cursor layer -->
+  <div class="cursor-layer" id="cursorLayer">
+    <div class="cursor-ring" id="cursorRing"></div>
+    <div class="cursor-dot" id="cursorDot"></div>
+  </div>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <svg class="brand-svg" viewBox="0 0 28 28" fill="none">
+        <!-- Synth wave mark -->
+        <rect x="2" y="2" width="24" height="24" rx="3" stroke="#FF2E9E" stroke-width="1.2" fill="none"/>
+        <path d="M4 14 L8 14 L10 8 L14 20 L18 6 L20 14 L24 14"
+              stroke="#B6FF3C" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="14" cy="14" r="2" fill="#FF2E9E"/>
+      </svg>
+      <span class="brand-name">SYNTH</span>
+      <span class="brand-sub">/特效实验室</span>
+    </div>
+    <div class="topmeta">
+      <div class="meta-item">
+        <span class="meta-dot"></span>
+        <span>LIVE FX</span>
+      </div>
+      <div class="meta-item" id="topCounter">01 / 06</div>
+    </div>
+  </div>
+
+  <!-- Left nav -->
+  <div class="exhibit-nav" id="nav"></div>
+
+  <!-- Stage -->
+  <div class="stage" id="stage">
+    <canvas class="stage-canvas" id="stageCanvas"></canvas>
+    <div class="corner-mark corner-tl"></div>
+    <div class="corner-mark corner-tr"></div>
+    <div class="corner-mark corner-bl"></div>
+    <div class="corner-mark corner-br"></div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel" id="rightPanel"></div>
+
+  <!-- Bottom bar -->
+  <div class="bottombar">
+    <div class="bottom-left">
+      <div class="progress-indicator">
+        <span class="progress-label">特效</span>
+        <div class="progress-dots" id="progressDots"></div>
+      </div>
+    </div>
+    <div class="bottom-right">
+      <span class="hint-text">
+        <kbd>←</kbd><kbd>→</kbd> 切换 ·
+        <kbd>1</kbd>–<kbd>6</kbd> 跳转 ·
+        鼠标在画布上实时互动
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   SYNTH — Effects Lab
+   Single-file vanilla JS, 6 showcase effects
+   ========================================================= */
+(function () {
+  'use strict';
+
+  // ---------- Utils ----------
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- Effects ----------
+  const EFFECTS = [
+    { id: 'particles',  num: '01', title: '粒子引力场',  subtitle: 'Particle Gravity',  desc: '数千粒子响应鼠标形成引力场，靠近聚拢、远离飞散，拖出流星般的光尾。', tags: ['粒子系统', '引力模拟', '拖尾'] },
+    { id: 'fluid',      num: '02', title: '噪波流体',    subtitle: 'Noise Flow Field', desc: '程序化噪波生成的流动矢量场，鼠标推开流体留下涡旋余迹。', tags: ['Perlin噪声', '流场', '涡旋'] },
+    { id: 'text',       num: '03', title: '文字解构',    subtitle: 'Text Deconstruction', desc: '标题由点阵组成，鼠标靠近时粒子四散飞开，离开后自动重组复原。', tags: ['像素化', '弹簧力', '文字特效'] },
+    { id: 'magnetic',   num: '04', title: '磁力按钮',    subtitle: 'Magnetic Buttons', desc: '一排按钮被光标磁力吸引，产生弹性形变和磁场扭曲视觉效果。', tags: ['磁力吸附', '弹性形变', '交互反馈'] },
+    { id: 'spectrum',   num: '05', title: '频谱可视化',  subtitle: 'Audio Spectrum', desc: '模拟音频可视化的频谱柱，霓虹色彩，节奏跳动，鼠标高度调节强度。', tags: ['音频可视化', '频谱柱', '节奏动效'] },
+    { id: 'trail',      num: '06', title: '光标拖尾',    subtitle: 'Cursor Trail', desc: '光标拖出霓虹粒子尾迹，粒子有惯性、会自旋、会渐变消散成星云。', tags: ['粒子拖尾', '物理惯性', '光标特效'] },
+  ];
+
+  const DEFAULTS = {
+    particles:  { count: 800, strength: 400, particleSize: 2, trail: 0.12 },
+    fluid:      { scale: 0.004, speed: 1.5, density: 120, viscosity: 0.96 },
+    text:       { fontSize: 80, repelRadius: 120, springStrength: 0.08, damping: 0.85 },
+    magnetic:   { strength: 0.6, elasticity: 0.4, count: 7 },
+    spectrum:   { bars: 48, amplitude: 1.0, speed: 1.2, smoothing: 0.7 },
+    trail:      { count: 80, length: 30, spin: 0.5, gravity: 0 },
+  };
+
+  // ---------- State ----------
+  const state = {
+    activeIdx: 0,
+    params: {},
+    mouse: {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      stageX: 0, stageY: 0,
+      px: 0, py: 0, // previous
+      vx: 0, vy: 0, // velocity
+      down: false,
+      onStage: false,
+    },
+    rafId: null,
+    visible: true,
+  };
+
+  for (const ef of EFFECTS) {
+    state.params[ef.id] = Object.assign({}, DEFAULTS[ef.id]);
+  }
+
+  // ---------- Custom Cursor ----------
+  const cursorRing = $('#cursorRing');
+  const cursorDot  = $('#cursorDot');
+  const cursorLayer= $('#cursorLayer');
+  const ringPos = { x: window.innerWidth/2, y: window.innerHeight/2 };
+  const dotPos  = { x: window.innerWidth/2, y: window.innerHeight/2 };
+
+  cursorRing.style.transform = 'translate(' + ringPos.x + 'px,' + ringPos.y + 'px) translate(-50%,-50%)';
+  cursorDot.style.transform  = 'translate(' + dotPos.x + 'px,' + dotPos.y + 'px) translate(-50%,-50%)';
+
+  let hoverEl = null;
+  function checkHover(e) {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const interactive = el && el.closest && el.closest(
+      '.nav-item, .slider-track, .slider-thumb, [data-interactive]'
+    );
+    if (interactive && !hoverEl) {
+      cursorRing.classList.add('hover');
+      cursorDot.classList.add('hover');
+    } else if (!interactive && hoverEl) {
+      cursorRing.classList.remove('hover');
+      cursorDot.classList.remove('hover');
+    }
+    hoverEl = interactive;
+  }
+
+  document.addEventListener('mousemove', function (e) {
+    dotPos.x = e.clientX;
+    dotPos.y = e.clientY;
+    state.mouse.x = e.clientX;
+    state.mouse.y = e.clientY;
+
+    // velocity
+    state.mouse.vx = e.clientX - state.mouse.px;
+    state.mouse.vy = e.clientY - state.mouse.py;
+    state.mouse.px = e.clientX;
+    state.mouse.py = e.clientY;
+
+    // stage-relative
+    const stage = $('#stage');
+    const rect = stage.getBoundingClientRect();
+    state.mouse.stageX = e.clientX - rect.left;
+    state.mouse.stageY = e.clientY - rect.top;
+    state.mouse.onStage = e.clientX >= rect.left && e.clientX <= rect.right
+                       && e.clientY >= rect.top  && e.clientY <= rect.bottom;
+
+    checkHover(e);
+  });
+
+  document.addEventListener('mousedown', function (e) {
+    state.mouse.down = true;
+    if (reducedMotion) return;
+    const r = document.createElement('div');
+    r.className = 'cursor-ripple';
+    r.style.left = e.clientX + 'px';
+    r.style.top = e.clientY + 'px';
+    cursorLayer.appendChild(r);
+    setTimeout(function () { r.remove(); }, 600);
+  });
+  document.addEventListener('mouseup', function () { state.mouse.down = false; });
+
+  // ---------- Canvas ----------
+  const canvas = $('#stageCanvas');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', function () {
+    resizeCanvas();
+    if (effectAPI.onResize) effectAPI.onResize();
+  });
+
+  // ---------- Navigation ----------
+  const navEl = $('#nav');
+  const progEl = $('#progressDots');
+  const topCounter = $('#topCounter');
+
+  function buildNav() {
+    navEl.innerHTML = '';
+    EFFECTS.forEach(function (ef, idx) {
+      const item = document.createElement('div');
+      item.className = 'nav-item' + (idx === state.activeIdx ? ' active' : '');
+      item.innerHTML =
+        '<span class="nav-num">' + ef.num + '</span>' +
+        '<span class="nav-label">' + ef.title + '</span>';
+      item.addEventListener('click', function () { switchEffect(idx); });
+      navEl.appendChild(item);
+    });
+
+    progEl.innerHTML = '';
+    EFFECTS.forEach(function (ef, idx) {
+      const dot = document.createElement('div');
+      dot.className = 'progress-dot' + (idx === state.activeIdx ? ' active' : '');
+      progEl.appendChild(dot);
+    });
+    topCounter.textContent = EFFECTS[state.activeIdx].num + ' / 0' + EFFECTS.length;
+  }
+
+  function switchEffect(idx) {
+    if (idx === state.activeIdx) return;
+    state.activeIdx = idx;
+
+    $$('.nav-item', navEl).forEach(function (el, i) {
+      el.classList.toggle('active', i === idx);
+    });
+    $$('.progress-dot', progEl).forEach(function (el, i) {
+      el.classList.toggle('active', i === idx);
+    });
+    topCounter.textContent = EFFECTS[idx].num + ' / 0' + EFFECTS.length;
+
+    canvas.classList.remove('fade-in');
+    void canvas.offsetWidth;
+    canvas.classList.add('fade-in');
+
+    buildRightPanel();
+    initEffect(EFFECTS[idx].id);
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      switchEffect(Math.min(EFFECTS.length - 1, state.activeIdx + 1));
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      switchEffect(Math.max(0, state.activeIdx - 1));
+    } else if (e.key >= '1' && e.key <= String(EFFECTS.length)) {
+      switchEffect(parseInt(e.key) - 1);
+    }
+  });
+
+  // ---------- Right Panel ----------
+  const rightPanel = $('#rightPanel');
+  let readoutEls = {};
+
+  function buildRightPanel() {
+    const ef = EFFECTS[state.activeIdx];
+    const p = state.params[ef.id];
+    rightPanel.innerHTML = '';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'panel-section fade-in';
+    let tagsHtml = '<div class="tag-row">';
+    ef.tags.forEach(function (t, i) {
+      tagsHtml += '<span class="tag' + (i === 0 ? ' accent' : '') + '">' + t + '</span>';
+    });
+    tagsHtml += '</div>';
+    header.innerHTML =
+      '<div class="panel-label">特效 / Effect</div>' +
+      '<div class="exhibit-title">' + ef.title + '</div>' +
+      '<div class="exhibit-subtitle">' + ef.subtitle + '</div>' +
+      '<div class="exhibit-desc">' + ef.desc + '</div>' +
+      tagsHtml;
+    rightPanel.appendChild(header);
+
+    // Controls
+    const ctrl = document.createElement('div');
+    ctrl.className = 'panel-section fade-in';
+    ctrl.style.animationDelay = '.08s';
+    ctrl.innerHTML = '<div class="panel-label">参数控制 / Controls</div>';
+    const sliderGroup = document.createElement('div');
+    sliderGroup.className = 'slider-group';
+    const sliders = getSliderDefs(ef.id);
+    sliders.forEach(function (s) {
+      sliderGroup.appendChild(createSlider(s, p));
+    });
+    ctrl.appendChild(sliderGroup);
+    rightPanel.appendChild(ctrl);
+
+    // Readouts
+    const rsec = document.createElement('div');
+    rsec.className = 'panel-section fade-in';
+    rsec.style.animationDelay = '.16s';
+    rsec.innerHTML = '<div class="panel-label">实时读数 / Readout</div>';
+    const grid = document.createElement('div');
+    grid.className = 'readout-grid';
+    readoutEls = {};
+    const readouts = getReadoutDefs(ef.id);
+    readouts.forEach(function (r) {
+      const el = document.createElement('div');
+      el.className = 'readout' + (r.wide ? ' readout-wide' : '');
+      el.innerHTML =
+        '<div class="readout-label">' + r.label + '</div>' +
+        '<div class="readout-value" data-key="' + r.key + '">—</div>';
+      grid.appendChild(el);
+      readoutEls[r.key] = el.querySelector('.readout-value');
+    });
+    rsec.appendChild(grid);
+    rightPanel.appendChild(rsec);
+
+    // Tip
+    const tip = document.createElement('div');
+    tip.className = 'panel-section fade-in';
+    tip.style.animationDelay = '.24s';
+    tip.innerHTML =
+      '<div class="panel-label">操作 / How</div>' +
+      '<div style="font-family:var(--font-mono);font-size:11px;line-height:1.8;color:var(--text-tertiary);letter-spacing:.03em;">' +
+      getTipText(ef.id) + '</div>';
+    rightPanel.appendChild(tip);
+  }
+
+  function createSlider(def, p) {
+    const item = document.createElement('div');
+    item.className = 'slider-item';
+    const dec = def.decimals !== undefined ? def.decimals : 1;
+
+    const header = document.createElement('div');
+    header.className = 'slider-header';
+    header.innerHTML =
+      '<span class="slider-name">' + def.name + '</span>' +
+      '<span class="slider-value"><span data-val>' + p[def.key].toFixed(dec) + '</span>' +
+      '<span class="unit">' + def.unit + '</span></span>';
+    item.appendChild(header);
+
+    const track = document.createElement('div');
+    track.className = 'slider-track';
+    const fill = document.createElement('div');
+    fill.className = 'slider-fill';
+    fill.style.width = ((p[def.key] - def.min) / (def.max - def.min) * 100) + '%';
+    track.appendChild(fill);
+    const thumb = document.createElement('div');
+    thumb.className = 'slider-thumb';
+    thumb.style.left = ((p[def.key] - def.min) / (def.max - def.min) * 100) + '%';
+    track.appendChild(thumb);
+    item.appendChild(track);
+
+    let dragging = false;
+    function onMove(e) {
+      if (!dragging) return;
+      const rect = track.getBoundingClientRect();
+      let pct = (e.clientX - rect.left) / rect.width;
+      pct = clamp(pct, 0, 1);
+      const val = def.min + pct * (def.max - def.min);
+      p[def.key] = val;
+      fill.style.width = (pct * 100) + '%';
+      thumb.style.left = (pct * 100) + '%';
+      header.querySelector('[data-val]').textContent = val.toFixed(dec);
+      if (effectAPI.onParamChange) effectAPI.onParamChange(def.key, val);
+    }
+    function onUp() {
+      dragging = false;
+      thumb.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    function onDown(e) {
+      dragging = true;
+      thumb.classList.add('dragging');
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      onMove(e);
+    }
+    thumb.addEventListener('mousedown', onDown);
+    track.addEventListener('mousedown', onDown);
+    return item;
+  }
+
+  // ---------- Effect API ----------
+  const effectAPI = {
+    draw: function () {},
+    onParamChange: null,
+    onResize: null,
+  };
+
+  function initEffect(id) {
+    effectAPI.draw = function () {};
+    effectAPI.onParamChange = null;
+    effectAPI.onResize = null;
+    switch (id) {
+      case 'particles': initParticles(); break;
+      case 'fluid':     initFluid(); break;
+      case 'text':      initText(); break;
+      case 'magnetic':  initMagnetic(); break;
+      case 'spectrum':  initSpectrum(); break;
+      case 'trail':     initTrail(); break;
+    }
+  }
+
+  // =========================================================
+  // EFFECT 01: PARTICLE GRAVITY FIELD
+  // =========================================================
+  function initParticles() {
+    const p = state.params.particles;
+    const particles = [];
+
+    function spawn() {
+      particles.length = 0;
+      for (let i = 0; i < p.count; i++) {
+        particles.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.5,
+          vy: (Math.random() - 0.5) * 0.5,
+          size: p.particleSize * (0.5 + Math.random() * 0.8),
+          hue: 320 + Math.random() * 40, // magenta range
+          life: Math.random(),
+        });
+      }
+    }
+    spawn();
+
+    effectAPI.draw = function (dt) {
+      // Fade trail
+      ctx.fillStyle = 'rgba(10,10,15,' + (1 - p.trail) + ')';
+      ctx.fillRect(0, 0, W, H);
+
+      const mx = state.mouse.stageX;
+      const my = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+      const strength = p.strength;
+
+      ctx.globalCompositeOperation = 'lighter';
+
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+
+        if (onStage) {
+          const dx = mx - pt.x;
+          const dy = my - pt.y;
+          const dSq = dx * dx + dy * dy;
+          const d = Math.sqrt(dSq);
+          if (d > 1) {
+            // Attract when mouse is close, repel when very close
+            const force = strength / dSq;
+            const fx = dx / d * force;
+            const fy = dy / d * force;
+            if (d < 40) {
+              // Repel
+              pt.vx -= fx * dt * 60;
+              pt.vy -= fy * dt * 60;
+            } else {
+              // Attract
+              pt.vx += fx * dt * 60;
+              pt.vy += fy * dt * 60;
+            }
+          }
+        }
+
+        // Damping
+        pt.vx *= 0.97;
+        pt.vy *= 0.97;
+
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+
+        // Wrap
+        if (pt.x < -10) pt.x = W + 10;
+        if (pt.x > W + 10) pt.x = -10;
+        if (pt.y < -10) pt.y = H + 10;
+        if (pt.y > H + 10) pt.y = -10;
+
+        // Draw particle
+        const speed = Math.hypot(pt.vx, pt.vy);
+        const brightness = clamp(0.4 + speed * 0.15, 0.3, 1);
+
+        // Glow
+        const glowR = pt.size * 3;
+        const grad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glowR);
+        grad.addColorStop(0, 'hsla(' + pt.hue + ',100%,70%,' + brightness + ')');
+        grad.addColorStop(0.4, 'hsla(' + pt.hue + ',100%,60%,' + (brightness * 0.4) + ')');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core
+        ctx.fillStyle = 'hsla(320,100%,90%,' + brightness + ')';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Mouse influence circle
+      if (onStage) {
+        ctx.strokeStyle = 'rgba(255,46,158,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(mx, my, 80, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    };
+
+    effectAPI.onParamChange = function (key, val) {
+      if (key === 'count') spawn();
+      if (key === 'particleSize') {
+        for (const pt of particles) pt.size = val * (0.5 + Math.random() * 0.8);
+      }
+    };
+
+    effectAPI.onResize = spawn;
+  }
+
+  // =========================================================
+  // EFFECT 02: NOISE FLOW FIELD
+  // =========================================================
+  function initFluid() {
+    const p = state.params.fluid;
+    const particles = [];
+    let t = 0;
+
+    // Simple value noise
+    const noiseSize = 256;
+    const noiseGrid = [];
+    function initNoise() {
+      noiseGrid.length = 0;
+      for (let i = 0; i < noiseSize * noiseSize; i++) {
+        noiseGrid.push(Math.random());
+      }
+    }
+    initNoise();
+
+    function smoothNoise(x, y) {
+      const xi = Math.floor(x) % noiseSize;
+      const yi = Math.floor(y) % noiseSize;
+      const xf = x - Math.floor(x);
+      const yf = y - Math.floor(y);
+      const xi1 = (xi + 1) % noiseSize;
+      const yi1 = (yi + 1) % noiseSize;
+      const a = noiseGrid[yi * noiseSize + xi];
+      const b = noiseGrid[yi * noiseSize + xi1];
+      const c = noiseGrid[yi1 * noiseSize + xi];
+      const d = noiseGrid[yi1 * noiseSize + xi1];
+      const u = xf * xf * (3 - 2 * xf);
+      const v = yf * yf * (3 - 2 * yf);
+      return lerp(lerp(a, b, u), lerp(c, d, u), v);
+    }
+
+    function flowAngle(x, y, time) {
+      const s = p.scale;
+      const n1 = smoothNoise(x * s + time * 0.1, y * s);
+      const n2 = smoothNoise(x * s + 100, y * s + time * 0.15);
+      return (n1 - n2) * Math.PI * 4;
+    }
+
+    function spawnParticles() {
+      particles.length = 0;
+      for (let i = 0; i < p.density * 5; i++) {
+        particles.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          px: 0, py: 0,
+          life: Math.random(),
+          maxLife: 80 + Math.random() * 120,
+          hue: 300 + Math.random() * 80,
+        });
+        particles[i].px = particles[i].x;
+        particles[i].py = particles[i].y;
+      }
+    }
+    spawnParticles();
+
+    effectAPI.draw = function (dt) {
+      // Fade
+      ctx.fillStyle = 'rgba(10,10,15,0.08)';
+      ctx.fillRect(0, 0, W, H);
+
+      t += dt * p.speed;
+
+      const mx = state.mouse.stageX;
+      const my = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+
+      ctx.globalCompositeOperation = 'lighter';
+
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+        pt.px = pt.x;
+        pt.py = pt.y;
+
+        const angle = flowAngle(pt.x, pt.y, t);
+        const speed = 1.5;
+        pt.vx = Math.cos(angle) * speed;
+        pt.vy = Math.sin(angle) * speed;
+
+        // Mouse repels / pushes flow
+        if (onStage) {
+          const dx = pt.x - mx;
+          const dy = pt.y - my;
+          const d = Math.hypot(dx, dy);
+          if (d < 120 && d > 1) {
+            const force = (120 - d) / 120 * 3;
+            pt.vx += dx / d * force;
+            pt.vy += dy / d * force;
+          }
+        }
+
+        pt.x += pt.vx * p.speed;
+        pt.y += pt.vy * p.speed;
+
+        pt.life += dt * 60;
+        if (pt.life > pt.maxLife || pt.x < 0 || pt.x > W || pt.y < 0 || pt.y > H) {
+          pt.x = Math.random() * W;
+          pt.y = Math.random() * H;
+          pt.px = pt.x;
+          pt.py = pt.y;
+          pt.life = 0;
+        }
+
+        const lifeRatio = pt.life / pt.maxLife;
+        const alpha = Math.sin(lifeRatio * Math.PI) * 0.7;
+
+        ctx.strokeStyle = 'hsla(' + pt.hue + ', 100%, 65%, ' + alpha + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pt.px, pt.py);
+        ctx.lineTo(pt.x, pt.y);
+        ctx.stroke();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+    };
+
+    effectAPI.onParamChange = function (key, val) {
+      if (key === 'density') spawnParticles();
+    };
+
+    effectAPI.onResize = spawnParticles;
+  }
+
+  // =========================================================
+  // EFFECT 03: TEXT DECONSTRUCTION
+  // =========================================================
+  function initText() {
+    const p = state.params.text;
+    let points = [];
+    let textCanvas, textCtx;
+
+    function buildText() {
+      textCanvas = document.createElement('canvas');
+      textCanvas.width = W;
+      textCanvas.height = H;
+      textCtx = textCanvas.getContext('2d');
+      textCtx.fillStyle = '#fff';
+      textCtx.font = 'bold ' + p.fontSize + 'px "Courier New", monospace';
+      textCtx.textAlign = 'center';
+      textCtx.textBaseline = 'middle';
+      textCtx.fillText('SYNTH.WAVE', W / 2, H / 2 - 20);
+      textCtx.font = 'bold ' + (p.fontSize * 0.5) + 'px "Courier New", monospace';
+      textCtx.fillText('EFFECTS LAB', W / 2, H / 2 + p.fontSize * 0.5);
+
+      const data = textCtx.getImageData(0, 0, W, H).data;
+      points = [];
+      const step = 4;
+      for (let y = 0; y < H; y += step) {
+        for (let x = 0; x < W; x += step) {
+          const idx = (y * W + x) * 4;
+          if (data[idx + 3] > 128) {
+            points.push({
+              ox: x, oy: y,  // original position
+              x: x, y: y,    // current position
+              vx: 0, vy: 0,
+              hue: 320 + (x / W) * 60 + (y / H) * 20,
+            });
+          }
+        }
+      }
+    }
+    buildText();
+
+    effectAPI.draw = function (dt) {
+      ctx.clearRect(0, 0, W, H);
+
+      const mx = state.mouse.stageX;
+      const my = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+      const radius = p.repelRadius;
+      const k = p.springStrength;
+      const d = p.damping;
+
+      ctx.globalCompositeOperation = 'lighter';
+
+      for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+
+        if (onStage) {
+          const dx = pt.x - mx;
+          const dy = pt.y - my;
+          const dist = Math.hypot(dx, dy);
+          if (dist < radius && dist > 0.1) {
+            const force = (1 - dist / radius) * 8;
+            pt.vx += dx / dist * force;
+            pt.vy += dy / dist * force;
+          }
+        }
+
+        // Spring force back to original
+        pt.vx += (pt.ox - pt.x) * k;
+        pt.vy += (pt.oy - pt.y) * k;
+
+        // Damping
+        pt.vx *= d;
+        pt.vy *= d;
+
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+
+        const speed = Math.hypot(pt.vx, pt.vy);
+        const brightness = clamp(0.5 + speed * 0.1, 0.4, 1);
+
+        ctx.fillStyle = 'hsla(' + pt.hue + ', 100%, 70%, ' + brightness + ')';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Repel radius indicator
+      if (onStage) {
+        ctx.strokeStyle = 'rgba(182,255,60,0.15)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(mx, my, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    };
+
+    effectAPI.onParamChange = function (key, val) {
+      if (key === 'fontSize') buildText();
+    };
+    effectAPI.onResize = buildText;
+  }
+
+  // =========================================================
+  // EFFECT 04: MAGNETIC BUTTONS
+  // =========================================================
+  function initMagnetic() {
+    const p = state.params.magnetic;
+    const buttons = [];
+
+    function buildButtons() {
+      buttons.length = 0;
+      const rows = 3;
+      const cols = Math.ceil(p.count / rows);
+      const bw = 100;
+      const bh = 40;
+      const gapX = 30;
+      const gapY = 24;
+      const totalW = cols * bw + (cols - 1) * gapX;
+      const totalH = rows * bh + (rows - 1) * gapY;
+      const startX = (W - totalW) / 2;
+      const startY = (H - totalH) / 2;
+
+      const labels = ['PLAY', 'PAUSE', 'RESET', 'SYNTH', 'BASS', 'TREBLE', 'MIX', 'FX', 'LOOP'];
+      for (let i = 0; i < p.count && i < labels.length; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        buttons.push({
+          ox: startX + col * (bw + gapX),
+          oy: startY + row * (bh + gapY),
+          x: startX + col * (bw + gapX),
+          y: startY + row * (bh + gapY),
+          w: bw, h: bh,
+          label: labels[i % labels.length],
+          hue: 320 + (i / p.count) * 60,
+          pulse: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+    buildButtons();
+
+    effectAPI.draw = function (dt) {
+      ctx.clearRect(0, 0, W, H);
+      // grid bg
+      drawGrid();
+
+      const mx = state.mouse.stageX;
+      const my = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+      const str = p.strength;
+      const elas = p.elasticity;
+
+      for (let i = 0; i < buttons.length; i++) {
+        const b = buttons[i];
+        b.pulse += dt * 2;
+
+        // Magnetic pull toward mouse
+        let targetX = b.ox;
+        let targetY = b.oy;
+
+        if (onStage) {
+          const cx = b.ox + b.w / 2;
+          const cy = b.oy + b.h / 2;
+          const dx = mx - cx;
+          const dy = my - cy;
+          const d = Math.hypot(dx, dy);
+          const maxDist = 180;
+          if (d < maxDist) {
+            const force = (1 - d / maxDist) * 30 * str;
+            targetX = b.ox + dx / d * force;
+            targetY = b.oy + dy / d * force;
+          }
+        }
+
+        // Spring to target
+        b.x += (targetX - b.x) * (0.1 + elas * 0.1);
+        b.y += (targetY - b.y) * (0.1 + elas * 0.1);
+
+        // Draw button
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        const isHover = onStage &&
+          mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h;
+
+        // Glow
+        if (isHover) {
+          const glowR = 40;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+          grad.addColorStop(0, 'hsla(' + b.hue + ',100%,60%,0.4)');
+          grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Button body
+        const rounded = 4;
+        ctx.fillStyle = isHover
+          ? 'hsla(' + b.hue + ',80%,20%,0.9)'
+          : 'hsla(' + b.hue + ',30%,12%,0.8)';
+        ctx.strokeStyle = isHover
+          ? 'hsla(' + b.hue + ',100%,60%,0.8)'
+          : 'hsla(' + b.hue + ',50%,30%,0.5)';
+        ctx.lineWidth = isHover ? 1.5 : 1;
+        ctx.shadowColor = isHover ? 'hsla(' + b.hue + ',100%,50%,0.5)' : 'transparent';
+        ctx.shadowBlur = isHover ? 15 : 0;
+
+        roundRect(ctx, b.x, b.y, b.w, b.h, rounded);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Top highlight line
+        ctx.strokeStyle = isHover
+          ? 'hsla(' + b.hue + ',100%,70%,0.5)'
+          : 'hsla(' + b.hue + ',30%,40%,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(b.x + rounded, b.y + 1);
+        ctx.lineTo(b.x + b.w - rounded, b.y + 1);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = isHover
+          ? 'hsla(' + b.hue + ',100%,85%,1)'
+          : 'hsla(' + b.hue + ',20%,60%,0.9)';
+        ctx.font = 'bold 12px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.label, cx, cy);
+      }
+
+      // Magnetic field lines (subtle)
+      if (onStage) {
+        ctx.strokeStyle = 'rgba(255,46,158,0.08)';
+        ctx.lineWidth = 0.5;
+        for (let r = 30; r < 200; r += 40) {
+          ctx.beginPath();
+          ctx.arc(mx, my, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    };
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    effectAPI.onParamChange = function (key, val) {
+      if (key === 'count') buildButtons();
+    };
+    effectAPI.onResize = buildButtons;
+  }
+
+  // =========================================================
+  // EFFECT 05: AUDIO SPECTRUM VISUALIZER
+  // =========================================================
+  function initSpectrum() {
+    const p = state.params.spectrum;
+    const bars = [];
+    let t = 0;
+    let phase = 0;
+
+    function buildBars() {
+      bars.length = 0;
+      for (let i = 0; i < p.bars; i++) {
+        bars.push({
+          height: 0,
+          targetHeight: 0,
+          hue: 320 + (i / p.bars) * 60,
+        });
+      }
+    }
+    buildBars();
+
+    effectAPI.draw = function (dt) {
+      ctx.clearRect(0, 0, W, H);
+      drawGrid();
+
+      t += dt * p.speed;
+      phase += dt * p.speed;
+
+      const mx = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+      const mouseFactor = onStage ? clamp(1 - (mx / H), 0.2, 1.5) : 1;
+
+      const barGap = 4;
+      const barW = (W - 60 - barGap * (p.bars - 1)) / p.bars;
+      const startX = 30;
+      const baseY = H * 0.55;
+      const maxH = H * 0.45;
+
+      // Generate fake audio data with multiple sine components
+      for (let i = 0; i < bars.length; i++) {
+        const freqRatio = i / bars.length;
+        // Multiple sine waves to simulate harmonics
+        let v = 0;
+        v += Math.sin(phase * 2 + i * 0.3) * 0.3;
+        v += Math.sin(phase * 3.5 + i * 0.5) * 0.25;
+        v += Math.sin(phase * 1.7 + i * 0.2) * 0.2;
+        v += Math.sin(phase * 5.1 + i * 0.7) * 0.15;
+        // Bass emphasis
+        const bassBoost = 1 - freqRatio * 0.5;
+        v *= bassBoost;
+        // Add noise
+        v += (Math.random() - 0.5) * 0.2;
+        v = (v + 1) / 2; // normalize 0-1
+        v = Math.pow(v, 1.5) * p.amplitude * mouseFactor;
+        v = clamp(v, 0, 1);
+
+        // Ease toward target
+        const target = v * maxH;
+        bars[i].height = lerp(bars[i].height, target, 1 - p.smoothing);
+      }
+
+      // Draw reflection floor
+      ctx.save();
+      const grad = ctx.createLinearGradient(0, baseY, 0, baseY + maxH * 0.3);
+      grad.addColorStop(0, 'rgba(255,46,158,0.06)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, baseY, W, maxH * 0.3);
+      ctx.restore();
+
+      // Draw bars
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        const x = startX + i * (barW + barGap);
+        const h = b.height;
+
+        // Bar gradient
+        const barGrad = ctx.createLinearGradient(0, baseY - h, 0, baseY);
+        barGrad.addColorStop(0, 'hsla(' + b.hue + ',100%,75%,0.95)');
+        barGrad.addColorStop(0.5, 'hsla(' + b.hue + ',100%,60%,0.9)');
+        barGrad.addColorStop(1, 'hsla(' + b.hue + ',80%,40%,0.7)');
+
+        ctx.fillStyle = barGrad;
+        ctx.shadowColor = 'hsla(' + b.hue + ',100%,50%,0.5)';
+        ctx.shadowBlur = 8;
+
+        // Top bar (main)
+        roundRect(ctx, x, baseY - h, barW, h, 2);
+        ctx.fill();
+
+        // Reflection
+        ctx.globalAlpha = 0.25;
+        const reflectH = h * 0.3;
+        const refGrad = ctx.createLinearGradient(0, baseY, 0, baseY + reflectH);
+        refGrad.addColorStop(0, 'hsla(' + b.hue + ',100%,60%,0.8)');
+        refGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = refGrad;
+        ctx.fillRect(x, baseY, barW, reflectH);
+        ctx.globalAlpha = 1;
+      }
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Center line
+      ctx.strokeStyle = 'rgba(255,46,158,0.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, baseY);
+      ctx.lineTo(W, baseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Circular visualizer at top
+      const cx = W / 2;
+      const cy = H * 0.25;
+      const baseR = 50;
+      ctx.strokeStyle = 'rgba(255,46,158,0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < bars.length; i++) {
+        const angle = (i / bars.length) * Math.PI * 2 - Math.PI / 2;
+        const h = bars[i].height * 0.3;
+        const innerR = baseR;
+        const outerR = baseR + h;
+        const x1 = cx + Math.cos(angle) * innerR;
+        const y1 = cy + Math.sin(angle) * innerR;
+        const x2 = cx + Math.cos(angle) * outerR;
+        const y2 = cy + Math.sin(angle) * outerR;
+
+        ctx.strokeStyle = 'hsla(' + bars[i].hue + ',100%,65%,0.7)';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = 'hsla(' + bars[i].hue + ',100%,50%,0.5)';
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Center circle glow
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 0.6);
+      coreGrad.addColorStop(0, 'rgba(255,46,158,0.3)');
+      coreGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(232,232,240,0.5)';
+      ctx.font = '10px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.bars + ' BANDS', cx, cy + 3);
+    };
+
+    function roundRect(ctx, x, y, w, h, r) {
+      if (h < r * 2) r = h / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    effectAPI.onParamChange = function (key, val) {
+      if (key === 'bars') buildBars();
+    };
+    effectAPI.onResize = buildButtons;
+  }
+
+  // =========================================================
+  // EFFECT 06: CURSOR TRAIL
+  // =========================================================
+  function initTrail() {
+    const p = state.params.trail;
+    const particles = [];
+    let lastX = 0, lastY = 0;
+    let spawnAccum = 0;
+
+    effectAPI.draw = function (dt) {
+      // Fade
+      ctx.fillStyle = 'rgba(10,10,15,0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      const mx = state.mouse.stageX;
+      const my = state.mouse.stageY;
+      const onStage = state.mouse.onStage;
+      const mvx = state.mouse.vx;
+      const mvy = state.mouse.vy;
+      const mSpeed = Math.hypot(mvx, mvy);
+
+      // Spawn particles based on mouse speed
+      if (onStage) {
+        spawnAccum += mSpeed * 0.3 + 1;
+        const maxParticles = p.count;
+        while (spawnAccum >= 1 && particles.length < maxParticles) {
+          spawnAccum -= 1;
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.5 + Math.random() * 2;
+          particles.push({
+            x: mx + (Math.random() - 0.5) * 8,
+            y: my + (Math.random() - 0.5) * 8,
+            vx: Math.cos(angle) * speed + mvx * 0.1,
+            vy: Math.sin(angle) * speed + mvy * 0.1,
+            size: 2 + Math.random() * 4,
+            life: 1,
+            maxLife: 0.5 + Math.random() * p.length / 30,
+            hue: 320 + Math.random() * 80,
+            spin: (Math.random() - 0.5) * p.spin,
+            angle: Math.random() * Math.PI * 2,
+          });
+        }
+      } else {
+        spawnAccum = 0;
+      }
+
+      // Gravity value
+      const g = p.gravity;
+
+      ctx.globalCompositeOperation = 'lighter';
+
+      // Update and draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const pt = particles[i];
+
+        pt.vy += g * dt * 60;
+        pt.vx *= 0.96;
+        pt.vy *= 0.96;
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.angle += pt.spin;
+        pt.life -= dt / pt.maxLife;
+
+        if (pt.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const alpha = pt.life;
+        const size = pt.size * pt.life;
+
+        // Glow
+        const glowR = size * 4;
+        const grad = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glowR);
+        grad.addColorStop(0, 'hsla(' + pt.hue + ',100%,70%,' + (alpha * 0.8) + ')');
+        grad.addColorStop(0.3, 'hsla(' + pt.hue + ',100%,60%,' + (alpha * 0.4) + ')');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core - diamond / sparkle shape
+        ctx.save();
+        ctx.translate(pt.x, pt.y);
+        ctx.rotate(pt.angle);
+        ctx.fillStyle = 'hsla(320,100%,90%,' + alpha + ')';
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.4, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.4, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Core cursor glow on canvas
+      if (onStage) {
+        const coreGrad = ctx.createRadialGradient(mx, my, 0, mx, my, 30);
+        coreGrad.addColorStop(0, 'rgba(255,46,158,0.3)');
+        coreGrad.addColorStop(0.5, 'rgba(182,255,60,0.1)');
+        coreGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath();
+        ctx.arc(mx, my, 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      lastX = mx;
+      lastY = my;
+    };
+
+    effectAPI.onParamChange = function (key, val) {
+      // handled dynamically
+    };
+  }
+
+  // =========================================================
+  // Helper: grid
+  // =========================================================
+  function drawGrid() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(232, 232, 240, 0.02)';
+    ctx.lineWidth = 0.5;
+    const step = 40;
+    for (let x = 0; x < W; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let y = 0; y < H; y += step) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================
+  // Slider / Readout definitions per effect
+  // =========================================================
+  function getSliderDefs(id) {
+    switch (id) {
+      case 'particles':
+        return [
+          { key: 'count',        name: '粒子数量',       min: 200, max: 2000, unit: '',  decimals: 0 },
+          { key: 'strength',     name: '引力强度',       min: 50,  max: 1500, unit: '', decimals: 0 },
+          { key: 'particleSize', name: '粒子大小',       min: 1,   max: 5,    unit: 'px', decimals: 1 },
+          { key: 'trail',        name: '拖尾长度',       min: 0.02,max: 0.4,  unit: '', decimals: 2 },
+        ];
+      case 'fluid':
+        return [
+          { key: 'scale',     name: '噪波尺度',  min: 0.001, max: 0.01, unit: '', decimals: 4 },
+          { key: 'speed',     name: '流动速度',  min: 0.3,   max: 3,    unit: '', decimals: 2 },
+          { key: 'density',   name: '粒子密度',  min: 30,    max: 300,  unit: '', decimals: 0 },
+          { key: 'viscosity', name: '粘性',      min: 0.9,   max: 0.99, unit: '', decimals: 3 },
+        ];
+      case 'text':
+        return [
+          { key: 'fontSize',       name: '字号大小',   min: 30,  max: 120, unit: 'px', decimals: 0 },
+          { key: 'repelRadius',    name: '斥力半径',   min: 40,  max: 250, unit: 'px', decimals: 0 },
+          { key: 'springStrength', name: '回弹强度',   min: 0.02,max: 0.2,  unit: '',   decimals: 2 },
+          { key: 'damping',        name: '阻尼系数',   min: 0.7, max: 0.95, unit: '',   decimals: 2 },
+        ];
+      case 'magnetic':
+        return [
+          { key: 'strength',    name: '磁力强度',   min: 0.1, max: 1.5,  unit: '', decimals: 2 },
+          { key: 'elasticity',  name: '弹性系数',   min: 0.1, max: 1.0,  unit: '', decimals: 2 },
+          { key: 'count',       name: '按钮数量',   min: 3,   max: 9,    unit: '', decimals: 0 },
+        ];
+      case 'spectrum':
+        return [
+          { key: 'bars',      name: '频段数量',  min: 12,  max: 96,   unit: '',   decimals: 0 },
+          { key: 'amplitude', name: '振幅强度',  min: 0.3,  max: 1.5,  unit: '',   decimals: 2 },
+          { key: 'speed',     name: '节奏速度',  min: 0.5,  max: 3,    unit: 'x',  decimals: 2 },
+          { key: 'smoothing', name: '平滑度',    min: 0.3,  max: 0.9,  unit: '',   decimals: 2 },
+        ];
+      case 'trail':
+        return [
+          { key: 'count',    name: '最大粒子数', min: 30,  max: 200, unit: '',  decimals: 0 },
+          { key: 'length',   name: '拖尾长度',   min: 10,  max: 80,  unit: 'f', decimals: 0 },
+          { key: 'spin',     name: '自旋速度',   min: 0,    max: 2,   unit: '',  decimals: 2 },
+          { key: 'gravity',  name: '重力',       min: 0,    max: 0.3, unit: '',  decimals: 3 },
+        ];
+    }
+    return [];
+  }
+
+  function getReadoutDefs(id) {
+    switch (id) {
+      case 'particles':
+        return [
+          { key: 'fps',     label: '帧率 FPS',     wide: false },
+          { key: 'count',   label: '粒子总数',     wide: false },
+          { key: 'speed',   label: '平均速度',     wide: false },
+          { key: 'mode',    label: '交互模式',     wide: false },
+        ];
+      case 'fluid':
+        return [
+          { key: 'particles', label: '流线数量', wide: false },
+          { key: 'vortices',  label: '涡旋数',   wide: false },
+          { key: 'fps',       label: 'FPS',      wide: true },
+        ];
+      case 'text':
+        return [
+          { key: 'points', label: '粒子点阵数', wide: false },
+          { key: 'radius', label: '斥力半径',   wide: false },
+          { key: 'state',  label: '状态',       wide: true },
+        ];
+      case 'magnetic':
+        return [
+          { key: 'count',    label: '按钮数量', wide: false },
+          { key: 'hover',    label: '悬停',     wide: false },
+          { key: 'distance', label: '作用距离', wide: true },
+        ];
+      case 'spectrum':
+        return [
+          { key: 'bars',   label: '频段数',   wide: false },
+          { key: 'peak',   label: '峰值频率', wide: false },
+          { key: 'avg',    label: '平均振幅', wide: true },
+        ];
+      case 'trail':
+        return [
+          { key: 'alive',    label: '活跃粒子', wide: false },
+          { key: 'speed',    label: '鼠标速度', wide: false },
+          { key: 'spawn',    label: '生成速率', wide: true },
+        ];
+    }
+    return [];
+  }
+
+  function getTipText(id) {
+    switch (id) {
+      case 'particles': return '鼠标移入画布 → 粒子被吸引聚拢<br>靠近中心 → 粒子被推开飞散<br>拖出流光般的粒子尾迹';
+      case 'fluid':     return '鼠标穿过流场 → 推开流线留下涡旋<br>噪波驱动流体持续流动<br>流线会自然衰减并重生';
+      case 'text':      return '鼠标靠近文字 → 粒子四散弹开<br>离开后 → 弹簧力拉回原位自动重组<br>调节斥力半径和回弹强度';
+      case 'magnetic':  return '鼠标靠近 → 按钮被磁力吸引偏移<br>悬停时 → 发光高亮<br>调节磁力强度与弹性';
+      case 'spectrum':  return '模拟音频频谱可视化<br>鼠标上移 → 强度增加<br>鼠标下移 → 强度减弱';
+      case 'trail':     return '移动鼠标 → 拖出霓虹粒子尾迹<br>粒子有自旋、会渐变消散<br>调节重力让粒子下坠';
+    }
+    return '';
+  }
+
+  // =========================================================
+  // Readout updates
+  // =========================================================
+  let fpsFrames = 0;
+  let fpsLastTime = performance.now();
+  let currentFps = 60;
+
+  function updateReadouts() {
+    const ef = EFFECTS[state.activeIdx];
+    const p = state.params[ef.id];
+    const r = readoutEls;
+    if (!r) return;
+
+    switch (ef.id) {
+      case 'particles':
+        if (r.fps)   r.fps.textContent = currentFps.toFixed(0);
+        if (r.count) r.count.textContent = Math.round(p.count);
+        if (r.speed) r.speed.textContent = (state.mouse.onStage ? Math.hypot(state.mouse.vx, state.mouse.vy).toFixed(1) : '0.0');
+        if (r.mode)  r.mode.textContent = state.mouse.down ? '吸引' : '引斥';
+        break;
+      case 'fluid':
+        if (r.particles) r.particles.textContent = Math.round(p.density * 5);
+        if (r.vortices)  r.vortices.textContent  = '∞';
+        if (r.fps)       r.fps.textContent       = currentFps.toFixed(0);
+        break;
+      case 'text':
+        if (r.points) r.points.textContent = '—'; // approximate
+        if (r.radius) r.radius.textContent = p.repelRadius.toFixed(0) + 'px';
+        if (r.state)  r.state.textContent  = state.mouse.onStage ? '解构中' : '稳定';
+        break;
+      case 'magnetic':
+        if (r.count)    r.count.textContent    = p.count;
+        if (r.hover)    r.hover.textContent    = '—';
+        if (r.distance) r.distance.textContent = '180 px';
+        break;
+      case 'spectrum':
+        if (r.bars) r.bars.textContent = p.bars;
+        if (r.peak) r.peak.textContent = 'BASS';
+        if (r.avg)  r.avg.textContent  = (p.amplitude * 0.6).toFixed(2);
+        break;
+      case 'trail':
+        if (r.alive) r.alive.textContent = '—';
+        if (r.speed) r.speed.textContent = Math.hypot(state.mouse.vx, state.mouse.vy).toFixed(1);
+        if (r.spawn) r.spawn.textContent = state.mouse.onStage ? '持续生成' : '暂停';
+        break;
+    }
+  }
+
+  // =========================================================
+  // Main loop
+  // =========================================================
+  let lastTime = performance.now();
+
+  function loop(now) {
+    if (!state.visible) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+
+    // FPS
+    fpsFrames++;
+    if (now - fpsLastTime >= 500) {
+      currentFps = fpsFrames / ((now - fpsLastTime) / 1000);
+      fpsFrames = 0;
+      fpsLastTime = now;
+    }
+
+    // Cursor lerp
+    if (!reducedMotion) {
+      ringPos.x = lerp(ringPos.x, dotPos.x, 0.18);
+      ringPos.y = lerp(ringPos.y, dotPos.y, 0.18);
+      cursorRing.style.transform =
+        'translate(' + ringPos.x + 'px,' + ringPos.y + 'px) translate(-50%,-50%)';
+      cursorDot.style.transform =
+        'translate(' + dotPos.x + 'px,' + dotPos.y + 'px) translate(-50%,-50%)';
+    } else {
+      cursorRing.style.transform =
+        'translate(' + dotPos.x + 'px,' + dotPos.y + 'px) translate(-50%,-50%)';
+      cursorDot.style.transform =
+        'translate(' + dotPos.x + 'px,' + dotPos.y + 'px) translate(-50%,-50%)';
+    }
+
+    // Draw effect
+    if (effectAPI.draw) effectAPI.draw(dt);
+
+    // Readouts
+    updateReadouts();
+
+    state.rafId = requestAnimationFrame(loop);
+  }
+
+  // Visibility
+  document.addEventListener('visibilitychange', function () {
+    state.visible = document.visibilityState === 'visible';
+    if (state.visible) {
+      lastTime = performance.now();
+      state.rafId = requestAnimationFrame(loop);
+    } else {
+      if (state.rafId) cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+  });
+
+  // =========================================================
+  // Boot
+  // =========================================================
+  buildNav();
+  buildRightPanel();
+  initEffect(EFFECTS[state.activeIdx].id);
+  state.rafId = requestAnimationFrame(loop);
+
+  // Announce upgrade
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) {}
+  window.addEventListener('load', function () {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) {}
+  });
+
+})();
+</script>
+</body>
+</html>
