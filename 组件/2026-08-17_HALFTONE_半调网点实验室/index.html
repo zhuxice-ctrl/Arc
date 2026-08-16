@@ -1,0 +1,2134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>HALFTONE · 半调网点实验室</title>
+<style>
+  /* ===== Base ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --paper: #FAF8F2;
+    --paper-2: #F2EFE5;
+    --ink: #141414;
+    --ink-soft: #2a2a2a;
+    --magenta: #E6007E;
+    --cyan: #00A0AF;
+    --yellow: #F5C518;
+    --key: #141414;
+    --radius: 4px;
+    --font-sans: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --font-serif: "Times New Roman", "Songti SC", "SimSun", Georgia, serif;
+    --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    cursor: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body { cursor: auto; }
+  }
+
+  /* ===== Custom Cursor ===== */
+  .cursor-ring, .cursor-dot, .cursor-glow {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(.34,1.56,.64,1),
+                height 0.25s cubic-bezier(.34,1.56,.64,1),
+                background 0.2s ease,
+                border-color 0.2s ease;
+  }
+  .cursor-ring {
+    width: 36px; height: 36px;
+    border: 2.5px solid var(--ink);
+    border-radius: 50%;
+    mix-blend-mode: difference;
+    border-color: #fff;
+  }
+  .cursor-dot {
+    width: 6px; height: 6px;
+    background: var(--magenta);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--magenta);
+  }
+  .cursor-glow {
+    width: 80px; height: 80px;
+    background: radial-gradient(circle, rgba(230,0,126,0.15), transparent 70%);
+    border-radius: 50%;
+    opacity: 0.8;
+  }
+  .cursor-hover .cursor-ring { width: 56px; height: 56px; border-color: var(--cyan); }
+  .cursor-hover .cursor-dot { width: 4px; height: 4px; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+  .cursor-click .cursor-ring { width: 24px; height: 24px; }
+  .cursor-ripple {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9998;
+    width: 10px; height: 10px;
+    border: 2px solid var(--magenta);
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+    animation: cursorRipple 0.6s ease-out forwards;
+  }
+  @keyframes cursorRipple {
+    to { width: 80px; height: 80px; opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-ring, .cursor-dot, .cursor-glow { display: none; }
+  }
+
+  /* ===== Side Nav ===== */
+  .side-nav {
+    position: fixed;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .side-nav a {
+    display: block;
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 50%;
+    position: relative;
+    cursor: none;
+    transition: all 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .side-nav a.active {
+    background: var(--magenta);
+    border-color: var(--magenta);
+    transform: scale(1.3);
+  }
+  .side-nav a:not(.active):hover {
+    background: var(--paper-2);
+    transform: scale(1.2);
+  }
+  .side-nav a::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 22px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    transform: translateY(-50%) translateX(6px);
+    color: var(--ink);
+    background: var(--paper);
+    padding: 4px 8px;
+    border: 1px solid var(--ink);
+  }
+  .side-nav a:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  /* ===== Corner Label ===== */
+  .corner-label {
+    position: fixed;
+    top: 24px; left: 28px;
+    z-index: 100;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .corner-label .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--magenta);
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+  .corner-bottom {
+    position: fixed;
+    bottom: 24px; left: 28px;
+    z-index: 100;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--ink);
+    opacity: 0.6;
+  }
+  .corner-right {
+    position: fixed;
+    bottom: 24px; right: 28px;
+    z-index: 100;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--ink);
+    opacity: 0.6;
+    text-align: right;
+  }
+
+  /* ===== Sections ===== */
+  section {
+    min-height: 100vh;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 100px;
+    overflow: hidden;
+  }
+  .section-inner {
+    width: 100%;
+    max-width: 1200px;
+    position: relative;
+    z-index: 2;
+  }
+  .section-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--magenta);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-tag::before {
+    content: '';
+    width: 32px; height: 1px;
+    background: var(--magenta);
+  }
+  .section-title {
+    font-family: var(--font-serif);
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+  .section-title em {
+    font-style: italic;
+    color: var(--magenta);
+  }
+  .section-sub {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    max-width: 480px;
+    opacity: 0.75;
+    margin-bottom: 40px;
+  }
+
+  /* ===== Scroll Reveal ===== */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s cubic-bezier(.16,1,.3,1),
+                transform 0.8s cubic-bezier(.16,1,.3,1);
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ===== HERO ===== */
+  #hero {
+    background: var(--paper);
+    text-align: center;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .hero-svg-wrap {
+    position: relative;
+    width: min(90vw, 900px);
+  }
+  .hero-svg-wrap svg { width: 100%; display: block; }
+  .hero-meta {
+    display: flex;
+    gap: 48px;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .hero-meta span strong {
+    color: var(--magenta);
+    font-weight: 400;
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--ink-soft);
+    opacity: 0.5;
+    text-transform: uppercase;
+  }
+  .scroll-hint::after {
+    content: '';
+    display: block;
+    width: 1px; height: 40px;
+    background: linear-gradient(to bottom, var(--ink), transparent);
+    margin: 8px auto 0;
+    animation: scrollHint 2s ease-in-out infinite;
+  }
+  @keyframes scrollHint {
+    0%, 100% { opacity: 0.3; transform: scaleY(0.5); }
+    50% { opacity: 1; transform: scaleY(1); }
+  }
+
+  /* ===== Generator Exhibit ===== */
+  #exhibit-gen { background: var(--paper); }
+  .gen-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 60px;
+    align-items: center;
+  }
+  .gen-canvas-wrap {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--paper-2);
+    border: 1px solid var(--ink);
+    overflow: hidden;
+    cursor: none;
+  }
+  .gen-canvas-wrap canvas {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .gen-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .control-group h4 {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--magenta);
+    margin-bottom: 10px;
+  }
+  .control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .control-row .val { color: var(--cyan); font-weight: 600; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 2px;
+    background: var(--ink);
+    outline: none;
+    cursor: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px; height: 16px;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    cursor: none;
+    transition: all 0.2s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    background: var(--magenta);
+    border-color: var(--magenta);
+    transform: scale(1.2);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 12px;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+  }
+
+  .color-chips {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .color-chip {
+    width: 28px; height: 28px;
+    border: 1.5px solid var(--ink);
+    border-radius: 50%;
+    cursor: none;
+    transition: transform 0.2s cubic-bezier(.34,1.56,.64,1);
+  }
+  .color-chip.active {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink);
+  }
+  .color-chip:hover { transform: scale(1.15); }
+
+  /* ===== Dithering Exhibit ===== */
+  #exhibit-dither { background: var(--paper-2); }
+  .dither-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin-top: 40px;
+  }
+  .dither-card {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.4s cubic-bezier(.16,1,.3,1),
+                box-shadow 0.4s ease;
+    transform-style: preserve-3d;
+    perspective: 800px;
+  }
+  .dither-card:hover {
+    box-shadow: 12px 12px 0 var(--magenta);
+  }
+  .dither-card canvas {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .dither-card .card-label {
+    position: absolute;
+    bottom: 14px; left: 14px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--paper);
+    background: var(--ink);
+    padding: 4px 10px;
+    text-transform: uppercase;
+    z-index: 3;
+    mix-blend-mode: normal;
+  }
+  .dither-card .card-num {
+    position: absolute;
+    top: 12px; right: 14px;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 32px;
+    color: var(--magenta);
+    z-index: 3;
+    opacity: 0.8;
+  }
+  .gloss-sweep {
+    position: absolute;
+    top: 0; left: -100%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .dither-card:hover .gloss-sweep {
+    animation: gloss 1s cubic-bezier(.16,1,.3,1) forwards;
+  }
+  @keyframes gloss {
+    to { left: 150%; }
+  }
+
+  /* ===== CMYK Exhibit ===== */
+  #exhibit-cmyk { background: var(--paper); }
+  .cmyk-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin-top: 40px;
+    background: var(--paper-2);
+    border: 1px solid var(--ink);
+    overflow: hidden;
+  }
+  .cmyk-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    transition: transform 0.6s cubic-bezier(.16,1,.3,1),
+                opacity 0.4s ease;
+    mix-blend-mode: multiply;
+  }
+  .cmyk-layer canvas {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .cmyk-toggles {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    justify-content: center;
+  }
+  .cmyk-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: 1.5px solid var(--ink);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: none;
+    transition: all 0.3s ease;
+    background: var(--paper);
+  }
+  .cmyk-toggle:hover { transform: translateY(-2px); }
+  .cmyk-toggle.active {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .cmyk-toggle .swatch {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 1px solid var(--ink);
+  }
+  .cmyk-toggle.active .swatch { border-color: var(--paper); }
+  .cmyk-toggle[data-c="C"] .swatch { background: var(--cyan); }
+  .cmyk-toggle[data-c="M"] .swatch { background: var(--magenta); }
+  .cmyk-toggle[data-c="Y"] .swatch { background: var(--yellow); }
+  .cmyk-toggle[data-c="K"] .swatch { background: var(--key); }
+
+  /* ===== Flow Field Exhibit ===== */
+  #exhibit-flow { background: var(--ink); color: var(--paper); }
+  #exhibit-flow .section-tag { color: var(--cyan); }
+  #exhibit-flow .section-tag::before { background: var(--cyan); }
+  #exhibit-flow .section-title em { color: var(--cyan); }
+  #exhibit-flow .section-sub { color: var(--paper); opacity: 0.7; }
+  .flow-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 8;
+    margin-top: 40px;
+    border: 1px solid var(--paper);
+    overflow: hidden;
+    cursor: none;
+  }
+  .flow-stage canvas {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: auto;
+  }
+
+  /* ===== Magnetic Exhibit ===== */
+  #exhibit-magnetic { background: var(--paper-2); }
+  .mag-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-width: 600px;
+    margin: 40px auto 0;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: none;
+  }
+  .mag-stage canvas {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: auto;
+  }
+  .mag-instruction {
+    text-align: center;
+    margin-top: 20px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--ink-soft);
+    opacity: 0.6;
+  }
+
+  /* ===== Counter Exhibit ===== */
+  #exhibit-counter { background: var(--paper); }
+  .counter-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 40px;
+  }
+  .counter-card {
+    text-align: center;
+    padding: 40px 20px;
+    border: 1px solid var(--ink);
+    background: var(--paper-2);
+    position: relative;
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.4s cubic-bezier(.34,1.56,.64,1),
+                background 0.3s ease;
+  }
+  .counter-card:hover {
+    transform: translateY(-6px);
+    background: var(--paper);
+  }
+  .counter-card .num {
+    font-family: var(--font-serif);
+    font-size: 72px;
+    line-height: 1;
+    font-weight: 400;
+    color: var(--ink);
+    font-style: italic;
+  }
+  .counter-card:nth-child(1) .num { color: var(--cyan); }
+  .counter-card:nth-child(2) .num { color: var(--magenta); }
+  .counter-card:nth-child(3) .num { color: var(--yellow); -webkit-text-stroke: 1px var(--ink); }
+  .counter-card:nth-child(4) .num { color: var(--key); }
+  .counter-card .unit {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 12px;
+    color: var(--ink-soft);
+  }
+  .counter-card .label {
+    font-size: 13px;
+    margin-top: 8px;
+    color: var(--ink-soft);
+  }
+
+  /* ===== Typewriter Exhibit ===== */
+  #exhibit-type {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  #exhibit-type .section-tag { color: var(--magenta); }
+  #exhibit-type .section-tag::before { background: var(--magenta); }
+  #exhibit-type .section-title em { color: var(--magenta); }
+  #exhibit-type .section-sub { color: var(--paper); opacity: 0.7; }
+  .type-stage {
+    margin-top: 40px;
+    padding: 48px;
+    border: 1px solid var(--paper);
+    font-family: var(--font-mono);
+    font-size: clamp(14px, 1.8vw, 20px);
+    line-height: 2;
+    min-height: 200px;
+    position: relative;
+  }
+  .type-line { display: block; }
+  .type-cursor {
+    display: inline-block;
+    width: 10px;
+    height: 1.2em;
+    background: var(--magenta);
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: typeBlink 1s step-end infinite;
+  }
+  @keyframes typeBlink {
+    50% { opacity: 0; }
+  }
+  .type-magenta { color: var(--magenta); }
+  .type-cyan { color: var(--cyan); }
+  .type-dim { opacity: 0.4; }
+
+  /* ===== Parallax Exhibit ===== */
+  #exhibit-parallax { background: var(--paper-2); }
+  .para-stage {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    margin-top: 40px;
+    overflow: hidden;
+    border: 1px solid var(--ink);
+    cursor: none;
+  }
+  .para-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 120%; height: 120%;
+    will-change: transform;
+  }
+  .para-layer-1 {
+    background:
+      radial-gradient(circle at 20% 60%, var(--cyan) 2px, transparent 2.5px),
+      radial-gradient(circle at 70% 30%, var(--cyan) 3px, transparent 3.5px),
+      radial-gradient(circle at 40% 80%, var(--cyan) 1.5px, transparent 2px),
+      radial-gradient(circle at 85% 70%, var(--cyan) 2.5px, transparent 3px);
+    background-size: 120px 120px, 180px 180px, 90px 90px, 150px 150px;
+    opacity: 0.3;
+  }
+  .para-layer-2 {
+    background:
+      radial-gradient(circle at 30% 40%, var(--magenta) 5px, transparent 5.5px),
+      radial-gradient(circle at 65% 75%, var(--magenta) 4px, transparent 4.5px),
+      radial-gradient(circle at 15% 85%, var(--magenta) 6px, transparent 6.5px);
+    background-size: 200px 200px, 240px 240px, 180px 180px;
+    opacity: 0.5;
+  }
+  .para-layer-3 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .para-layer-3 h2 {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: clamp(40px, 6vw, 80px);
+    color: var(--ink);
+    letter-spacing: -1px;
+    line-height: 1;
+    text-shadow: 4px 4px 0 var(--magenta);
+  }
+
+  /* ===== Audio Exhibit ===== */
+  #exhibit-audio { background: var(--paper); }
+  .audio-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 1;
+    margin-top: 40px;
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+    padding: 20px;
+  }
+  .audio-bar {
+    width: 8px;
+    background: var(--paper);
+    border-radius: 2px 2px 0 0;
+    transition: height 0.08s ease-out;
+  }
+  .audio-bar.c { background: var(--cyan); }
+  .audio-bar.m { background: var(--magenta); }
+  .audio-bar.y { background: var(--yellow); }
+  .audio-bar.k { background: var(--paper); }
+  .audio-controls {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 24px;
+  }
+  .audio-btn {
+    padding: 12px 28px;
+    border: 1.5px solid var(--ink);
+    background: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: none;
+    transition: all 0.3s ease;
+  }
+  .audio-btn:hover {
+    background: var(--magenta);
+    color: var(--paper);
+    border-color: var(--magenta);
+    transform: translateY(-2px);
+  }
+  .audio-btn.playing {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  /* ===== Footer ===== */
+  #footer {
+    background: var(--ink);
+    color: var(--paper);
+    min-height: 40vh;
+    padding: 80px 100px;
+    flex-direction: column;
+    gap: 24px;
+  }
+  #footer .footer-title {
+    font-family: var(--font-serif);
+    font-size: clamp(28px, 4vw, 48px);
+    font-style: italic;
+    letter-spacing: -0.5px;
+  }
+  #footer .footer-title em { color: var(--magenta); }
+  .footer-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+
+  /* ===== Ripple on click (global, page level) ===== */
+  .page-ripple {
+    position: fixed;
+    pointer-events: none;
+    border-radius: 50%;
+    border: 1px solid var(--magenta);
+    z-index: 9997;
+    animation: pageRipple 0.8s ease-out forwards;
+  }
+  @keyframes pageRipple {
+    from { width: 0; height: 0; opacity: 0.8; }
+    to { width: 200px; height: 200px; opacity: 0; margin-left: -100px; margin-top: -100px; }
+  }
+
+  /* ===== Scanline overlay on dark sections ===== */
+  .scanlines::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,0.03) 0px,
+      rgba(255,255,255,0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 5;
+    mix-blend-mode: overlay;
+  }
+
+  @media (max-width: 900px) {
+    .gen-layout { grid-template-columns: 1fr; }
+    .dither-grid { grid-template-columns: repeat(2, 1fr); }
+    .counter-row { grid-template-columns: repeat(2, 1fr); }
+    section { padding: 60px 24px; }
+    .side-nav { right: 12px; }
+    .corner-label, .corner-bottom, .corner-right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Custom Cursor -->
+<div class="cursor-glow"></div>
+<div class="cursor-ring"></div>
+<div class="cursor-dot"></div>
+
+<!-- Corner Labels -->
+<div class="corner-label"><span class="dot"></span>HALFTONE Lab · V3</div>
+<div class="corner-bottom">Exhibit 01 — 12 / Interactive</div>
+<div class="corner-right">Paper #FAF8F2<br>Ink #141414</div>
+
+<!-- Side Nav -->
+<nav class="side-nav" id="sideNav">
+  <a href="#hero" data-label="00 · HERO" class="active"></a>
+  <a href="#exhibit-gen" data-label="01 · Generator"></a>
+  <a href="#exhibit-dither" data-label="02 · Dithering"></a>
+  <a href="#exhibit-cmyk" data-label="03 · CMYK Separation"></a>
+  <a href="#exhibit-flow" data-label="04 · Dot Flow"></a>
+  <a href="#exhibit-magnetic" data-label="05 · Magnetic"></a>
+  <a href="#exhibit-counter" data-label="06 · Counters"></a>
+  <a href="#exhibit-type" data-label="07 · Typewriter"></a>
+  <a href="#exhibit-parallax" data-label="08 · Parallax"></a>
+  <a href="#exhibit-audio" data-label="09 · Spectrum"></a>
+  <a href="#footer" data-label="∞ · End"></a>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="section-inner" style="text-align:center;">
+    <div class="hero-svg-wrap reveal">
+      <svg viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg" id="heroSvg">
+        <defs>
+          <pattern id="heroDots" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="5" cy="5" r="3.5" fill="#141414"/>
+          </pattern>
+          <clipPath id="heroClip">
+            <text x="450" y="200" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="bold" font-size="180">HALFTONE</text>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#heroClip)">
+          <rect x="0" y="0" width="900" height="320" fill="url(#heroDots)" id="heroDotFill"/>
+        </g>
+        <text x="450" y="260" text-anchor="middle" font-family="Menlo, monospace" font-size="14" letter-spacing="8" fill="#141414" opacity="0.5">INTERACTIVE LABORATORY</text>
+      </svg>
+    </div>
+    <div class="hero-meta reveal">
+      <span>Exhibits: <strong>12</strong></span>
+      <span>Theme: <strong>Print / Dots</strong></span>
+      <span>Mode: <strong>Interactive</strong></span>
+    </div>
+  </div>
+  <div class="scroll-hint">Scroll</div>
+</section>
+
+<!-- EXHIBIT 01: Generator -->
+<section id="exhibit-gen">
+  <div class="section-inner">
+    <div class="gen-layout">
+      <div>
+        <div class="section-tag reveal">Exhibit 01</div>
+        <h2 class="section-title reveal">网点<em>发生器</em></h2>
+        <p class="section-sub reveal">调节线数、网角与网点形态，实时生成不同质感的半调图案。拖动鼠标，网点会随指针产生引力形变——就像印刷机滚筒上的油墨粒子。</p>
+        <div class="gen-canvas-wrap reveal" id="genCanvasWrap">
+          <canvas id="genCanvas"></canvas>
+        </div>
+      </div>
+      <div class="gen-controls reveal">
+        <div class="control-group">
+          <h4>线数 LPI</h4>
+          <div class="control-row"><span>频率</span><span class="val" id="genFreqVal">24</span></div>
+          <input type="range" id="genFreq" min="8" max="60" value="24" step="1">
+        </div>
+        <div class="control-group">
+          <h4>网角 Angle</h4>
+          <div class="control-row"><span>旋转</span><span class="val" id="genAngleVal">45°</span></div>
+          <input type="range" id="genAngle" min="0" max="90" value="45" step="1">
+        </div>
+        <div class="control-group">
+          <h4>网点大小</h4>
+          <div class="control-row"><span>半径</span><span class="val" id="genSizeVal">0.6</span></div>
+          <input type="range" id="genSize" min="0.1" max="0.95" value="0.6" step="0.05">
+        </div>
+        <div class="control-group">
+          <h4>墨水颜色</h4>
+          <div class="color-chips" id="genColors">
+            <div class="color-chip active" data-color="#141414" style="background:#141414"></div>
+            <div class="color-chip" data-color="#E6007E" style="background:#E6007E"></div>
+            <div class="color-chip" data-color="#00A0AF" style="background:#00A0AF"></div>
+            <div class="color-chip" data-color="#F5C518" style="background:#F5C518"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 02: Dithering -->
+<section id="exhibit-dither">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 02</div>
+    <h2 class="section-title reveal">抖动<em>算法集</em></h2>
+    <p class="section-sub reveal">三种经典抖动算法的并排对照——Floyd-Steinberg 扩散、Ordered Bayer 有序抖动、以及 Atkinson 风格化。悬停卡片以 3D 倾斜感受印刷质感的光泽扫过。</p>
+    <div class="dither-grid" id="ditherGrid">
+      <div class="dither-card tilt-card reveal">
+        <span class="card-num">01</span>
+        <canvas class="dither-canvas" data-algo="floyd"></canvas>
+        <span class="card-label">Floyd-Steinberg</span>
+        <div class="gloss-sweep"></div>
+      </div>
+      <div class="dither-card tilt-card reveal">
+        <span class="card-num">02</span>
+        <canvas class="dither-canvas" data-algo="bayer"></canvas>
+        <span class="card-label">Ordered Bayer</span>
+        <div class="gloss-sweep"></div>
+      </div>
+      <div class="dither-card tilt-card reveal">
+        <span class="card-num">03</span>
+        <canvas class="dither-canvas" data-algo="atkinson"></canvas>
+        <span class="card-label">Atkinson</span>
+        <div class="gloss-sweep"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 03: CMYK Separation -->
+<section id="exhibit-cmyk">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 03</div>
+    <h2 class="section-title reveal">CMYK <em>分色叠加</em></h2>
+    <p class="section-sub reveal">印刷的四色分离原理——青、品红、黄、黑四张半调网版，各自拥有不同的网角。点击下方开关，观察颜色如何在乘法混色中层层叠加出最终图像。</p>
+    <div class="cmyk-stage reveal" id="cmykStage">
+      <div class="cmyk-layer" id="cmykC"><canvas id="cmykCanvasC"></canvas></div>
+      <div class="cmyk-layer" id="cmykM"><canvas id="cmykCanvasM"></canvas></div>
+      <div class="cmyk-layer" id="cmykY"><canvas id="cmykCanvasY"></canvas></div>
+      <div class="cmyk-layer" id="cmykK"><canvas id="cmykCanvasK"></canvas></div>
+    </div>
+    <div class="cmyk-toggles reveal">
+      <button class="cmyk-toggle active" data-c="C"><span class="swatch"></span>Cyan</button>
+      <button class="cmyk-toggle active" data-c="M"><span class="swatch"></span>Magenta</button>
+      <button class="cmyk-toggle active" data-c="Y"><span class="swatch"></span>Yellow</button>
+      <button class="cmyk-toggle active" data-c="K"><span class="swatch"></span>Key</button>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 04: Flow Field -->
+<section id="exhibit-flow" class="scanlines">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 04</div>
+    <h2 class="section-title reveal">网点<em>流场</em></h2>
+    <p class="section-sub reveal">数千个网点粒子在 Perlin 噪声流场中运动，拖出油墨般的轨迹。移动鼠标，流场会在指针周围产生扰动——就像一滴墨落入水中。</p>
+    <div class="flow-stage reveal" id="flowStage">
+      <canvas id="flowCanvas"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 05: Magnetic -->
+<section id="exhibit-magnetic">
+  <div class="section-inner" style="text-align:center;">
+    <div class="section-tag reveal" style="justify-content:center;">Exhibit 05</div>
+    <h2 class="section-title reveal">磁力<em>形变</em></h2>
+    <p class="section-sub reveal" style="margin-left:auto;margin-right:auto;">将鼠标移入圆形舞台——网点群会被指针的反平方引力吸附、拉长、变形。这是基于磁力公式的实时网格形变。</p>
+    <div class="mag-stage reveal" id="magStage">
+      <canvas id="magCanvas"></canvas>
+    </div>
+    <div class="mag-instruction reveal">← 移动鼠标进入圆盘 →</div>
+  </div>
+</section>
+
+<!-- EXHIBIT 06: Counters -->
+<section id="exhibit-counter">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 06</div>
+    <h2 class="section-title reveal">印刷<em>数据</em></h2>
+    <p class="section-sub reveal">滚动到此处，四个计数器以弹簧式缓动从 0 计数到目标值——每一个颜色通道对应一个数字。</p>
+    <div class="counter-row">
+      <div class="counter-card reveal">
+        <div class="num" data-target="1968">0</div>
+        <div class="unit">dpi</div>
+        <div class="label">输出分辨率</div>
+      </div>
+      <div class="counter-card reveal">
+        <div class="num" data-target="2743">0</div>
+        <div class="unit">lpi ×</div>
+        <div class="label">加网线数累计</div>
+      </div>
+      <div class="counter-card reveal">
+        <div class="num" data-target="137">0</div>
+        <div class="unit">gsm</div>
+        <div class="label">纸张克重</div>
+      </div>
+      <div class="counter-card reveal">
+        <div class="num" data-target="8452">0</div>
+        <div class="unit">dots</div>
+        <div class="label">单帧网点数</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 07: Typewriter -->
+<section id="exhibit-type">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 07</div>
+    <h2 class="section-title reveal">网点<em>诗篇</em></h2>
+    <p class="section-sub reveal">关于半调印刷的三行诗，逐字敲出。文字的节奏，就像印刷机滚筒每一次转动——咔哒、咔哒、咔哒。</p>
+    <div class="type-stage reveal" id="typeStage"></div>
+  </div>
+</section>
+
+<!-- EXHIBIT 08: Parallax -->
+<section id="exhibit-parallax">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 08</div>
+    <h2 class="section-title reveal">视差<em>层叠</em></h2>
+    <p class="section-sub reveal">三层不同密度的网点，以不同速度随鼠标水平位移。青色远景、品红近景、墨色前景文字——层次就在错位之间产生。</p>
+    <div class="para-stage reveal" id="paraStage">
+      <div class="para-layer para-layer-1" data-depth="0.1"></div>
+      <div class="para-layer para-layer-2" data-depth="0.25"></div>
+      <div class="para-layer para-layer-3" data-depth="0.5">
+        <h2>PRINTED<br>IN DOTS</h2>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXHIBIT 09: Audio Spectrum -->
+<section id="exhibit-audio">
+  <div class="section-inner">
+    <div class="section-tag reveal">Exhibit 09</div>
+    <h2 class="section-title reveal">声音<em>成像</em></h2>
+    <p class="section-sub reveal">点击播放，声音的频谱被转译成柱状网点群——四色通道交替出现，高低频率决定柱体高度。这是声波的印刷品。</p>
+    <div class="audio-stage reveal" id="audioStage"></div>
+    <div class="audio-controls reveal">
+      <button class="audio-btn" id="audioToggle">Play / 暂停</button>
+      <button class="audio-btn" id="audioReset">Reset / 重置</button>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<section id="footer">
+  <div class="footer-title reveal">The End of <em>Ink</em>.</div>
+  <div class="footer-meta reveal">HALFTONE LAB / V3 UX INTERACTIVE / 12 EXHIBITS / PURE VANILLA</div>
+</section>
+
+<script>
+(function() {
+  'use strict';
+
+  // =============================
+  // Global State & Robustness
+  // =============================
+  const RAFS = new Set();       // All active RAF IDs
+  const TIMERS = new Set();     // All active timeout IDs
+  let IS_VISIBLE = true;
+  let REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Safe RAF wrapper
+  function safeRAF(cb) {
+    let id = null;
+    function tick(t) {
+      if (!IS_VISIBLE) { id = requestAnimationFrame(tick); return; }
+      cb(t);
+      id = requestAnimationFrame(tick);
+    }
+    id = requestAnimationFrame(tick);
+    RAFS.add(id);
+    return {
+      cancel() {
+        cancelAnimationFrame(id);
+        RAFS.delete(id);
+      }
+    };
+  }
+
+  function safeTimeout(fn, ms) {
+    const id = setTimeout(() => {
+      TIMERS.delete(id);
+      fn();
+    }, ms);
+    TIMERS.add(id);
+    return id;
+  }
+  function clearTimer(id) {
+    clearTimeout(id);
+    TIMERS.delete(id);
+  }
+
+  // Visibility management
+  document.addEventListener('visibilitychange', () => {
+    IS_VISIBLE = !document.hidden;
+  });
+
+  // Reduced motion
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', e => {
+    REDUCED_MOTION = e.matches;
+  });
+
+  // Cleanup on unload
+  window.addEventListener('beforeunload', () => {
+    RAFS.forEach(id => cancelAnimationFrame(id));
+    TIMERS.forEach(id => clearTimeout(id));
+    RAFS.clear();
+    TIMERS.clear();
+  });
+
+  // =============================
+  // Custom Cursor
+  // =============================
+  const cursorRing = document.querySelector('.cursor-ring');
+  const cursorDot = document.querySelector('.cursor-dot');
+  const cursorGlow = document.querySelector('.cursor-glow');
+
+  let curX = window.innerWidth / 2;
+  let curY = window.innerHeight / 2;
+  let tgtX = curX;
+  let tgtY = curY;
+  let glowX = curX;
+  let glowY = curY;
+
+  if (!REDUCED_MOTION) {
+    document.addEventListener('mousemove', e => {
+      tgtX = e.clientX;
+      tgtY = e.clientY;
+    });
+
+    // Spring-based cursor follow
+    function cursorLoop() {
+      // Ring: fast follow
+      curX += (tgtX - curX) * 0.25;
+      curY += (tgtY - curY) * 0.25;
+      cursorRing.style.left = curX + 'px';
+      cursorRing.style.top = curY + 'px';
+      cursorDot.style.left = curX + 'px';
+      cursorDot.style.top = curY + 'px';
+      // Glow: slower, lagging
+      glowX += (tgtX - glowX) * 0.08;
+      glowY += (tgtY - glowY) * 0.08;
+      cursorGlow.style.left = glowX + 'px';
+      cursorGlow.style.top = glowY + 'px';
+    }
+    const cursorRaf = safeRAF(cursorLoop);
+
+    // Hover state
+    const hoverables = 'a, button, input, .dither-card, .counter-card, .color-chip, .cmyk-toggle, .audio-btn, .gen-canvas-wrap, .flow-stage, .mag-stage, .para-stage';
+    document.querySelectorAll(hoverables).forEach(el => {
+      el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+      el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+    });
+
+    // Click ripple
+    document.addEventListener('mousedown', e => {
+      document.body.classList.add('cursor-click');
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      document.body.appendChild(ripple);
+      safeTimeout(() => ripple.remove(), 700);
+
+      // Page-level ripple
+      const pr = document.createElement('div');
+      pr.className = 'page-ripple';
+      pr.style.left = e.clientX + 'px';
+      pr.style.top = e.clientY + 'px';
+      document.body.appendChild(pr);
+      safeTimeout(() => pr.remove(), 900);
+    });
+    document.addEventListener('mouseup', () => {
+      document.body.classList.remove('cursor-click');
+    });
+  } else {
+    cursorRing.style.display = 'none';
+    cursorDot.style.display = 'none';
+    cursorGlow.style.display = 'none';
+    document.body.style.cursor = 'auto';
+  }
+
+  // =============================
+  // Scroll Reveal
+  // =============================
+  const reveals = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in-view');
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+  reveals.forEach(r => io.observe(r));
+
+  // Side nav active state
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.side-nav a');
+  const navIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(l => l.classList.remove('active'));
+        const link = document.querySelector('.side-nav a[href="#' + e.target.id + '"]');
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { threshold: 0.5 });
+  sections.forEach(s => navIO.observe(s));
+
+  // =============================
+  // EXHIBIT 01: Halftone Generator
+  // =============================
+  const genCanvas = document.getElementById('genCanvas');
+  const genWrap = document.getElementById('genCanvasWrap');
+  const genCtx = genCanvas.getContext('2d');
+  let genFreq = 24;
+  let genAngle = 45;
+  let genSize = 0.6;
+  let genColor = '#141414';
+  let genMouseX = -9999;
+  let genMouseY = -9999;
+  let genTargetMouseX = -9999;
+  let genTargetMouseY = -9999;
+
+  function resizeCanvas(c, w) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = w.getBoundingClientRect();
+    c.width = rect.width * dpr;
+    c.height = rect.height * dpr;
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: rect.width, h: rect.height, dpr };
+  }
+
+  let genDims = { w: 400, h: 400 };
+
+  function drawGen() {
+    const ctx = genCtx;
+    const { w, h } = genDims;
+    ctx.clearRect(0, 0, w, h);
+
+    // Subtle paper texture bg
+    ctx.fillStyle = '#F2EFE5';
+    ctx.fillRect(0, 0, w, h);
+
+    const angleRad = genAngle * Math.PI / 180;
+    const spacing = 100 / genFreq; // spacing in pixels between dots
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    // Draw grid of dots with rotation
+    const diagonal = Math.sqrt(w * w + h * h);
+    const dots = Math.ceil(diagonal / spacing) + 2;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // Smooth mouse
+    genMouseX += (genTargetMouseX - genMouseX) * 0.15;
+    genMouseY += (genTargetMouseY - genMouseY) * 0.15;
+
+    ctx.fillStyle = genColor;
+
+    for (let i = -dots; i < dots; i++) {
+      for (let j = -dots; j < dots; j++) {
+        // Grid position in rotated space
+        let gx = i * spacing;
+        let gy = j * spacing;
+        // Rotate to canvas space
+        let x = cx + gx * cos - gy * sin;
+        let y = cy + gx * sin + gy * cos;
+
+        if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
+
+        // Distance from mouse -> magnetic pull
+        let radius = spacing * 0.5 * genSize;
+        if (genMouseX > 0 && genMouseY > 0) {
+          const dx = x - genMouseX;
+          const dy = y - genMouseY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const maxDist = 120;
+          if (dist < maxDist && dist > 0.1) {
+            const force = (1 - dist / maxDist) * 20;
+            x += (dx / dist) * force;
+            y += (dy / dist) * force;
+            // Dot grows near mouse
+            radius *= 1 + (1 - dist / maxDist) * 0.8;
+          }
+        }
+
+        // Vignette-based dot size
+        const cxv = w / 2, cyv = h / 2;
+        const dv = Math.sqrt((x - cxv) ** 2 + (y - cyv) ** 2);
+        const maxD = Math.min(w, h) * 0.5;
+        const vignette = Math.max(0.3, 1 - dv / maxD);
+        const r = radius * (0.5 + vignette * 0.8);
+
+        if (r < 0.3) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  let genInView = false;
+  const genIO = new IntersectionObserver(entries => {
+    genInView = entries[0].isIntersecting;
+  }, { threshold: 0.1 });
+  genIO.observe(genWrap);
+
+  function genLoop() {
+    if (!genInView) return;
+    drawGen();
+  }
+  const genRaf = safeRAF(genLoop);
+
+  function setupGen() {
+    genDims = resizeCanvas(genCanvas, genWrap);
+    drawGen();
+  }
+  setupGen();
+
+  genWrap.addEventListener('mousemove', e => {
+    const rect = genWrap.getBoundingClientRect();
+    genTargetMouseX = e.clientX - rect.left;
+    genTargetMouseY = e.clientY - rect.top;
+  });
+  genWrap.addEventListener('mouseleave', () => {
+    genTargetMouseX = -9999;
+    genTargetMouseY = -9999;
+  });
+
+  document.getElementById('genFreq').addEventListener('input', e => {
+    genFreq = +e.target.value;
+    document.getElementById('genFreqVal').textContent = genFreq;
+  });
+  document.getElementById('genAngle').addEventListener('input', e => {
+    genAngle = +e.target.value;
+    document.getElementById('genAngleVal').textContent = genAngle + '°';
+  });
+  document.getElementById('genSize').addEventListener('input', e => {
+    genSize = +e.target.value;
+    document.getElementById('genSizeVal').textContent = genSize.toFixed(2);
+  });
+  document.querySelectorAll('#genColors .color-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#genColors .color-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      genColor = chip.dataset.color;
+    });
+  });
+
+  // =============================
+  // EXHIBIT 02: Dithering Algorithms
+  // =============================
+  function generateDitherPattern(canvas, algo) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.createImageData(w, h);
+    const data = imgData.data;
+
+    // Generate a source grayscale image: gradient + circles
+    const src = new Float32Array(w * h);
+    const cx = w / 2, cy = h / 2;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        // Radial gradient + diagonal gradient
+        const dx = (x - cx) / (w / 2);
+        const dy = (y - cy) / (h / 2);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let v = 0.5 + 0.4 * Math.cos(dist * 2.5);
+        v += 0.15 * (x / w - 0.5);
+        v = Math.max(0, Math.min(1, v));
+        src[y * w + x] = v;
+      }
+    }
+
+    if (algo === 'floyd') {
+      // Floyd-Steinberg dithering
+      const buf = new Float32Array(src);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          const old = buf[idx];
+          const neu = old > 0.5 ? 1 : 0;
+          const err = old - neu;
+          buf[idx] = neu;
+          if (x + 1 < w) buf[idx + 1] += err * 7 / 16;
+          if (y + 1 < h) {
+            if (x > 0) buf[idx + w - 1] += err * 3 / 16;
+            buf[idx + w] += err * 5 / 16;
+            if (x + 1 < w) buf[idx + w + 1] += err * 1 / 16;
+          }
+        }
+      }
+      for (let i = 0; i < w * h; i++) {
+        const v = buf[i] > 0.5 ? 20 : 245;
+        data[i * 4] = v;
+        data[i * 4 + 1] = v;
+        data[i * 4 + 2] = v;
+        data[i * 4 + 3] = 255;
+      }
+    } else if (algo === 'bayer') {
+      // Ordered Bayer 4x4
+      const bayer = [
+        [0, 8, 2, 10],
+        [12, 4, 14, 6],
+        [3, 11, 1, 9],
+        [15, 7, 13, 5]
+      ];
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          const threshold = bayer[y % 4][x % 4] / 16;
+          const v = src[idx] > threshold ? 245 : 20;
+          data[idx * 4] = v;
+          data[idx * 4 + 1] = v;
+          data[idx * 4 + 2] = v;
+          data[idx * 4 + 3] = 255;
+        }
+      }
+    } else if (algo === 'atkinson') {
+      // Atkinson dithering
+      const buf = new Float32Array(src);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          const old = buf[idx];
+          const neu = old > 0.5 ? 1 : 0;
+          const err = (old - neu) / 8;
+          buf[idx] = neu;
+          if (x + 1 < w) buf[idx + 1] += err;
+          if (x + 2 < w) buf[idx + 2] += err;
+          if (y + 1 < h) {
+            if (x > 0) buf[idx + w - 1] += err;
+            buf[idx + w] += err;
+            if (x + 1 < w) buf[idx + w + 1] += err;
+          }
+          if (y + 2 < h) {
+            buf[idx + 2 * w] += err;
+          }
+        }
+      }
+      for (let i = 0; i < w * h; i++) {
+        const v = buf[i] > 0.5 ? 20 : 245;
+        data[i * 4] = v;
+        data[i * 4 + 1] = v;
+        data[i * 4 + 2] = v;
+        data[i * 4 + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  function setupDithering() {
+    document.querySelectorAll('.dither-canvas').forEach(canvas => {
+      const wrap = canvas.parentElement;
+      const rect = wrap.getBoundingClientRect();
+      // Use logical pixels for crisp pixelated halftone look
+      canvas.width = Math.floor(rect.width);
+      canvas.height = Math.floor(rect.height);
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      generateDitherPattern(canvas, canvas.dataset.algo);
+    });
+  }
+
+  // 3D tilt for dither cards
+  function setupTilt() {
+    document.querySelectorAll('.tilt-card').forEach(card => {
+      let tx = 0, ty = 0;
+      let targetTx = 0, targetTy = 0;
+
+      card.addEventListener('mousemove', e => {
+        const rect = card.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width - 0.5;
+        const py = (e.clientY - rect.top) / rect.height - 0.5;
+        targetTx = py * -15;
+        targetTy = px * 15;
+      });
+      card.addEventListener('mouseleave', () => {
+        targetTx = 0;
+        targetTy = 0;
+      });
+
+      function tiltLoop() {
+        tx += (targetTx - tx) * 0.1;
+        ty += (targetTy - ty) * 0.1;
+        card.style.transform = `perspective(800px) rotateX(${tx}deg) rotateY(${ty}deg)`;
+      }
+      safeRAF(tiltLoop);
+    });
+  }
+
+  // =============================
+  // EXHIBIT 03: CMYK Separation
+  // =============================
+  const cmykLayers = {
+    C: { el: document.getElementById('cmykC'), canvas: document.getElementById('cmykCanvasC'), color: '#00A0AF', angle: 15 },
+    M: { el: document.getElementById('cmykM'), canvas: document.getElementById('cmykCanvasM'), color: '#E6007E', angle: 75 },
+    Y: { el: document.getElementById('cmykY'), canvas: document.getElementById('cmykCanvasY'), color: '#F5C518', angle: 0 },
+    K: { el: document.getElementById('cmykK'), canvas: document.getElementById('cmykCanvasK'), color: '#141414', angle: 45 }
+  };
+  let cmykActive = { C: true, M: true, Y: true, K: true };
+
+  function drawCMYKLayer(canvas, color, angle) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const angleRad = angle * Math.PI / 180;
+    const spacing = 14;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    // Create a grayscale source image (circular gradient pattern)
+    const src = new Float32Array(w * h);
+    const cx = w / 2, cy = h / 2;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = (x - cx) / (w / 2.5);
+        const dy = (y - cy) / (h / 2.5);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let v = Math.cos(dist * 3) * 0.4 + 0.5;
+        // Add shape
+        if (dist < 0.3) v = 0.1;
+        else if (dist < 0.6) v = 0.7;
+        v = Math.max(0.05, Math.min(0.95, v));
+        src[y * w + x] = v;
+      }
+    }
+
+    ctx.fillStyle = color;
+
+    const diagonal = Math.sqrt(w * w + h * h);
+    const dots = Math.ceil(diagonal / spacing) + 2;
+
+    for (let i = -dots; i < dots; i++) {
+      for (let j = -dots; j < dots; j++) {
+        let gx = i * spacing;
+        let gy = j * spacing;
+        let x = cx + gx * cos - gy * sin;
+        let y = cy + gx * sin + gy * cos;
+
+        if (x < 0 || x >= w - 1 || y < 0 || y >= h - 1) continue;
+
+        // Sample source
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+        const v = src[iy * w + ix] || 0.5;
+        const r = spacing * 0.45 * v;
+        if (r < 0.3) continue;
+
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function setupCMYK() {
+    const stage = document.getElementById('cmykStage');
+    const rect = stage.getBoundingClientRect();
+
+    Object.values(cmykLayers).forEach(layer => {
+      layer.canvas.width = Math.floor(rect.width);
+      layer.canvas.height = Math.floor(rect.height);
+      drawCMYKLayer(layer.canvas, layer.color, layer.angle);
+    });
+
+    // Toggles
+    document.querySelectorAll('.cmyk-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const c = btn.dataset.c;
+        cmykActive[c] = !cmykActive[c];
+        btn.classList.toggle('active', cmykActive[c]);
+        cmykLayers[c].el.style.opacity = cmykActive[c] ? '1' : '0';
+        cmykLayers[c].el.style.transform = cmykActive[c]
+          ? 'translate(0, 0)'
+          : `translate(${c === 'C' ? '-20' : c === 'M' ? '20' : c === 'Y' ? '-10' : '10'}px, ${c === 'K' ? '20' : '-10'}px)`;
+      });
+    });
+  }
+
+  // =============================
+  // EXHIBIT 04: Dot Flow Field
+  // =============================
+  const flowCanvas = document.getElementById('flowCanvas');
+  const flowCtx = flowCanvas.getContext('2d');
+  const flowStage = document.getElementById('flowStage');
+  let flowParticles = [];
+  let flowDims = { w: 800, h: 400 };
+  let flowMouseX = -9999;
+  let flowMouseY = -9999;
+  let flowTime = 0;
+  let flowInView = false;
+
+  // Simple pseudo-Perlin noise (value noise with interpolation)
+  const noisePerm = [];
+  for (let i = 0; i < 256; i++) noisePerm[i] = Math.random();
+  function noise2D(x, y) {
+    const xi = Math.floor(x) & 255;
+    const yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const a = noisePerm[xi + yi * 256 % 256] || 0.5;
+    const b = noisePerm[(xi + 1) + yi * 256 % 256] || 0.5;
+    const c = noisePerm[xi + (yi + 1) * 256 % 256] || 0.5;
+    const d = noisePerm[(xi + 1) + (yi + 1) * 256 % 256] || 0.5;
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+  }
+
+  function flowFieldAngle(x, y, t) {
+    const scale = 0.004;
+    const n = noise2D(x * scale + t * 0.00005, y * scale + t * 0.00003);
+    const n2 = noise2D(x * scale * 2.3 + t * 0.00007, y * scale * 1.7 - t * 0.00004);
+    return (n + n2) * Math.PI * 3;
+  }
+
+  function setupFlow() {
+    flowDims = resizeCanvas(flowCanvas, flowStage);
+    const { w, h } = flowDims;
+    flowParticles = [];
+    const count = Math.min(400, Math.floor(w * h / 800));
+    for (let i = 0; i < count; i++) {
+      flowParticles.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        px: Math.random() * w,
+        py: Math.random() * h,
+        speed: 0.8 + Math.random() * 1.5,
+        size: 1 + Math.random() * 2.5,
+        hue: Math.random() > 0.5 ? 'cyan' : 'magenta'
+      });
+    }
+    flowCtx.fillStyle = '#141414';
+    flowCtx.fillRect(0, 0, w, h);
+  }
+
+  function flowLoop() {
+    if (!flowInView) return;
+    flowTime++;
+    const ctx = flowCtx;
+    const { w, h } = flowDims;
+
+    // Fade trail
+    ctx.fillStyle = 'rgba(20, 20, 20, 0.08)';
+    ctx.fillRect(0, 0, w, h);
+
+    flowParticles.forEach(p => {
+      const angle = flowFieldAngle(p.x, p.y, flowTime);
+      let vx = Math.cos(angle) * p.speed;
+      let vy = Math.sin(angle) * p.speed;
+
+      // Mouse influence
+      if (flowMouseX > 0 && flowMouseY > 0) {
+        const dx = p.x - flowMouseX;
+        const dy = p.y - flowMouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150 && dist > 0.1) {
+          const force = (1 - dist / 150) * 3;
+          vx += (dx / dist) * force;
+          vy += (dy / dist) * force;
+        }
+      }
+
+      p.px = p.x;
+      p.py = p.y;
+      p.x += vx;
+      p.y += vy;
+
+      // Wrap
+      if (p.x < 0) { p.x = w; p.px = w; }
+      if (p.x > w) { p.x = 0; p.px = 0; }
+      if (p.y < 0) { p.y = h; p.py = h; }
+      if (p.y > h) { p.y = 0; p.py = 0; }
+
+      // Draw
+      ctx.strokeStyle = p.hue === 'cyan' ? 'rgba(0, 160, 175, 0.6)' : 'rgba(230, 0, 126, 0.6)';
+      ctx.lineWidth = p.size;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p.px, p.py);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    });
+  }
+
+  const flowIO = new IntersectionObserver(entries => {
+    flowInView = entries[0].isIntersecting;
+  }, { threshold: 0.1 });
+  flowIO.observe(flowStage);
+
+  flowStage.addEventListener('mousemove', e => {
+    const rect = flowStage.getBoundingClientRect();
+    flowMouseX = e.clientX - rect.left;
+    flowMouseY = e.clientY - rect.top;
+  });
+  flowStage.addEventListener('mouseleave', () => {
+    flowMouseX = -9999;
+    flowMouseY = -9999;
+  });
+
+  const flowRaf = safeRAF(flowLoop);
+
+  // =============================
+  // EXHIBIT 05: Magnetic Dots
+  // =============================
+  const magCanvas = document.getElementById('magCanvas');
+  const magCtx = magCanvas.getContext('2d');
+  const magStage = document.getElementById('magStage');
+  let magDots = [];
+  let magDims = { w: 400, h: 400 };
+  let magMouseX = -9999;
+  let magMouseY = -9999;
+  let magInView = false;
+
+  function setupMag() {
+    magDims = resizeCanvas(magCanvas, magStage);
+    const { w, h } = magDims;
+    const radius = Math.min(w, h) / 2;
+    const cx = w / 2, cy = h / 2;
+    magDots = [];
+    const spacing = 10;
+    for (let y = spacing; y < h - spacing; y += spacing) {
+      for (let x = spacing; x < w - spacing; x += spacing) {
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy < (radius - 5) * (radius - 5)) {
+          magDots.push({
+            ox: x, oy: y,  // original
+            x: x, y: y,    // current
+            vx: 0, vy: 0,
+            r: 2.5 + Math.random() * 1.5,
+            c: Math.random() > 0.85 ? '#E6007E' : Math.random() > 0.85 ? '#00A0AF' : '#141414'
+          });
+        }
+      }
+    }
+  }
+
+  function magLoop() {
+    if (!magInView) return;
+    const ctx = magCtx;
+    const { w, h } = magDims;
+    const cx = w / 2, cy = h / 2;
+    const radius = Math.min(w, h) / 2;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Paper bg
+    ctx.fillStyle = '#FAF8F2';
+    ctx.fillRect(0, 0, w, h);
+
+    magDots.forEach(d => {
+      // Spring back to original
+      const k = 0.08;
+      const damping = 0.85;
+      let ax = (d.ox - d.x) * k;
+      let ay = (d.oy - d.y) * k;
+
+      // Magnetic attraction from mouse (inverse square)
+      if (magMouseX > 0 && magMouseY > 0) {
+        const dx = magMouseX - d.x;
+        const dy = magMouseY - d.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 150 && dist > 2) {
+          const force = 2000 / distSq;
+          ax += (dx / dist) * force;
+          ay += (dy / dist) * force;
+        }
+      }
+
+      d.vx = (d.vx + ax) * damping;
+      d.vy = (d.vy + ay) * damping;
+      d.x += d.vx;
+      d.y += d.vy;
+
+      // Draw dot
+      ctx.fillStyle = d.c;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Circular mask border
+    ctx.strokeStyle = '#141414';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius - 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  const magIO = new IntersectionObserver(entries => {
+    magInView = entries[0].isIntersecting;
+  }, { threshold: 0.1 });
+  magIO.observe(magStage);
+
+  magStage.addEventListener('mousemove', e => {
+    const rect = magStage.getBoundingClientRect();
+    magMouseX = e.clientX - rect.left;
+    magMouseY = e.clientY - rect.top;
+  });
+  magStage.addEventListener('mouseleave', () => {
+    magMouseX = -9999;
+    magMouseY = -9999;
+  });
+
+  const magRaf = safeRAF(magLoop);
+
+  // =============================
+  // EXHIBIT 06: Counter Animation
+  // =============================
+  const counters = document.querySelectorAll('.counter-card .num');
+  let countersStarted = false;
+
+  function springCounter(el, target) {
+    let current = 0;
+    let velocity = 0;
+    const stiffness = 0.08;
+    const damping = 0.88;
+    let rafId = null;
+
+    function step() {
+      const force = (target - current) * stiffness;
+      velocity = (velocity + force) * damping;
+      current += velocity;
+
+      if (Math.abs(target - current) < 0.5 && Math.abs(velocity) < 0.5) {
+        current = target;
+        el.textContent = Math.round(current).toLocaleString();
+        return;
+      }
+      el.textContent = Math.round(current).toLocaleString();
+      rafId = requestAnimationFrame(step);
+    }
+    rafId = requestAnimationFrame(step);
+    RAFS.add(rafId);
+  }
+
+  const counterIO = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && !countersStarted) {
+      countersStarted = true;
+      counters.forEach(c => {
+        const target = +c.dataset.target;
+        springCounter(c, target);
+      });
+    }
+  }, { threshold: 0.4 });
+  counterIO.observe(document.getElementById('exhibit-counter'));
+
+  // =============================
+  // EXHIBIT 07: Typewriter
+  // =============================
+  const typeLines = [
+    { text: '在纸张与油墨的间隙之间', cls: '' },
+    { text: '每一颗网点都是一束 <span class="type-magenta">光</span> 的凝固', cls: '' },
+    { text: '—— 四色交叠，万物皆现。', cls: 'type-cyan' },
+    { text: '', cls: '' },
+    { text: 'The halftone dot:', cls: 'type-dim' },
+    { text: 'where <span class="type-cyan">continuity</span> becomes <span class="type-magenta">discrete</span>.', cls: 'type-dim' }
+  ];
+  const typeStage = document.getElementById('typeStage');
+  let typeStarted = false;
+
+  function startTypewriter() {
+    let lineIdx = 0;
+    let charIdx = 0;
+    let currentLine = null;
+    let typeTimer = null;
+
+    function typeNextChar() {
+      if (lineIdx >= typeLines.length) return;
+
+      if (!currentLine) {
+        currentLine = document.createElement('span');
+        currentLine.className = 'type-line ' + (typeLines[lineIdx].cls || '');
+        typeStage.appendChild(currentLine);
+        // Add cursor
+        const cursor = document.createElement('span');
+        cursor.className = 'type-cursor';
+        currentLine.appendChild(cursor);
+      }
+
+      const lineObj = typeLines[lineIdx];
+      // We need to handle HTML tags in text
+      const raw = lineObj.text;
+      // Simple approach: build DOM progressively tracking text content
+      // For simplicity, we'll use a different approach: render full text with char-by-char reveal
+
+      // Actually let's just do plain text with span wrapping for simplicity
+      // Check if raw has HTML
+      if (raw.indexOf('<') >= 0) {
+        // For lines with HTML, reveal by character in textContent
+        if (charIdx === 0) {
+          currentLine.innerHTML = raw;
+          const text = currentLine.textContent;
+          currentLine.dataset.full = raw;
+          currentLine.dataset.length = text.length;
+          // Use clip-path approach or set innerHTML progressively
+          // Simpler: split into characters with spans
+        }
+      }
+
+      // Simple text-only approach
+      if (charIdx < raw.length) {
+        // We'll rebuild: insert text up to charIdx, keeping cursor
+        const before = raw.slice(0, charIdx + 1);
+        currentLine.innerHTML = before + '<span class="type-cursor"></span>';
+        charIdx++;
+        const delay = 40 + Math.random() * 60;
+        typeTimer = safeTimeout(typeNextChar, delay);
+      } else {
+        // Line done
+        currentLine.innerHTML = raw;
+        currentLine = null;
+        charIdx = 0;
+        lineIdx++;
+        const delay = lineIdx < typeLines.length ? 500 : 0;
+        if (lineIdx < typeLines.length) {
+          typeTimer = safeTimeout(typeNextChar, delay);
+        }
+      }
+    }
+
+    typeNextChar();
+
+    // Cleanup
+    return () => {
+      if (typeTimer) clearTimer(typeTimer);
+    };
+  }
+
+  const typeIO = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && !typeStarted) {
+      typeStarted = true;
+      startTypewriter();
+    }
+  }, { threshold: 0.3 });
+  typeIO.observe(document.getElementById('exhibit-type'));
+
+  // =============================
+  // EXHIBIT 08: Parallax
+  // =============================
+  const paraStage = document.getElementById('paraStage');
+  const paraLayers = document.querySelectorAll('.para-layer');
+
+  function setupParallax() {
+    let targetX = 0.5, targetY = 0.5;
+    let curX = 0.5, curY = 0.5;
+
+    paraStage.addEventListener('mousemove', e => {
+      const rect = paraStage.getBoundingClientRect();
+      targetX = (e.clientX - rect.left) / rect.width;
+      targetY = (e.clientY - rect.top) / rect.height;
+    });
+
+    function paraLoop() {
+      curX += (targetX - curX) * 0.08;
+      curY += (targetY - curY) * 0.08;
+
+      paraLayers.forEach(layer => {
+        const depth = +layer.dataset.depth;
+        const offsetX = (curX - 0.5) * depth * 100;
+        const offsetY = (curY - 0.5) * depth * 60;
+        layer.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+      });
+    }
+    safeRAF(paraLoop);
+  }
+
+  // =============================
+  // EXHIBIT 09: Audio Spectrum (simulated)
+  // =============================
+  const audioStage = document.getElementById('audioStage');
+  const audioToggle = document.getElementById('audioToggle');
+  const audioReset = document.getElementById('audioReset');
+  let audioPlaying = false;
+  let audioRafId = null;
+  let audioBars = [];
+  let audioTime = 0;
+
+  function setupAudio() {
+    audioStage.innerHTML = '';
+    const barCount = 64;
+    audioBars = [];
+    for (let i = 0; i < barCount; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'audio-bar';
+      const band = i / barCount;
+      if (band < 0.25) bar.classList.add('c');
+      else if (band < 0.5) bar.classList.add('m');
+      else if (band < 0.75) bar.classList.add('y');
+      else bar.classList.add('k');
+      bar.style.height = '4px';
+      audioStage.appendChild(bar);
+      audioBars.push({ el: bar, val: 0, target: 0, phase: Math.random() * Math.PI * 2 });
+    }
+  }
+
+  function audioLoop() {
+    audioTime += 0.05;
+    audioBars.forEach((bar, i) => {
+      // Simulate spectrum with multiple sine waves + noise
+      const freq = 0.5 + i * 0.03;
+      const wave1 = Math.sin(audioTime * freq + bar.phase) * 0.5 + 0.5;
+      const wave2 = Math.sin(audioTime * freq * 2.3 + bar.phase * 1.7) * 0.3 + 0.3;
+      const noise = Math.random() * 0.2;
+      let target = (wave1 * 0.5 + wave2 * 0.3 + noise) * 100;
+
+      // Emphasize bass
+      if (i < 8) target *= 1.5;
+
+      // Decay-like: jump to near target
+      bar.val += (target - bar.val) * 0.2;
+      const h = Math.max(4, bar.val * 2);
+      bar.el.style.height = Math.min(h, audioStage.clientHeight - 40) + 'px';
+    });
+
+    if (audioPlaying) {
+      audioRafId = requestAnimationFrame(audioLoop);
+      RAFS.add(audioRafId);
+    }
+  }
+
+  audioToggle.addEventListener('click', () => {
+    audioPlaying = !audioPlaying;
+    audioToggle.classList.toggle('playing', audioPlaying);
+    audioToggle.textContent = audioPlaying ? 'Pause / 暂停' : 'Play / 播放';
+
+    if (audioPlaying) {
+      audioRafId = requestAnimationFrame(audioLoop);
+      RAFS.add(audioRafId);
+    } else {
+      if (audioRafId) {
+        cancelAnimationFrame(audioRafId);
+        RAFS.delete(audioRafId);
+        audioRafId = null;
+      }
+    }
+  });
+
+  audioReset.addEventListener('click', () => {
+    audioBars.forEach(bar => {
+      bar.val = 0;
+      bar.el.style.height = '4px';
+    });
+    audioTime = 0;
+  });
+
+  // =============================
+  // HERO SVG dot animation
+  // =============================
+  function setupHeroAnimation() {
+    const pattern = document.querySelector('#heroDots circle');
+    if (!pattern) return;
+    let t = 0;
+    function heroLoop() {
+      t += 0.02;
+      const r = 3 + Math.sin(t) * 0.8;
+      pattern.setAttribute('r', r);
+    }
+    if (!REDUCED_MOTION) safeRAF(heroLoop);
+  }
+
+  // =============================
+  // Init
+  // =============================
+  function initAll() {
+    setupDithering();
+    setupTilt();
+    setupCMYK();
+    setupFlow();
+    setupMag();
+    setupParallax();
+    setupAudio();
+    setupHeroAnimation();
+  }
+
+  // Delay init to ensure DOM & layout ready
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    safeTimeout(initAll, 50);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => safeTimeout(initAll, 50));
+  }
+
+  // Resize handler
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    if (resizeTimer) clearTimer(resizeTimer);
+    resizeTimer = safeTimeout(() => {
+      setupGen();
+      setupDithering();
+      setupCMYK();
+      setupFlow();
+      setupMag();
+    }, 200);
+  });
+
+})();
+</script>
+</body>
+</html>
