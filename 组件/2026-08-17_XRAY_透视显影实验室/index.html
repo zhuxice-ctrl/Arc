@@ -1,0 +1,2334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>XRAY / 透视显影实验室 — V3 特效实验室</title>
+<link rel="preconnect" href="https://miaoda.feishu.cn" />
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@200;300;400;500;700;900&display=swap" />
+<style>
+  /* ============================================================
+     XRAY 透视显影实验室 — V3
+     纯 vanilla HTML/CSS/JS 单文件
+     ============================================================ */
+
+  :root {
+    --carbon: #0A0C0E;
+    --carbon-2: #0F1215;
+    --carbon-3: #15191E;
+    --carbon-4: #1C2128;
+    --bone: #E8E4D8;
+    --bone-dim: #9A9485;
+    --bone-mid: #C8C2B0;
+    --teal: #5EEAD4;
+    --teal-dim: rgba(94, 234, 212, .35);
+    --teal-glow: rgba(94, 234, 212, .55);
+    --orange: #FF7A1A;
+    --orange-dim: rgba(255, 122, 26, .3);
+    --scan: rgba(94, 234, 212, .08);
+    --danger: #FF4D4D;
+    --grid: rgba(94, 234, 212, .06);
+    --grid-bright: rgba(94, 234, 212, .12);
+
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--carbon);
+    color: var(--bone);
+    font-family: var(--sans);
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+  }
+
+  /* ================ BACKGROUND GRID ================ */
+  .bg-grid {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 30%, #000 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 30%, #000 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    opacity: .8;
+  }
+
+  .bg-vignette {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(94,234,212,.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(255,122,26,.04) 0%, transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ================ CUSTOM CURSOR ================ */
+  .cursor {
+    position: fixed;
+    top: 0; left: 0;
+    width: 44px; height: 44px;
+    margin-left: -22px; margin-top: -22px;
+    border: 2px solid var(--bone);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    mix-blend-mode: difference;
+    transition: width .25s cubic-bezier(.23,1,.32,1),
+                height .25s cubic-bezier(.23,1,.32,1),
+                margin-left .25s cubic-bezier(.23,1,.32,1),
+                margin-top .25s cubic-bezier(.23,1,.32,1),
+                border-color .25s ease,
+                background-color .2s ease;
+    will-change: transform;
+  }
+  .cursor-dot {
+    position: fixed;
+    top: 0; left: 0;
+    width: 6px; height: 6px;
+    margin-left: -3px; margin-top: -3px;
+    background: var(--teal);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    box-shadow: 0 0 12px var(--teal), 0 0 24px var(--teal-glow);
+    mix-blend-mode: normal;
+  }
+  .cursor-ring {
+    position: fixed;
+    top: 0; left: 0;
+    width: 44px; height: 44px;
+    margin-left: -22px; margin-top: -22px;
+    border: 1px solid var(--teal-dim);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    will-change: transform;
+  }
+  .cursor.is-hover {
+    width: 64px; height: 64px;
+    margin-left: -32px; margin-top: -32px;
+    border-color: var(--teal);
+    border-width: 1px;
+  }
+  .cursor.is-click {
+    width: 20px; height: 20px;
+    margin-left: -10px; margin-top: -10px;
+    background: var(--teal);
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 0; height: 0;
+    margin-left: 0; margin-top: 0;
+    border: 1px solid var(--teal);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9997;
+    opacity: 0;
+  }
+
+  /* ================ SCANLINES ================ */
+  .scanlines {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(0,0,0,.12) 2px,
+      rgba(0,0,0,.12) 3px
+    );
+    opacity: .5;
+  }
+
+  .scanbar {
+    position: fixed;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    box-shadow: 0 0 20px var(--teal), 0 0 60px var(--teal-glow);
+    pointer-events: none;
+    z-index: 101;
+    opacity: .6;
+    animation: scanbar 6s linear infinite;
+  }
+  @keyframes scanbar {
+    0%   { transform: translateY(0vh); }
+    100% { transform: translateY(100vh); }
+  }
+
+  /* ================ APP SHELL ================ */
+  #app {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+  }
+
+  /* ================ TOP NAV ================ */
+  .topnav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    padding: 22px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(10,12,14,.5);
+    border-bottom: 1px solid rgba(94,234,212,.08);
+  }
+  .topnav .brand {
+    display: flex; align-items: center; gap: 14px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: .35em;
+    color: var(--bone);
+  }
+  .topnav .brand .logo {
+    width: 28px; height: 28px;
+    border: 1.5px solid var(--teal);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    color: var(--teal);
+    font-weight: 900;
+    position: relative;
+  }
+  .topnav .brand .logo::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px dashed var(--teal-dim);
+    border-radius: 2px;
+    animation: spin 20s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .topnav .status {
+    display: flex; align-items: center; gap: 22px;
+    color: var(--bone-dim);
+  }
+  .topnav .status .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--teal);
+    box-shadow: 0 0 8px var(--teal-glow);
+    margin-right: 8px;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: .4; transform: scale(.7); }
+  }
+  .topnav .status .sep {
+    width: 1px; height: 12px;
+    background: rgba(232,228,216,.15);
+  }
+
+  /* ================ HERO ================ */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 120px 40px 60px;
+    position: relative;
+    text-align: center;
+    overflow: hidden;
+  }
+  .hero-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .45em;
+    color: var(--teal);
+    margin-bottom: 28px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .hero-label .line {
+    width: 40px; height: 1px;
+    background: var(--teal-dim);
+  }
+  .hero-title {
+    font-size: clamp(48px, 9vw, 160px);
+    font-weight: 900;
+    letter-spacing: -.02em;
+    line-height: .95;
+    color: var(--bone);
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .hero-title .glitch {
+    position: relative;
+    display: inline-block;
+  }
+  .hero-title .glitch::before,
+  .hero-title .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0; top: 0;
+    width: 100%;
+    overflow: hidden;
+  }
+  .hero-title .glitch::before {
+    color: var(--teal);
+    transform: translate(2px, 0);
+    mix-blend-mode: screen;
+    clip-path: inset(0 0 65% 0);
+  }
+  .hero-title .glitch::after {
+    color: var(--orange);
+    transform: translate(-2px, 0);
+    mix-blend-mode: screen;
+    clip-path: inset(55% 0 0 0);
+  }
+  .hero-subtitle {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: .35em;
+    color: var(--bone-dim);
+    margin-top: 28px;
+    text-transform: uppercase;
+  }
+  .hero-scroll {
+    position: absolute;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .35em;
+    color: var(--bone-dim);
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    text-transform: uppercase;
+  }
+  .hero-scroll .arrow {
+    width: 1px; height: 56px;
+    background: linear-gradient(to bottom, var(--teal), transparent);
+    position: relative;
+  }
+  .hero-scroll .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -3px;
+    width: 7px; height: 7px;
+    border-right: 1px solid var(--teal);
+    border-bottom: 1px solid var(--teal);
+    transform: rotate(45deg);
+  }
+
+  /* ================ SECTION TITLES ================ */
+  .section-header {
+    padding: 0 40px;
+    margin: 120px 0 40px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .section-header .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--teal);
+    letter-spacing: .3em;
+  }
+  .section-header h2 {
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 900;
+    letter-spacing: -.01em;
+    color: var(--bone);
+    flex: 1;
+    margin: 0 40px;
+  }
+  .section-header .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--bone-dim);
+    letter-spacing: .2em;
+    text-transform: uppercase;
+  }
+
+  /* ================ EXHIBITION GRID ================ */
+  .exhibition {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 20px;
+    padding: 0 40px;
+    margin-bottom: 120px;
+  }
+  .exhibit {
+    background: var(--carbon-2);
+    border: 1px solid rgba(94,234,212,.1);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+    min-height: 360px;
+    transition: border-color .4s ease, box-shadow .4s ease;
+  }
+  .exhibit:hover {
+    border-color: rgba(94,234,212,.3);
+    box-shadow: 0 0 40px rgba(94,234,212,.08);
+  }
+  .exhibit::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    opacity: 0;
+    transition: opacity .4s ease;
+  }
+  .exhibit:hover::before { opacity: 1; }
+
+  .exhibit .head {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .exhibit .head .tag {
+    color: var(--teal);
+  }
+  .exhibit .head .id {
+    color: var(--bone-dim);
+  }
+
+  .exhibit .title {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 20px 22px 24px;
+    background: linear-gradient(to top, rgba(10,12,14,.9), transparent);
+    z-index: 5;
+    pointer-events: none;
+  }
+  .exhibit .title h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--bone);
+    margin-bottom: 4px;
+    letter-spacing: -.005em;
+  }
+  .exhibit .title p {
+    font-size: 12px;
+    color: var(--bone-dim);
+    font-family: var(--mono);
+    letter-spacing: .05em;
+  }
+
+  /* Grid spans */
+  .ex-1 { grid-column: span 7; min-height: 480px; }
+  .ex-2 { grid-column: span 5; min-height: 480px; }
+  .ex-3 { grid-column: span 4; }
+  .ex-4 { grid-column: span 4; }
+  .ex-5 { grid-column: span 4; }
+  .ex-6 { grid-column: span 6; min-height: 420px; }
+  .ex-7 { grid-column: span 6; min-height: 420px; }
+  .ex-8 { grid-column: span 3; }
+  .ex-9 { grid-column: span 3; }
+  .ex-10 { grid-column: span 3; }
+  .ex-11 { grid-column: span 3; }
+  .ex-12 { grid-column: span 12; min-height: 320px; }
+
+  /* ================ EX-1 XRAY SCAN ================ */
+  .xray-scan {
+    width: 100%; height: 100%;
+    position: relative;
+    background: radial-gradient(ellipse at center, var(--carbon-3) 0%, var(--carbon) 70%);
+    cursor: none;
+    overflow: hidden;
+  }
+  .xray-scan canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+  .xray-scan .hint {
+    position: absolute;
+    bottom: 60px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .3em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* ================ EX-2 THERMAL PALETTE ================ */
+  .thermal {
+    width: 100%; height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .thermal canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+  .thermal .scale {
+    position: absolute;
+    right: 18px; bottom: 56px;
+    width: 12px; height: 160px;
+    background: linear-gradient(to top, #000033, #0033ff, #00ccff, #00ff66, #ffff00, #ff6600, #ff0000, #ffffff);
+    border: 1px solid rgba(255,255,255,.2);
+    z-index: 5;
+  }
+  .thermal .scale span {
+    position: absolute;
+    right: 18px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--bone-dim);
+    letter-spacing: .1em;
+    white-space: nowrap;
+  }
+  .thermal .scale .s-top { top: 0; }
+  .thermal .scale .s-mid { top: 50%; transform: translateY(-50%); }
+  .thermal .scale .s-bot { bottom: 0; }
+
+  /* ================ EX-3 STROBOSCOPIC ================ */
+  .strob {
+    width: 100%; height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--carbon-3);
+  }
+  .strob .glyph {
+    font-size: 120px;
+    font-weight: 900;
+    color: var(--bone);
+    font-family: var(--sans);
+    letter-spacing: -.02em;
+    position: relative;
+  }
+  .strob .glyph .trail {
+    position: absolute;
+    inset: 0;
+    color: var(--teal);
+    opacity: .3;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  /* ================ EX-4 TOMOGRAPHY ================ */
+  .tomography {
+    width: 100%; height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--carbon-3);
+    overflow: hidden;
+  }
+  .tomography .layers {
+    position: relative;
+    width: 180px; height: 180px;
+  }
+  .tomography .layer {
+    position: absolute;
+    inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--bone);
+    font-family: var(--sans);
+    opacity: .15;
+    transition: transform .6s cubic-bezier(.23,1,.32,1), opacity .6s ease;
+  }
+  .tomography:hover .layer { opacity: .6; }
+
+  /* ================ EX-5 HUD DIAL ================ */
+  .hud-dial {
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--carbon-3);
+    position: relative;
+  }
+  .hud-dial svg {
+    width: 220px; height: 220px;
+  }
+
+  /* ================ EX-6 SKELETON PARTICLES ================ */
+  .skeleton {
+    width: 100%; height: 100%;
+    position: relative;
+    background: var(--carbon-3);
+    overflow: hidden;
+  }
+  .skeleton canvas {
+    display: block; width: 100%; height: 100%;
+  }
+
+  /* ================ EX-7 FLUX TEXTURE ================ */
+  .flux {
+    width: 100%; height: 100%;
+    position: relative;
+    background: var(--carbon-3);
+    overflow: hidden;
+  }
+  .flux canvas {
+    display: block; width: 100%; height: 100%;
+  }
+
+  /* ================ EX-8 BONE COUNTER ================ */
+  .bone-counter {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--carbon-3);
+  }
+  .bone-counter .num {
+    font-family: var(--mono);
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -.02em;
+    text-shadow: 0 0 30px var(--teal-glow);
+  }
+  .bone-counter .lbl {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .3em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+  }
+  .bone-counter .bar {
+    width: 80%;
+    height: 2px;
+    background: var(--carbon-4);
+    margin-top: 14px;
+    overflow: hidden;
+    position: relative;
+  }
+  .bone-counter .bar::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 60%;
+    background: linear-gradient(90deg, transparent, var(--teal), var(--teal));
+    animation: bar-slide 3s ease-in-out infinite;
+  }
+  @keyframes bar-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(160%); }
+  }
+
+  /* ================ EX-9 GLITCH TYPEWRITER ================ */
+  .glitch-tw {
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    background: var(--carbon-3);
+  }
+  .glitch-tw .tw-text {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--bone);
+    line-height: 1.8;
+    letter-spacing: .05em;
+    position: relative;
+  }
+  .glitch-tw .tw-text .caret {
+    display: inline-block;
+    width: 8px; height: 16px;
+    background: var(--teal);
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+  .glitch-tw .tw-text .err {
+    color: var(--orange);
+    text-decoration: line-through;
+    opacity: .6;
+  }
+
+  /* ================ EX-10 FLUORO BUTTON ================ */
+  .fluoro-btn {
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--carbon-3);
+    gap: 20px;
+    flex-direction: column;
+  }
+  .fluoro-btn button {
+    position: relative;
+    padding: 16px 36px;
+    background: transparent;
+    border: 1px solid var(--teal);
+    color: var(--teal);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    cursor: none;
+    overflow: hidden;
+    transition: color .3s ease;
+  }
+  .fluoro-btn button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--teal);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .5s cubic-bezier(.23,1,.32,1);
+    z-index: -1;
+  }
+  .fluoro-btn button:hover {
+    color: var(--carbon);
+    box-shadow: 0 0 30px var(--teal-glow), inset 0 0 30px rgba(255,255,255,.2);
+  }
+  .fluoro-btn button:hover::before {
+    transform: scaleX(1);
+  }
+  .fluoro-btn button .corner {
+    position: absolute;
+    width: 8px; height: 8px;
+    border: 1px solid var(--teal);
+  }
+  .fluoro-btn button .c-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+  .fluoro-btn button .c-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+  .fluoro-btn button .c-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+  .fluoro-btn button .c-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+
+  .fluoro-btn .sweep::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -60%;
+    width: 30%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent);
+    transform: skewX(-20deg);
+    transition: left .8s ease;
+  }
+  .fluoro-btn button:hover .sweep::after { left: 130%; }
+
+  /* ================ EX-11 RIPPLE POOL ================ */
+  .ripple-pool {
+    width: 100%; height: 100%;
+    position: relative;
+    background: radial-gradient(ellipse at center, var(--carbon-4), var(--carbon-3));
+    overflow: hidden;
+  }
+  .ripple-pool canvas {
+    display: block; width: 100%; height: 100%;
+  }
+
+  /* ================ EX-12 SPECTRUM WAVE ================ */
+  .spectrum {
+    width: 100%; height: 100%;
+    position: relative;
+    background: var(--carbon-3);
+    overflow: hidden;
+  }
+  .spectrum canvas {
+    display: block; width: 100%; height: 100%;
+  }
+  .spectrum .freq-labels {
+    position: absolute;
+    bottom: 60px; left: 0; right: 0;
+    padding: 0 30px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--bone-dim);
+    letter-spacing: .15em;
+    pointer-events: none;
+  }
+
+  /* ================ FOOTER ================ */
+  .footer {
+    padding: 60px 40px 40px;
+    border-top: 1px solid rgba(94,234,212,.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .25em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .footer .mark {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .footer .mark .bdot {
+    width: 6px; height: 6px;
+    background: var(--orange);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--orange);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  /* ================ SCROLL REVEAL ================ */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity .8s cubic-bezier(.23,1,.32,1), transform .8s cubic-bezier(.23,1,.32,1);
+  }
+  .reveal.is-in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ================ RESPONSIVE ================ */
+  @media (max-width: 1100px) {
+    .ex-1, .ex-2 { grid-column: span 12; min-height: 380px; }
+    .ex-3, .ex-4, .ex-5 { grid-column: span 6; }
+    .ex-6, .ex-7 { grid-column: span 12; min-height: 340px; }
+    .ex-8, .ex-9, .ex-10, .ex-11 { grid-column: span 6; }
+  }
+  @media (max-width: 640px) {
+    .topnav { padding: 16px 20px; }
+    .topnav .status { gap: 12px; font-size: 10px; }
+    .topnav .status .sep { display: none; }
+    .section-header { padding: 0 20px; margin: 80px 0 30px; }
+    .section-header h2 { margin: 0 20px; }
+    .exhibition { padding: 0 20px; gap: 14px; margin-bottom: 80px; }
+    .ex-1, .ex-2, .ex-3, .ex-4, .ex-5,
+    .ex-6, .ex-7, .ex-8, .ex-9, .ex-10, .ex-11, .ex-12 {
+      grid-column: span 12;
+      min-height: 300px;
+    }
+    .hero { padding: 100px 20px 40px; }
+    .footer { padding: 40px 20px 30px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- background -->
+<div class="bg-grid"></div>
+<div class="bg-vignette"></div>
+<div class="scanlines"></div>
+<div class="scanbar" id="scanbar"></div>
+
+<!-- custom cursor -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<div id="app">
+
+  <!-- top nav -->
+  <nav class="topnav">
+    <div class="brand">
+      <div class="logo">X</div>
+      <span>XRAY · LAB</span>
+    </div>
+    <div class="status">
+      <span><span class="dot"></span>ONLINE</span>
+      <span class="sep"></span>
+      <span>CH&nbsp;03</span>
+      <span class="sep"></span>
+      <span id="timestamp">--:--:--</span>
+    </div>
+  </nav>
+
+  <!-- hero -->
+  <section class="hero">
+    <div class="hero-label">
+      <span class="line"></span>
+      V3 / UX INTERACTION DESIGN / EFFECTS LAB
+      <span class="line"></span>
+    </div>
+    <h1 class="hero-title">
+      <span class="glitch" data-text="透 视 显 影">透 视 显 影</span>
+    </h1>
+    <div class="hero-subtitle">XRAY FLUOROSCOPY LABORATORY</div>
+    <div class="hero-scroll">
+      <span>进入展区</span>
+      <span class="arrow"></span>
+    </div>
+  </section>
+
+  <!-- section header -->
+  <div class="section-header reveal">
+    <span class="num">01 / EXHIBITION</span>
+    <h2>展 区</h2>
+    <span class="meta">12 件装置 · 上手才有意义</span>
+  </div>
+
+  <!-- exhibition grid -->
+  <div class="exhibition">
+
+    <!-- EX-1 XRAY SCAN -->
+    <div class="exhibit ex-1 reveal">
+      <div class="head"><span class="tag">X光扫描显影</span><span class="id">EX-01</span></div>
+      <div class="xray-scan" id="xrayScan">
+        <canvas></canvas>
+        <div class="hint">移动光标 · 透视表层</div>
+      </div>
+      <div class="title"><h3>FLUOROSCOPY SCANNER</h3><p>光标为射线源 · 实时显影骨架层</p></div>
+    </div>
+
+    <!-- EX-2 THERMAL -->
+    <div class="exhibit ex-2 reveal">
+      <div class="head"><span class="tag">热力伪彩映射</span><span class="id">EX-02</span></div>
+      <div class="thermal" id="thermal">
+        <canvas></canvas>
+        <div class="scale">
+          <span class="s-top">HOT</span>
+          <span class="s-mid">22°C</span>
+          <span class="s-bot">COLD</span>
+        </div>
+      </div>
+      <div class="title"><h3>THERMAL PALETTE</h3><p>伪彩映射 · 光标为热区</p></div>
+    </div>
+
+    <!-- EX-3 STROBOSCOPIC -->
+    <div class="exhibit ex-3 reveal">
+      <div class="head"><span class="tag">频闪残影</span><span class="id">EX-03</span></div>
+      <div class="strob" id="strob">
+        <div class="glyph" id="strobGlyph">
+          影
+          <div class="trail" id="strobTrail1">影</div>
+          <div class="trail" id="strobTrail2">影</div>
+          <div class="trail" id="strobTrail3">影</div>
+          <div class="trail" id="strobTrail4">影</div>
+        </div>
+      </div>
+      <div class="title"><h3>STROBOSCOPIC</h3><p>残影位移 · 频闪留迹</p></div>
+    </div>
+
+    <!-- EX-4 TOMOGRAPHY -->
+    <div class="exhibit ex-4 reveal">
+      <div class="head"><span class="tag">文字层析</span><span class="id">EX-04</span></div>
+      <div class="tomography" id="tomography">
+        <div class="layers" id="tomoLayers">
+          <div class="layer">骨</div>
+          <div class="layer">骼</div>
+          <div class="layer">肌</div>
+          <div class="layer">腱</div>
+          <div class="layer">肤</div>
+        </div>
+      </div>
+      <div class="title"><h3>TOMOGRAPHY</h3><p>层层剥离 · 透视文字</p></div>
+    </div>
+
+    <!-- EX-5 HUD DIAL -->
+    <div class="exhibit ex-5 reveal">
+      <div class="head"><span class="tag">扫描线 HUD</span><span class="id">EX-05</span></div>
+      <div class="hud-dial" id="hudDial">
+        <svg viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#5EEAD4" stop-opacity=".3"/>
+              <stop offset="100%" stop-color="#5EEAD4" stop-opacity="1"/>
+            </linearGradient>
+          </defs>
+          <!-- outer ticks -->
+          <g id="dialTicks" stroke="#E8E4D8" stroke-width=".5" opacity=".3">
+          </g>
+          <!-- ring -->
+          <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(94,234,212,.15)" stroke-width="1"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="url(#dialGrad)" stroke-width="2"
+                  stroke-dasharray="440" stroke-dashoffset="440" id="dialArc"
+                  transform="rotate(-90 100 100)"/>
+          <!-- inner ring -->
+          <circle cx="100" cy="100" r="55" fill="none" stroke="rgba(94,234,212,.1)" stroke-width=".5"/>
+          <!-- crosshair -->
+          <line x1="100" y1="20" x2="100" y2="30" stroke="#5EEAD4" stroke-width="1"/>
+          <line x1="100" y1="170" x2="100" y2="180" stroke="#5EEAD4" stroke-width="1"/>
+          <line x1="20" y1="100" x2="30" y2="100" stroke="#5EEAD4" stroke-width="1"/>
+          <line x1="170" y1="100" x2="180" y2="100" stroke="#5EEAD4" stroke-width="1"/>
+          <!-- center -->
+          <circle cx="100" cy="100" r="3" fill="#5EEAD4"/>
+          <text x="100" y="115" text-anchor="middle" fill="#E8E4D8" font-family="JetBrains Mono, monospace"
+                font-size="20" font-weight="700" id="dialVal">000</text>
+          <text x="100" y="135" text-anchor="middle" fill="#9A9485" font-family="JetBrains Mono, monospace"
+                font-size="8" letter-spacing="3">RAD/S</text>
+        </svg>
+      </div>
+      <div class="title"><h3>HUD DIAL</h3><p>扫描速率指示仪</p></div>
+    </div>
+
+    <!-- EX-6 SKELETON PARTICLES -->
+    <div class="exhibit ex-6 reveal">
+      <div class="head"><span class="tag">骨骼粒子显影</span><span class="id">EX-06</span></div>
+      <div class="skeleton" id="skeleton">
+        <canvas></canvas>
+      </div>
+      <div class="title"><h3>SKELETON PARTICLES</h3><p>点击发射粒子 · 汇聚显影</p></div>
+    </div>
+
+    <!-- EX-7 FLUX NOISE -->
+    <div class="exhibit ex-7 reveal">
+      <div class="head"><span class="tag">噪波流场</span><span class="id">EX-07</span></div>
+      <div class="flux" id="flux">
+        <canvas></canvas>
+      </div>
+      <div class="title"><h3>NOISE FLOW FIELD</h3><p>粒子流 · 噪波驱动轨迹</p></div>
+    </div>
+
+    <!-- EX-8 BONE COUNTER -->
+    <div class="exhibit ex-8 reveal">
+      <div class="head"><span class="tag">数字计数</span><span class="id">EX-08</span></div>
+      <div class="bone-counter">
+        <div class="num" data-target="206" id="boneNum">000</div>
+        <div class="lbl">BONES / FRAME</div>
+        <div class="bar"></div>
+      </div>
+      <div class="title"><h3>BONE COUNTER</h3><p>实时计数 · 弹簧缓动</p></div>
+    </div>
+
+    <!-- EX-9 GLITCH TYPEWRITER -->
+    <div class="exhibit ex-9 reveal">
+      <div class="head"><span class="tag">显影打字机</span><span class="id">EX-09</span></div>
+      <div class="glitch-tw">
+        <div class="tw-text" id="twText"><span class="caret"></span></div>
+      </div>
+      <div class="title"><h3>TYPEWRITER</h3><p>字元显影 · 偶发故障</p></div>
+    </div>
+
+    <!-- EX-10 FLUORO BUTTON -->
+    <div class="exhibit ex-10 reveal">
+      <div class="head"><span class="tag">荧光按钮</span><span class="id">EX-10</span></div>
+      <div class="fluoro-btn">
+        <button class="sweep" id="fluoroBtn">
+          <span class="corner c-tl"></span>
+          <span class="corner c-tr"></span>
+          <span class="corner c-bl"></span>
+          <span class="corner c-br"></span>
+          ACTIVATE
+        </button>
+      </div>
+      <div class="title"><h3>FLUORO BUTTON</h3><p>发光 · 光泽扫过 · 角标</p></div>
+    </div>
+
+    <!-- EX-11 RIPPLE POOL -->
+    <div class="exhibit ex-11 reveal">
+      <div class="head"><span class="tag">涟漪池</span><span id="ex11tag" class="tag">点击释放</span><span class="id">EX-11</span></div>
+      <div class="ripple-pool" id="ripplePool">
+        <canvas></canvas>
+      </div>
+      <div class="title"><h3>RIPPLE POOL</h3><p>阻尼扩散 · 多波叠加</p></div>
+    </div>
+
+    <!-- EX-12 SPECTRUM -->
+    <div class="exhibit ex-12 reveal">
+      <div class="head"><span class="tag">频谱可视化</span><span class="id">EX-12</span></div>
+      <div class="spectrum" id="spectrum">
+        <canvas></canvas>
+        <div class="freq-labels">
+          <span>20 Hz</span>
+          <span>200 Hz</span>
+          <span>2 kHz</span>
+          <span>8 kHz</span>
+          <span>20 kHz</span>
+        </div>
+      </div>
+      <div class="title"><h3>SPECTRUM ANALYZER</h3><p>64 频段实时分析 · 模拟输入</p></div>
+    </div>
+
+  </div>
+
+  <!-- footer -->
+  <footer class="footer">
+    <div class="mark"><span class="bdot"></span> XRAY EFFECTS LAB V3</div>
+    <div>妙搭应用 · UX INTERACTION · 2026</div>
+  </footer>
+
+</div>
+
+<script>
+/* ============================================================
+   XRAY 透视显影实验室 — Core JS
+   纯 vanilla · 无外部依赖 · 单文件
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ---------- Reduced Motion ---------- */
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- Visibility / RAF management ---------- */
+  const rafHandlers = []; // array of { id, fn, rafId, running }
+  let docVisible = !document.hidden;
+
+  function registerRAF(fn) {
+    const h = { fn: fn, rafId: 0, running: false };
+    rafHandlers.push(h);
+    if (docVisible && !reduceMotion) startRAF(h);
+    return h;
+  }
+  function startRAF(h) {
+    if (h.running) return;
+    h.running = true;
+    const tick = function () {
+      if (!h.running) return;
+      h.fn();
+      h.rafId = requestAnimationFrame(tick);
+    };
+    h.rafId = requestAnimationFrame(tick);
+  }
+  function stopRAF(h) {
+    h.running = false;
+    if (h.rafId) { cancelAnimationFrame(h.rafId); h.rafId = 0; }
+  }
+  document.addEventListener('visibilitychange', function () {
+    docVisible = !document.hidden;
+    rafHandlers.forEach(function (h) {
+      if (docVisible && !reduceMotion) startRAF(h);
+      else stopRAF(h);
+    });
+  });
+  window.addEventListener('beforeunload', function () {
+    rafHandlers.forEach(stopRAF);
+  });
+
+  /* ---------- Smooth time (seconds) ---------- */
+  let t0 = performance.now();
+  function now() { return (performance.now() - t0) / 1000; }
+
+  /* ---------- Utility: ease functions ---------- */
+  const Ease = {
+    outCubic: function (t) { return 1 - Math.pow(1 - t, 3); },
+    outElastic: function (t) {
+      if (t === 0 || t === 1) return t;
+      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1;
+    },
+    inOutQuad: function (t) { return t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2; },
+    outExpo: function (t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+  };
+
+  /* ============================================================
+     CUSTOM CURSOR
+     ============================================================ */
+  const cursor = document.getElementById('cursor');
+  const cursorDot = document.getElementById('cursorDot');
+  const cursorRing = document.getElementById('cursorRing');
+
+  // position state
+  let mx = window.innerWidth / 2;
+  let my = window.innerHeight / 2;
+  let rx = mx, ry = my; // ring (delayed)
+  let targetScale = 1;
+  let curScale = 1;
+
+  // initial center position
+  cursor.style.transform = 'translate(' + mx + 'px, ' + my + 'px)';
+  cursorDot.style.transform = 'translate(' + mx + 'px, ' + my + 'px)';
+  cursorRing.style.transform = 'translate(' + mx + 'px, ' + my + 'px)';
+
+  function onMove(e) {
+    mx = e.clientX;
+    my = e.clientY;
+  }
+  window.addEventListener('mousemove', onMove, { passive: true });
+
+  // hover detection
+  const interactiveSel = 'button, a, input, textarea, select, [data-cursor-hover], .exhibit, .xray-scan, .thermal, .strob, .tomography, .hud-dial, .skeleton, .flux, .ripple-pool, .spectrum, .fluoro-btn button';
+  function updateHover() {
+    const el = document.elementFromPoint(mx, my);
+    if (el && el.closest && el.closest(interactiveSel)) {
+      cursor.classList.add('is-hover');
+    } else {
+      cursor.classList.remove('is-hover');
+    }
+  }
+  window.addEventListener('mousemove', updateHover, { passive: true });
+
+  // click ripple
+  function spawnRipple(x, y) {
+    const r = document.createElement('div');
+    r.className = 'cursor-ripple';
+    r.style.left = x + 'px';
+    r.style.top = y + 'px';
+    document.body.appendChild(r);
+    // animate
+    let start = null;
+    const dur = 600;
+    function step(ts) {
+      if (!start) start = ts;
+      const p = Math.min(1, (ts - start) / dur);
+      const size = p * 80;
+      r.style.width = size + 'px';
+      r.style.height = size + 'px';
+      r.style.marginLeft = (-size/2) + 'px';
+      r.style.marginTop = (-size/2) + 'px';
+      r.style.opacity = (1 - p) * .6;
+      if (p < 1) requestAnimationFrame(step);
+      else r.remove();
+    }
+    requestAnimationFrame(step);
+  }
+  window.addEventListener('mousedown', function (e) {
+    cursor.classList.add('is-click');
+    spawnRipple(e.clientX, e.clientY);
+  });
+  window.addEventListener('mouseup', function () {
+    cursor.classList.remove('is-click');
+  });
+
+  // cursor RAF loop (smooth follow for ring, immediate for dot+main)
+  registerRAF(function () {
+    // dot & main cursor direct
+    cursor.style.transform = 'translate(' + mx + 'px, ' + my + 'px)';
+    cursorDot.style.transform = 'translate(' + mx + 'px, ' + my + 'px)';
+    // ring — spring/damped follow
+    rx += (mx - rx) * 0.12;
+    ry += (my - ry) * 0.12;
+    cursorRing.style.transform = 'translate(' + rx + 'px, ' + ry + 'px)';
+  });
+
+  /* ============================================================
+     TIMESTAMP
+     ============================================================ */
+  const tsEl = document.getElementById('timestamp');
+  function updateTime() {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    tsEl.textContent = hh + ':' + mm + ':' + ss;
+  }
+  updateTime();
+  let clockTimer = setInterval(updateTime, 1000);
+  window.addEventListener('beforeunload', function () { clearInterval(clockTimer); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { clearInterval(clockTimer); clockTimer = null; }
+    else { updateTime(); if (!clockTimer) clockTimer = setInterval(updateTime, 1000); }
+  });
+
+  /* ============================================================
+     SCROLL REVEAL
+     ============================================================ */
+  const reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          e.target.classList.add('is-in');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+    reveals.forEach(function (el) { io.observe(el); });
+  } else {
+    reveals.forEach(function (el) { el.classList.add('is-in'); });
+  }
+
+  /* ============================================================
+     EX-01 XRAY SCAN — cursor reveals "bone" layer under surface
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('xrayScan');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let bones = [];
+    let xrayX = 0, xrayY = 0;
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      generateBones();
+      xrayX = W / 2; xrayY = H / 2;
+    }
+
+    function generateBones() {
+      bones = [];
+      // create abstract bone-like shapes (ellipses + lines)
+      const count = 8;
+      for (let i = 0; i < count; i++) {
+        const cx = W * (0.2 + Math.random() * 0.6);
+        const cy = H * (0.15 + Math.random() * 0.7);
+        const rx = 20 + Math.random() * 40;
+        const ry = 8 + Math.random() * 20;
+        const rot = Math.random() * Math.PI;
+        bones.push({ type: 'ellipse', cx: cx, cy: cy, rx: rx, ry: ry, rot: rot });
+      }
+      // connecting lines (like ribs/spine)
+      for (let i = 0; i < 6; i++) {
+        const y = H * (0.25 + i * 0.1);
+        const len = W * (0.4 + Math.random() * 0.2);
+        const x0 = (W - len) / 2;
+        bones.push({ type: 'line', x1: x0, y1: y, x2: x0 + len, y2: y + (Math.random() - .5) * 20 });
+      }
+      // central spine
+      bones.push({ type: 'spine', x: W / 2, y1: H * 0.15, y2: H * 0.85 });
+    }
+
+    function drawSurface() {
+      // dark surface silhouette - a body-like shape
+      ctx.fillStyle = '#15191E';
+      ctx.beginPath();
+      ctx.ellipse(W/2, H/2, W*0.38, H*0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // subtle highlight
+      const grad = ctx.createRadialGradient(W*0.4, H*0.3, 10, W*0.4, H*0.3, W*0.5);
+      grad.addColorStop(0, 'rgba(232,228,216,.06)');
+      grad.addColorStop(1, 'rgba(232,228,216,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawBones() {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(232,228,216,.9)';
+      ctx.fillStyle = 'rgba(232,228,216,.8)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(94,234,212,.5)';
+      ctx.shadowBlur = 8;
+
+      bones.forEach(function (b) {
+        ctx.beginPath();
+        if (b.type === 'ellipse') {
+          ctx.ellipse(b.cx, b.cy, b.rx, b.ry, b.rot, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (b.type === 'line') {
+          ctx.moveTo(b.x1, b.y1);
+          ctx.lineTo(b.x2, b.y2);
+          ctx.stroke();
+        } else if (b.type === 'spine') {
+          ctx.moveTo(b.x, b.y1);
+          for (let y = b.y1; y < b.y2; y += 20) {
+            ctx.lineTo(b.x + (y % 40 < 20 ? 3 : -3), y);
+          }
+          ctx.lineTo(b.x, b.y2);
+          ctx.stroke();
+        }
+      });
+      ctx.restore();
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, W, H);
+      // dark background
+      ctx.fillStyle = '#0A0C0E';
+      ctx.fillRect(0, 0, W, H);
+
+      // surface layer (opaque body)
+      drawSurface();
+
+      // X-ray "light" — radial gradient cutout revealing bones
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      const rad = 120;
+      const xg = ctx.createRadialGradient(xrayX, xrayY, 0, xrayX, xrayY, rad);
+      xg.addColorStop(0, 'rgba(0,0,0,1)');
+      xg.addColorStop(.6, 'rgba(0,0,0,.7)');
+      xg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = xg;
+      ctx.fillRect(xrayX - rad, xrayY - rad, rad * 2, rad * 2);
+      ctx.restore();
+
+      // bone layer — drawn only where surface was "cut out" — use destination-over or draw bones on top clipped
+      // Actually let's draw bones on top, but clipped to the xray circle
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(xrayX, xrayY, rad, 0, Math.PI * 2);
+      ctx.clip();
+      drawBones();
+      // scan line sweep
+      const scanY = xrayY - rad + ((now() * 60) % (rad * 2));
+      const sl = ctx.createLinearGradient(0, scanY - 6, 0, scanY + 6);
+      sl.addColorStop(0, 'rgba(94,234,212,0)');
+      sl.addColorStop(.5, 'rgba(94,234,212,.4)');
+      sl.addColorStop(1, 'rgba(94,234,212,0)');
+      ctx.fillStyle = sl;
+      ctx.fillRect(xrayX - rad, scanY - 6, rad * 2, 12);
+      ctx.restore();
+
+      // outer ring of xray scope
+      ctx.strokeStyle = 'rgba(94,234,212,.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(xrayX, xrayY, rad, 0, Math.PI * 2);
+      ctx.stroke();
+      // crosshair
+      ctx.strokeStyle = 'rgba(94,234,212,.8)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xrayX - 14, xrayY); ctx.lineTo(xrayX - 6, xrayY);
+      ctx.moveTo(xrayX + 6, xrayY); ctx.lineTo(xrayX + 14, xrayY);
+      ctx.moveTo(xrayX, xrayY - 14); ctx.lineTo(xrayX, xrayY - 6);
+      ctx.moveTo(xrayX, xrayY + 6); ctx.lineTo(xrayX, xrayY + 14);
+      ctx.stroke();
+    }
+
+    registerRAF(render);
+
+    wrap.addEventListener('mousemove', function (e) {
+      const r = wrap.getBoundingClientRect();
+      xrayX = e.clientX - r.left;
+      xrayY = e.clientY - r.top;
+    });
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     EX-02 THERMAL PALETTE — heat map with cursor as heat source
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('thermal');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let hx = 0, hy = 0;
+    const heatPoints = []; // floating heat sources
+    let pts = [];
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hx = W / 2; hy = H / 2;
+      // ambient heat points
+      pts = [];
+      for (let i = 0; i < 5; i++) {
+        pts.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          r: 60 + Math.random() * 80,
+          vx: (Math.random() - .5) * 20,
+          vy: (Math.random() - .5) * 20,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    // thermal LUT
+    function thermalColor(v) {
+      // v in [0,1]
+      v = Math.max(0, Math.min(1, v));
+      const stops = [
+        [0,   0,   20],   // 0 - deep blue-black
+        [0,  30,  120],   // dark blue
+        [0, 120,  220],   // blue
+        [0, 220,  220],   // cyan
+        [60, 220,   0],   // green
+        [220, 220,   0],  // yellow
+        [255, 120,   0],  // orange
+        [255,  40,  40],  // red
+        [255, 255, 255]   // white hot
+      ];
+      const seg = v * (stops.length - 1);
+      const i = Math.floor(seg);
+      const f = seg - i;
+      const a = stops[i];
+      const b = stops[Math.min(i + 1, stops.length - 1)];
+      return 'rgb(' + Math.round(a[0] + (b[0]-a[0]) * f) + ','
+                    + Math.round(a[1] + (b[1]-a[1]) * f) + ','
+                    + Math.round(a[2] + (b[2]-a[2]) * f) + ')';
+    }
+
+    function render() {
+      // background (cold)
+      ctx.fillStyle = '#000011';
+      ctx.fillRect(0, 0, W, H);
+
+      const t = now();
+
+      // add some ambient heat blobs
+      pts.forEach(function (p, i) {
+        p.x += p.vx * 0.016;
+        p.y += p.vy * 0.016;
+        if (p.x < p.r) { p.x = p.r; p.vx *= -1; }
+        if (p.x > W - p.r) { p.x = W - p.r; p.vx *= -1; }
+        if (p.y < p.r) { p.y = p.r; p.vy *= -1; }
+        if (p.y > H - p.r) { p.y = H - p.r; p.vy *= -1; }
+
+        const pulse = 0.7 + 0.3 * Math.sin(t * 0.8 + p.phase);
+        const gr = p.r * pulse;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, gr);
+        grad.addColorStop(0, 'rgba(180, 80, 255, .35)');
+        grad.addColorStop(.5, 'rgba(60, 120, 255, .2)');
+        grad.addColorStop(1, 'rgba(0, 0, 80, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - gr, p.y - gr, gr * 2, gr * 2);
+      });
+
+      // cursor heat source (brightest)
+      const cr = 100;
+      const cg = ctx.createRadialGradient(hx, hy, 0, hx, hy, cr);
+      cg.addColorStop(0, 'rgba(255, 255, 255, .85)');
+      cg.addColorStop(.15, 'rgba(255, 180, 0, .6)');
+      cg.addColorStop(.4, 'rgba(255, 60, 0, .3)');
+      cg.addColorStop(.7, 'rgba(180, 0, 100, .1)');
+      cg.addColorStop(1, 'rgba(0, 0, 100, 0)');
+      ctx.fillStyle = cg;
+      ctx.fillRect(hx - cr, hy - cr, cr * 2, cr * 2);
+
+      // apply thermal coloring via composite — we'll overlay color bands
+      // Simpler: draw colored shapes directly (already have some color in gradients)
+      // Add crosshair + readout
+      ctx.strokeStyle = 'rgba(255, 200, 100, .6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 20, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // temperature readout
+      const temp = (36.5 + Math.sin(t * 2) * 0.3).toFixed(1);
+      ctx.fillStyle = 'rgba(255, 200, 100, .9)';
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillText(temp + '°C', hx + 26, hy - 8);
+    }
+
+    registerRAF(render);
+
+    wrap.addEventListener('mousemove', function (e) {
+      const r = wrap.getBoundingClientRect();
+      hx = e.clientX - r.left;
+      hy = e.clientY - r.top;
+    });
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     EX-03 STROBOSCOPIC — trail of glyphs following cursor
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('strob');
+    if (!wrap) return;
+    const glyph = document.getElementById('strobGlyph');
+    const trails = [
+      document.getElementById('strobTrail1'),
+      document.getElementById('strobTrail2'),
+      document.getElementById('strobTrail3'),
+      document.getElementById('strobTrail4')
+    ];
+    let tx = 0, ty = 0;
+    let targetX = 0, targetY = 0;
+
+    const positions = trails.map(function () { return { x: 0, y: 0 }; });
+
+    wrap.addEventListener('mousemove', function (e) {
+      const r = wrap.getBoundingClientRect();
+      targetX = e.clientX - r.left - r.width / 2;
+      targetY = e.clientY - r.top - r.height / 2;
+    });
+    wrap.addEventListener('mouseleave', function () {
+      targetX = 0; targetY = 0;
+    });
+
+    registerRAF(function () {
+      // main glyph
+      tx += (targetX - tx) * 0.15;
+      ty += (targetY - ty) * 0.15;
+      glyph.style.transform = 'translate(' + tx + 'px, ' + ty + 'px)';
+
+      // trails — each follows the previous
+      let prevX = tx, prevY = ty;
+      trails.forEach(function (t, i) {
+        const p = positions[i];
+        const ease = 0.3 - i * 0.05;
+        p.x += (prevX - p.x) * ease;
+        p.y += (prevY - p.y) * ease;
+        const scale = 1 - (i + 1) * 0.15;
+        const op = 0.4 - i * 0.08;
+        t.style.transform = 'translate(' + p.x + 'px, ' + p.y + 'px) scale(' + scale + ')';
+        t.style.opacity = op;
+        prevX = p.x; prevY = p.y;
+      });
+    });
+  })();
+
+  /* ============================================================
+     EX-04 TOMOGRAPHY — parallax layers of text
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('tomography');
+    if (!wrap) return;
+    const layers = wrap.querySelectorAll('.layer');
+    let tmx = 0, tmy = 0;
+
+    wrap.addEventListener('mousemove', function (e) {
+      const r = wrap.getBoundingClientRect();
+      tmx = (e.clientX - r.left - r.width / 2) / r.width;
+      tmy = (e.clientY - r.top - r.height / 2) / r.height;
+    });
+    wrap.addEventListener('mouseleave', function () { tmx = 0; tmy = 0; });
+
+    let cx = 0, cy = 0;
+    registerRAF(function () {
+      cx += (tmx - cx) * 0.1;
+      cy += (tmy - cy) * 0.1;
+      layers.forEach(function (l, i) {
+        const depth = (i + 1) * 8;
+        const dx = cx * depth;
+        const dy = cy * depth;
+        l.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+      });
+    });
+  })();
+
+  /* ============================================================
+     EX-05 HUD DIAL — animated gauge
+     ============================================================ */
+  (function () {
+    const arc = document.getElementById('dialArc');
+    const val = document.getElementById('dialVal');
+    const ticks = document.getElementById('dialTicks');
+    if (!arc || !val || !ticks) return;
+
+    // build ticks
+    const cx = 100, cy = 100, rOuter = 85, rInner = 78;
+    for (let i = 0; i <= 60; i++) {
+      const angle = -Math.PI / 2 + (i / 60) * Math.PI * 1.6;
+      const x1 = cx + Math.cos(angle) * rOuter;
+      const y1 = cy + Math.sin(angle) * rOuter;
+      const isMajor = i % 5 === 0;
+      const r2 = isMajor ? 74 : 80;
+      const x2 = cx + Math.cos(angle) * r2;
+      const y2 = cy + Math.sin(angle) * r2;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', isMajor ? 'rgba(232,228,216,.5)' : 'rgba(232,228,216,.2)');
+      line.setAttribute('stroke-width', isMajor ? '1' : '.5');
+      ticks.appendChild(line);
+    }
+
+    // animate value
+    let curVal = 0;
+    let targetVal = 0;
+    const maxVal = 360;
+    const circumference = 2 * Math.PI * 70;
+    const arcFraction = 0.7; // 252/360 degrees
+    const totalDash = circumference * arcFraction;
+
+    registerRAF(function () {
+      // float target
+      targetVal = 180 + Math.sin(now() * 0.7) * 120 + Math.sin(now() * 1.8) * 30;
+      curVal += (targetVal - curVal) * 0.05;
+      const v = Math.round(curVal);
+      val.textContent = String(v).padStart(3, '0');
+
+      const p = curVal / maxVal;
+      const dash = Math.min(1, p / arcFraction) * totalDash;
+      arc.setAttribute('stroke-dasharray', dash + ' ' + circumference);
+      arc.setAttribute('stroke-dashoffset', 0);
+    });
+  })();
+
+  /* ============================================================
+     EX-06 SKELETON PARTICLES — click emits particles that form shape
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('skeleton');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const particles = [];
+    let targetShape = [];
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      generateTargetShape();
+    }
+
+    function generateTargetShape() {
+      targetShape = [];
+      // abstract skeleton: skull + spine + ribs + pelvis
+      const cx = W / 2;
+      const topY = H * 0.2;
+
+      // skull
+      for (let a = 0; a < Math.PI * 2; a += 0.12) {
+        const rx = W * 0.08;
+        const ry = H * 0.1;
+        targetShape.push({ x: cx + Math.cos(a) * rx, y: topY + Math.sin(a) * ry });
+      }
+      // eye sockets
+      for (let a = 0; a < Math.PI * 2; a += 0.2) {
+        targetShape.push({ x: cx - 15 + Math.cos(a) * 8, y: topY - 5 + Math.sin(a) * 10 });
+        targetShape.push({ x: cx + 15 + Math.cos(a) * 8, y: topY - 5 + Math.sin(a) * 10 });
+      }
+
+      // spine
+      for (let i = 0; i < 12; i++) {
+        targetShape.push({ x: cx + (i % 2 === 0 ? 2 : -2), y: topY + 40 + i * 14 });
+      }
+
+      // ribs
+      for (let i = 0; i < 6; i++) {
+        const y = topY + 50 + i * 20;
+        const spread = 25 + i * 6;
+        for (let t = 0; t <= 1; t += 0.1) {
+          const xl = cx - spread + t * spread;
+          const yl = y + Math.sin(t * Math.PI) * 12;
+          const xr = cx + spread - t * spread;
+          targetShape.push({ x: xl, y: yl });
+          targetShape.push({ x: cx + spread * 2 - (xl - cx + spread), y: yl });
+        }
+      }
+
+      // pelvis
+      for (let t = 0; t < Math.PI; t += 0.1) {
+        targetShape.push({ x: cx - 40 + Math.cos(t) * 40, y: topY + 170 + Math.sin(t) * 20 });
+        targetShape.push({ x: cx + 40 - Math.cos(t) * 40, y: topY + 170 + Math.sin(t) * 20 });
+      }
+    }
+
+    function emit(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        const target = targetShape[Math.floor(Math.random() * targetShape.length)];
+        if (!target) continue;
+        particles.push({
+          x: x + (Math.random() - .5) * 20,
+          y: y + (Math.random() - .5) * 20,
+          vx: (Math.random() - .5) * 6,
+          vy: (Math.random() - .5) * 6,
+          tx: target.x,
+          ty: target.y,
+          life: 0,
+          maxLife: 180 + Math.random() * 120,
+          size: 1.5 + Math.random() * 1.5,
+          phase: 'explore'
+        });
+      }
+    }
+
+    // initial burst
+    setTimeout(function () { emit(W/2, H/2, 200); }, 500);
+
+    wrap.addEventListener('click', function (e) {
+      const r = wrap.getBoundingClientRect();
+      emit(e.clientX - r.left, e.clientY - r.top, 80);
+    });
+
+    function render() {
+      // trail fade
+      ctx.fillStyle = 'rgba(10,12,14,.15)';
+      ctx.fillRect(0, 0, W, H);
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life++;
+
+        if (p.phase === 'explore') {
+          // initial explosion then settle to target
+          const t = p.life / p.maxLife;
+          if (t < 0.15) {
+            // free fly
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.96;
+            p.vy *= 0.96;
+          } else {
+            // attract to target (spring)
+            const ax = (p.tx - p.x) * 0.02;
+            const ay = (p.ty - p.y) * 0.02;
+            p.vx = p.vx * 0.9 + ax;
+            p.vy = p.vy * 0.9 + ay;
+            p.x += p.vx;
+            p.y += p.vy;
+          }
+          if (p.life >= p.maxLife) {
+            p.phase = 'idle';
+            p.x = p.tx; p.y = p.ty;
+          }
+        } else {
+          // idle — subtle jitter
+          p.x = p.tx + Math.sin(now() * 2 + i) * 1.2;
+          p.y = p.ty + Math.cos(now() * 1.5 + i * 0.7) * 1.2;
+        }
+
+        // draw
+        ctx.fillStyle = 'rgba(232,228,216,.85)';
+        ctx.shadowColor = 'rgba(94,234,212,.6)';
+        ctx.shadowBlur = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // remove old ones in explore phase? keep idles forever but cap total
+      }
+
+      // cap
+      if (particles.length > 500) {
+        particles.splice(0, particles.length - 500);
+      }
+    }
+
+    registerRAF(render);
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     EX-07 NOISE FLOW FIELD — particle flow through perlin-like noise
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('flux');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const particles = [];
+    const N = 180;
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initParticles();
+    }
+
+    function initParticles() {
+      particles.length = 0;
+      for (let i = 0; i < N; i++) {
+        particles.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: 0, vy: 0,
+          life: Math.random() * 200,
+          maxLife: 150 + Math.random() * 200,
+          hue: 160 + Math.random() * 40 // teal range
+        });
+      }
+    }
+
+    // pseudo-2D-noise via sin combinations
+    function noise(x, y, t) {
+      const s = 0.004;
+      return (
+        Math.sin(x * s + t * 0.3) +
+        Math.sin(y * s + t * 0.2) +
+        Math.sin((x + y) * s * 0.7 + t * 0.4) * 0.5 +
+        Math.sin(Math.sqrt(x*x + y*y) * s * 0.5 + t * 0.5) * 0.5
+      ) / 3;
+    }
+
+    function render() {
+      // fade
+      ctx.fillStyle = 'rgba(21,25,30,.08)';
+      ctx.fillRect(0, 0, W, H);
+
+      const t = now();
+      for (let i = 0; i < N; i++) {
+        const p = particles[i];
+        const n = noise(p.x, p.y, t);
+        const angle = n * Math.PI * 2;
+        const speed = 0.8 + Math.abs(n) * 1.2;
+
+        p.vx = p.vx * 0.85 + Math.cos(angle) * speed * 0.3;
+        p.vy = p.vy * 0.85 + Math.sin(angle) * speed * 0.3;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life++;
+
+        // streak
+        ctx.strokeStyle = 'hsla(' + p.hue + ', 80%, 70%, .5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * 4, p.y - p.vy * 4);
+        ctx.stroke();
+
+        // reset when out of bounds or old
+        if (p.x < -10 || p.x > W + 10 || p.y < -10 || p.y > H + 10 || p.life > p.maxLife) {
+          p.x = Math.random() * W;
+          p.y = Math.random() * H;
+          p.vx = 0; p.vy = 0;
+          p.life = 0;
+          p.maxLife = 150 + Math.random() * 200;
+        }
+      }
+    }
+
+    registerRAF(render);
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     EX-08 BONE COUNTER — spring eased counter
+     ============================================================ */
+  (function () {
+    const el = document.getElementById('boneNum');
+    if (!el) return;
+    const target = parseInt(el.dataset.target, 10) || 206;
+    let current = 0;
+    let velocity = 0;
+    const spring = 0.06;
+    const damping = 0.8;
+
+    let animating = false;
+    let holdTimer = null;
+    let rafH = null;
+
+    function step() {
+      if (!animating) return;
+      const diff = target - current;
+      velocity += diff * spring;
+      velocity *= damping;
+      current += velocity;
+
+      if (Math.abs(diff) < 0.5 && Math.abs(velocity) < 0.5) {
+        current = target;
+        el.textContent = String(Math.round(current)).padStart(3, '0');
+        animating = false;
+        // reset and loop after pause
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(function () {
+          current = 0;
+          velocity = 0;
+          startAnim();
+        }, 2500);
+        return;
+      }
+      el.textContent = String(Math.round(current)).padStart(3, '0');
+    }
+
+    function startAnim() {
+      if (!rafH) {
+        rafH = registerRAF(step);
+      }
+      animating = true;
+    }
+
+    function loop() {
+      setTimeout(startAnim, 200 + Math.random() * 400);
+    }
+
+    // start when visible
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            loop();
+            io.disconnect();
+          }
+        });
+      }, { threshold: 0.3 });
+      io.observe(el.closest('.exhibit'));
+    } else {
+      loop();
+    }
+  })();
+
+  /* ============================================================
+     EX-09 GLITCH TYPEWRITER — with occasional glitch chars
+     ============================================================ */
+  (function () {
+    const el = document.getElementById('twText');
+    if (!el) return;
+    const text = '显 影 程 序 正 在 载 入 . . .\n解 析 骨 骼 结 构 2 0 6 处\n热 谱 扫 描 完 成 度 7 3 %\n粒 子 显 影 系 统 在 线';
+    const glitchChars = '!@#$%^&*()_+-=[]{}|;:,.<>?/\\~`0123456789ABCDEF';
+    let idx = 0;
+    let timer = null;
+    let visible = false;
+
+    function start() {
+      if (visible) return;
+      visible = true;
+      idx = 0;
+      el.innerHTML = '<span class="caret"></span>';
+      next();
+    }
+
+    function next() {
+      if (idx >= text.length) {
+        // reset after pause
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          visible = false;
+          start();
+        }, 4000);
+        return;
+      }
+      const ch = text[idx];
+
+      if (ch === '\n') {
+        el.insertBefore(document.createElement('br'), el.querySelector('.caret'));
+        idx++;
+        timer = setTimeout(next, 80);
+        return;
+      }
+
+      // occasional glitch: briefly show random char then correct
+      if (Math.random() < 0.08) {
+        const glitchSpan = document.createElement('span');
+        glitchSpan.className = 'err';
+        glitchSpan.textContent = glitchChars[Math.floor(Math.random() * glitchChars.length)];
+        el.insertBefore(glitchSpan, el.querySelector('.caret'));
+        timer = setTimeout(function () {
+          glitchSpan.remove();
+          appendChar(ch);
+          idx++;
+          timer = setTimeout(next, 40 + Math.random() * 60);
+        }, 120);
+      } else {
+        appendChar(ch);
+        idx++;
+        timer = setTimeout(next, 30 + Math.random() * 50);
+      }
+    }
+
+    function appendChar(ch) {
+      const caret = el.querySelector('.caret');
+      const txt = document.createTextNode(ch);
+      el.insertBefore(txt, caret);
+    }
+
+    // visibility trigger
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { start(); io.disconnect(); }
+        });
+      }, { threshold: 0.3 });
+      io.observe(el.closest('.exhibit'));
+    } else {
+      start();
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && timer) { clearTimeout(timer); timer = null; }
+      else if (!document.hidden && visible && idx < text.length) { next(); }
+    });
+  })();
+
+  /* ============================================================
+     EX-10 FLUORO BUTTON — click effect
+     ============================================================ */
+  (function () {
+    const btn = document.getElementById('fluoroBtn');
+    if (!btn) return;
+    let clickTimer = null;
+
+    btn.addEventListener('click', function () {
+      btn.style.transform = 'scale(.96)';
+      btn.style.transition = 'transform .1s cubic-bezier(.23,1,.32,1)';
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(function () {
+        btn.style.transform = '';
+        btn.style.transition = 'transform .5s cubic-bezier(.23,1,.32,1)';
+      }, 120);
+    });
+  })();
+
+  /* ============================================================
+     EX-11 RIPPLE POOL — click creates damped ripples
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('ripplePool');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const ripples = [];
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function addRipple(x, y) {
+      ripples.push({ x: x, y: y, r: 0, maxR: Math.min(W, H) * 0.5, life: 0, maxLife: 120 });
+    }
+
+    // auto ripples
+    let autoTimer = null;
+    function autoRipple() {
+      addRipple(W * 0.3 + Math.random() * W * 0.4, H * 0.3 + Math.random() * H * 0.4);
+      autoTimer = setTimeout(autoRipple, 2000 + Math.random() * 2000);
+    }
+
+    wrap.addEventListener('click', function (e) {
+      const r = wrap.getBoundingClientRect();
+      addRipple(e.clientX - r.left, e.clientY - r.top);
+    });
+
+    function render() {
+      ctx.fillStyle = 'rgba(21,25,30,.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const rp = ripples[i];
+        rp.life++;
+        const t = rp.life / rp.maxLife;
+        // damped expansion
+        rp.r = rp.maxR * Ease.outCubic(t);
+        const op = (1 - t) * 0.6;
+
+        // multi-ring
+        for (let j = 0; j < 3; j++) {
+          const rr = rp.r - j * 12;
+          if (rr <= 0) continue;
+          ctx.strokeStyle = 'rgba(94, 234, 212, ' + (op * (1 - j * 0.3)) + ')';
+          ctx.lineWidth = 1.5 - j * 0.4;
+          ctx.beginPath();
+          ctx.arc(rp.x, rp.y, rr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        if (rp.life >= rp.maxLife) ripples.splice(i, 1);
+      }
+    }
+
+    registerRAF(render);
+
+    // start auto ripples when visible
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            if (!autoTimer) autoRipple();
+          } else {
+            clearTimeout(autoTimer);
+            autoTimer = null;
+          }
+        });
+      }, { threshold: 0.2 });
+      io.observe(wrap.closest('.exhibit'));
+    } else {
+      autoRipple();
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { clearTimeout(autoTimer); autoTimer = null; }
+      else if (!autoTimer) { autoRipple(); }
+    });
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     EX-12 SPECTRUM ANALYZER — 64 band simulated spectrum
+     ============================================================ */
+  (function () {
+    const wrap = document.getElementById('spectrum');
+    if (!wrap) return;
+    const canvas = wrap.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const bands = 64;
+    const values = new Array(bands).fill(0);
+    const targets = new Array(bands).fill(0);
+    const peaks = new Array(bands).fill(0);
+    const peakAges = new Array(bands).fill(0);
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function updateTargets() {
+      const t = now();
+      for (let i = 0; i < bands; i++) {
+        // base falloff (low freq higher)
+        const falloff = 1 - (i / bands) * 0.6;
+        // multiple oscillators for natural look
+        const o1 = Math.sin(t * 1.5 + i * 0.3) * 0.3;
+        const o2 = Math.sin(t * 2.7 + i * 0.7) * 0.2;
+        const o3 = Math.sin(t * 0.8 + i * 0.15) * 0.25;
+        const noise = (Math.random() - 0.5) * 0.15;
+        targets[i] = Math.max(0.05, Math.min(1, (0.4 + o1 + o2 + o3 + noise) * falloff));
+      }
+    }
+
+    function render() {
+      updateTargets();
+
+      ctx.fillStyle = '#15191E';
+      ctx.fillRect(0, 0, W, H);
+
+      const padX = 30;
+      const padTop = 40;
+      const padBot = 50;
+      const chartW = W - padX * 2;
+      const chartH = H - padTop - padBot;
+      const bw = chartW / bands;
+      const barW = bw * 0.7;
+
+      // grid
+      ctx.strokeStyle = 'rgba(94,234,212,.06)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padTop + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padX, y);
+        ctx.lineTo(W - padX, y);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < bands; i++) {
+        // smooth toward target
+        values[i] += (targets[i] - values[i]) * 0.12;
+
+        const barH = values[i] * chartH;
+        const x = padX + i * bw + (bw - barW) / 2;
+        const y = padTop + chartH - barH;
+
+        // peak
+        if (values[i] > peaks[i]) {
+          peaks[i] = values[i];
+          peakAges[i] = 0;
+        } else {
+          peakAges[i]++;
+          peaks[i] = Math.max(0, peaks[i] - 0.003 * peakAges[i]);
+        }
+
+        // gradient bar
+        const grad = ctx.createLinearGradient(0, y, 0, padTop + chartH);
+        grad.addColorStop(0, '#5EEAD4');
+        grad.addColorStop(.5, 'rgba(94,234,212,.5)');
+        grad.addColorStop(1, 'rgba(94,234,212,.1)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, barW, barH);
+
+        // peak line
+        const py = padTop + chartH - peaks[i] * chartH;
+        ctx.fillStyle = '#FF7A1A';
+        ctx.fillRect(x, py, barW, 2);
+      }
+
+      // waveform overlay (line)
+      ctx.strokeStyle = 'rgba(232,228,216,.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const midY = padTop + chartH * 0.5;
+      for (let i = 0; i < bands; i++) {
+        const x = padX + i * bw + bw / 2;
+        const amp = (values[i] - 0.4) * chartH * 0.25;
+        const y = midY + amp * Math.sin(now() * 5 + i * 0.5);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    registerRAF(render);
+
+    let resizeTO;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(resize, 100);
+    });
+    resize();
+  })();
+
+  /* ============================================================
+     SCANBAR — pause when hidden
+     ============================================================ */
+  (function () {
+    const sb = document.getElementById('scanbar');
+    if (!sb) return;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) sb.style.animationPlayState = 'paused';
+      else sb.style.animationPlayState = 'running';
+    });
+    if (reduceMotion) sb.style.display = 'none';
+  })();
+
+})();
+</script>
+</body>
+</html>
