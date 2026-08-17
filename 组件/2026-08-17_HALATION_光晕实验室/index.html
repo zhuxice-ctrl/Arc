@@ -1,0 +1,1682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>HALATION · Film Optics Lab</title>
+<style>
+/* ============================================================
+   HALATION LAB — single-file vanilla implementation
+   Palette: charcoal base + amber + rose halo + silver
+   ============================================================ */
+:root{
+  --bg-0:#070706;
+  --bg-1:#11100e;
+  --bg-2:#1a1814;
+  --bg-3:#25211a;
+  --line:#2a2620;
+  --silver:#E8E4DE;
+  --silver-dim:#8b857b;
+  --amber:#FFB347;
+  --amber-dim:#D98832;
+  --rose:#FF6B4A;
+  --rose-dim:#c94a2e;
+  --rose-glow:rgba(255,107,74,.55);
+  --amber-glow:rgba(255,179,71,.45);
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --display:'Playfair Display',Georgia,serif;
+  --body:'Inter',system-ui,-apple-system,sans-serif;
+  --sprock: 14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg-0);color:var(--silver);font-family:var(--body);overflow-x:hidden;cursor:none}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* --- custom cursor --- */
+.cursor{
+  position:fixed;top:0;left:0;pointer-events:none;z-index:9999;
+  transform:translate(-50%,-50%);will-change:transform;
+  mix-blend-mode:screen;
+}
+.cursor-outer{
+  position:absolute;top:50%;left:50%;width:44px;height:44px;
+  border:2px solid var(--silver);border-radius:50%;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 12px var(--amber-glow),inset 0 0 8px var(--rose-glow);
+  transition:width .25s cubic-bezier(.2,.8,.2,1),height .25s cubic-bezier(.2,.8,.2,1),
+             border-color .25s,background .25s;
+}
+.cursor-inner{
+  position:absolute;top:50%;left:50%;width:6px;height:6px;
+  background:var(--rose);border-radius:50%;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 10px var(--rose),0 0 22px var(--amber);
+  transition:width .2s,height .2s,background .2s;
+}
+.cursor-halo{
+  position:absolute;top:50%;left:50%;width:80px;height:80px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,107,74,.18) 0%,rgba(255,179,71,.06) 40%,transparent 70%);
+  transform:translate(-50%,-50%);
+  transition:width .4s ease,height .4s ease,opacity .3s;
+  pointer-events:none;
+}
+.cursor.is-hover .cursor-outer{width:60px;height:60px;border-color:var(--amber);background:rgba(255,179,71,.08)}
+.cursor.is-hover .cursor-inner{width:4px;height:4px;background:var(--amber)}
+.cursor.is-click .cursor-outer{width:20px;height:20px}
+.cursor.is-click .cursor-inner{width:10px;height:10px}
+.ripple{
+  position:fixed;border:1.5px solid var(--amber);border-radius:50%;
+  pointer-events:none;z-index:9998;mix-blend-mode:screen;
+  transform:translate(-50%,-50%) scale(.2);opacity:.8;
+  animation:ripple 600ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes ripple{
+  to{transform:translate(-50%,-50%) scale(3.5);opacity:0;border-width:0.5px}
+}
+
+/* --- film-grain overlay (passive) --- */
+.grain-layer{
+  position:fixed;inset:0;pointer-events:none;z-index:50;opacity:.12;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.7  0 0 0 0 0.3  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  animation:grainShift 1.2s steps(6) infinite;
+}
+@keyframes grainShift{
+  0%{transform:translate(0,0)}
+  20%{transform:translate(-3%,2%)}
+  40%{transform:translate(2%,-2%)}
+  60%{transform:translate(-1%,3%)}
+  80%{transform:translate(3%,1%)}
+  100%{transform:translate(0,0)}
+}
+@media (prefers-reduced-motion:reduce){.grain-layer{animation:none}}
+
+/* --- sprocket rail --- */
+.sprocket-rail{
+  position:fixed;top:0;left:0;bottom:0;width:64px;z-index:30;
+  background:linear-gradient(180deg,#0b0a08 0%,#11100e 50%,#0b0a08 100%);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:28px 0;
+}
+.sprocket-rail::before,.sprocket-rail::after{
+  content:"";position:absolute;left:10px;right:10px;height:1px;background:var(--line);
+}
+.sprocket-rail::before{top:48px}
+.sprocket-rail::after{bottom:48px}
+.sprocket-hole{
+  width:14px;height:18px;border-radius:2px;
+  background:#070706;border:1px solid #2e2a22;
+  margin:6px 0;box-shadow:inset 0 0 4px rgba(0,0,0,.8);
+}
+.sprocket-hole.lit{background:var(--amber);border-color:var(--amber);box-shadow:0 0 8px var(--amber-glow),inset 0 0 4px rgba(255,255,255,.5)}
+.rail-label{
+  position:absolute;left:50%;transform:translateX(-50%) rotate(-90deg);
+  font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--silver-dim);
+  white-space:nowrap;
+}
+.rail-label.top{top:120px}
+.rail-label.bottom{bottom:120px}
+
+/* --- main layout --- */
+main{margin-left:64px;padding:48px 56px 120px;position:relative;z-index:10}
+
+/* --- hero --- */
+.hero{
+  position:relative;padding:80px 0 60px;
+  border-bottom:1px solid var(--line);margin-bottom:80px;
+}
+.hero-meta{
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--silver-dim);
+  margin-bottom:32px;text-transform:uppercase;
+}
+.hero-meta .dot{width:6px;height:6px;border-radius:50%;background:var(--rose);box-shadow:0 0 10px var(--rose);display:inline-block;margin-right:8px;vertical-align:middle;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.4}}
+.hero h1{
+  font-family:var(--display);font-weight:500;font-style:italic;
+  font-size:clamp(72px,11vw,180px);line-height:.92;letter-spacing:-.02em;
+  color:var(--silver);position:relative;
+}
+.hero h1 .halo-word{
+  position:relative;display:inline-block;color:var(--amber);
+  text-shadow:0 0 30px var(--amber-glow),0 0 60px var(--rose-glow);
+}
+.hero h1 .halo-word::after{
+  content:"HALATION";position:absolute;left:0;top:0;
+  color:var(--rose);opacity:.5;mix-blend-mode:screen;
+  transform:translate(3px,2px);filter:blur(8px);
+}
+.hero-sub{
+  margin-top:28px;max-width:560px;font-size:15px;line-height:1.7;
+  color:var(--silver-dim);font-weight:300;
+}
+.hero-stats{
+  display:flex;gap:48px;margin-top:40px;
+}
+.hero-stat{font-family:var(--mono)}
+.hero-stat .num{font-size:28px;color:var(--amber);font-weight:500}
+.hero-stat .lbl{font-size:10px;letter-spacing:2px;color:var(--silver-dim);text-transform:uppercase;margin-top:4px}
+
+/* --- zone grid --- */
+.zones{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:24px;
+}
+.zone{
+  position:relative;background:var(--bg-1);border:1px solid var(--line);
+  border-radius:2px;overflow:hidden;
+  grid-column:span 3;aspect-ratio: 4 / 3;
+  cursor:none;
+  transition:border-color .3s ease;
+}
+.zone:hover{border-color:var(--amber-dim)}
+.zone.wide{grid-column:span 6;aspect-ratio:16 / 5}
+.zone.tall{grid-row:span 2;aspect-ratio:auto}
+.zone.small{grid-column:span 2;aspect-ratio:1 / 1}
+
+.zone-canvas{
+  position:absolute;inset:0;
+}
+.zone-label{
+  position:absolute;top:16px;left:18px;z-index:5;
+  font-family:var(--mono);font-size:10px;letter-spacing:2px;
+  color:var(--silver-dim);text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+}
+.zone-label .idx{color:var(--amber)}
+.zone-title{
+  position:absolute;bottom:18px;left:18px;right:18px;z-index:5;
+  display:flex;justify-content:space-between;align-items:flex-end;
+}
+.zone-title h3{
+  font-family:var(--display);font-weight:500;font-size:22px;
+  color:var(--silver);letter-spacing:-.01em;
+}
+.zone-title .hint{
+  font-family:var(--mono);font-size:9px;letter-spacing:1.5px;
+  color:var(--amber-dim);text-transform:uppercase;text-align:right;
+  max-width:140px;line-height:1.5;
+}
+
+/* --- controls inside zones (sliders) --- */
+.zone-controls{
+  position:absolute;bottom:16px;right:16px;z-index:6;
+  display:flex;flex-direction:column;gap:10px;
+  background:rgba(11,10,8,.7);border:1px solid var(--line);
+  padding:10px 12px;border-radius:2px;backdrop-filter:blur(4px);
+  min-width:160px;
+}
+.zone-ctrl{display:flex;flex-direction:column;gap:4px}
+.zone-ctrl label{
+  font-family:var(--mono);font-size:9px;letter-spacing:1.5px;
+  color:var(--silver-dim);text-transform:uppercase;
+  display:flex;justify-content:space-between;
+}
+.zone-ctrl label span{color:var(--amber)}
+input[type="range"]{
+  -webkit-appearance:none;appearance:none;width:100%;height:2px;
+  background:var(--line);border-radius:1px;outline:none;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:12px;height:12px;
+  border-radius:50%;background:var(--amber);border:1px solid var(--rose);
+  cursor:none;box-shadow:0 0 6px var(--amber-glow);
+}
+input[type="range"]::-moz-range-thumb{
+  width:12px;height:12px;border-radius:50%;background:var(--amber);
+  border:1px solid var(--rose);cursor:none;box-shadow:0 0 6px var(--amber-glow);
+}
+
+/* --- scanline overlay for zones --- */
+.scanlines{
+  position:absolute;inset:0;pointer-events:none;z-index:3;opacity:.08;
+  background:repeating-linear-gradient(0deg,transparent 0,transparent 2px,rgba(0,0,0,.5) 2px,rgba(0,0,0,.5) 3px);
+}
+
+/* --- specific zone visuals (handled by JS, base styles here) --- */
+.z-bloom .source{
+  position:absolute;width:6px;height:6px;border-radius:50%;
+  background:#fff;transform:translate(-50%,-50%);cursor:none;
+  box-shadow:0 0 20px 10px var(--rose-glow),0 0 60px 30px var(--amber-glow),0 0 120px 60px rgba(255,107,74,.2);
+  z-index:2;
+}
+.z-bloom .halo-ring{
+  position:absolute;border-radius:50%;transform:translate(-50%,-50%);
+  pointer-events:none;mix-blend-mode:screen;
+}
+
+.z-anamorphic .streak{
+  position:absolute;height:2px;transform:translate(-50%,-50%);
+  background:linear-gradient(90deg,transparent,var(--amber) 20%,var(--rose) 50%,var(--amber) 80%,transparent);
+  pointer-events:none;mix-blend-mode:screen;filter:blur(1px);
+  box-shadow:0 0 20px var(--amber-glow);
+}
+.z-anamorphic .flare-dot{
+  position:absolute;width:8px;height:8px;border-radius:50%;
+  background:var(--amber);transform:translate(-50%,-50%);
+  box-shadow:0 0 12px var(--amber),0 0 40px var(--rose-glow);
+}
+
+.z-grain canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-burn canvas{position:absolute;inset:0;width:100%;height:100%}
+.z-burn .burn-layer{
+  position:absolute;inset:0;z-index:2;pointer-events:none;
+}
+
+.z-gate{overflow:hidden}
+.z-gate .gw-frame{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--display);font-size:clamp(48px,8vw,120px);font-style:italic;
+  color:var(--silver);will-change:transform;
+}
+.z-gate .gw-frame .text-shift{text-shadow:2px 0 var(--rose),-2px 0 var(--amber);opacity:.8}
+.z-gate .perfs-left,.z-gate .perfs-right{
+  position:absolute;top:0;bottom:0;width:22px;z-index:3;
+  background:var(--bg-0);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px;
+}
+.z-gate .perfs-right{right:0;border-right:none;border-left:1px solid var(--line)}
+.z-gate .perf{width:10px;height:14px;border:1px solid #2a2620;border-radius:1.5px;background:transparent}
+
+.z-chroma .ce-canvas{position:absolute;inset:0;width:100%;height:100%}
+.z-chroma .ce-text{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:var(--display);font-size:clamp(60px,10vw,140px);font-weight:600;
+  letter-spacing:-.02em;color:transparent;pointer-events:none;
+}
+.z-chroma .ce-text .r,.z-chroma .ce-text .g,.z-chroma .ce-text .b{
+  position:absolute;top:0;left:0;mix-blend-mode:screen;
+  will-change:transform;
+}
+.z-chroma .ce-text .r{color:var(--rose)}
+.z-chroma .ce-text .g{color:var(--amber)}
+.z-chroma .ce-text .b{color:var(--silver)}
+
+.z-lightleak canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-dust canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-shutter .sh-frame{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--display);font-style:italic;font-size:64px;color:var(--silver);
+}
+.z-shutter .sh-blade{
+  position:absolute;background:var(--bg-0);z-index:2;
+  transition:transform .6s cubic-bezier(.4,0,.2,1);
+}
+.z-shutter .sh-top{top:0;left:0;right:0;height:50%;transform-origin:top}
+.z-shutter .sh-bottom{bottom:0;left:0;right:0;height:50%;transform-origin:bottom}
+.z-shutter.open .sh-top{transform:translateY(-100%)}
+.z-shutter.open .sh-bottom{transform:translateY(100%)}
+
+.z-vignette canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-bokeh canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-scratch canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.z-spectrum canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* --- footer --- */
+footer{
+  margin-left:64px;padding:40px 56px;border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--silver-dim);
+  text-transform:uppercase;
+}
+footer .brand{color:var(--amber)}
+
+/* --- responsive --- */
+@media (max-width: 900px){
+  .sprocket-rail{display:none}
+  main{margin-left:0;padding:32px 20px 80px}
+  footer{margin-left:0;padding:24px 20px}
+  .zones{grid-template-columns:repeat(2,1fr)}
+  .zone,.zone.wide{grid-column:span 2}
+  .zone.small{grid-column:span 1;aspect-ratio:1 / 1}
+}
+
+/* --- ambient light leak on hero --- */
+.hero::before{
+  content:"";position:absolute;top:-100px;right:-50px;width:500px;height:500px;
+  background:radial-gradient(circle,rgba(255,107,74,.15) 0%,transparent 60%);
+  pointer-events:none;filter:blur(40px);
+}
+.hero::after{
+  content:"";position:absolute;bottom:-80px;left:20%;width:400px;height:300px;
+  background:radial-gradient(ellipse,rgba(255,179,71,.08) 0%,transparent 70%);
+  pointer-events:none;filter:blur(30px);
+}
+</style>
+</head>
+<body>
+
+<!-- grain overlay -->
+<div class="grain-layer" aria-hidden="true"></div>
+
+<!-- custom cursor -->
+<div class="cursor" id="cursor" aria-hidden="true">
+  <div class="cursor-halo"></div>
+  <div class="cursor-outer"></div>
+  <div class="cursor-inner"></div>
+</div>
+
+<!-- sprocket rail -->
+<aside class="sprocket-rail" aria-hidden="true">
+  <span class="rail-label top">HALATION · LAB</span>
+  <div id="sprocketHoles"></div>
+  <span class="rail-label bottom">FRAME · 24FPS</span>
+</aside>
+
+<main>
+  <!-- hero -->
+  <section class="hero">
+    <div class="hero-meta">
+      <div><span class="dot"></span>REC · 24fps · 35mm</div>
+      <div>EXHIBIT 01—13 · OPTICAL FLAW LAB</div>
+    </div>
+    <h1><span class="halo-word">HALATION</span><br/>OPTICS LAB</h1>
+    <p class="hero-sub">
+      A darkroom of cinematic accidents. Thirteen hands-on stations dissect the optical
+      imperfections of analog film — bloom streaks, anamorphic flares, gate weave,
+      chromatic fray, burned acetate. Drag, click, scrub. Make the flaws glow.
+    </p>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="num">13</div><div class="lbl">Optical Zones</div></div>
+      <div class="hero-stat"><div class="num">35mm</div><div class="lbl">Film Gauge</div></div>
+      <div class="hero-stat"><div class="num">1923</div><div class="lbl">Year of Halation Patent</div></div>
+    </div>
+  </section>
+
+  <!-- zones -->
+  <section class="zones">
+
+    <!-- 01 bloom -->
+    <div class="zone z-bloom" data-zone="bloom">
+      <div class="scanlines"></div>
+      <div class="zone-canvas" id="bloomCanvas">
+        <div class="source" id="bloomSource"></div>
+      </div>
+      <div class="zone-label"><span class="idx">01</span> HALATION BLOOM</div>
+      <div class="zone-title">
+        <h3>Red Halo Bloom</h3>
+        <span class="hint">drag the light source</span>
+      </div>
+      <div class="zone-controls">
+        <div class="zone-ctrl"><label>Intensity <span id="bloomI-val">100</span></label>
+          <input type="range" id="bloomI" min="20" max="200" value="100"/></div>
+        <div class="zone-ctrl"><label>Spread <span id="bloomS-val">60</span></label>
+          <input type="range" id="bloomS" min="20" max="120" value="60"/></div>
+      </div>
+    </div>
+
+    <!-- 02 anamorphic -->
+    <div class="zone z-anamorphic" data-zone="anamorphic">
+      <div class="scanlines"></div>
+      <div class="zone-canvas" id="anamorphicCanvas"></div>
+      <div class="zone-label"><span class="idx">02</span> ANAMORPHIC FLARE</div>
+      <div class="zone-title">
+        <h3>Horizontal Streaks</h3>
+        <span class="hint">click to fire · move to drift</span>
+      </div>
+    </div>
+
+    <!-- 03 grain generator -->
+    <div class="zone z-grain" data-zone="grain">
+      <div class="scanlines"></div>
+      <canvas id="grainCanvas"></canvas>
+      <div class="zone-label"><span class="idx">03</span> EMULSION GRAIN</div>
+      <div class="zone-title">
+        <h3>Film Grain Generator</h3>
+        <span class="hint">tweak size & chroma</span>
+      </div>
+      <div class="zone-controls">
+        <div class="zone-ctrl"><label>Size <span id="grainSz-val">1.2</span></label>
+          <input type="range" id="grainSz" min="0.5" max="4" step="0.1" value="1.2"/></div>
+        <div class="zone-ctrl"><label>Density <span id="grainD-val">70</span></label>
+          <input type="range" id="grainD" min="10" max="100" value="70"/></div>
+        <div class="zone-ctrl"><label>Color noise <span id="grainC-val">30</span></label>
+          <input type="range" id="grainC" min="0" max="100" value="30"/></div>
+      </div>
+    </div>
+
+    <!-- 04 burn transition (wide) -->
+    <div class="zone wide z-burn" data-zone="burn">
+      <div class="scanlines"></div>
+      <canvas id="burnCanvas" class="burn-layer"></canvas>
+      <div class="zone-canvas" style="display:flex;align-items:center;justify-content:center;
+           font-family:var(--display);font-style:italic;font-size:clamp(40px,6vw,90px);color:var(--silver)">
+        <span style="opacity:.15">UNDER THE SURFACE</span>
+      </div>
+      <div class="zone-label"><span class="idx">04</span> ACETATE BURN</div>
+      <div class="zone-title">
+        <h3>Film Burn Transition</h3>
+        <span class="hint">click to burn through</span>
+      </div>
+    </div>
+
+    <!-- 05 gate weave -->
+    <div class="zone z-gate" data-zone="gate">
+      <div class="scanlines"></div>
+      <div class="perfs-left" id="gatePerfsL"></div>
+      <div class="perfs-right" id="gatePerfsR"></div>
+      <div class="gw-frame" id="gateFrame">
+        <span class="text-shift">GATE · WEAVE</span>
+      </div>
+      <div class="zone-label"><span class="idx">05</span> GATE WEAVE</div>
+      <div class="zone-title">
+        <h3>Sprocket Drift</h3>
+        <span class="hint">watch the frame wander</span>
+      </div>
+    </div>
+
+    <!-- 06 chromatic edge -->
+    <div class="zone z-chroma" data-zone="chroma">
+      <div class="scanlines"></div>
+      <div class="ce-text" id="chromaText">
+        <span class="r">CHROMA</span>
+        <span class="g">CHROMA</span>
+        <span class="b">CHROMA</span>
+      </div>
+      <div class="zone-label"><span class="idx">06</span> CHROMATIC EDGE</div>
+      <div class="zone-title">
+        <h3>RGB Split Fringe</h3>
+        <span class="hint">faster cursor = wider split</span>
+      </div>
+    </div>
+
+    <!-- 07 light leak -->
+    <div class="zone z-lightleak" data-zone="leak">
+      <div class="scanlines"></div>
+      <canvas id="leakCanvas"></canvas>
+      <div class="zone-label"><span class="idx">07</span> LIGHT LEAK</div>
+      <div class="zone-title">
+        <h3>Canister Edge Bleed</h3>
+        <span class="hint">move cursor to push light</span>
+      </div>
+    </div>
+
+    <!-- 08 dust & scratches -->
+    <div class="zone z-scratch" data-zone="scratch">
+      <div class="scanlines"></div>
+      <canvas id="scratchCanvas"></canvas>
+      <div class="zone-label"><span class="idx">08</span> DUST + SCRATCHES</div>
+      <div class="zone-title">
+        <h3>Emulsion Abrasions</h3>
+        <span class="hint">click to add a scratch</span>
+      </div>
+    </div>
+
+    <!-- 09 shutter flicker -->
+    <div class="zone small z-shutter" data-zone="shutter" id="shutterZone">
+      <div class="scanlines"></div>
+      <div class="sh-frame">CLICK</div>
+      <div class="sh-blade sh-top"></div>
+      <div class="sh-blade sh-bottom"></div>
+      <div class="zone-label"><span class="idx">09</span> SHUTTER</div>
+      <div class="zone-title">
+        <h3>Blade Flicker</h3>
+        <span class="hint">click to fire</span>
+      </div>
+    </div>
+
+    <!-- 10 vignette falloff -->
+    <div class="zone small z-vignette" data-zone="vignette">
+      <div class="scanlines"></div>
+      <canvas id="vignetteCanvas"></canvas>
+      <div class="zone-label"><span class="idx">10</span> VIGNETTE</div>
+      <div class="zone-title">
+        <h3>Lens Falloff</h3>
+        <span class="hint">scroll to open/close</span>
+      </div>
+    </div>
+
+    <!-- 11 bokeh orbs -->
+    <div class="zone small z-bokeh" data-zone="bokeh">
+      <div class="scanlines"></div>
+      <canvas id="bokehCanvas"></canvas>
+      <div class="zone-label"><span class="idx">11</span> BOKEH</div>
+      <div class="zone-title">
+        <h3>Out-of-Focus Orbs</h3>
+        <span class="hint">drag to stir</span>
+      </div>
+    </div>
+
+    <!-- 12 spectrum frequency -->
+    <div class="zone z-spectrum" data-zone="spectrum">
+      <div class="scanlines"></div>
+      <canvas id="spectrumCanvas"></canvas>
+      <div class="zone-label"><span class="idx">12</span> SPECTRUM</div>
+      <div class="zone-title">
+        <h3>Prism Frequency Bars</h3>
+        <span class="hint">audio-reactive visual</span>
+      </div>
+      <div class="zone-controls">
+        <div class="zone-ctrl"><label>Intensity <span id="specI-val">60</span></label>
+          <input type="range" id="specI" min="10" max="100" value="60"/></div>
+      </div>
+    </div>
+
+    <!-- 13 magnetic type -->
+    <div class="zone" data-zone="magtype" id="magZone" style="display:flex;align-items:center;justify-content:center;overflow:hidden">
+      <div class="scanlines"></div>
+      <svg id="magSvg" viewBox="0 0 600 300" style="width:100%;height:100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="magGrad" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="#FF6B4A"/>
+            <stop offset="50%" stop-color="#FFB347"/>
+            <stop offset="100%" stop-color="#E8E4DE"/>
+          </linearGradient>
+        </defs>
+        <text id="magText" x="300" y="180" text-anchor="middle" font-family="'Playfair Display',serif"
+              font-style="italic" font-size="120" fill="url(#magGrad)" style="font-weight:600">
+          MAGNETIC
+        </text>
+      </svg>
+      <div class="zone-label"><span class="idx">13</span> MAGNETIC TYPE</div>
+      <div class="zone-title">
+        <h3>Letter Attraction Field</h3>
+        <span class="hint">hover to warp glyphs</span>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer>
+  <div><span class="brand">HALATION LAB</span> · OPTICAL IMPERFECTION STUDIES</div>
+  <div>FRAME 0472 / 8540 · ROLL A-17</div>
+</footer>
+
+<script>
+/* ============================================================
+   HALATION LAB — vanilla JS
+   Single RAF loop, visibility-based pause, cleanup on unload.
+   ============================================================ */
+(function(){
+'use strict';
+
+// ---------- utils ----------
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+const rand = (a,b)=>a+Math.random()*(b-a);
+
+// ---------- visibility / reduced motion ----------
+let running = true;
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+document.addEventListener('visibilitychange', ()=>{
+  running = !document.hidden;
+  if(running) lastT = performance.now();
+});
+
+// master RAF
+let lastT = performance.now();
+const tickHandlers = [];
+function frame(t){
+  const dt = Math.min(50, t - lastT); // cap dt to 50ms to avoid jumps
+  lastT = t;
+  if(running && !reduced){
+    for(let i=0;i<tickHandlers.length;i++) tickHandlers[i](dt, t);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- custom cursor ----------
+const cursor = $('#cursor');
+const curInner = cursor.querySelector('.cursor-inner');
+let curX = window.innerWidth/2, curY = window.innerHeight/2;
+let curTX = curX, curTY = curY;
+
+// initialize cursor at center
+cursor.style.transform = `translate(${curX}px, ${curY}px) translate(-50%,-50%)`;
+
+window.addEventListener('mousemove', e=>{
+  curTX = e.clientX; curTY = e.clientY;
+},{passive:true});
+
+tickHandlers.push((dt)=>{
+  // spring follow
+  curX = lerp(curX, curTX, 0.18);
+  curY = lerp(curY, curTY, 0.18);
+  cursor.style.transform = `translate(${curX}px, ${curY}px) translate(-50%,-50%)`;
+});
+
+// hover morph
+function setHover(isHover){
+  cursor.classList.toggle('is-hover', isHover);
+}
+document.addEventListener('mouseover', e=>{
+  const t = e.target;
+  if(t.closest('button, a, input, .zone, [data-hover]')) setHover(true);
+});
+document.addEventListener('mouseout', e=>{
+  const t = e.target;
+  if(t.closest('button, a, input, .zone, [data-hover]')) setHover(false);
+});
+
+// click ripple
+document.addEventListener('mousedown', e=>{
+  cursor.classList.add('is-click');
+  const r = document.createElement('div');
+  r.className = 'ripple';
+  r.style.left = e.clientX+'px';
+  r.style.top = e.clientY+'px';
+  r.style.width = r.style.height = '60px';
+  document.body.appendChild(r);
+  setTimeout(()=>r.remove(), 650);
+});
+document.addEventListener('mouseup', ()=>cursor.classList.remove('is-click'));
+
+// ---------- sprocket rail animation ----------
+const sprocketEl = $('#sprocketHoles');
+(function buildSprockets(){
+  const n = 60;
+  let html = '';
+  for(let i=0;i<n;i++) html += `<div class="sprocket-hole" data-i="${i}"></div>`;
+  sprocketEl.innerHTML = html;
+})();
+const holes = $$('.sprocket-hole');
+let sprocketPhase = 0;
+tickHandlers.push((dt)=>{
+  sprocketPhase += dt * 0.02;
+  const onIdx = Math.floor(sprocketPhase) % holes.length;
+  holes.forEach((h,i)=>{
+    const d = Math.abs(i - onIdx);
+    const wrap = Math.min(d, holes.length - d);
+    const op = wrap < 3 ? (3 - wrap) / 3 : 0;
+    if(op > 0.01){
+      h.style.background = `rgba(255,179,71,${op*0.8})`;
+      h.style.borderColor = `rgba(255,179,71,${op})`;
+      h.style.boxShadow = op > 0.5 ? `0 0 ${op*10}px rgba(255,179,71,${op*0.6})` : 'none';
+    } else {
+      h.style.background = '#070706';
+      h.style.borderColor = '#2e2a22';
+      h.style.boxShadow = 'inset 0 0 4px rgba(0,0,0,.8)';
+    }
+  });
+});
+
+// ---------- zone 01: bloom ----------
+(function bloom(){
+  const zone = document.querySelector('.z-bloom');
+  const src = $('#bloomSource');
+  const canvas = $('#bloomCanvas');
+  const iSlider = $('#bloomI'), iVal = $('#bloomI-val');
+  const sSlider = $('#bloomS'), sVal = $('#bloomS-val');
+
+  let dragging = false;
+  let x = 0, y = 0; // relative to zone center
+  let targetX = 0, targetY = 0;
+
+  // create halo rings
+  const rings = [];
+  for(let i=0;i<5;i++){
+    const r = document.createElement('div');
+    r.className = 'halo-ring';
+    canvas.appendChild(r);
+    rings.push(r);
+  }
+
+  function zonePos(){
+    const r = zone.getBoundingClientRect();
+    return {r, cx: r.width/2, cy: r.height/2};
+  }
+
+  function pointerInZone(e){
+    const {r} = zonePos();
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    return {x: px, y: py, inside: px>0 && px<r.width && py>0 && py<r.height};
+  }
+
+  // init center
+  setTimeout(()=>{
+    const {cx,cy} = zonePos();
+    x = targetX = cx;
+    y = targetY = cy;
+  }, 50);
+
+  zone.addEventListener('mousedown', e=>{
+    const p = pointerInZone(e);
+    if(p.inside){ dragging = true; targetX = p.x; targetY = p.y; }
+  });
+  window.addEventListener('mouseup', ()=>dragging=false);
+  zone.addEventListener('mousemove', e=>{
+    const p = pointerInZone(e);
+    targetX = clamp(p.x, 10, zone.clientWidth - 10);
+    targetY = clamp(p.y, 10, zone.clientHeight - 10);
+  });
+
+  iSlider.addEventListener('input', ()=> iVal.textContent = iSlider.value);
+  sSlider.addEventListener('input', ()=> sVal.textContent = sSlider.value);
+
+  tickHandlers.push((dt)=>{
+    const ease = dragging ? 0.35 : 0.06;
+    x = lerp(x, targetX, ease);
+    y = lerp(y, targetY, ease);
+
+    const intensity = +iSlider.value;
+    const spread = +sSlider.value;
+
+    src.style.left = x+'px';
+    src.style.top = y+'px';
+    const base = 8 + intensity * 0.12;
+    src.style.boxShadow = `
+      0 0 ${base}px ${base*0.5}px rgba(255,107,74,0.6),
+      0 0 ${base*3}px ${base*1.5}px rgba(255,179,71,0.4),
+      0 0 ${base*8}px ${base*4}px rgba(255,107,74,0.15)
+    `;
+
+    // rings
+    const ringSizes = [spread*0.5, spread*0.9, spread*1.4, spread*2.1, spread*3];
+    const ringOp = [0.5, 0.35, 0.22, 0.12, 0.05];
+    rings.forEach((r,i)=>{
+      const s = ringSizes[i] * (intensity/100);
+      r.style.left = x+'px';
+      r.style.top = y+'px';
+      r.style.width = s*2+'px';
+      r.style.height = s*2+'px';
+      const hue = i % 2 === 0 ? '255,107,74' : '255,179,71';
+      r.style.background = `radial-gradient(circle, rgba(${hue},${ringOp[i]}) 0%, transparent 70%)`;
+      // subtle pulse
+      const pulse = 1 + Math.sin(performance.now()*0.002 + i) * 0.05;
+      r.style.transform = `translate(-50%,-50%) scale(${pulse})`;
+    });
+  });
+})();
+
+// ---------- zone 02: anamorphic flare ----------
+(function anamorphic(){
+  const zone = document.querySelector('.z-anamorphic');
+  const canvas = $('#anamorphicCanvas');
+  const streaks = [];
+  let mouseX = 0.5, mouseY = 0.5;
+  let targetMX = 0.5, targetMY = 0.5;
+
+  // persistent dot
+  const dot = document.createElement('div');
+  dot.className = 'flare-dot';
+  canvas.appendChild(dot);
+
+  zone.addEventListener('mousemove', e=>{
+    const r = zone.getBoundingClientRect();
+    targetMX = (e.clientX - r.left) / r.width;
+    targetMY = (e.clientY - r.top) / r.height;
+  });
+
+  zone.addEventListener('click', e=>{
+    const r = zone.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    // spawn 3 streaks of different widths
+    for(let i=0;i<3;i++){
+      const s = document.createElement('div');
+      s.className = 'streak';
+      s.style.left = x+'px';
+      s.style.top = y + rand(-3,3)+'px';
+      const w = rand(120, 380) - i*40;
+      s.style.width = w+'px';
+      s.style.opacity = 0;
+      s.style.transition = 'opacity .6s ease-out';
+      s._life = 0;
+      s._maxLife = rand(600, 1200);
+      canvas.appendChild(s);
+      streaks.push(s);
+      requestAnimationFrame(()=>{ s.style.opacity = (0.7 - i*0.2).toString(); });
+    }
+  });
+
+  tickHandlers.push((dt)=>{
+    mouseX = lerp(mouseX, targetMX, 0.1);
+    mouseY = lerp(mouseY, targetMY, 0.1);
+    const r = zone.getBoundingClientRect();
+    const px = mouseX * r.width;
+    const py = mouseY * r.height;
+    dot.style.left = px+'px';
+    dot.style.top = py+'px';
+
+    // drift streaks + fade
+    for(let i=streaks.length-1;i>=0;i--){
+      const s = streaks[i];
+      s._life += dt;
+      const prog = s._life / s._maxLife;
+      if(prog >= 1){ s.remove(); streaks.splice(i,1); continue; }
+      s.style.opacity = Math.max(0, 1 - prog*prog) * 0.7;
+      // slight vertical drift
+      const driftY = Math.sin(s._life * 0.003 + i) * 2;
+      s.style.transform = `translate(-50%, calc(-50% + ${driftY}px)) scaleX(${1 + prog*0.3})`;
+    }
+  });
+})();
+
+// ---------- zone 03: grain generator (canvas) ----------
+(function grainGen(){
+  const canvas = $('#grainCanvas');
+  const ctx = canvas.getContext('2d');
+  const szSlider = $('#grainSz'), szVal = $('#grainSz-val');
+  const dSlider = $('#grainD'), dVal = $('#grainD-val');
+  const cSlider = $('#grainC'), cVal = $('#grainC-val');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  szSlider.addEventListener('input', ()=> szVal.textContent = szSlider.value);
+  dSlider.addEventListener('input', ()=> dVal.textContent = dSlider.value);
+  cSlider.addEventListener('input', ()=> cVal.textContent = cSlider.value);
+
+  let noiseSeed = 0;
+  tickHandlers.push(()=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    const size = +szSlider.value;
+    const density = +dSlider.value / 100;
+    const chroma = +cSlider.value / 100;
+
+    ctx.fillStyle = '#0a0908';
+    ctx.fillRect(0,0,w,h);
+
+    const cols = Math.ceil(w / size);
+    const rows = Math.ceil(h / size);
+    noiseSeed += 1;
+
+    // pre-seeded deterministic-ish but changing fast enough
+    for(let y=0;y<rows;y++){
+      for(let x=0;x<cols;x++){
+        // pseudo random with seed offset
+        const n = Math.sin((x*12.9898 + y*78.233 + noiseSeed) * 43758.5453) * 43758.5453;
+        const r = n - Math.floor(n);
+        if(r > density) continue;
+
+        const g = 40 + r * 200;
+        if(chroma > 0.01){
+          const cn = Math.sin((x*3.2 + y*9.7 + noiseSeed*0.3)*1.5)* 0.5 + 0.5;
+          const cShift = (cn - 0.5) * chroma * 120;
+          const rr = clamp(g + cShift, 0, 255);
+          const gg = clamp(g - cShift * 0.3, 0, 255);
+          const bb = clamp(g - cShift * 0.7, 0, 255);
+          ctx.fillStyle = `rgb(${rr|0},${gg|0},${bb|0})`;
+        } else {
+          ctx.fillStyle = `rgb(${g|0},${g|0},${g|0})`;
+        }
+        ctx.fillRect(x*size, y*size, size, size);
+      }
+    }
+
+    // warm amber tint overlay
+    ctx.fillStyle = 'rgba(255,179,71,0.04)';
+    ctx.fillRect(0,0,w,h);
+  });
+})();
+
+// ---------- zone 04: film burn transition ----------
+(function filmBurn(){
+  const zone = document.querySelector('.z-burn');
+  const canvas = $('#burnCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  let burnActive = false;
+  let burnProgress = 0; // 0-1
+  let burnHoles = [];
+  let emberParticles = [];
+
+  zone.addEventListener('click', ()=>{
+    if(burnActive && burnProgress > 0.3) {
+      // reverse / reset
+      burnProgress = 0;
+      burnHoles = [];
+      emberParticles = [];
+      return;
+    }
+    burnActive = true;
+    // seed a new hole at click position
+    const r = zone.getBoundingClientRect();
+    burnHoles.push({
+      x: r.width/2, y: r.height/2,
+      r: 5, targetR: Math.max(r.width, r.height) * 1.2,
+      jitter: 0
+    });
+  });
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    ctx.clearRect(0,0,w,h);
+
+    if(!burnActive || burnHoles.length === 0){
+      // just show the "film" base if not burning
+      return;
+    }
+
+    burnProgress += dt * 0.0005;
+
+    // grow holes
+    burnHoles.forEach(h=>{
+      h.r += dt * 0.15;
+      h.jitter += dt * 0.01;
+    });
+
+    // spawn new holes along burn edges
+    if(Math.random() < 0.3 && burnProgress < 0.8){
+      const src = burnHoles[Math.floor(Math.random()*burnHoles.length)];
+      const ang = Math.random() * Math.PI * 2;
+      const dist = src.r * 0.9 + rand(-10, 10);
+      burnHoles.push({
+        x: src.x + Math.cos(ang) * dist,
+        y: src.y + Math.sin(ang) * dist,
+        r: rand(2, 8),
+        jitter: rand(0, 10)
+      });
+    }
+
+    // embers
+    if(Math.random() < 0.6){
+      const src = burnHoles[Math.floor(Math.random()*burnHoles.length)];
+      const ang = rand(-Math.PI*0.8, -Math.PI*0.2);
+      emberParticles.push({
+        x: src.x + Math.cos(ang) * src.r,
+        y: src.y + Math.sin(ang) * src.r,
+        vx: rand(-0.3, 0.3),
+        vy: rand(-1.2, -0.4),
+        life: 0, maxLife: rand(400, 1000),
+        size: rand(1, 3),
+        color: Math.random() > 0.5 ? [255,179,71] : [255,107,74]
+      });
+    }
+    for(let i=emberParticles.length-1;i>=0;i--){
+      const p = emberParticles[i];
+      p.life += dt;
+      if(p.life > p.maxLife){ emberParticles.splice(i,1); continue; }
+      p.x += p.vx * dt * 0.1;
+      p.y += p.vy * dt * 0.1;
+      p.vy -= dt * 0.0005; // drift up
+      const op = 1 - p.life/p.maxLife;
+      ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${op})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * op, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // composite burn: draw "film" layer, then burn holes as destination-out
+    // Step 1: draw burnt film (dark charred edges)
+    // We'll draw a dark overlay and punch holes
+    ctx.fillStyle = 'rgba(7,7,6,0.92)';
+    ctx.fillRect(0,0,w,h);
+
+    // Step 2: composite holes with destination-out
+    ctx.globalCompositeOperation = 'destination-out';
+    burnHoles.forEach(h=>{
+      const grad = ctx.createRadialGradient(h.x, h.y, h.r*0.6, h.x, h.y, h.r);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.7, 'rgba(0,0,0,0.8)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      // irregular hole shape
+      const pts = 12;
+      ctx.moveTo(h.x + h.r, h.y);
+      for(let i=1;i<=pts;i++){
+        const a = (i/pts) * Math.PI * 2;
+        const jitter = 1 + Math.sin(a*3 + h.jitter) * 0.15 + Math.cos(a*5 + h.jitter*0.7) * 0.1;
+        const rr = h.r * jitter;
+        ctx.lineTo(h.x + Math.cos(a)*rr, h.y + Math.sin(a)*rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Step 3: draw glowing edges around holes
+    burnHoles.forEach(h=>{
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,107,74,0.8)';
+      ctx.lineWidth = 4;
+      ctx.shadowColor = 'rgba(255,179,71,0.8)';
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      const pts = 16;
+      ctx.moveTo(h.x + h.r*0.95, h.y);
+      for(let i=1;i<=pts;i++){
+        const a = (i/pts) * Math.PI * 2;
+        const jitter = 0.95 + Math.sin(a*3 + h.jitter) * 0.12 + Math.cos(a*5 + h.jitter*0.7) * 0.08;
+        const rr = h.r * jitter;
+        ctx.lineTo(h.x + Math.cos(a)*rr, h.y + Math.sin(a)*rr);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    if(burnProgress > 0.95){
+      burnActive = false;
+      // reset after delay
+      setTimeout(()=>{
+        burnProgress = 0;
+        burnHoles = [];
+      }, 1500);
+    }
+  });
+})();
+
+// ---------- zone 05: gate weave ----------
+(function gateWeave(){
+  const frame = $('#gateFrame');
+  const pl = $('#gatePerfsL'), pr = $('#gatePerfsR');
+  const perfCount = 20;
+
+  // build perfs
+  let ph = '';
+  for(let i=0;i<perfCount;i++) ph += `<div class="perf"></div>`;
+  pl.innerHTML = ph; pr.innerHTML = ph;
+
+  let phase = 0;
+  let offsetX = 0, offsetY = 0, rot = 0;
+  let targetOX = 0, targetOY = 0, targetR = 0;
+  let perfsOffset = 0;
+
+  tickHandlers.push((dt)=>{
+    phase += dt * 0.001;
+    // smooth random walk
+    if(Math.random() < 0.02){
+      targetOX = rand(-3, 3);
+      targetOY = rand(-2, 2);
+      targetR = rand(-0.15, 0.15);
+    }
+    offsetX = lerp(offsetX, targetOX, 0.05);
+    offsetY = lerp(offsetY, targetOY, 0.05);
+    rot = lerp(rot, targetR, 0.05);
+
+    // film advance: perfs scroll slowly
+    perfsOffset = (perfsOffset + dt * 0.03) % 18; // perf height ~14 + gap
+    pl.style.transform = `translateY(${perfsOffset}px)`;
+    pr.style.transform = `translateY(${perfsOffset}px)`;
+
+    frame.style.transform = `translate(${offsetX}px, ${offsetY}px) rotate(${rot}deg)`;
+
+    // chromatic jitter on text
+    const frameEl = frame.querySelector('.text-shift');
+    const jx = Math.sin(phase*3) * 1.5;
+    frameEl.style.textShadow = `${jx + 2}px 0 var(--rose), ${jx - 2}px 0 var(--amber)`;
+  });
+})();
+
+// ---------- zone 06: chromatic edge ----------
+(function chroma(){
+  const zone = document.querySelector('.z-chroma');
+  const text = $('#chromaText');
+  const r = text.querySelector('.r');
+  const g = text.querySelector('.g');
+  const b = text.querySelector('.b');
+
+  let mouseX = 0, mouseY = 0;
+  let velX = 0, velY = 0;
+  let lastMX = 0, lastMY = 0;
+  let targetSplit = 0;
+  let currentSplit = 0;
+
+  zone.addEventListener('mousemove', e=>{
+    const rect = zone.getBoundingClientRect();
+    const nx = e.clientX - rect.left;
+    const ny = e.clientY - rect.top;
+    velX = nx - mouseX;
+    velY = ny - mouseY;
+    mouseX = nx; mouseY = ny;
+  });
+
+  tickHandlers.push((dt)=>{
+    const speed = Math.min(1, Math.sqrt(velX*velX + velY*velY) / 20);
+    targetSplit = speed * 18;
+    currentSplit = lerp(currentSplit, targetSplit, 0.12);
+    // decay velocity
+    velX *= 0.88; velY *= 0.88;
+
+    const ang = Math.atan2(velY, velX) || 0;
+    const dx = Math.cos(ang) * currentSplit;
+    const dy = Math.sin(ang) * currentSplit;
+
+    r.style.transform = `translate(${dx}px, ${dy}px)`;
+    b.style.transform = `translate(${-dx}px, ${-dy}px)`;
+    g.style.transform = `translate(${dx*0.3}px, ${dy*0.3}px)`;
+  });
+})();
+
+// ---------- zone 07: light leak ----------
+(function lightLeak(){
+  const zone = document.querySelector('.z-lightleak');
+  const canvas = $('#leakCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize(){
+    const r = zone.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  let mx = 0, my = 0;
+  let tmx = 0.5, tmy = 0.5;
+
+  zone.addEventListener('mousemove', e=>{
+    const r = zone.getBoundingClientRect();
+    tmx = (e.clientX - r.left) / r.width;
+    tmy = (e.clientY - r.top) / r.height;
+  });
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    mx = lerp(mx, tmx, 0.06);
+    my = lerp(my, tmy, 0.06);
+
+    ctx.fillStyle = '#0a0806';
+    ctx.fillRect(0,0,w,h);
+
+    const px = mx * w, py = my * h;
+
+    // primary warm leak from top-left corner + cursor
+    const grad1 = ctx.createRadialGradient(px*0.3, py*0.2, 10, px*0.5, py*0.4, w*0.6);
+    grad1.addColorStop(0, 'rgba(255,179,71,0.35)');
+    grad1.addColorStop(0.4, 'rgba(255,107,74,0.18)');
+    grad1.addColorStop(1, 'rgba(255,107,74,0)');
+    ctx.fillStyle = grad1;
+    ctx.fillRect(0,0,w,h);
+
+    // secondary from right edge
+    const grad2 = ctx.createLinearGradient(w, 0, w*0.5, h);
+    grad2.addColorStop(0, `rgba(255,179,71,${0.15 + mx*0.15})`);
+    grad2.addColorStop(1, 'rgba(255,107,74,0)');
+    ctx.fillStyle = grad2;
+    ctx.fillRect(0,0,w,h);
+
+    // streak of light
+    ctx.save();
+    ctx.translate(w*0.7, h*0.5);
+    ctx.rotate(-0.4 + my*0.3);
+    const streak = ctx.createLinearGradient(-w*0.6, 0, w*0.4, 0);
+    streak.addColorStop(0, 'rgba(255,179,71,0)');
+    streak.addColorStop(0.5, `rgba(255,107,74,${0.08 + mx*0.08})`);
+    streak.addColorStop(1, 'rgba(255,179,71,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(-w*0.6, -8, w, 16);
+    ctx.restore();
+
+    // subtle film base
+    ctx.fillStyle = 'rgba(20,16,10,0.6)';
+    ctx.fillRect(0,0,w,h);
+  });
+})();
+
+// ---------- zone 08: dust + scratches ----------
+(function dustScratch(){
+  const canvas = $('#scratchCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+    initDust();
+  }
+  window.addEventListener('resize', resize);
+
+  let dust = [];
+  let scratches = [];
+
+  function initDust(){
+    const w = canvas.width, h = canvas.height;
+    dust = [];
+    const n = Math.floor(w * h / 8000);
+    for(let i=0;i<n;i++){
+      dust.push({
+        x: Math.random()*w, y: Math.random()*h,
+        r: rand(0.3, 1.8),
+        a: rand(0.2, 0.7),
+        tw: Math.random()*Math.PI*2,
+        type: Math.random() > 0.85 ? 'hair' : 'dot'
+      });
+    }
+  }
+
+  setTimeout(resize, 50);
+
+  document.querySelector('.z-scratch').addEventListener('click', e=>{
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const len = rand(80, 220);
+    const ang = rand(-0.15, 0.15) - Math.PI/2 + rand(-0.1, 0.1);
+    scratches.push({
+      x1: x - Math.cos(ang)*len/2, y1: y - Math.sin(ang)*len/2,
+      x2: x + Math.cos(ang)*len/2, y2: y + Math.sin(ang)*len/2,
+      opacity: rand(0.3, 0.7),
+      flicker: Math.random()*Math.PI*2
+    });
+    if(scratches.length > 30) scratches.shift();
+  });
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    ctx.clearRect(0,0,w,h);
+
+    // dust
+    dust.forEach(d=>{
+      d.tw += dt * 0.002;
+      const a = d.a * (0.7 + 0.3 * Math.sin(d.tw));
+      if(d.type === 'dot'){
+        ctx.fillStyle = `rgba(232,228,222,${a})`;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI*2);
+        ctx.fill();
+      } else {
+        // hair
+        ctx.strokeStyle = `rgba(232,228,222,${a*0.5})`;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x + rand(-2,2), d.y + rand(4,10));
+        ctx.stroke();
+      }
+    });
+
+    // scratches
+    scratches.forEach(s=>{
+      s.flicker += dt * 0.01;
+      const op = s.opacity * (0.6 + 0.4 * Math.sin(s.flicker));
+      ctx.strokeStyle = `rgba(255,255,255,${op})`;
+      ctx.lineWidth = 1;
+      ctx.shadowColor = 'rgba(255,179,71,0.3)';
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    });
+  });
+})();
+
+// ---------- zone 09: shutter flicker ----------
+(function shutter(){
+  const zone = $('#shutterZone');
+  let open = false;
+  let timer = null;
+
+  zone.addEventListener('click', ()=>{
+    open = !open;
+    zone.classList.toggle('open', open);
+    // flash
+    const flash = document.createElement('div');
+    flash.style.cssText = `position:absolute;inset:0;background:#fff;z-index:5;
+      pointer-events:none;opacity:.8;animation:fadeflash .25s ease-out forwards;`;
+    zone.appendChild(flash);
+    setTimeout(()=>flash.remove(), 300);
+
+    // auto-close after a beat (camera shutter feel)
+    if(timer) clearTimeout(timer);
+    if(open){
+      timer = setTimeout(()=>{
+        open = false;
+        zone.classList.remove('open');
+      }, 4000 + Math.random()*2000);
+    }
+  });
+})();
+// flash keyframes injected
+const flashStyle = document.createElement('style');
+flashStyle.textContent = `@keyframes fadeflash{to{opacity:0}}`;
+document.head.appendChild(flashStyle);
+
+// ---------- zone 10: vignette ----------
+(function vignette(){
+  const canvas = $('#vignetteCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  let amount = 0.6; // 0 = no vignette, 1 = heavy
+  let targetAmount = 0.6;
+
+  canvas.parentElement.addEventListener('wheel', e=>{
+    e.preventDefault();
+    targetAmount = clamp(targetAmount + e.deltaY * -0.001, 0, 1);
+  }, {passive:false});
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    amount = lerp(amount, targetAmount, 0.08);
+
+    // scene: warm gradient with orbs
+    const bg = ctx.createRadialGradient(w/2, h/2, 10, w/2, h/2, Math.max(w,h)*0.6);
+    bg.addColorStop(0, '#3a2a1a');
+    bg.addColorStop(0.5, '#1a120a');
+    bg.addColorStop(1, '#070706');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,w,h);
+
+    // orbs
+    for(let i=0;i<6;i++){
+      const ox = w * (0.2 + i*0.14);
+      const oy = h * (0.4 + Math.sin(i*1.5)*0.2);
+      const rad = 20 + i*4;
+      const g = ctx.createRadialGradient(ox,oy,2, ox,oy,rad);
+      g.addColorStop(0, 'rgba(255,220,150,0.8)');
+      g.addColorStop(0.4, 'rgba(255,179,71,0.4)');
+      g.addColorStop(1, 'rgba(255,107,74,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(ox-rad, oy-rad, rad*2, rad*2);
+    }
+
+    // vignette overlay
+    const vg = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.2, w/2, h/2, Math.max(w,h)*0.7);
+    const op = amount * 0.9;
+    vg.addColorStop(0, `rgba(0,0,0,0)`);
+    vg.addColorStop(0.6, `rgba(0,0,0,${op*0.3})`);
+    vg.addColorStop(1, `rgba(0,0,0,${op})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,w,h);
+  });
+})();
+
+// ---------- zone 11: bokeh orbs ----------
+(function bokeh(){
+  const canvas = $('#bokehCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+    initOrbs();
+  }
+  window.addEventListener('resize', resize);
+
+  let orbs = [];
+  let mouseX = 0.5, mouseY = 0.5;
+  let targetMX = 0.5, targetMY = 0.5;
+  let dragging = false;
+
+  canvas.parentElement.addEventListener('mousedown', ()=>dragging=true);
+  window.addEventListener('mouseup', ()=>dragging=false);
+  canvas.parentElement.addEventListener('mousemove', e=>{
+    const r = canvas.parentElement.getBoundingClientRect();
+    targetMX = (e.clientX - r.left) / r.width;
+    targetMY = (e.clientY - r.top) / r.height;
+  });
+
+  function initOrbs(){
+    const w = canvas.width, h = canvas.height;
+    orbs = [];
+    const n = 24;
+    for(let i=0;i<n;i++){
+      orbs.push({
+        x: Math.random()*w, y: Math.random()*h,
+        vx: rand(-0.2, 0.2), vy: rand(-0.2, 0.2),
+        r: rand(8, 35),
+        hue: Math.random() > 0.5 ? 'amber' : 'rose',
+        alpha: rand(0.15, 0.5),
+        phase: Math.random()*Math.PI*2
+      });
+    }
+  }
+  setTimeout(resize, 50);
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    mouseX = lerp(mouseX, targetMX, 0.1);
+    mouseY = lerp(mouseY, targetMY, 0.1);
+    const px = mouseX * w, py = mouseY * h;
+
+    ctx.fillStyle = '#0a0806';
+    ctx.fillRect(0,0,w,h);
+
+    orbs.forEach(o=>{
+      o.phase += dt * 0.001;
+      // magnetic repulsion from cursor if dragging, attraction otherwise
+      const dx = o.x - px;
+      const dy = o.y - py;
+      const dist = Math.sqrt(dx*dx + dy*dy) + 0.1;
+      const force = dragging ? 200 / (dist*dist) : -80 / (dist*dist);
+      o.vx += (dx/dist) * force * dt * 0.01;
+      o.vy += (dy/dist) * force * dt * 0.01;
+
+      // damping
+      o.vx *= 0.98;
+      o.vy *= 0.98;
+
+      o.x += o.vx * dt * 0.1;
+      o.y += o.vy * dt * 0.1;
+
+      // wrap
+      if(o.x < -o.r) o.x = w + o.r;
+      if(o.x > w + o.r) o.x = -o.r;
+      if(o.y < -o.r) o.y = h + o.r;
+      if(o.y > h + o.r) o.y = -o.r;
+
+      // draw orb with bokeh (hard edge disc with soft glow)
+      const col = o.hue === 'amber' ? [255,179,71] : [255,107,74];
+      const a = o.alpha * (0.8 + 0.2*Math.sin(o.phase*2));
+
+      // glow
+      const g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*1.8);
+      g.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},${a*0.7})`);
+      g.addColorStop(0.6, `rgba(${col[0]},${col[1]},${col[2]},${a*0.2})`);
+      g.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r*1.8, 0, Math.PI*2);
+      ctx.fill();
+
+      // disc
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${a*0.9})`;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r*0.85, 0, Math.PI*2);
+      ctx.fill();
+
+      // polygon cutout for anamorphic-ish feel (some orbs are hexagonal)
+      if(o.r > 20){
+        ctx.fillStyle = `rgba(255,255,255,${a*0.3})`;
+        ctx.beginPath();
+        for(let i=0;i<6;i++){
+          const a2 = (i/6) * Math.PI*2;
+          const x = o.x + Math.cos(a2)*o.r*0.6;
+          const y = o.y + Math.sin(a2)*o.r*0.6;
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
+  });
+})();
+
+// ---------- zone 12: spectrum (audio-reactive simulation) ----------
+(function spectrum(){
+  const canvas = $('#spectrumCanvas');
+  const ctx = canvas.getContext('2d');
+  const iSlider = $('#specI'), iVal = $('#specI-val');
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  iSlider.addEventListener('input', ()=> iVal.textContent = iSlider.value);
+
+  const bars = 32;
+  const phases = new Array(bars).fill(0).map(()=>Math.random()*Math.PI*2);
+  const freqs = new Array(bars).fill(0).map((_,i)=> 0.5 + i*0.15);
+
+  tickHandlers.push((dt)=>{
+    const w = canvas.width, h = canvas.height;
+    if(!w) return;
+    const intensity = +iSlider.value / 100;
+
+    ctx.fillStyle = '#070706';
+    ctx.fillRect(0,0,w,h);
+
+    const barW = w / bars;
+    const t = performance.now() * 0.001;
+
+    for(let i=0;i<bars;i++){
+      // organic frequency response simulation
+      const base = Math.sin(t * freqs[i] + phases[i]) * 0.5 + 0.5;
+      const harmonic = Math.sin(t * freqs[i] * 2.3 + phases[i] * 1.7) * 0.3;
+      const noise = Math.sin(t * 10 + i * 0.7) * 0.15;
+      let v = (base + harmonic + noise) * intensity;
+      v = clamp(v, 0.05, 1);
+
+      const barH = v * h * 0.8;
+      const x = i * barW + barW * 0.15;
+      const y = (h - barH) / 2;
+
+      // gradient bar: rose at bottom, amber at top, silver peak
+      const grad = ctx.createLinearGradient(0, h/2 + barH/2, 0, h/2 - barH/2);
+      grad.addColorStop(0, 'rgba(255,107,74,0.8)');
+      grad.addColorStop(0.5, 'rgba(255,179,71,0.9)');
+      grad.addColorStop(1, 'rgba(232,228,222,1)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, barW * 0.7, barH);
+
+      // glow
+      ctx.shadowColor = 'rgba(255,179,71,0.5)';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(x, y, barW * 0.7, barH);
+      ctx.shadowBlur = 0;
+
+      // mirror below
+      const mgrad = ctx.createLinearGradient(0, h/2, 0, h/2 + barH/2);
+      mgrad.addColorStop(0, 'rgba(255,107,74,0.4)');
+      mgrad.addColorStop(1, 'rgba(255,107,74,0)');
+      ctx.fillStyle = mgrad;
+      ctx.fillRect(x, h/2, barW * 0.7, barH * 0.5);
+    }
+
+    // center line
+    ctx.fillStyle = 'rgba(255,179,71,0.3)';
+    ctx.fillRect(0, h/2 - 0.5, w, 1);
+  });
+})();
+
+// ---------- zone 13: magnetic type ----------
+(function magType(){
+  const zone = $('#magZone');
+  const svg = $('#magSvg');
+  const text = $('#magText');
+
+  // break text into individual letter paths using SVG
+  // we'll use tspan for each char with per-char transform
+  const original = 'MAGNETIC';
+  let chars = [];
+
+  function initLetters(){
+    // clear and rebuild
+    while(text.firstChild) text.removeChild(text.firstChild);
+    chars = [];
+    // We'll use tspan with dx/dy for positioning but transform for displacement
+    // For true magnetic effect, we need each letter as a separate element
+    const fontSize = 120;
+    const totalW = 540; // approx
+    const charW = totalW / original.length;
+    const startX = 300 - totalW/2 + charW/2;
+
+    for(let i=0;i<original.length;i++){
+      const tspan = document.createElementNS('http://www.w3.org/2000/svg','tspan');
+      tspan.textContent = original[i];
+      tspan.setAttribute('x', startX + i * charW);
+      tspan.setAttribute('y', '180');
+      tspan.style.fontSize = fontSize+'px';
+      tspan.style.fontFamily = "'Playfair Display',serif";
+      tspan.style.fontStyle = 'italic';
+      tspan.style.fontWeight = '600';
+      tspan.style.fill = 'url(#magGrad)';
+      tspan.style.transition = 'transform 0.1s ease-out';
+      text.appendChild(tspan);
+      chars.push({
+        el: tspan,
+        x: startX + i * charW,
+        y: 180,
+        ox: 0, oy: 0, // current offset
+        tx: 0, ty: 0  // target offset
+      });
+    }
+  }
+  initLetters();
+  text.removeAttribute('text-anchor'); // we're positioning each char
+
+  let mx = 0, my = 0;
+  let inside = false;
+
+  zone.addEventListener('mousemove', e=>{
+    const r = svg.getBoundingClientRect();
+    mx = (e.clientX - r.left) / r.width * 600; // svg viewBox width
+    my = (e.clientY - r.top) / r.height * 300;
+    inside = true;
+  });
+  zone.addEventListener('mouseleave', ()=>{
+    inside = false;
+    chars.forEach(c=>{ c.tx = 0; c.ty = 0; });
+  });
+
+  tickHandlers.push((dt)=>{
+    if(!inside){
+      chars.forEach(c=>{
+        c.ox = lerp(c.ox, 0, 0.1);
+        c.oy = lerp(c.oy, 0, 0.1);
+        c.el.setAttribute('transform', `translate(${c.ox}, ${c.oy})`);
+      });
+      return;
+    }
+
+    chars.forEach(c=>{
+      const dx = mx - c.x;
+      const dy = my - c.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const radius = 120;
+      if(dist < radius){
+        const force = (1 - dist/radius) * 30;
+        c.tx = (dx/dist) * force;
+        c.ty = (dy/dist) * force;
+      } else {
+        c.tx = 0; c.ty = 0;
+      }
+      c.ox = lerp(c.ox, c.tx, 0.2);
+      c.oy = lerp(c.oy, c.ty, 0.2);
+      c.el.setAttribute('transform', `translate(${c.ox}, ${c.oy})`);
+    });
+  });
+})();
+
+// ---------- cleanup ----------
+window.addEventListener('beforeunload', ()=>{
+  running = false;
+});
+
+})();
+</script>
+</body>
+</html>
