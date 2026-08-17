@@ -1,0 +1,2810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>候车室机关 · 拟物化小组件实验室 V3</title>
+<meta name="creative-medium" content="interactive-prototype">
+<meta name="description" content="老火车站候车室里的拟物化机关装置实验室 —— 光标驱动的微交互探索">
+<style>
+/* ============================================================
+   候车室机关 · 拟物化小组件实验室 V3
+   调色板：深栗 #3d2b1f · 烟青 #7a8b8b · 铜橙 #c97b3a · 奶油 #f0e6d2
+   ============================================================ */
+
+:root {
+  --chestnut: #3d2b1f;
+  --chestnut-light: #5a3e2b;
+  --chestnut-dark: #2a1c14;
+  --smoke: #7a8b8b;
+  --smoke-light: #95a5a5;
+  --smoke-dark: #5d6c6c;
+  --copper: #c97b3a;
+  --copper-light: #e09452;
+  --copper-dark: #a8632a;
+  --cream: #f0e6d2;
+  --cream-dark: #d9ccb4;
+  --wood-grain: repeating-linear-gradient(
+    90deg,
+    var(--chestnut) 0px,
+    var(--chestnut-light) 3px,
+    var(--chestnut) 6px,
+    var(--chestnut-dark) 9px,
+    var(--chestnut) 14px
+  );
+  --brass-gradient: linear-gradient(145deg, #e8b878 0%, #c97b3a 40%, #8b5a2b 70%, #c97b3a 100%);
+  --paper-texture: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                   var(--cream);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--chestnut);
+  color: var(--cream);
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, body { cursor: auto; }
+  .custom-cursor { display: none !important; }
+  * { transition: none !important; animation: none !important; }
+}
+
+/* —————— 自定义光标 —————— */
+.custom-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+  transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.2s ease;
+}
+
+.cursor-ring {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--cream);
+  border-radius: 50%;
+  box-shadow:
+    0 0 8px rgba(240, 230, 210, 0.5),
+    inset 0 0 4px rgba(240, 230, 210, 0.3);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cursor-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px;
+  height: 6px;
+  background: var(--copper);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 6px var(--copper),
+    0 0 12px rgba(201, 123, 58, 0.5);
+  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+}
+
+.cursor-glow {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle, rgba(201, 123, 58, 0.25) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.custom-cursor.is-hover {
+  width: 44px;
+  height: 44px;
+}
+.custom-cursor.is-hover .cursor-ring {
+  border-color: var(--copper-light);
+  box-shadow:
+    0 0 12px rgba(224, 148, 82, 0.6),
+    inset 0 0 6px rgba(224, 148, 82, 0.4);
+}
+.custom-cursor.is-hover .cursor-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-cursor.is-grab .cursor-ring {
+  border-radius: 40% 40% 50% 50%;
+  transform: scaleY(0.85);
+}
+
+.custom-cursor.is-click .cursor-ring {
+  transform: scale(0.8);
+  transition: transform 0.08s ease-out;
+}
+
+.cursor-ripple {
+  position: fixed;
+  top: 0; left: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--copper-light);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99998;
+  opacity: 0.8;
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 0.6s ease-out forwards;
+}
+
+@keyframes rippleExpand {
+  0% { width: 10px; height: 10px; opacity: 0.8; border-width: 3px; }
+  100% { width: 80px; height: 80px; opacity: 0; border-width: 1px; }
+}
+
+/* —————— 页面结构 —————— */
+.page-bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(122, 139, 139, 0.1) 0%, transparent 60%),
+    linear-gradient(180deg, var(--chestnut-dark) 0%, var(--chestnut) 30%, var(--chestnut) 100%);
+  z-index: 0;
+}
+
+.page-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(240, 230, 210, 0.03) 1px, transparent 0);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 60px 40px 100px;
+}
+
+/* —————— 页头 —————— */
+.page-header {
+  text-align: center;
+  margin-bottom: 70px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 1s ease, transform 1s ease;
+}
+
+.page-header.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.header-ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.ornament-line {
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--copper), transparent);
+}
+
+.ornament-icon {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--copper);
+  transform: rotate(45deg);
+}
+
+.page-title {
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--cream);
+  letter-spacing: 8px;
+  margin-bottom: 10px;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.page-subtitle {
+  font-size: 15px;
+  color: var(--smoke-light);
+  letter-spacing: 4px;
+  font-family: "Noto Sans SC", sans-serif;
+  margin-bottom: 18px;
+}
+
+.page-desc {
+  font-size: 14px;
+  color: var(--cream-dark);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.8;
+  opacity: 0.8;
+}
+
+/* —————— 展区网格 —————— */
+.exhibit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 36px;
+  margin-top: 50px;
+}
+
+@media (max-width: 1100px) {
+  .exhibit-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .exhibit-grid {
+    grid-template-columns: 1fr;
+  }
+  .page-title { font-size: 30px; letter-spacing: 4px; }
+  .container { padding: 40px 20px 80px; }
+}
+
+.exhibit-card {
+  position: relative;
+  background: linear-gradient(160deg, var(--chestnut-light) 0%, var(--chestnut) 100%);
+  border: 1px solid rgba(201, 123, 58, 0.25);
+  border-radius: 6px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease, transform 0.8s ease,
+              box-shadow 0.4s ease, border-color 0.4s ease;
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(240, 230, 210, 0.08);
+}
+
+.exhibit-card.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.exhibit-card:hover {
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.4),
+    0 0 0 1px rgba(201, 123, 58, 0.3),
+    inset 0 1px 0 rgba(240, 230, 210, 0.12);
+}
+
+.card-stage {
+  position: relative;
+  height: 280px;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(122, 139, 139, 0.15) 0%, transparent 70%),
+    linear-gradient(180deg, #35251a 0%, var(--chestnut) 100%);
+  border-bottom: 1px solid rgba(201, 123, 58, 0.2);
+  overflow: hidden;
+  perspective: 800px;
+}
+
+.card-stage::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.3));
+  pointer-events: none;
+}
+
+.card-info {
+  padding: 20px 22px 24px;
+}
+
+.card-number {
+  font-size: 11px;
+  color: var(--copper);
+  letter-spacing: 3px;
+  font-family: "Noto Sans SC", sans-serif;
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--cream);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.card-desc {
+  font-size: 12.5px;
+  color: var(--smoke-light);
+  line-height: 1.7;
+  font-family: "Noto Sans SC", sans-serif;
+}
+
+.card-tags {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.card-tag {
+  font-size: 10px;
+  padding: 3px 8px;
+  border: 1px solid rgba(201, 123, 58, 0.4);
+  border-radius: 2px;
+  color: var(--copper-light);
+  letter-spacing: 1px;
+  font-family: "Noto Sans SC", sans-serif;
+}
+
+/* —————— 展区 1：翻牌时刻表 —————— */
+.flipboard-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 14px;
+  background: linear-gradient(180deg, #1a120d 0%, #0d0907 100%);
+  border: 3px solid;
+  border-image: var(--brass-gradient) 1;
+  box-shadow:
+    inset 0 2px 8px rgba(0,0,0,0.8),
+    0 4px 12px rgba(0,0,0,0.5);
+}
+
+.flipboard-row {
+  display: flex;
+  gap: 2px;
+}
+
+.flip-unit {
+  position: relative;
+  width: 26px;
+  height: 36px;
+  background: linear-gradient(180deg, #2a2018 0%, #1a120d 50%, #0f0a07 100%);
+  border-radius: 2px;
+  perspective: 200px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.flip-unit::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 1px;
+  background: rgba(0,0,0,0.8);
+  z-index: 5;
+}
+
+.flip-top, .flip-bottom, .flip-back-top, .flip-back-bottom {
+  position: absolute;
+  left: 0; right: 0;
+  height: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Courier New", monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--cream);
+  background: linear-gradient(180deg, #3a2e22 0%, #251b13 100%);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.flip-top, .flip-back-top {
+  top: 0;
+  border-bottom: 1px solid rgba(0,0,0,0.5);
+  border-radius: 2px 2px 0 0;
+  align-items: flex-end;
+  padding-bottom: 0;
+  line-height: 36px;
+}
+
+.flip-bottom, .flip-back-bottom {
+  bottom: 0;
+  border-top: 1px solid rgba(0,0,0,0.3);
+  border-radius: 0 0 2px 2px;
+  align-items: flex-start;
+  line-height: 0;
+}
+
+.flip-bottom {
+  background: linear-gradient(180deg, #1f1711 0%, #150e0a 100%);
+}
+
+.flip-back-top {
+  background: linear-gradient(180deg, #3a2e22 0%, #251b13 100%);
+  transform-origin: bottom;
+  transform: rotateX(0deg);
+  backface-visibility: hidden;
+  z-index: 3;
+}
+
+.flip-back-bottom {
+  background: linear-gradient(180deg, #2a2018 0%, #1a120d 100%);
+  transform-origin: top;
+  transform: rotateX(90deg);
+  backface-visibility: hidden;
+  z-index: 3;
+}
+
+.flip-unit.flipping .flip-back-top {
+  animation: flipTop 0.3s ease-in forwards;
+}
+
+.flip-unit.flipping .flip-back-bottom {
+  animation: flipBottom 0.3s ease-out 0.15s forwards;
+}
+
+@keyframes flipTop {
+  0% { transform: rotateX(0deg); }
+  100% { transform: rotateX(-90deg); }
+}
+
+@keyframes flipBottom {
+  0% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg); }
+}
+
+.flip-unit.digit-wide {
+  width: 32px;
+}
+
+.flip-label {
+  font-size: 9px;
+  color: var(--copper);
+  letter-spacing: 1px;
+  text-align: center;
+  margin-top: 6px;
+  font-family: "Noto Sans SC", sans-serif;
+  opacity: 0.7;
+}
+
+/* —————— 展区 2：拉杆检票口 —————— */
+.ticket-gate-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 180px;
+  height: 200px;
+}
+
+.gate-frame {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 180px;
+  background: linear-gradient(180deg, var(--chestnut-light) 0%, var(--chestnut) 50%, var(--chestnut-dark) 100%);
+  border: 2px solid var(--copper-dark);
+  border-radius: 4px 4px 0 0;
+  box-shadow:
+    inset 0 2px 4px rgba(240, 230, 210, 0.1),
+    0 4px 12px rgba(0,0,0,0.4);
+}
+
+.gate-opening {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 110px;
+  background: linear-gradient(180deg, #0a0705 0%, #1a120d 100%);
+  border: 1px solid rgba(0,0,0,0.8);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gate-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    var(--copper-dark) 0%,
+    var(--copper) 40%,
+    var(--copper-light) 70%,
+    var(--copper) 100%);
+  border-right: 1px solid rgba(0,0,0,0.4);
+  box-shadow: inset -1px 0 2px rgba(0,0,0,0.3);
+  transform-origin: left center;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: rotateY(0deg);
+}
+
+.gate-bar.right {
+  left: auto;
+  right: 0;
+  transform-origin: right center;
+  border-right: none;
+  border-left: 1px solid rgba(0,0,0,0.4);
+}
+
+.gate-frame.open .gate-bar.left {
+  transform: rotateY(-85deg);
+}
+.gate-frame.open .gate-bar.right {
+  transform: rotateY(85deg);
+}
+
+.lever-mechanism {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 80px;
+}
+
+.lever-base {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 24px;
+  background: var(--brass-gradient);
+  border-radius: 3px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.lever-rod {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 50px;
+  background: linear-gradient(90deg, #8b6914 0%, #d4a853 50%, #8b6914 100%);
+  border-radius: 2px;
+  transform-origin: bottom center;
+  cursor: grab;
+  transition: box-shadow 0.2s ease;
+}
+
+.lever-rod:active {
+  cursor: grabbing;
+}
+
+.lever-knob {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  background: radial-gradient(circle at 30% 30%, #f0d080 0%, var(--copper) 60%, var(--copper-dark) 100%);
+  border-radius: 50%;
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.5),
+    inset -2px -2px 4px rgba(0,0,0,0.3);
+}
+
+.gate-light {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #8b2a1a;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.gate-frame.open .gate-light {
+  background: #4a9c3a;
+  box-shadow:
+    0 0 10px #5ab84a,
+    inset 0 1px 2px rgba(255,255,255,0.3);
+}
+
+/* —————— 展区 3：投币售票闸机 —————— */
+.coin-turnstile-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 180px;
+  height: 220px;
+}
+
+.turnstile-body {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 130px;
+  height: 200px;
+  background: linear-gradient(180deg, var(--chestnut-light) 0%, var(--chestnut) 30%, var(--chestnut-dark) 100%);
+  border: 2px solid var(--copper-dark);
+  border-radius: 6px 6px 4px 4px;
+  box-shadow:
+    inset 0 2px 4px rgba(240, 230, 210, 0.1),
+    0 6px 16px rgba(0,0,0,0.5);
+}
+
+.coin-slot {
+  position: absolute;
+  top: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 8px;
+  background: #0a0705;
+  border: 2px solid var(--copper);
+  border-radius: 2px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.coin-slot::after {
+  content: "投币";
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--copper-light);
+  letter-spacing: 2px;
+  font-family: "Noto Sans SC", sans-serif;
+  white-space: nowrap;
+}
+
+.turnstile-window {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  height: 60px;
+  background: #0f0a07;
+  border: 2px solid var(--copper-dark);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.turnstile-gear {
+  width: 44px;
+  height: 44px;
+  position: relative;
+  transition: transform 0.1s linear;
+}
+
+.turnstile-gear .gear-tooth {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 100%;
+  background: var(--copper);
+  transform-origin: center;
+  margin-left: -2px;
+  margin-top: -50%;
+  border-radius: 1px;
+}
+
+.gear-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 24px;
+  height: 24px;
+  background: radial-gradient(circle at 30% 30%, var(--copper-light), var(--copper-dark));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,0.4);
+}
+
+.turnstile-arms {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 100px;
+  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.turnstile-arms.spinning {
+  transition: transform 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.turnstile-arm {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 50px;
+  background: linear-gradient(180deg, var(--copper-light), var(--copper-dark));
+  transform-origin: top center;
+  border-radius: 0 0 2px 2px;
+  margin-left: -2px;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.4);
+}
+
+.turnstile-arm:nth-child(1) { transform: rotate(0deg); }
+.turnstile-arm:nth-child(2) { transform: rotate(120deg); }
+.turnstile-arm:nth-child(3) { transform: rotate(240deg); }
+
+.turnstile-hub {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle at 30% 30%, var(--copper-light), var(--copper-dark));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  z-index: 2;
+}
+
+.draggable-coin {
+  position: absolute;
+  bottom: -10px;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #f0d080 0%, var(--copper) 50%, var(--copper-dark) 100%);
+  box-shadow:
+    0 3px 8px rgba(0,0,0,0.5),
+    inset -2px -2px 4px rgba(0,0,0,0.3),
+    inset 2px 2px 4px rgba(255,220,150,0.4);
+  cursor: grab;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--copper-dark);
+  text-shadow: 0 1px 0 rgba(255,220,150,0.5);
+  user-select: none;
+}
+
+.draggable-coin:active {
+  cursor: grabbing;
+}
+
+.draggable-coin::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(139, 90, 43, 0.4);
+  border-radius: 50%;
+}
+
+.coin-gloss {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  width: 8px;
+  height: 4px;
+  background: rgba(255,255,255,0.4);
+  border-radius: 50%;
+  filter: blur(1px);
+}
+
+/* —————— 展区 4：拨盘售票机 —————— */
+.dial-machine-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 220px;
+}
+
+.dial-body {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 180px;
+  height: 200px;
+  background: linear-gradient(180deg, #4a3828 0%, var(--chestnut) 50%, var(--chestnut-dark) 100%);
+  border: 2px solid var(--copper-dark);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 2px 4px rgba(240, 230, 210, 0.1),
+    0 6px 20px rgba(0,0,0,0.5);
+}
+
+.dial-face {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, var(--cream-dark) 0%, var(--cream) 40%, var(--cream-dark) 100%);
+  box-shadow:
+    inset 0 2px 8px rgba(0,0,0,0.2),
+    0 2px 4px rgba(0,0,0,0.3);
+  cursor: grab;
+  overflow: hidden;
+}
+
+.dial-face:active {
+  cursor: grabbing;
+}
+
+.dial-face::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.dial-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 12px;
+  background: var(--chestnut);
+  transform-origin: center 65px;
+  margin-left: -1px;
+  margin-top: -65px;
+}
+
+.dial-mark.major {
+  width: 3px;
+  height: 18px;
+  background: var(--copper-dark);
+}
+
+.dial-number {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--chestnut);
+  transform-origin: center 48px;
+  margin-left: -5px;
+  margin-top: -48px;
+  font-family: "Noto Sans SC", sans-serif;
+}
+
+.dial-pointer {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 10px solid var(--copper);
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
+  z-index: 5;
+}
+
+.dial-center-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle at 30% 30%, #f0d080 0%, var(--copper) 50%, var(--copper-dark) 100%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 3px 8px rgba(0,0,0,0.4),
+    inset -2px -2px 4px rgba(0,0,0,0.3);
+  z-index: 3;
+}
+
+.dial-center-knob::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 50%;
+}
+
+.ticket-display {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 30px;
+  background: linear-gradient(180deg, #1a120d 0%, #0a0705 100%);
+  border: 2px solid var(--copper-dark);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--copper-light);
+  letter-spacing: 1px;
+  font-family: "Courier New", monospace;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+  z-index: 2;
+}
+
+/* —————— 展区 5：拉杆煤气灯 —————— */
+.gas-lamp-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 140px;
+  height: 220px;
+}
+
+.lamp-mount {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 20px;
+  background: var(--brass-gradient);
+  border-radius: 3px 3px 0 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+
+.lamp-arm {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 30px;
+  background: linear-gradient(90deg, var(--copper-dark) 0%, var(--copper-light) 50%, var(--copper-dark) 100%);
+}
+
+.lamp-globe-holder {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  height: 100px;
+}
+
+.lamp-top-cap {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 14px;
+  background: var(--brass-gradient);
+  border-radius: 4px 4px 0 0;
+  z-index: 3;
+}
+
+.lamp-globe {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 70px;
+  background: linear-gradient(180deg,
+    rgba(200, 220, 240, 0.3) 0%,
+    rgba(180, 200, 220, 0.2) 100%);
+  border: 2px solid rgba(200, 220, 240, 0.4);
+  border-radius: 8px 8px 12px 12px;
+  z-index: 2;
+  transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+.lamp-globe.lit {
+  background: radial-gradient(ellipse at 50% 40%,
+    rgba(255, 220, 150, 0.9) 0%,
+    rgba(255, 180, 80, 0.6) 30%,
+    rgba(255, 150, 50, 0.3) 60%,
+    rgba(200, 120, 50, 0.2) 100%);
+  border-color: rgba(255, 200, 100, 0.6);
+  box-shadow:
+    0 0 30px rgba(255, 180, 80, 0.6),
+    0 0 60px rgba(255, 150, 50, 0.4),
+    0 0 90px rgba(255, 120, 30, 0.2),
+    inset 0 0 20px rgba(255, 220, 150, 0.5);
+}
+
+.lamp-filament {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 24px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 3;
+}
+
+.lamp-globe.lit + .lamp-filament,
+.lit .lamp-filament {
+  opacity: 1;
+}
+
+.lamp-bottom-ring {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 10px;
+  background: var(--brass-gradient);
+  border-radius: 0 0 3px 3px;
+  z-index: 3;
+}
+
+.pull-cord {
+  position: absolute;
+  top: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 60px;
+  background: linear-gradient(180deg, var(--cream-dark) 0%, var(--smoke-dark) 100%);
+  cursor: grab;
+  z-index: 10;
+  transform-origin: top center;
+}
+
+.pull-cord:active {
+  cursor: grabbing;
+}
+
+.pull-knob {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 22px;
+  background: radial-gradient(ellipse at 30% 30%, var(--copper-light), var(--copper-dark));
+  border-radius: 4px 4px 8px 8px;
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.4),
+    inset 1px 1px 2px rgba(255,220,150,0.3);
+}
+
+.lamp-light-halo {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle,
+    rgba(255, 180, 80, 0.15) 0%,
+    rgba(255, 150, 50, 0.08) 30%,
+    transparent 70%);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+.lamp-light-halo.on {
+  opacity: 1;
+  animation: lampFlicker 3s ease-in-out infinite;
+}
+
+@keyframes lampFlicker {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+  52% { opacity: 0.85; }
+  54% { opacity: 1; }
+  70% { opacity: 0.95; }
+  72% { opacity: 1; }
+}
+
+/* —————— 展区 6：行李转盘 —————— */
+.carousel-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 180px;
+  perspective: 600px;
+}
+
+.carousel-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.carousel-stage:active {
+  cursor: grabbing;
+}
+
+.carousel-base {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) rotateX(60deg);
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      var(--chestnut-dark) 0deg 20deg,
+      var(--chestnut) 20deg 40deg
+    );
+  border: 4px solid var(--copper-dark);
+  box-shadow:
+    inset 0 0 20px rgba(0,0,0,0.5),
+    0 4px 12px rgba(0,0,0,0.4);
+  transform-style: preserve-3d;
+}
+
+.carousel-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--chestnut) 0%, var(--chestnut-dark) 70%);
+  border: 2px solid var(--copper);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.luggage-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 34px;
+  border-radius: 4px 4px 2px 2px;
+  margin-left: -14px;
+  margin-top: -17px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  transform-origin: center center;
+  transition: filter 0.3s ease;
+}
+
+.luggage-item .luggage-strap {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 100%;
+  background: rgba(0,0,0,0.2);
+  border-radius: 1px;
+}
+
+.luggage-item .luggage-handle {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 6px;
+  border: 2px solid rgba(0,0,0,0.3);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+}
+
+.luggage-1 { background: linear-gradient(135deg, var(--smoke-light), var(--smoke-dark)); }
+.luggage-2 { background: linear-gradient(135deg, var(--copper-light), var(--copper-dark)); }
+.luggage-3 { background: linear-gradient(135deg, var(--cream-dark), #b0a080); }
+.luggage-4 { background: linear-gradient(135deg, #6b5344, #3d2b1f); }
+.luggage-5 { background: linear-gradient(135deg, #8b6f47, #5a4528); }
+.luggage-6 { background: linear-gradient(135deg, #556b5e, #3a4b42); }
+
+/* —————— 光泽扫过效果 —————— */
+.gloss-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.gloss-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.15) 50%,
+    transparent 100%);
+  transform: skewX(-20deg);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.gloss-sweep:hover::after {
+  opacity: 1;
+  animation: glossSweep 1.5s ease-in-out forwards;
+}
+
+@keyframes glossSweep {
+  0% { left: -60%; }
+  100% { left: 120%; }
+}
+
+/* —————— 3D 倾斜卡片 —————— */
+.tilt-card {
+  transform-style: preserve-3d;
+  transition: transform 0.1s ease-out;
+  will-change: transform;
+}
+
+/* —————— 页脚 —————— */
+.page-footer {
+  text-align: center;
+  margin-top: 80px;
+  padding-top: 40px;
+  border-top: 1px solid rgba(201, 123, 58, 0.2);
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+.page-footer.is-visible {
+  opacity: 1;
+}
+
+.footer-text {
+  font-size: 12px;
+  color: var(--smoke);
+  letter-spacing: 2px;
+  font-family: "Noto Sans SC", sans-serif;
+  line-height: 1.8;
+}
+
+.footer-strong {
+  color: var(--copper-light);
+  font-weight: 600;
+}
+
+/* —————— 火花粒子 —————— */
+.spark-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--copper-light);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 6px var(--copper);
+}
+
+</style>
+</head>
+<body>
+
+<div class="page-bg"></div>
+
+<!-- 自定义光标 -->
+<div class="custom-cursor" id="customCursor" aria-hidden="true">
+  <div class="cursor-glow"></div>
+  <div class="cursor-ring"></div>
+  <div class="cursor-dot"></div>
+</div>
+
+<div class="container">
+
+  <!-- 页头 -->
+  <header class="page-header" id="pageHeader">
+    <div class="header-ornament">
+      <div class="ornament-line"></div>
+      <div class="ornament-icon"></div>
+      <div class="ornament-line"></div>
+    </div>
+    <h1 class="page-title">候车室机关</h1>
+    <p class="page-subtitle">拟物化小组件实验室 · V3</p>
+    <p class="page-desc">
+      一座老火车站候车室里的机关装置实验室。<br>
+      每件展品都是一件候车室老物件机关——拖动、点击、悬停，感受机械的温度。
+    </p>
+  </header>
+
+  <!-- 展区网格 -->
+  <div class="exhibit-grid" id="exhibitGrid">
+
+    <!-- 展区 1：翻牌时刻表 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage1">
+        <div class="flipboard-wrap" id="flipboard">
+          <div class="flipboard-row">
+            <div class="flip-unit digit-wide" data-char="北" data-chars="北南东西上">
+              <div class="flip-top">北</div>
+              <div class="flip-bottom">北</div>
+              <div class="flip-back-top">北</div>
+              <div class="flip-back-bottom">北</div>
+            </div>
+            <div class="flip-unit digit-wide" data-char="京" data-chars="京海圳州安">
+              <div class="flip-top">京</div>
+              <div class="flip-bottom">京</div>
+              <div class="flip-back-top">京</div>
+              <div class="flip-back-bottom">京</div>
+            </div>
+          </div>
+          <div class="flipboard-row" style="margin-top: 4px;">
+            <div class="flip-unit" data-char="0" data-chars="0123456789">
+              <div class="flip-top">0</div>
+              <div class="flip-bottom">0</div>
+              <div class="flip-back-top">0</div>
+              <div class="flip-back-bottom">0</div>
+            </div>
+            <div class="flip-unit" data-char="8" data-chars="0123456789">
+              <div class="flip-top">8</div>
+              <div class="flip-bottom">8</div>
+              <div class="flip-back-top">8</div>
+              <div class="flip-back-bottom">8</div>
+            </div>
+            <div class="flip-unit" style="border: none; background: transparent;">
+              <div class="flip-top" style="background: transparent;">:</div>
+            </div>
+            <div class="flip-unit" data-char="1" data-chars="0123456">
+              <div class="flip-top">1</div>
+              <div class="flip-bottom">1</div>
+              <div class="flip-back-top">1</div>
+              <div class="flip-back-bottom">1</div>
+            </div>
+            <div class="flip-unit" data-char="5" data-chars="0123456789">
+              <div class="flip-top">5</div>
+              <div class="flip-bottom">5</div>
+              <div class="flip-back-top">5</div>
+              <div class="flip-back-bottom">5</div>
+            </div>
+          </div>
+          <div class="flip-label">点击翻牌 · 拖拽连翻</div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 01</div>
+        <h3 class="card-title">翻牌时刻表</h3>
+        <p class="card-desc">老车站的机械翻牌时刻表，一字一翻，咔哒作响。逐格翻动间，是蒸汽时代的余韵。</p>
+        <div class="card-tags">
+          <span class="card-tag">数字翻牌</span>
+          <span class="card-tag">机械感</span>
+          <span class="card-tag">拖拽连翻</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 2：拉杆检票口 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage2">
+        <div class="ticket-gate-wrap">
+          <div class="gate-frame" id="ticketGate">
+            <div class="gate-light"></div>
+            <div class="gate-opening">
+              <div class="gate-bar left"></div>
+              <div class="gate-bar right"></div>
+            </div>
+          </div>
+          <div class="lever-mechanism" id="leverMechanism">
+            <div class="lever-base"></div>
+            <div class="lever-rod gloss-sweep" id="leverRod">
+              <div class="lever-knob"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 02</div>
+        <h3 class="card-title">拉杆检票口</h3>
+        <p class="card-desc">黄铜拉杆下藏着机械的巧思——拉下闸杆，齿轮咬合，闸门缓缓敞开。</p>
+        <div class="card-tags">
+          <span class="card-tag">拖拽拉杆</span>
+          <span class="card-tag">弹性回弹</span>
+          <span class="card-tag">磁性吸附</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 3：投币售票闸机 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage3">
+        <div class="coin-turnstile-wrap">
+          <div class="turnstile-body gloss-sweep">
+            <div class="coin-slot" id="coinSlot"></div>
+            <div class="turnstile-window">
+              <div class="turnstile-gear" id="turnstileGear">
+                <div class="gear-tooth" style="transform: rotate(0deg);"></div>
+                <div class="gear-tooth" style="transform: rotate(30deg);"></div>
+                <div class="gear-tooth" style="transform: rotate(60deg);"></div>
+                <div class="gear-tooth" style="transform: rotate(90deg);"></div>
+                <div class="gear-tooth" style="transform: rotate(120deg);"></div>
+                <div class="gear-tooth" style="transform: rotate(150deg);"></div>
+                <div class="gear-center"></div>
+              </div>
+            </div>
+            <div class="turnstile-arms" id="turnstileArms">
+              <div class="turnstile-arm"></div>
+              <div class="turnstile-arm"></div>
+              <div class="turnstile-arm"></div>
+              <div class="turnstile-hub"></div>
+            </div>
+          </div>
+          <div class="draggable-coin" id="draggableCoin">
+            <div class="coin-gloss"></div>
+            壹
+          </div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 03</div>
+        <h3 class="card-title">投币售票闸机</h3>
+        <p class="card-desc">一枚铜币投入槽口，齿轮应声转动，三臂闸机放行。哐当一声，是旅途的开始。</p>
+        <div class="card-tags">
+          <span class="card-tag">拖拽投币</span>
+          <span class="card-tag">齿轮联动</span>
+          <span class="card-tag">火花粒子</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 4：拨盘售票机 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage4">
+        <div class="dial-machine-wrap">
+          <div class="dial-body gloss-sweep">
+            <div class="dial-pointer"></div>
+            <div class="dial-face" id="dialFace">
+              <!-- 刻度和数字由 JS 生成 -->
+              <div class="dial-center-knob"></div>
+            </div>
+          </div>
+          <div class="ticket-display" id="ticketDisplay">¥ 0.50</div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 04</div>
+        <h3 class="card-title">拨盘售票机</h3>
+        <p class="card-desc">转动黄铜拨盘，档位清脆作响。选好票价，一张小票便从机器腹中吐出。</p>
+        <div class="card-tags">
+          <span class="card-tag">旋转拨盘</span>
+          <span class="card-tag">惯性阻尼</span>
+          <span class="card-tag">档位吸附</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 5：拉杆煤气灯 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage5">
+        <div class="gas-lamp-wrap">
+          <div class="lamp-light-halo" id="lampHalo"></div>
+          <div class="lamp-mount"></div>
+          <div class="lamp-arm"></div>
+          <div class="lamp-globe-holder">
+            <div class="lamp-top-cap"></div>
+            <div class="lamp-globe" id="lampGlobe"></div>
+            <div class="lamp-bottom-ring"></div>
+          </div>
+          <div class="pull-cord" id="pullCord">
+            <div class="pull-knob"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 05</div>
+        <h3 class="card-title">拉杆煤气灯</h3>
+        <p class="card-desc">拉下铜制拉绳，煤气灯应声点亮。暖黄光晕扩散开来，在候车室投下摇曳的影。</p>
+        <div class="card-tags">
+          <span class="card-tag">拉绳开关</span>
+          <span class="card-tag">光线扩散</span>
+          <span class="card-tag">阴影联动</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 6：行李转盘 -->
+    <div class="exhibit-card tilt-card" data-tilt>
+      <div class="card-stage" id="stage6">
+        <div class="carousel-wrap">
+          <div class="carousel-stage" id="carouselStage">
+            <div class="carousel-base" id="carouselBase">
+              <div class="carousel-inner"></div>
+            </div>
+            <!-- 行李由 JS 定位 -->
+          </div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-number">展区 06</div>
+        <h3 class="card-title">行李转盘</h3>
+        <p class="card-desc">到站的行李在转盘上缓缓绕行。拖动转盘，它会带着惯性继续旋转，慢慢停下。</p>
+        <div class="card-tags">
+          <span class="card-tag">拖拽旋转</span>
+          <span class="card-tag">惯性阻尼</span>
+          <span class="card-tag">3D 透视</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 页脚 -->
+  <footer class="page-footer" id="pageFooter">
+    <p class="footer-text">
+      共 <span class="footer-strong">6</span> 件展品 · <span class="footer-strong">12+</span> 种动效 · 纯光标驱动<br>
+      深栗 · 烟青 · 铜橙 · 奶油 —— 老木 + 黄铜 + 旧纸
+    </p>
+  </footer>
+
+</div>
+
+<script>
+/* ============================================================
+   候车室机关 · 拟物化小组件实验室 V3
+   纯 vanilla JS · 单文件 · 无外部依赖
+   ============================================================ */
+
+(function() {
+  'use strict';
+
+  // —————— 工具函数 ——————
+  const $ = (sel, ctx = document) => ctx.querySelector(sel);
+  const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const map = (v, inMin, inMax, outMin, outMax) =>
+    outMin + (v - inMin) * (outMax - outMin) / (inMax - inMin);
+
+  // —————— 减少动画偏好检测 ——————
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // —————— RAF 循环管理器 ——————
+  const RAF = {
+    id: null,
+    callbacks: new Set(),
+    running: false,
+    visible: true,
+
+    add(cb) {
+      this.callbacks.add(cb);
+      this.ensureRunning();
+    },
+
+    remove(cb) {
+      this.callbacks.delete(cb);
+      if (this.callbacks.size === 0) this.stop();
+    },
+
+    ensureRunning() {
+      if (this.running || !this.visible || this.callbacks.size === 0) return;
+      this.running = true;
+      this.loop();
+    },
+
+    stop() {
+      this.running = false;
+      if (this.id !== null) {
+        cancelAnimationFrame(this.id);
+        this.id = null;
+      }
+    },
+
+    pause() {
+      this.visible = false;
+      this.stop();
+    },
+
+    resume() {
+      this.visible = true;
+      if (this.callbacks.size > 0) this.ensureRunning();
+    },
+
+    loop() {
+      if (!this.running) return;
+      this.callbacks.forEach(cb => {
+        try { cb(); } catch (e) { console.error('RAF callback error:', e); }
+      });
+      this.id = requestAnimationFrame(() => this.loop());
+    }
+  };
+
+  // 页面可见性变化时暂停/恢复
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) RAF.pause();
+    else RAF.resume();
+  });
+
+  // 卸载时清理
+  window.addEventListener('beforeunload', () => {
+    RAF.stop();
+  });
+
+  // —————— 自定义光标 ——————
+  const cursor = {
+    el: null,
+    ring: null,
+    dot: null,
+    x: 0, y: 0,
+    tx: 0, ty: 0,
+    isHover: false,
+    isGrab: false,
+
+    init() {
+      if (prefersReducedMotion) return;
+      this.el = $('#customCursor');
+      this.ring = this.el.querySelector('.cursor-ring');
+      this.dot = this.el.querySelector('.cursor-dot');
+
+      // 初始位置：屏幕中央
+      this.x = window.innerWidth / 2;
+      this.y = window.innerHeight / 2;
+      this.tx = this.x;
+      this.ty = this.y;
+
+      document.addEventListener('mousemove', (e) => {
+        this.tx = e.clientX;
+        this.ty = e.clientY;
+      }, { passive: true });
+
+      // 点击涟漪
+      document.addEventListener('mousedown', (e) => {
+        this.el.classList.add('is-click');
+        this.spawnRipple(e.clientX, e.clientY);
+      });
+      document.addEventListener('mouseup', () => {
+        this.el.classList.remove('is-click');
+      });
+
+      // 悬停检测 —— 监听可交互元素
+      this.observeHoverables();
+
+      RAF.add(() => this.tick());
+    },
+
+    tick() {
+      // 弹簧跟随
+      this.x = lerp(this.x, this.tx, 0.2);
+      this.y = lerp(this.y, this.ty, 0.2);
+      this.el.style.transform =
+        `translate(${this.x}px, ${this.y}px) translate(-50%, -50%)`;
+    },
+
+    spawnRipple(x, y) {
+      if (prefersReducedMotion) return;
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = x + 'px';
+      ripple.style.top = y + 'px';
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    },
+
+    observeHoverables() {
+      const hoverSelector = 'button, a, [class*="lever"], [class*="coin"], [class*="dial"], [class*="pull"], [class*="carousel"], .flip-unit';
+      const grabSelector = '[class*="lever-rod"], .draggable-coin, .dial-face, .pull-cord, .carousel-stage';
+
+      document.addEventListener('mouseover', (e) => {
+        const target = e.target;
+        const isGrab = target.closest(grabSelector);
+        const isHover = target.closest(hoverSelector) || isGrab;
+
+        this.el.classList.toggle('is-hover', !!isHover);
+        this.el.classList.toggle('is-grab', !!isGrab);
+      });
+
+      document.addEventListener('mouseout', (e) => {
+        const target = e.target;
+        if (!e.relatedTarget || !e.relatedTarget.closest || !e.relatedTarget.closest(hoverSelector)) {
+          this.el.classList.remove('is-hover', 'is-grab');
+        }
+      });
+    }
+  };
+
+  // —————— 物理：弹簧 ——————
+  function createSpring(opts = {}) {
+    return {
+      x: opts.x || 0,
+      v: opts.v || 0,
+      target: opts.target || 0,
+      k: opts.k || 0.15,      // 弹性系数
+      damping: opts.damping || 0.7, // 阻尼
+      threshold: opts.threshold || 0.01,
+
+      setTarget(t) { this.target = t; },
+
+      step() {
+        const force = (this.target - this.x) * this.k;
+        this.v += force;
+        this.v *= this.damping;
+        this.x += this.v;
+        return this.x;
+      },
+
+      isSettled() {
+        return Math.abs(this.v) < this.threshold &&
+               Math.abs(this.target - this.x) < this.threshold;
+      },
+
+      reset(val) {
+        this.x = val;
+        this.v = 0;
+        this.target = val;
+      }
+    };
+  }
+
+  // —————— 物理：惯性动量 ——————
+  function createInertia(opts = {}) {
+    return {
+      x: opts.x || 0,
+      v: opts.v || 0,
+      friction: opts.friction || 0.95,
+      threshold: opts.threshold || 0.05,
+
+      addVelocity(dv) {
+        this.v += dv;
+      },
+
+      step() {
+        this.x += this.v;
+        this.v *= this.friction;
+        return this.x;
+      },
+
+      isSettled() {
+        return Math.abs(this.v) < this.threshold;
+      },
+
+      reset(val) {
+        this.x = val;
+        this.v = 0;
+      }
+    };
+  }
+
+  // —————— 物理：磁性吸附 ——————
+  function createMagneticSnap(targets, opts = {}) {
+    return {
+      targets: targets,
+      x: opts.x || 0,
+      v: opts.v || 0,
+      k: opts.k || 0.08,
+      damping: opts.damping || 0.75,
+      threshold: opts.threshold || 0.01,
+      active: false,
+
+      findNearest(x) {
+        let nearest = targets[0];
+        let minDist = Math.abs(targets[0] - x);
+        for (let i = 1; i < targets.length; i++) {
+          const d = Math.abs(targets[i] - x);
+          if (d < minDist) {
+            minDist = d;
+            nearest = targets[i];
+          }
+        }
+        return { value: nearest, dist: minDist };
+      },
+
+      snapTo(x) {
+        this.x = x;
+        const nearest = this.findNearest(x);
+        this.active = true;
+        this.target = nearest.value;
+      },
+
+      step() {
+        if (!this.active) return this.x;
+        const force = (this.target - this.x) * this.k;
+        this.v += force;
+        this.v *= this.damping;
+        this.x += this.v;
+        if (this.isSettled()) {
+          this.x = this.target;
+          this.v = 0;
+          this.active = false;
+        }
+        return this.x;
+      },
+
+      isSettled() {
+        return Math.abs(this.v) < this.threshold &&
+               Math.abs(this.target - this.x) < this.threshold;
+      }
+    };
+  }
+
+  // ============================================================
+  //   展区 1：翻牌时刻表
+  // ============================================================
+  const flipboard = {
+    units: [],
+    isDragging: false,
+    flippedInDrag: new Set(),
+
+    init() {
+      const units = $$('.flip-unit', $('#flipboard'));
+      this.units = units.map((el, idx) => {
+        const charsStr = el.dataset.chars;
+        if (!charsStr) {
+          return { el, chars: [], idx: 0, isFlipping: false, flipTimer: null, isStatic: true };
+        }
+        const chars = charsStr.split('');
+        const currentChar = el.dataset.char || chars[0];
+        const currentIdx = chars.indexOf(currentChar);
+
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          this.isDragging = true;
+          this.flippedInDrag.clear();
+          this.flipUnit(idx);
+          this.flippedInDrag.add(idx);
+        });
+
+        el.addEventListener('mouseenter', () => {
+          if (this.isDragging && !this.flippedInDrag.has(idx)) {
+            this.flipUnit(idx);
+            this.flippedInDrag.add(idx);
+          }
+        });
+
+        return {
+          el,
+          chars,
+          idx: currentIdx >= 0 ? currentIdx : 0,
+          isFlipping: false,
+          flipTimer: null
+        };
+      });
+
+      document.addEventListener('mouseup', () => {
+        this.isDragging = false;
+        this.flippedInDrag.clear();
+      });
+
+      // 触摸支持
+      if ('ontouchstart' in window) {
+        units.forEach((el, idx) => {
+          el.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.flipUnit(idx);
+          }, { passive: false });
+        });
+      }
+    },
+
+    flipUnit(index) {
+      const unit = this.units[index];
+      if (!unit || unit.isFlipping || unit.isStatic) return;
+
+      unit.isFlipping = true;
+      const nextIdx = (unit.idx + 1) % unit.chars.length;
+      const nextChar = unit.chars[nextIdx];
+
+      const top = unit.el.querySelector('.flip-top');
+      const bottom = unit.el.querySelector('.flip-bottom');
+      const backTop = unit.el.querySelector('.flip-back-top');
+      const backBottom = unit.el.querySelector('.flip-back-bottom');
+
+      // 设置背面的字符
+      backTop.textContent = unit.chars[unit.idx];
+      backBottom.textContent = nextChar;
+
+      unit.el.classList.add('flipping');
+
+      if (unit.flipTimer) clearTimeout(unit.flipTimer);
+      unit.flipTimer = setTimeout(() => {
+        top.textContent = nextChar;
+        bottom.textContent = nextChar;
+        unit.el.classList.remove('flipping');
+        unit.idx = nextIdx;
+        unit.isFlipping = false;
+      }, 300);
+    }
+  };
+
+  // ============================================================
+  //   展区 2：拉杆检票口
+  // ============================================================
+  const ticketGate = {
+    gate: null,
+    lever: null,
+    isDragging: false,
+    startY: 0,
+    startAngle: 0,
+    angle: 0,
+    spring: null,
+
+    init() {
+      this.gate = $('#ticketGate');
+      this.lever = $('#leverRod');
+      if (!this.gate || !this.lever) return;
+
+      this.spring = createSpring({ x: 0, target: 0, k: 0.12, damping: 0.7 });
+
+      this.lever.addEventListener('mousedown', (e) => this.startDrag(e));
+
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDragging) return;
+        const dy = e.clientY - this.startY;
+        let angle = this.startAngle + dy * 0.8;
+        angle = clamp(angle, 0, 60);
+        this.angle = angle;
+        this.spring.x = angle;
+        this.spring.target = angle;
+        this.updateLever(angle);
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+        // 磁性吸附归位
+        const snapAngle = this.angle > 35 ? 0 : 0;
+        this.spring.setTarget(snapAngle);
+        if (!this._animating) {
+          this._animating = true;
+          RAF.add(() => this.animateBack());
+        }
+      });
+    },
+
+    startDrag(e) {
+      e.preventDefault();
+      this.isDragging = true;
+      this.startY = e.clientY;
+      this.startAngle = this.angle;
+    },
+
+    updateLever(angle) {
+      this.lever.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+
+      // 闸门联动：拉杆角度达到阈值时开启
+      const openProgress = map(angle, 20, 55, 0, 1);
+      const clampedProgress = clamp(openProgress, 0, 1);
+
+      if (clampedProgress > 0.8) {
+        this.gate.classList.add('open');
+      } else {
+        this.gate.classList.remove('open');
+      }
+    },
+
+    animateBack() {
+      this.spring.step();
+      this.angle = this.spring.x;
+      this.updateLever(this.angle);
+
+      if (this.spring.isSettled()) {
+        this.angle = 0;
+        this.spring.reset(0);
+        this._animating = false;
+        RAF.remove(() => this.animateBack());
+      }
+    }
+  };
+
+  // ============================================================
+  //   展区 3：投币售票闸机
+  // ============================================================
+  const coinTurnstile = {
+    coin: null,
+    slot: null,
+    gear: null,
+    arms: null,
+    stage: null,
+    isDragging: false,
+    startX: 0, startY: 0,
+    coinStartX: 0, coinStartY: 0,
+    coinX: 0, coinY: 0,
+    gearAngle: 0,
+    armsAngle: 0,
+    spinning: false,
+
+    init() {
+      this.coin = $('#draggableCoin');
+      this.slot = $('#coinSlot');
+      this.gear = $('#turnstileGear');
+      this.arms = $('#turnstileArms');
+      this.stage = $('#stage3');
+      if (!this.coin || !this.slot) return;
+
+      this.coin.addEventListener('mousedown', (e) => this.startDrag(e));
+
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDragging) return;
+        const dx = e.clientX - this.startX;
+        const dy = e.clientY - this.startY;
+        this.coinX = this.coinStartX + dx;
+        this.coinY = this.coinStartY + dy;
+        this.coin.style.left = this.coinX + 'px';
+        this.coin.style.top = this.coinY + 'px';
+        this.coin.style.right = 'auto';
+        this.coin.style.bottom = 'auto';
+      });
+
+      document.addEventListener('mouseup', (e) => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+
+        // 检测是否投入槽口
+        const slotRect = this.slot.getBoundingClientRect();
+        const coinRect = this.coin.getBoundingClientRect();
+        const coinCX = coinRect.left + coinRect.width / 2;
+        const coinCY = coinRect.top + coinRect.height / 2;
+
+        const slotCX = slotRect.left + slotRect.width / 2;
+        const slotCY = slotRect.top + slotRect.height / 2;
+
+        const dist = Math.hypot(coinCX - slotCX, coinCY - slotCY);
+
+        if (dist < 40) {
+          this.acceptCoin();
+        } else {
+          this.returnCoin();
+        }
+      });
+
+      // 初始位置
+      const rect = this.coin.getBoundingClientRect();
+      this.coinStartX = this.coin.offsetLeft;
+      this.coinStartY = this.coin.offsetTop;
+    },
+
+    startDrag(e) {
+      e.preventDefault();
+      this.isDragging = true;
+      this.startX = e.clientX;
+      this.startY = e.clientY;
+
+      const style = getComputedStyle(this.coin);
+      this.coinX = this.coin.offsetLeft;
+      this.coinY = this.coin.offsetTop;
+      this.coinStartX = this.coinX;
+      this.coinStartY = this.coinY;
+    },
+
+    acceptCoin() {
+      // 硬币落入动画
+      const slotRect = this.slot.getBoundingClientRect();
+      const parentRect = this.coin.parentElement.getBoundingClientRect();
+      const targetX = slotRect.left - parentRect.left + slotRect.width / 2 - 15;
+      const targetY = slotRect.top - parentRect.top + slotRect.height / 2;
+
+      this.coin.style.transition = 'all 0.4s cubic-bezier(0.5, 0, 0.75, 0)';
+      this.coin.style.left = targetX + 'px';
+      this.coin.style.top = targetY + 'px';
+      this.coin.style.transform = 'scale(0.3)';
+      this.coin.style.opacity = '0';
+
+      // 齿轮转动 + 闸机旋转
+      setTimeout(() => {
+        this.spinGear();
+        this.spinArms();
+        this.spawnSparks();
+      }, 300);
+
+      // 硬币复位
+      setTimeout(() => {
+        this.coin.style.transition = 'none';
+        this.coin.style.left = '';
+        this.coin.style.top = '';
+        this.coin.style.right = '';
+        this.coin.style.bottom = '';
+        this.coin.style.transform = '';
+        this.coin.style.opacity = '';
+        // 强制重绘后再显示
+        requestAnimationFrame(() => {
+          this.coin.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        });
+      }, 2000);
+    },
+
+    returnCoin() {
+      // 弹回原位
+      this.coin.style.transition = 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      this.coin.style.left = '';
+      this.coin.style.top = '';
+      this.coin.style.right = '';
+      this.coin.style.bottom = '';
+      setTimeout(() => {
+        this.coin.style.transition = '';
+      }, 500);
+    },
+
+    spinGear() {
+      if (this._gearRAF) RAF.remove(this._gearRAF);
+      let vel = 15;
+      const step = () => {
+        this.gearAngle += vel;
+        vel *= 0.96;
+        this.gear.style.transform = `rotate(${this.gearAngle}deg)`;
+        if (Math.abs(vel) < 0.3) {
+          RAF.remove(step);
+        }
+      };
+      this._gearRAF = step;
+      RAF.add(step);
+    },
+
+    spinArms() {
+      if (this._armsRAF) RAF.remove(this._armsRAF);
+      this.arms.classList.add('spinning');
+      let vel = 12;
+      const step = () => {
+        this.armsAngle += vel;
+        vel *= 0.97;
+        this.arms.style.transform = `translateX(-50%) rotate(${this.armsAngle}deg)`;
+        if (Math.abs(vel) < 0.2) {
+          this.arms.classList.remove('spinning');
+          RAF.remove(step);
+        }
+      };
+      this._armsRAF = step;
+      RAF.add(step);
+    },
+
+    spawnSparks() {
+      const stageRect = this.stage.getBoundingClientRect();
+      const gearRect = this.gear.getBoundingClientRect();
+      const cx = gearRect.left + gearRect.width / 2 - stageRect.left;
+      const cy = gearRect.top + gearRect.height / 2 - stageRect.top;
+
+      for (let i = 0; i < 8; i++) {
+        const spark = document.createElement('div');
+        spark.className = 'spark-particle';
+        spark.style.left = cx + 'px';
+        spark.style.top = cy + 'px';
+        this.stage.appendChild(spark);
+
+        const angle = (Math.PI * 2 * i) / 8 + Math.random() * 0.5;
+        const speed = 30 + Math.random() * 50;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+
+        let px = cx, py = cy, pvx = vx, pvy = vy;
+        let life = 1;
+        const animate = () => {
+          px += pvx * 0.016 * 60;
+          py += pvy * 0.016 * 60;
+          pvy += 1.5; // 重力
+          pvx *= 0.96;
+          life -= 0.03;
+          spark.style.left = px + 'px';
+          spark.style.top = py + 'px';
+          spark.style.opacity = life;
+          spark.style.transform = `scale(${life})`;
+          if (life <= 0) {
+            spark.remove();
+            RAF.remove(animate);
+          }
+        };
+        RAF.add(animate);
+      }
+    }
+  };
+
+  // ============================================================
+  //   展区 4：拨盘售票机
+  // ============================================================
+  const dialMachine = {
+    face: null,
+    display: null,
+    isDragging: false,
+    angle: 0,
+    lastAngle: 0,
+    angularVel: 0,
+    centerX: 0, centerY: 0,
+    snap: null,
+    positions: [], // 档位角度
+    currentDetent: 0,
+    prices: ['0.50', '1.00', '1.50', '2.00', '3.00', '5.00', '8.00', '10.00'],
+
+    init() {
+      this.face = $('#dialFace');
+      this.display = $('#ticketDisplay');
+      if (!this.face || !this.display) return;
+
+      // 生成刻度
+      this.generateMarks();
+
+      // 档位：8 个档位，每档 45 度
+      const detentCount = this.prices.length;
+      this.positions = [];
+      for (let i = 0; i < detentCount; i++) {
+        this.positions.push(i * (360 / detentCount));
+      }
+
+      this.snap = createMagneticSnap(this.positions, { k: 0.15, damping: 0.75 });
+
+      this.face.addEventListener('mousedown', (e) => this.startDrag(e));
+
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDragging) return;
+        const rect = this.face.getBoundingClientRect();
+        this.centerX = rect.left + rect.width / 2;
+        this.centerY = rect.top + rect.height / 2;
+
+        const dx = e.clientX - this.centerX;
+        const dy = e.clientY - this.centerY;
+        const currentAngle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+
+        // 计算角度差
+        let delta = currentAngle - this.lastAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        this.angle += delta;
+        this.angularVel = delta;
+        this.lastAngle = currentAngle;
+
+        this.updateDial();
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+
+        // 惯性 + 磁性吸附
+        if (Math.abs(this.angularVel) > 0.5) {
+          this._inertiaActive = true;
+          if (!this._inertiaAnimating) {
+            this._inertiaAnimating = true;
+            RAF.add(() => this.inertiaStep());
+          }
+        } else {
+          this.snapToNearest();
+        }
+      });
+    },
+
+    generateMarks() {
+      for (let i = 0; i < 40; i++) {
+        const mark = document.createElement('div');
+        mark.className = 'dial-mark' + (i % 5 === 0 ? ' major' : '');
+        mark.style.transform = `translateX(-50%) rotate(${i * 9}deg) translateY(-65px)`;
+        mark.style.margin = '0';
+        mark.style.top = '50%';
+        mark.style.left = '50%';
+        mark.style.position = 'absolute';
+        mark.style.transformOrigin = 'center 65px';
+        // 重置位置
+        mark.style.marginLeft = '-1px';
+        mark.style.marginTop = '0';
+        mark.style.top = '50%';
+        mark.style.left = '50%';
+        this.face.appendChild(mark);
+      }
+
+      // 数字
+      const prices = this.prices;
+      for (let i = 0; i < prices.length; i++) {
+        const num = document.createElement('div');
+        num.className = 'dial-number';
+        num.textContent = prices[i];
+        num.style.fontSize = '9px';
+        const angle = i * (360 / prices.length);
+        num.style.transform = `rotate(${angle}deg) translateY(-48px) rotate(-${angle}deg)`;
+        num.style.margin = '0';
+        num.style.marginLeft = '-15px';
+        num.style.width = '30px';
+        num.style.textAlign = 'center';
+        num.style.top = '50%';
+        num.style.left = '50%';
+        num.style.position = 'absolute';
+        num.style.transformOrigin = 'center 48px';
+        this.face.appendChild(num);
+      }
+    },
+
+    startDrag(e) {
+      e.preventDefault();
+      this.isDragging = true;
+      this._inertiaActive = false;
+
+      const rect = this.face.getBoundingClientRect();
+      this.centerX = rect.left + rect.width / 2;
+      this.centerY = rect.top + rect.height / 2;
+
+      const dx = e.clientX - this.centerX;
+      const dy = e.clientY - this.centerY;
+      this.lastAngle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+    },
+
+    updateDial() {
+      this.face.style.transform = `translateX(-50%) rotate(${this.angle}deg)`;
+
+      // 更新显示价格
+      const normalizedAngle = ((this.angle % 360) + 360) % 360;
+      const detentCount = this.positions.length;
+      const step = 360 / detentCount;
+      const idx = Math.round(normalizedAngle / step) % detentCount;
+      this.currentDetent = idx;
+
+      if (this.display) {
+        this.display.textContent = '¥ ' + this.prices[idx];
+      }
+    },
+
+    inertiaStep() {
+      this.angle += this.angularVel;
+      this.angularVel *= 0.94;
+      this.updateDial();
+
+      if (Math.abs(this.angularVel) < 1) {
+        this.snapToNearest();
+        this._inertiaActive = false;
+      }
+    },
+
+    snapToNearest() {
+      const normalized = ((this.angle % 360) + 360) % 360;
+      this.snap.snapTo(normalized);
+      this._snapBase = this.angle - normalized;
+
+      if (!this._snapAnimating) {
+        this._snapAnimating = true;
+        RAF.add(() => this.snapStep());
+      }
+    },
+
+    snapStep() {
+      this.snap.step();
+      this.angle = this._snapBase + this.snap.x;
+      this.face.style.transform = `translateX(-50%) rotate(${this.angle}deg)`;
+      this.updateDial();
+
+      if (!this.snap.active && this.snap.isSettled()) {
+        this._snapAnimating = false;
+        this._inertiaAnimating = false;
+        RAF.remove(() => this.snapStep());
+        RAF.remove(() => this.inertiaStep());
+      }
+    }
+  };
+
+  // ============================================================
+  //   展区 5：拉杆煤气灯
+  // ============================================================
+  const gasLamp = {
+    cord: null,
+    globe: null,
+    halo: null,
+    isLit: false,
+    isDragging: false,
+    startY: 0,
+    startPull: 0,
+    pullAmount: 0,
+    spring: null,
+    flickerRAF: null,
+
+    init() {
+      this.cord = $('#pullCord');
+      this.globe = $('#lampGlobe');
+      this.halo = $('#lampHalo');
+      if (!this.cord || !this.globe) return;
+
+      this.spring = createSpring({ x: 0, target: 0, k: 0.1, damping: 0.65 });
+
+      this.cord.addEventListener('mousedown', (e) => this.startDrag(e));
+
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDragging) return;
+        const dy = e.clientY - this.startY;
+        this.pullAmount = clamp(this.startPull + dy, 0, 40);
+        this.spring.x = this.pullAmount;
+        this.spring.target = this.pullAmount;
+        this.updateCord();
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+
+        // 拉下超过阈值则切换状态
+        if (this.pullAmount > 20) {
+          this.toggle();
+        }
+
+        // 弹性回弹
+        this.spring.setTarget(0);
+        if (!this._animating) {
+          this._animating = true;
+          RAF.add(() => this.animateBack());
+        }
+      });
+    },
+
+    startDrag(e) {
+      e.preventDefault();
+      this.isDragging = true;
+      this.startY = e.clientY;
+      this.startPull = this.pullAmount;
+    },
+
+    updateCord() {
+      const stretch = 1 + this.pullAmount / 60;
+      this.cord.style.transform = `translateX(-50%) scaleY(${stretch})`;
+    },
+
+    animateBack() {
+      this.spring.step();
+      this.pullAmount = this.spring.x;
+      this.updateCord();
+
+      if (this.spring.isSettled()) {
+        this.pullAmount = 0;
+        this.spring.reset(0);
+        this._animating = false;
+        RAF.remove(() => this.animateBack());
+      }
+    },
+
+    toggle() {
+      this.isLit = !this.isLit;
+      if (this.isLit) {
+        this.globe.classList.add('lit');
+        this.halo.classList.add('on');
+        this.startFlicker();
+      } else {
+        this.globe.classList.remove('lit');
+        this.halo.classList.remove('on');
+        this.stopFlicker();
+      }
+    },
+
+    startFlicker() {
+      if (this.flickerRAF) return;
+      let t = 0;
+      const step = () => {
+        t += 0.05;
+        const flicker = 0.95 + Math.sin(t * 3.7) * 0.03 + Math.sin(t * 7.1) * 0.02;
+        this.halo.style.opacity = flicker;
+      };
+      this.flickerRAF = step;
+      RAF.add(step);
+    },
+
+    stopFlicker() {
+      if (this.flickerRAF) {
+        RAF.remove(this.flickerRAF);
+        this.flickerRAF = null;
+      }
+    }
+  };
+
+  // ============================================================
+  //   展区 6：行李转盘
+  // ============================================================
+  const carousel = {
+    stage: null,
+    base: null,
+    luggageItems: [],
+    angle: 0,
+    angularVel: 0,
+    isDragging: false,
+    lastX: 0, lastY: 0,
+    centerX: 0, centerY: 0,
+    lastAngle: 0,
+
+    init() {
+      this.stage = $('#carouselStage');
+      this.base = $('#carouselBase');
+      if (!this.stage || !this.base) return;
+
+      // 创建行李
+      this.createLuggage();
+
+      this.stage.addEventListener('mousedown', (e) => this.startDrag(e));
+
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDragging) return;
+
+        const rect = this.stage.getBoundingClientRect();
+        this.centerX = rect.left + rect.width / 2;
+        this.centerY = rect.top + rect.height / 2;
+
+        const dx = e.clientX - this.centerX;
+        const dy = e.clientY - this.centerY;
+        const currentAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+        let delta = currentAngle - this.lastAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        this.angle += delta * 0.7; // 0.7 因为有 3D 透视
+        this.angularVel = delta * 0.7;
+        this.lastAngle = currentAngle;
+
+        this.update();
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+
+        if (Math.abs(this.angularVel) > 0.3) {
+          if (!this._inertiaAnimating) {
+            this._inertiaAnimating = true;
+            RAF.add(() => this.inertiaStep());
+          }
+        }
+      });
+    },
+
+    createLuggage() {
+      const colors = ['luggage-1', 'luggage-2', 'luggage-3', 'luggage-4', 'luggage-5', 'luggage-6'];
+      const count = 6;
+      this.luggageItems = [];
+
+      for (let i = 0; i < count; i++) {
+        const lug = document.createElement('div');
+        lug.className = `luggage-item ${colors[i]}`;
+        lug.innerHTML = `<div class="luggage-strap"></div><div class="luggage-handle"></div>`;
+        this.stage.appendChild(lug);
+        this.luggageItems.push({
+          el: lug,
+          offset: (i / count) * 360,
+          radius: 65
+        });
+      }
+
+      this.update();
+    },
+
+    startDrag(e) {
+      e.preventDefault();
+      this.isDragging = true;
+      this.angularVel = 0;
+
+      const rect = this.stage.getBoundingClientRect();
+      this.centerX = rect.left + rect.width / 2;
+      this.centerY = rect.top + rect.height / 2;
+
+      const dx = e.clientX - this.centerX;
+      const dy = e.clientY - this.centerY;
+      this.lastAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+    },
+
+    update() {
+      // 转盘旋转
+      this.base.style.transform = `translateX(-50%) rotateX(60deg) rotate(${this.angle}deg)`;
+
+      // 行李位置 —— 椭圆路径（3D 透视效果）
+      const tilt = 60; // 倾斜角度
+      const tiltRad = tilt * Math.PI / 180;
+
+      this.luggageItems.forEach((item) => {
+        const angleRad = (this.angle + item.offset) * Math.PI / 180;
+        const x = Math.cos(angleRad) * item.radius;
+        const y = Math.sin(angleRad) * item.radius * Math.cos(tiltRad);
+        const z = Math.sin(angleRad) * item.radius * Math.sin(tiltRad);
+
+        // 归一化 z 到 0-1 用于缩放和深度
+        const zNorm = (z + item.radius * Math.sin(tiltRad)) / (2 * item.radius * Math.sin(tiltRad));
+        const scale = 0.6 + zNorm * 0.6;
+        const opacity = 0.5 + zNorm * 0.5;
+
+        const centerX = this.stage.offsetWidth / 2;
+        const centerY = this.stage.offsetHeight / 2 + 10;
+
+        item.el.style.left = (centerX + x - 14) + 'px';
+        item.el.style.top = (centerY + y - 17) + 'px';
+        item.el.style.transform = `scale(${scale})`;
+        item.el.style.opacity = opacity;
+        item.el.style.zIndex = Math.floor(zNorm * 100);
+      });
+    },
+
+    inertiaStep() {
+      this.angle += this.angularVel;
+      this.angularVel *= 0.97;
+      this.update();
+
+      if (Math.abs(this.angularVel) < 0.1) {
+        this.angularVel = 0;
+        this._inertiaAnimating = false;
+        RAF.remove(() => this.inertiaStep());
+      }
+    }
+  };
+
+  // ============================================================
+  //   3D 倾斜卡片效果
+  // ============================================================
+  const tiltCards = {
+    cards: [],
+
+    init() {
+      if (prefersReducedMotion) return;
+
+      this.cards = $$('.tilt-card').map(card => ({
+        el: card,
+        tiltX: 0,
+        tiltY: 0,
+        targetTX: 0,
+        targetTY: 0
+      }));
+
+      this.cards.forEach(item => {
+        const stage = item.el.querySelector('.card-stage');
+        if (!stage) return;
+
+        stage.addEventListener('mousemove', (e) => {
+          const rect = stage.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width - 0.5;
+          const y = (e.clientY - rect.top) / rect.height - 0.5;
+          item.targetTY = x * 6;  // 左右倾斜
+          item.targetTX = -y * 6; // 上下倾斜
+        });
+
+        stage.addEventListener('mouseleave', () => {
+          item.targetTX = 0;
+          item.targetTY = 0;
+        });
+      });
+
+      RAF.add(() => this.tick());
+    },
+
+    tick() {
+      this.cards.forEach(item => {
+        item.tiltX = lerp(item.tiltX, item.targetTX, 0.1);
+        item.tiltY = lerp(item.tiltY, item.targetTY, 0.1);
+
+        const stage = item.el.querySelector('.card-stage');
+        if (stage) {
+          stage.style.transform =
+            `perspective(800px) rotateX(${item.tiltX}deg) rotateY(${item.tiltY}deg)`;
+        }
+      });
+    }
+  };
+
+  // ============================================================
+  //   滚动渐入
+  // ============================================================
+  const scrollReveal = {
+    init() {
+      if (prefersReducedMotion) {
+        $$('.exhibit-card, .page-header, .page-footer').forEach(el => {
+          el.classList.add('is-visible');
+        });
+        return;
+      }
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, i) => {
+          if (entry.isIntersecting) {
+            setTimeout(() => {
+              entry.target.classList.add('is-visible');
+            }, i * 80);
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      $$('.exhibit-card').forEach((card, i) => {
+        card.style.transitionDelay = (i * 0.05) + 's';
+        observer.observe(card);
+      });
+
+      observer.observe($('#pageHeader'));
+      observer.observe($('#pageFooter'));
+    }
+  };
+
+  // ============================================================
+  //   升级为应用声明
+  // ============================================================
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) { /* 忽略跨域错误 */ }
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // ============================================================
+  //   初始化
+  // ============================================================
+  function init() {
+    try {
+      cursor.init();
+    } catch (e) { console.error('Cursor init error:', e); }
+
+    try {
+      flipboard.init();
+    } catch (e) { console.error('Flipboard init error:', e); }
+
+    try {
+      ticketGate.init();
+    } catch (e) { console.error('Ticket gate init error:', e); }
+
+    try {
+      coinTurnstile.init();
+    } catch (e) { console.error('Coin turnstile init error:', e); }
+
+    try {
+      dialMachine.init();
+    } catch (e) { console.error('Dial machine init error:', e); }
+
+    try {
+      gasLamp.init();
+    } catch (e) { console.error('Gas lamp init error:', e); }
+
+    try {
+      carousel.init();
+    } catch (e) { console.error('Carousel init error:', e); }
+
+    try {
+      tiltCards.init();
+    } catch (e) { console.error('Tilt cards init error:', e); }
+
+    try {
+      scrollReveal.init();
+    } catch (e) { console.error('Scroll reveal init error:', e); }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+
+</body>
+</html>
