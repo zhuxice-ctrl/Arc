@@ -1,0 +1,2153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>光子织机 Photon Loom · Effects Lab</title>
+<style>
+/* ========== CSS Variables & Reset ========== */
+:root {
+  --obsidian: #0a0a0f;
+  --molten-gold: #ffb800;
+  --scarlet: #e63946;
+  --ivory: #f0e6d2;
+  --charcoal: #1a1a24;
+  --ember: #ff6b1a;
+  --gold-soft: rgba(255, 184, 0, 0.15);
+  --scarlet-soft: rgba(230, 57, 70, 0.12);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--obsidian);
+  color: var(--ivory);
+  font-family: 'Georgia', 'Noto Serif SC', serif;
+  overflow: hidden;
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ========== Reduced Motion ========== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  #bg-particles, .pulse-glow, .gloss-sweep { display: none !important; }
+}
+
+/* ========== Background Particle Canvas ========== */
+#bg-particles {
+  position: fixed; inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* ========== Custom Cursor ========== */
+.cursor-outer {
+  position: fixed;
+  width: 36px; height: 36px;
+  border: 2px solid rgba(240, 230, 210, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s cubic-bezier(.2,.9,.3,1.4), height 0.2s cubic-bezier(.2,.9,.3,1.4),
+              border-color 0.2s, background 0.2s, opacity 0.2s;
+  box-shadow:
+    0 0 12px rgba(255, 184, 0, 0.4),
+    0 0 24px rgba(255, 184, 0, 0.2),
+    inset 0 0 8px rgba(255, 184, 0, 0.25);
+  will-change: transform;
+}
+.cursor-inner {
+  position: fixed;
+  width: 6px; height: 6px;
+  background: var(--molten-gold);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10000;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 8px var(--molten-gold),
+    0 0 16px var(--molten-gold),
+    0 0 24px rgba(255, 184, 0, 0.5);
+  transition: width 0.15s, height 0.15s, background 0.15s;
+  will-change: transform;
+}
+.cursor-outer.hover {
+  width: 56px; height: 56px;
+  border-color: var(--molten-gold);
+  background: rgba(255, 184, 0, 0.08);
+  box-shadow:
+    0 0 20px rgba(255, 184, 0, 0.6),
+    0 0 40px rgba(255, 184, 0, 0.3),
+    inset 0 0 14px rgba(255, 184, 0, 0.35);
+}
+.cursor-inner.hover {
+  width: 8px; height: 8px;
+  background: var(--scarlet);
+  box-shadow:
+    0 0 12px var(--scarlet),
+    0 0 24px var(--scarlet),
+    0 0 36px rgba(230, 57, 70, 0.5);
+}
+.cursor-ripple {
+  position: fixed;
+  width: 0; height: 0;
+  border: 1.5px solid var(--molten-gold);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 0.7s cubic-bezier(.2,.8,.3,1) forwards;
+}
+@keyframes rippleExpand {
+  0% { width: 0; height: 0; opacity: 0.9; border-width: 2px; }
+  100% { width: 120px; height: 120px; opacity: 0; border-width: 1px; }
+}
+
+/* ========== Layout ========== */
+.app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%; height: 100vh;
+}
+
+/* ========== Sidebar Nav ========== */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: rgba(26, 26, 36, 0.6);
+  backdrop-filter: blur(8px);
+  border-right: 1px solid rgba(255, 184, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  padding: 32px 0;
+  z-index: 10;
+}
+
+.logo {
+  padding: 0 28px 28px;
+  border-bottom: 1px solid rgba(255, 184, 0, 0.08);
+  margin-bottom: 24px;
+}
+.logo-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--molten-gold);
+  text-shadow: 0 0 20px rgba(255, 184, 0, 0.4);
+  line-height: 1.2;
+}
+.logo-sub {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: rgba(240, 230, 210, 0.5);
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+.nav-list {
+  list-style: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 16px;
+}
+
+.nav-item {
+  position: relative;
+  padding: 14px 18px;
+  border-radius: 8px;
+  cursor: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: background 0.25s, transform 0.25s;
+  overflow: hidden;
+  border: 1px solid transparent;
+}
+.nav-item:hover {
+  background: rgba(255, 184, 0, 0.06);
+  border-color: rgba(255, 184, 0, 0.15);
+  transform: translateX(3px);
+}
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(255,184,0,0.12), rgba(255,184,0,0.02));
+  border-color: rgba(255, 184, 0, 0.3);
+}
+.nav-item.active .nav-num { color: var(--molten-gold); }
+.nav-item.active .nav-name { color: var(--ivory); }
+
+/* Gloss sweep */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,184,0,0.12), transparent);
+  transform: skewX(-15deg);
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+}
+.nav-item:hover::before {
+  animation: glossSweep 0.8s ease-out;
+}
+@keyframes glossSweep {
+  0% { left: -60%; opacity: 0; }
+  30% { opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+
+.nav-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(240, 230, 210, 0.35);
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  transition: color 0.3s;
+}
+.nav-name {
+  font-size: 14px;
+  color: rgba(240, 230, 210, 0.7);
+  letter-spacing: 1px;
+  transition: color 0.3s;
+}
+.nav-thumb {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  margin-left: auto;
+  background: var(--charcoal);
+  border: 1px solid rgba(255, 184, 0, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+.nav-thumb::after {
+  content: '';
+  position: absolute; inset: 4px;
+  border-radius: 3px;
+}
+.nav-item:nth-child(1) .nav-thumb::after { background: radial-gradient(circle at 50% 50%, var(--molten-gold), var(--scarlet)); opacity: 0.6; }
+.nav-item:nth-child(2) .nav-thumb::after { background: linear-gradient(45deg, var(--molten-gold), var(--scarlet)); opacity: 0.5; filter: blur(1px); }
+.nav-item:nth-child(3) .nav-thumb::after { background: radial-gradient(circle at 50% 50%, var(--molten-gold) 0%, transparent 70%); opacity: 0.6; }
+.nav-item:nth-child(4) .nav-thumb::after { background: var(--molten-gold); opacity: 0.5; border-radius: 50%; inset: 6px; }
+.nav-item:nth-child(5) .nav-thumb::after { background: repeating-linear-gradient(90deg, var(--molten-gold) 0 2px, transparent 2px 5px); opacity: 0.5; }
+.nav-item:nth-child(6) .nav-thumb::after { background: linear-gradient(180deg, var(--scarlet), var(--molten-gold), var(--scarlet)); opacity: 0.5; }
+
+.sidebar-footer {
+  padding: 16px 28px 0;
+  border-top: 1px solid rgba(255, 184, 0, 0.08);
+  margin-top: 16px;
+}
+.particle-count {
+  font-size: 11px;
+  color: rgba(240, 230, 210, 0.4);
+  letter-spacing: 1px;
+}
+.particle-count .num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--molten-gold);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px rgba(255, 184, 0, 0.4);
+}
+
+/* ========== Main Content ========== */
+.main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.exhibit-header {
+  padding: 28px 40px 16px;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.exhibit-num {
+  font-size: 14px;
+  letter-spacing: 6px;
+  color: rgba(255, 184, 0, 0.5);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.exhibit-title {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--ivory);
+  margin-top: 4px;
+  text-shadow: 0 0 30px rgba(255, 184, 0, 0.25);
+}
+.pulse-glow .exhibit-title {
+  animation: titlePulse 3s ease-in-out infinite;
+}
+@keyframes titlePulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(255,184,0,0.2), 0 0 40px rgba(255,184,0,0.1); }
+  50% { text-shadow: 0 0 30px rgba(255,184,0,0.45), 0 0 60px rgba(255,184,0,0.25); }
+}
+
+.exhibit-desc {
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(240, 230, 210, 0.55);
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+
+/* ========== Exhibit Stage ========== */
+.stage {
+  flex: 1;
+  position: relative;
+  margin: 16px 40px 40px;
+  border-radius: 16px;
+  background: rgba(26, 26, 36, 0.4);
+  border: 1px solid rgba(255, 184, 0, 0.1);
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 60px rgba(0, 0, 0, 0.4),
+    0 0 40px rgba(0, 0, 0, 0.3);
+}
+
+.stage-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+
+/* Controls panel (shared) */
+.controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 18px;
+  background: rgba(10, 10, 15, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 184, 0, 0.18);
+  border-radius: 12px;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.ctrl-btn {
+  padding: 8px 16px;
+  background: rgba(255, 184, 0, 0.08);
+  border: 1px solid rgba(255, 184, 0, 0.25);
+  color: var(--ivory);
+  font-size: 12px;
+  letter-spacing: 1px;
+  border-radius: 6px;
+  cursor: none;
+  transition: all 0.2s;
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
+}
+.ctrl-btn:hover {
+  background: rgba(255, 184, 0, 0.18);
+  border-color: var(--molten-gold);
+  color: var(--molten-gold);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255, 184, 0, 0.25);
+}
+.ctrl-btn.active {
+  background: var(--molten-gold);
+  border-color: var(--molten-gold);
+  color: var(--obsidian);
+  font-weight: 600;
+}
+.ctrl-label {
+  font-size: 11px;
+  color: rgba(240, 230, 210, 0.5);
+  letter-spacing: 1px;
+  margin-right: 4px;
+}
+
+/* Exhibit transition */
+.exhibit-enter {
+  animation: exhibitEnter 0.7s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes exhibitEnter {
+  0% { opacity: 0; transform: scale(0.97) translateY(20px); filter: blur(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+
+/* ========== Exhibit 3: Text Deconstruct specific ========== */
+.text-input-wrap {
+  position: absolute;
+  top: 20px; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 5;
+}
+.text-input {
+  padding: 10px 18px;
+  background: rgba(10, 10, 15, 0.75);
+  border: 1px solid rgba(255, 184, 0, 0.25);
+  color: var(--ivory);
+  font-size: 14px;
+  letter-spacing: 2px;
+  border-radius: 8px;
+  width: 280px;
+  text-align: center;
+  cursor: none;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.text-input:focus {
+  border-color: var(--molten-gold);
+  box-shadow: 0 0 20px rgba(255, 184, 0, 0.2);
+}
+.preset-row {
+  position: absolute;
+  top: 70px; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+.preset-chip {
+  padding: 4px 12px;
+  font-size: 11px;
+  background: rgba(255, 184, 0, 0.06);
+  border: 1px solid rgba(255, 184, 0, 0.15);
+  color: rgba(240, 230, 210, 0.6);
+  border-radius: 20px;
+  cursor: none;
+  transition: all 0.2s;
+  letter-spacing: 1px;
+}
+.preset-chip:hover {
+  color: var(--molten-gold);
+  border-color: rgba(255, 184, 0, 0.4);
+  background: rgba(255, 184, 0, 0.1);
+}
+
+/* ========== Exhibit 4: Magnetic Button ========== */
+.mag-btn-wrap {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 260px; height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mag-btn {
+  position: relative;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--molten-gold), var(--ember) 50%, var(--scarlet));
+  border: none;
+  cursor: none;
+  box-shadow:
+    0 0 40px rgba(255, 184, 0, 0.5),
+    0 0 80px rgba(230, 57, 70, 0.3),
+    inset 0 0 30px rgba(255, 255, 255, 0.15);
+  transition: box-shadow 0.3s;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--obsidian);
+  letter-spacing: 4px;
+  font-family: inherit;
+  will-change: clip-path;
+}
+.mag-btn:hover {
+  box-shadow:
+    0 0 60px rgba(255, 184, 0, 0.7),
+    0 0 120px rgba(230, 57, 70, 0.4),
+    inset 0 0 40px rgba(255, 255, 255, 0.2);
+}
+.mag-btn-label {
+  pointer-events: none;
+  text-shadow: 0 0 10px rgba(255,255,255,0.3);
+}
+.mag-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ========== Exhibit 6: Scan Filter ========== */
+.scan-stage {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px; height: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 184, 0, 0.2);
+  background: var(--charcoal);
+}
+.scan-image {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(255,184,0,0.4), transparent 60%),
+    radial-gradient(ellipse at 70% 60%, rgba(230,57,70,0.35), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(255,107,26,0.3), transparent 50%),
+    linear-gradient(180deg, #1a1a24 0%, #0a0a0f 100%);
+  transition: filter 0.3s;
+}
+.scan-image::before {
+  content: 'PHOTON';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  color: rgba(240, 230, 210, 0.08);
+}
+.scan-image::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,0.1) 0px,
+    rgba(0,0,0,0.1) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+.scan-line {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(180deg, transparent, var(--molten-gold), transparent);
+  box-shadow: 0 0 12px var(--molten-gold), 0 0 24px rgba(255,184,0,0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+.scan-distort {
+  position: absolute;
+  left: 0; width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.scan-distort .scan-image {
+  position: absolute;
+  left: 0; width: 100%;
+}
+
+.scan-slider {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 440px;
+  z-index: 5;
+}
+.scan-slider input[type="range"] {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: none;
+}
+.scan-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: rgba(255, 184, 0, 0.2);
+  border-radius: 1px;
+}
+.scan-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  background: var(--molten-gold);
+  border-radius: 50%;
+  margin-top: -8px;
+  box-shadow: 0 0 12px var(--molten-gold), 0 0 24px rgba(255,184,0,0.5);
+  cursor: none;
+}
+.scan-slider input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: rgba(255, 184, 0, 0.2);
+  border-radius: 1px;
+}
+.scan-slider input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: var(--molten-gold);
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 0 12px var(--molten-gold);
+  cursor: none;
+}
+
+.filter-modes {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+.filter-mode {
+  padding: 6px 14px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  background: rgba(10, 10, 15, 0.7);
+  border: 1px solid rgba(255, 184, 0, 0.15);
+  color: rgba(240, 230, 210, 0.6);
+  border-radius: 6px;
+  cursor: none;
+  transition: all 0.2s;
+  backdrop-filter: blur(4px);
+}
+.filter-mode:hover { color: var(--molten-gold); border-color: rgba(255,184,0,0.4); }
+.filter-mode.active {
+  background: rgba(255, 184, 0, 0.15);
+  border-color: var(--molten-gold);
+  color: var(--molten-gold);
+}
+
+/* ========== Number count animation helper ========== */
+.num-animate {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== Intro overlay ========== */
+.intro-overlay {
+  position: fixed; inset: 0;
+  background: var(--obsidian);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+  transition: opacity 0.8s, visibility 0.8s;
+}
+.intro-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.intro-title {
+  font-size: 54px;
+  font-weight: 700;
+  letter-spacing: 14px;
+  color: var(--molten-gold);
+  text-shadow: 0 0 40px rgba(255, 184, 0, 0.6);
+  animation: introFlicker 2s ease-in-out;
+}
+@keyframes introFlicker {
+  0% { opacity: 0; text-shadow: 0 0 0 rgba(255,184,0,0); }
+  30% { opacity: 1; text-shadow: 0 0 60px rgba(255,184,0,0.8); }
+  60% { opacity: 0.7; }
+  100% { opacity: 1; text-shadow: 0 0 40px rgba(255,184,0,0.6); }
+}
+.intro-sub {
+  font-size: 13px;
+  letter-spacing: 8px;
+  color: rgba(240, 230, 210, 0.4);
+  text-transform: uppercase;
+}
+.intro-line {
+  width: 200px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--molten-gold), transparent);
+  animation: lineGrow 1.2s ease-out;
+}
+@keyframes lineGrow {
+  0% { width: 0; opacity: 0; }
+  100% { width: 200px; opacity: 1; }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Intro overlay -->
+<div class="intro-overlay" id="introOverlay">
+  <div class="intro-line"></div>
+  <div class="intro-title">光子织机</div>
+  <div class="intro-sub">Photon Loom · Effects Lab</div>
+</div>
+
+<!-- Background particles -->
+<canvas id="bg-particles"></canvas>
+
+<!-- Custom cursor -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-title">光子织机</div>
+      <div class="logo-sub">Photon Loom</div>
+    </div>
+    <ul class="nav-list" id="navList">
+      <li class="nav-item active" data-index="0">
+        <span class="nav-num">01</span>
+        <span class="nav-name">光子引力场</span>
+        <span class="nav-thumb"></span>
+      </li>
+      <li class="nav-item" data-index="1">
+        <span class="nav-num">02</span>
+        <span class="nav-name">噪波流场</span>
+        <span class="nav-thumb"></span>
+      </li>
+      <li class="nav-item" data-index="2">
+        <span class="nav-num">03</span>
+        <span class="nav-name">文字解构</span>
+        <span class="nav-thumb"></span>
+      </li>
+      <li class="nav-item" data-index="3">
+        <span class="nav-num">04</span>
+        <span class="nav-name">磁力形变按钮</span>
+        <span class="nav-thumb"></span>
+      </li>
+      <li class="nav-item" data-index="4">
+        <span class="nav-num">05</span>
+        <span class="nav-name">频谱可视化</span>
+        <span class="nav-thumb"></span>
+      </li>
+      <li class="nav-item" data-index="5">
+        <span class="nav-num">06</span>
+        <span class="nav-name">光线扫描滤镜</span>
+        <span class="nav-thumb"></span>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="particle-count">活跃粒子 <span class="num num-animate" id="particleCount">0</span></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="exhibit-header pulse-glow">
+      <div>
+        <div class="exhibit-num" id="exhibitNum">EXHIBIT 01</div>
+        <div class="exhibit-title" id="exhibitTitle">光子引力场</div>
+      </div>
+      <p class="exhibit-desc" id="exhibitDesc">
+        鼠标作为引力源，遵循反平方定律牵引粒子。<br>
+        粒子拖尾记录运动轨迹，色彩随速度从熔金渐变为猩红。
+      </p>
+    </header>
+
+    <div class="stage" id="stage">
+      <!-- Dynamic content injected here -->
+    </div>
+  </main>
+</div>
+
+<script>
+'use strict';
+
+/* ========================================================
+   UTILITIES & STATE
+   ======================================================== */
+
+const $ = (s, c=document) => c.querySelector(s);
+const $$ = (s, c=document) => Array.from(c.querySelectorAll(s));
+
+const state = {
+  currentExhibit: 0,
+  mouseX: window.innerWidth / 2,
+  mouseY: window.innerHeight / 2,
+  mouseInWindow: false,
+  rafIds: [],
+  timeouts: [],
+  reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  paused: false,
+  exhibitCleanup: null
+};
+
+const exhibits = [
+  { num: '01', title: '光子引力场', desc: '鼠标作为引力源，遵循反平方定律牵引粒子。<br>粒子拖尾记录运动轨迹，色彩随速度从熔金渐变为猩红。' },
+  { num: '02', title: '噪波流场', desc: '基于 Simplex 噪声的矢量场，粒子沿流线编织丝绸纹理。<br>鼠标扰动流场，色彩在熔金与猩红之间流转。' },
+  { num: '03', title: '文字解构', desc: '字符分解为像素粒子，聚拢成形，吹散成尘。<br>拖动鼠标操控风场，在秩序与混沌间游走。' },
+  { num: '04', title: '磁力形变按钮', desc: '多层级磁吸效应——按钮表面随鼠标靠近起伏形变。<br>点击爆发粒子环，感受光与力的共振。' },
+  { num: '05', title: '频谱可视化', desc: '模拟音频频谱，熔金柱状随频率舞动。<br>底部镜像倒影，顶部峰值线如余晖缓缓下落。' },
+  { num: '06', title: '光线扫描滤镜', desc: '扫描线掠过画面，留下色散、故障与热成像残影。<br>拖动滑块控制扫描位置，切换滤镜模式。' }
+];
+
+/* Register RAF with auto-cleanup on visibility change */
+function safeRAF(fn) {
+  let id = null;
+  const wrapped = () => {
+    if (!state.paused) fn();
+    id = requestAnimationFrame(wrapped);
+  };
+  id = requestAnimationFrame(wrapped);
+  state.rafIds.push(() => cancelAnimationFrame(id));
+  return () => {
+    cancelAnimationFrame(id);
+    state.rafIds = state.rafIds.filter(f => f.toString().indexOf(id) === -1);
+  };
+}
+
+function safeTimeout(fn, ms) {
+  const id = setTimeout(() => {
+    fn();
+    state.timeouts = state.timeouts.filter(t => t !== id);
+  }, ms);
+  state.timeouts.push(id);
+  return id;
+}
+
+/* Visibility change handling */
+document.addEventListener('visibilitychange', () => {
+  state.paused = document.hidden;
+});
+
+/* ========================================================
+   CUSTOM CURSOR
+   ======================================================== */
+
+const cursorOuter = $('#cursorOuter');
+const cursorInner = $('#cursorInner');
+let cursorOuterX = window.innerWidth / 2;
+let cursorOuterY = window.innerHeight / 2;
+let targetX = cursorOuterX;
+let targetY = cursorOuterY;
+
+document.addEventListener('mousemove', (e) => {
+  targetX = e.clientX;
+  targetY = e.clientY;
+  state.mouseX = e.clientX;
+  state.mouseY = e.clientY;
+  state.mouseInWindow = true;
+  // Inner cursor follows directly
+  cursorInner.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+});
+
+document.addEventListener('mouseleave', () => {
+  state.mouseInWindow = false;
+  cursorOuter.style.opacity = '0';
+  cursorInner.style.opacity = '0';
+});
+document.addEventListener('mouseenter', () => {
+  state.mouseInWindow = true;
+  cursorOuter.style.opacity = '1';
+  cursorInner.style.opacity = '1';
+});
+
+// Outer cursor with smoothing
+function cursorLoop() {
+  if (!state.paused && state.mouseInWindow) {
+    cursorOuterX += (targetX - cursorOuterX) * 0.15;
+    cursorOuterY += (targetY - cursorOuterY) * 0.15;
+    cursorOuter.style.transform = `translate(${cursorOuterX}px, ${cursorOuterY}px) translate(-50%, -50%)`;
+  }
+  requestAnimationFrame(cursorLoop);
+}
+cursorLoop();
+
+// Hover detection
+function setupCursorHover() {
+  const hoverables = 'button, a, input, .nav-item, .ctrl-btn, .preset-chip, .filter-mode, .mag-btn';
+  document.addEventListener('mouseover', (e) => {
+    if (e.target.closest(hoverables)) {
+      cursorOuter.classList.add('hover');
+      cursorInner.classList.add('hover');
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest(hoverables)) {
+      cursorOuter.classList.remove('hover');
+      cursorInner.classList.remove('hover');
+    }
+  });
+}
+
+// Ripple on click
+document.addEventListener('click', (e) => {
+  const ripple = document.createElement('div');
+  ripple.className = 'cursor-ripple';
+  ripple.style.left = e.clientX + 'px';
+  ripple.style.top = e.clientY + 'px';
+  document.body.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 700);
+});
+
+/* ========================================================
+   NUMBER COUNT ANIMATION
+   ======================================================== */
+
+function animateNumber(el, from, to, duration) {
+  if (state.reducedMotion) { el.textContent = to; return; }
+  const start = performance.now();
+  function update(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const val = Math.round(from + (to - from) * eased);
+    el.textContent = val.toLocaleString();
+    if (t < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+/* ========================================================
+   BACKGROUND PARTICLES (EFFECT 12)
+   ======================================================== */
+
+const bgCanvas = $('#bg-particles');
+const bgCtx = bgCanvas.getContext('2d');
+let bgParticles = [];
+
+function resizeBgCanvas() {
+  bgCanvas.width = window.innerWidth;
+  bgCanvas.height = window.innerHeight;
+}
+
+function initBgParticles() {
+  resizeBgCanvas();
+  bgParticles = [];
+  const count = state.reducedMotion ? 15 : 45;
+  for (let i = 0; i < count; i++) {
+    bgParticles.push({
+      x: Math.random() * bgCanvas.width,
+      y: Math.random() * bgCanvas.height,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+      alpha: Math.random() * 0.5 + 0.2,
+      flicker: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function drawBgParticles() {
+  if (state.reducedMotion || state.paused) return;
+  bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+  bgParticles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.flicker += 0.02;
+    if (p.x < 0) p.x = bgCanvas.width;
+    if (p.x > bgCanvas.width) p.x = 0;
+    if (p.y < 0) p.y = bgCanvas.height;
+    if (p.y > bgCanvas.height) p.y = 0;
+    const a = p.alpha * (0.6 + Math.sin(p.flicker) * 0.4);
+    bgCtx.beginPath();
+    bgCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    bgCtx.fillStyle = `rgba(255, 184, 0, ${a})`;
+    bgCtx.shadowColor = 'rgba(255, 184, 0, 0.8)';
+    bgCtx.shadowBlur = 6;
+    bgCtx.fill();
+  });
+}
+
+safeRAF(drawBgParticles);
+window.addEventListener('resize', () => {
+  resizeBgCanvas();
+});
+
+/* ========================================================
+   SIMPLEX NOISE (2D) - for flow field
+   ======================================================== */
+
+const SimplexNoise = (() => {
+  const grad3 = [
+    [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+    [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+    [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+  ];
+  const p = [];
+  for (let i = 0; i < 256; i++) p[i] = Math.floor(Math.random() * 256);
+  const perm = [];
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+  function dot(g, x, y) { return g[0]*x + g[1]*y; }
+
+  return function noise2(xin, yin) {
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    let n0, n1, n2;
+    const s = (xin + yin) * F2;
+    const i = Math.floor(xin + s);
+    const j = Math.floor(yin + s);
+    const t = (i + j) * G2;
+    const X0 = i - t;
+    const Y0 = j - t;
+    const x0 = xin - X0;
+    const y0 = yin - Y0;
+    let i1, j1;
+    if (x0 > y0) { i1 = 1; j1 = 0; }
+    else { i1 = 0; j1 = 1; }
+    const x1 = x0 - i1 + G2;
+    const y1 = y0 - j1 + G2;
+    const x2 = x0 - 1 + 2 * G2;
+    const y2 = y0 - 1 + 2 * G2;
+    const ii = i & 255;
+    const jj = j & 255;
+    const gi0 = perm[ii + perm[jj]] % 12;
+    const gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
+    const gi2 = perm[ii + 1 + perm[jj + 1]] % 12;
+    let t0 = 0.5 - x0*x0 - y0*y0;
+    if (t0 < 0) n0 = 0;
+    else { t0 *= t0; n0 = t0 * t0 * dot(grad3[gi0], x0, y0); }
+    let t1 = 0.5 - x1*x1 - y1*y1;
+    if (t1 < 0) n1 = 0;
+    else { t1 *= t1; n1 = t1 * t1 * dot(grad3[gi1], x1, y1); }
+    let t2 = 0.5 - x2*x2 - y2*y2;
+    if (t2 < 0) n2 = 0;
+    else { t2 *= t2; n2 = t2 * t2 * dot(grad3[gi2], x2, y2); }
+    return 70 * (n0 + n1 + n2);
+  };
+})();
+
+/* ========================================================
+   EXHIBIT 1: PHOTON GRAVITY FIELD
+   ======================================================== */
+
+function initExhibit1(stage) {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'stage-canvas';
+  stage.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    w = canvas.width = r.width;
+    h = canvas.height = r.height;
+  }
+  resize();
+
+  const G = 6000; // gravity constant (scaled)
+  const particleCount = 500;
+  const particles = [];
+  const trailLength = 20;
+
+  for (let i = 0; i < particleCount; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      trail: [],
+      mass: 1
+    });
+  }
+
+  let attractMode = 1; // 1 = attract, -1 = repel
+  let mouseInStage = false;
+  let localMouseX = w / 2, localMouseY = h / 2;
+
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+  controls.innerHTML = `
+    <span class="ctrl-label">模式</span>
+    <button class="ctrl-btn active" data-mode="attract">吸引</button>
+    <button class="ctrl-btn" data-mode="repel">排斥</button>
+  `;
+  stage.appendChild(controls);
+
+  controls.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      controls.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      attractMode = btn.dataset.mode === 'attract' ? 1 : -1;
+    });
+  });
+
+  function onMouseMove(e) {
+    const r = canvas.getBoundingClientRect();
+    localMouseX = e.clientX - r.left;
+    localMouseY = e.clientY - r.top;
+  }
+  function onMouseEnter() { mouseInStage = true; }
+  function onMouseLeave() { mouseInStage = false; }
+
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseenter', onMouseEnter);
+  canvas.addEventListener('mouseleave', onMouseLeave);
+
+  let rafId = null;
+  function loop() {
+    if (state.paused) { rafId = requestAnimationFrame(loop); return; }
+
+    // Fade trail
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.12)';
+    ctx.fillRect(0, 0, w, h);
+
+    const attractorX = mouseInStage ? localMouseX : w / 2;
+    const attractorY = mouseInStage ? localMouseY : h / 2;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+
+      // Gravity: F = G * m / r^2
+      const dx = attractorX - p.x;
+      const dy = attractorY - p.y;
+      const distSq = dx * dx + dy * dy;
+      const dist = Math.sqrt(distSq);
+      if (dist > 4) {
+        const force = (G * p.mass) / distSq;
+        const fx = (dx / dist) * force * attractMode;
+        const fy = (dy / dist) * force * attractMode;
+        p.vx += fx * 0.016;
+        p.vy += fy * 0.016;
+      }
+
+      // Damping
+      p.vx *= 0.995;
+      p.vy *= 0.995;
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Wrap around
+      if (p.x < -10) p.x = w + 10;
+      if (p.x > w + 10) p.x = -10;
+      if (p.y < -10) p.y = h + 10;
+      if (p.y > h + 10) p.y = -10;
+
+      // Trail
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > trailLength) p.trail.shift();
+
+      // Color by speed
+      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      const t = Math.min(speed / 8, 1);
+      // Ember -> gold -> scarlet
+      let rC, gC, bC;
+      if (t < 0.5) {
+        const tt = t / 0.5;
+        rC = Math.floor(255 * (1 - tt) + 255 * tt);
+        gC = Math.floor(107 * (1 - tt) + 184 * tt);
+        bC = Math.floor(26 * (1 - tt) + 0 * tt);
+      } else {
+        const tt = (t - 0.5) / 0.5;
+        rC = Math.floor(255 * (1 - tt) + 230 * tt);
+        gC = Math.floor(184 * (1 - tt) + 57 * tt);
+        bC = Math.floor(0 * (1 - tt) + 70 * tt);
+      }
+
+      // Draw trail
+      for (let j = 0; j < p.trail.length - 1; j++) {
+        const a = (j / p.trail.length) * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(p.trail[j].x, p.trail[j].y);
+        ctx.lineTo(p.trail[j+1].x, p.trail[j+1].y);
+        ctx.strokeStyle = `rgba(${rC}, ${gC}, ${bC}, ${a})`;
+        ctx.lineWidth = (j / p.trail.length) * 1.8;
+        ctx.stroke();
+      }
+
+      // Particle head glow
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, 0.95)`;
+      ctx.shadowColor = `rgba(${rC}, ${gC}, ${bC}, 0.8)`;
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Attractor glow
+    if (mouseInStage) {
+      const grad = ctx.createRadialGradient(attractorX, attractorY, 0, attractorX, attractorY, 60);
+      grad.addColorStop(0, attractMode > 0 ? 'rgba(255, 184, 0, 0.25)' : 'rgba(230, 57, 70, 0.25)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(attractorX, attractorY, 60, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(attractorX, attractorY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = attractMode > 0 ? '#ffb800' : '#e63946';
+      ctx.shadowColor = attractMode > 0 ? '#ffb800' : '#e63946';
+      ctx.shadowBlur = 16;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    updateParticleCount(particles.length);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    canvas.removeEventListener('mousemove', onMouseMove);
+    canvas.removeEventListener('mouseenter', onMouseEnter);
+    canvas.removeEventListener('mouseleave', onMouseLeave);
+  };
+}
+
+/* ========================================================
+   EXHIBIT 2: NOISE FLOW FIELD
+   ======================================================== */
+
+function initExhibit2(stage) {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'stage-canvas';
+  stage.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    w = canvas.width = r.width;
+    h = canvas.height = r.height;
+  }
+  resize();
+
+  const particleCount = 600;
+  const particles = [];
+  const noiseScale = 0.003;
+  let time = 0;
+  let mouseInStage = false;
+  let localMouseX = w / 2, localMouseY = h / 2;
+
+  for (let i = 0; i < particleCount; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      speed: 1.5 + Math.random() * 1.5,
+      life: Math.random() * 200,
+      maxLife: 150 + Math.random() * 150
+    });
+  }
+
+  function onMouseMove(e) {
+    const r = canvas.getBoundingClientRect();
+    localMouseX = e.clientX - r.left;
+    localMouseY = e.clientY - r.top;
+  }
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseenter', () => { mouseInStage = true; });
+  canvas.addEventListener('mouseleave', () => { mouseInStage = false; });
+
+  let rafId = null;
+  function loop() {
+    if (state.paused) { rafId = requestAnimationFrame(loop); return; }
+
+    // Fade trail
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+    ctx.fillRect(0, 0, w, h);
+
+    time += 0.004;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+
+      // Noise-based angle
+      const nx = p.x * noiseScale;
+      const ny = p.y * noiseScale;
+      let angle = SimplexNoise(nx + time, ny - time) * Math.PI * 2;
+
+      // Mouse perturbation
+      if (mouseInStage) {
+        const dx = localMouseX - p.x;
+        const dy = localMouseY - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 180) {
+          const influence = (1 - dist / 180) * 1.5;
+          angle += Math.atan2(dy, dx) * influence * 0.3;
+        }
+      }
+
+      p.x += Math.cos(angle) * p.speed;
+      p.y += Math.sin(angle) * p.speed;
+      p.life++;
+
+      // Wrap/reset
+      if (p.x < -5 || p.x > w + 5 || p.y < -5 || p.y > h + 5 || p.life > p.maxLife) {
+        p.x = Math.random() * w;
+        p.y = Math.random() * h;
+        p.life = 0;
+        p.speed = 1.5 + Math.random() * 1.5;
+      }
+
+      // Color: gold to scarlet based on flow angle + position
+      const hueNorm = (Math.sin(angle) * 0.5 + 0.5) * 0.6 + (p.y / h) * 0.4;
+      const rC = Math.floor(255 * (1 - hueNorm) + 230 * hueNorm);
+      const gC = Math.floor(184 * (1 - hueNorm) + 57 * hueNorm);
+      const bC = Math.floor(0 * (1 - hueNorm) + 70 * hueNorm);
+
+      const alpha = Math.min(p.life / 30, 1) * Math.min((p.maxLife - p.life) / 30, 1) * 0.85;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, ${alpha})`;
+      ctx.shadowColor = `rgba(${rC}, ${gC}, ${bC}, 0.5)`;
+      ctx.shadowBlur = 4;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Mouse glow
+    if (mouseInStage) {
+      const grad = ctx.createRadialGradient(localMouseX, localMouseY, 0, localMouseX, localMouseY, 180);
+      grad.addColorStop(0, 'rgba(255, 184, 0, 0.08)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(localMouseX, localMouseY, 180, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    updateParticleCount(particles.length);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    canvas.removeEventListener('mousemove', onMouseMove);
+  };
+}
+
+/* ========================================================
+   EXHIBIT 3: TEXT DECONSTRUCT
+   ======================================================== */
+
+function initExhibit3(stage) {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'stage-canvas';
+  stage.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    w = canvas.width = r.width;
+    h = canvas.height = r.height;
+  }
+  resize();
+
+  let currentText = 'PHOTON';
+  let particles = [];
+  let mouseInStage = false;
+  let localMouseX = w / 2, localMouseY = h / 2;
+  let gatherStrength = 0.15; // auto-gather when not blowing
+  let blowStrength = 0;
+
+  function buildTextParticles(text) {
+    const off = document.createElement('canvas');
+    const octx = off.getContext('2d');
+    const fontSize = Math.min(w * 0.22, 180);
+    off.width = w;
+    off.height = h;
+    octx.fillStyle = '#fff';
+    octx.font = `900 ${fontSize}px Georgia, serif`;
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.fillText(text, w / 2, h / 2);
+
+    const imgData = octx.getImageData(0, 0, w, h);
+    const pixels = [];
+    const step = Math.max(3, Math.floor(fontSize / 50));
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        const idx = (y * w + x) * 4;
+        if (imgData.data[idx + 3] > 128) {
+          pixels.push({ x, y });
+        }
+      }
+    }
+
+    particles = pixels.map(px => ({
+      ox: px.x, oy: px.y, // origin
+      x: Math.random() * w, y: Math.random() * h, // current
+      vx: 0, vy: 0,
+      size: 1.5 + Math.random() * 1
+    }));
+
+    updateParticleCount(particles.length);
+  }
+
+  buildTextParticles(currentText);
+
+  // Controls
+  const inputWrap = document.createElement('div');
+  inputWrap.className = 'text-input-wrap';
+  inputWrap.innerHTML = `<input type="text" class="text-input" value="${currentText}" maxlength="12" spellcheck="false">`;
+  stage.appendChild(inputWrap);
+
+  const presetRow = document.createElement('div');
+  presetRow.className = 'preset-row';
+  presetRow.innerHTML = `
+    <span class="preset-chip" data-word="PHOTON">PHOTON</span>
+    <span class="preset-chip" data-word="光 织">光 织</span>
+    <span class="preset-chip" data-word="ECHO">ECHO</span>
+    <span class="preset-chip" data-word="熔 金">熔 金</span>
+  `;
+  stage.appendChild(presetRow);
+
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+  controls.innerHTML = `
+    <span class="ctrl-label">风场</span>
+    <button class="ctrl-btn active" data-mode="gather">聚拢</button>
+    <button class="ctrl-btn" data-mode="blow">吹散</button>
+  `;
+  stage.appendChild(controls);
+
+  const input = inputWrap.querySelector('.text-input');
+  let inputTimeout = null;
+  input.addEventListener('input', () => {
+    clearTimeout(inputTimeout);
+    inputTimeout = setTimeout(() => {
+      currentText = input.value || 'PHOTON';
+      buildTextParticles(currentText);
+    }, 300);
+  });
+
+  presetRow.querySelectorAll('.preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      currentText = chip.dataset.word;
+      input.value = currentText;
+      buildTextParticles(currentText);
+    });
+  });
+
+  let mode = 'gather';
+  controls.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      controls.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+    });
+  });
+
+  function onMouseMove(e) {
+    const r = canvas.getBoundingClientRect();
+    localMouseX = e.clientX - r.left;
+    localMouseY = e.clientY - r.top;
+  }
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseenter', () => { mouseInStage = true; });
+  canvas.addEventListener('mouseleave', () => { mouseInStage = false; });
+
+  let rafId = null;
+  function loop() {
+    if (state.paused) { rafId = requestAnimationFrame(loop); return; }
+
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+    ctx.fillRect(0, 0, w, h);
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+
+      if (mode === 'gather') {
+        // Spring toward origin
+        const dx = p.ox - p.x;
+        const dy = p.oy - p.y;
+        p.vx += dx * 0.02;
+        p.vy += dy * 0.02;
+        p.vx *= 0.88;
+        p.vy *= 0.88;
+      } else {
+        // Blow away from mouse
+        if (mouseInStage) {
+          const dx = p.x - localMouseX;
+          const dy = p.y - localMouseY;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq);
+          if (dist < 120 && dist > 1) {
+            const force = (120 - dist) / 120 * 0.8;
+            p.vx += (dx / dist) * force;
+            p.vy += (dy / dist) * force;
+          }
+        }
+        // Very slow gather back
+        const dx = p.ox - p.x;
+        const dy = p.oy - p.y;
+        p.vx += dx * 0.002;
+        p.vy += dy * 0.002;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+      }
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      const t = Math.min(speed / 4, 1);
+      const rC = Math.floor(255 * (1 - t) + 230 * t);
+      const gC = Math.floor(184 * (1 - t) + 57 * t);
+      const bC = Math.floor(0 * (1 - t) + 70 * t);
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, 0.85)`;
+      ctx.shadowColor = `rgba(${rC}, ${gC}, ${bC}, 0.5)`;
+      ctx.shadowBlur = 4;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  // Resize rebuild
+  const onResize = () => { resize(); buildTextParticles(currentText); };
+  window.addEventListener('resize', onResize);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    canvas.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('resize', onResize);
+    clearTimeout(inputTimeout);
+  };
+}
+
+/* ========================================================
+   EXHIBIT 4: MAGNETIC DEFORM BUTTON
+   ======================================================== */
+
+function initExhibit4(stage) {
+  const wrap = document.createElement('div');
+  wrap.className = 'mag-btn-wrap';
+  stage.appendChild(wrap);
+
+  const btn = document.createElement('button');
+  btn.className = 'mag-btn';
+  btn.innerHTML = '<span class="mag-btn-label">IGNITE</span>';
+  wrap.appendChild(btn);
+
+  // Canvas for explosion particles
+  const pCanvas = document.createElement('canvas');
+  pCanvas.className = 'stage-canvas';
+  pCanvas.style.pointerEvents = 'none';
+  stage.appendChild(pCanvas);
+  const pctx = pCanvas.getContext('2d');
+  let pw, ph;
+  function resizeP() {
+    const r = stage.getBoundingClientRect();
+    pw = pCanvas.width = r.width;
+    ph = pCanvas.height = r.height;
+  }
+  resizeP();
+
+  // Layered magnetic rings
+  const rings = [];
+  for (let i = 0; i < 3; i++) {
+    const ring = document.createElement('div');
+    ring.style.cssText = `
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 184, 0, ${0.15 - i * 0.04});
+      pointer-events: none;
+      transition: border-color 0.3s;
+    `;
+    const size = 220 + i * 50;
+    ring.style.width = size + 'px';
+    ring.style.height = size + 'px';
+    ring.style.left = '50%';
+    ring.style.top = '50%';
+    ring.style.marginLeft = -size/2 + 'px';
+    ring.style.marginTop = -size/2 + 'px';
+    wrap.appendChild(ring);
+    rings.push({ el: ring, baseSize: size, size: size });
+  }
+
+  let localMouseX = pw / 2, localMouseY = ph / 2;
+  let mouseInStage = false;
+  let btnCX, btnCY;
+
+  function updateBtnCenter() {
+    const r = btn.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect();
+    btnCX = r.left + r.width / 2 - sr.left;
+    btnCY = r.top + r.height / 2 - sr.top;
+  }
+  updateBtnCenter();
+
+  function onMouseMove(e) {
+    const r = stage.getBoundingClientRect();
+    localMouseX = e.clientX - r.left;
+    localMouseY = e.clientY - r.top;
+  }
+  stage.addEventListener('mousemove', onMouseMove);
+  stage.addEventListener('mouseenter', () => { mouseInStage = true; });
+  stage.addEventListener('mouseleave', () => { mouseInStage = false; });
+
+  // Explosion particles
+  const explosions = []; // array of particle arrays
+
+  btn.addEventListener('click', (e) => {
+    const r = btn.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect();
+    const cx = r.left + r.width/2 - sr.left;
+    const cy = r.top + r.height/2 - sr.top;
+    const parts = [];
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.2;
+      const speed = 3 + Math.random() * 5;
+      parts.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        decay: 0.012 + Math.random() * 0.008,
+        size: 2 + Math.random() * 3,
+        hue: Math.random() < 0.5 ? 'gold' : 'scarlet'
+      });
+    }
+    explosions.push(parts);
+
+    // Pulse button
+    btn.animate([
+      { transform: 'scale(1)' },
+      { transform: 'scale(1.08)' },
+      { transform: 'scale(1)' }
+    ], { duration: 300, easing: 'cubic-bezier(.2,.8,.3,1.4)' });
+  });
+
+  let rafId = null;
+  function loop() {
+    if (state.paused) { rafId = requestAnimationFrame(loop); return; }
+
+    pctx.clearRect(0, 0, pw, ph);
+
+    // Magnetic deformation
+    if (mouseInStage) {
+      const dx = localMouseX - btnCX;
+      const dy = localMouseY - btnCY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 200;
+
+      if (dist < maxDist) {
+        const strength = 1 - dist / maxDist;
+        // Pull center toward mouse
+        const pull = strength * 25;
+        const px = dx / dist * pull;
+        const py = dy / dist * pull;
+        btn.style.transform = `translate(${px}px, ${py}px)`;
+
+        // Create wavy clip-path effect
+        const angle = Math.atan2(dy, dx);
+        const points = [];
+        const segments = 24;
+        const baseR = 100;
+        for (let i = 0; i < segments; i++) {
+          const a = (i / segments) * Math.PI * 2;
+          const dot = Math.cos(a - angle);
+          const wave = dot > 0 ? Math.pow(dot, 1.5) * strength * 30 : 0;
+          const r = baseR + wave;
+          const x = 100 + Math.cos(a) * r;
+          const y = 100 + Math.sin(a) * r;
+          points.push(`${x}% ${y}%`);
+        }
+        btn.style.clipPath = `polygon(${points.join(',')})`;
+
+        // Magnetic rings follow
+        rings.forEach((ring, i) => {
+          const ringPull = pull * (0.3 - i * 0.08);
+          ring.el.style.transform = `translate(${ringPull}px, ${ringPull}px)`;
+          ring.el.style.borderColor = `rgba(255, 184, 0, ${(0.2 - i * 0.05) + strength * (0.4 - i * 0.1)})`;
+        });
+      } else {
+        btn.style.transform = 'translate(0, 0)';
+        btn.style.clipPath = 'circle(50% at 50% 50%)';
+        rings.forEach(ring => {
+          ring.el.style.transform = 'translate(0, 0)';
+          ring.el.style.borderColor = 'rgba(255, 184, 0, 0.1)';
+        });
+      }
+    } else {
+      btn.style.transform = 'translate(0, 0)';
+      btn.style.clipPath = 'circle(50% at 50% 50%)';
+      rings.forEach(ring => {
+        ring.el.style.transform = 'translate(0, 0)';
+        ring.el.style.borderColor = 'rgba(255, 184, 0, 0.1)';
+      });
+    }
+
+    // Draw explosion particles
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      const parts = explosions[i];
+      let alive = false;
+      for (let j = 0; j < parts.length; j++) {
+        const p = parts[j];
+        if (p.life <= 0) continue;
+        alive = true;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.97;
+        p.vy *= 0.97;
+        p.life -= p.decay;
+
+        const col = p.hue === 'gold'
+          ? `rgba(255, 184, 0, ${p.life})`
+          : `rgba(230, 57, 70, ${p.life})`;
+
+        pctx.beginPath();
+        pctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        pctx.fillStyle = col;
+        pctx.shadowColor = col;
+        pctx.shadowBlur = 8;
+        pctx.fill();
+        pctx.shadowBlur = 0;
+      }
+      if (!alive) explosions.splice(i, 1);
+    }
+
+    let total = explosions.reduce((s, p) => s + p.length, 0);
+    updateParticleCount(total + 3);
+
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  const onResize = () => { resizeP(); updateBtnCenter(); };
+  window.addEventListener('resize', onResize);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    stage.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('resize', onResize);
+  };
+}
+
+/* ========================================================
+   EXHIBIT 5: SPECTRUM VISUALIZATION
+   ======================================================== */
+
+function initExhibit5(stage) {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'stage-canvas';
+  stage.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    w = canvas.width = r.width;
+    h = canvas.height = r.height;
+  }
+  resize();
+
+  const barCount = 64;
+  let mode = 'full'; // low, high, full
+  let time = 0;
+  const peaks = new Array(barCount).fill(0);
+  const peakSpeeds = new Array(barCount).fill(0);
+
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+  controls.innerHTML = `
+    <span class="ctrl-label">频段</span>
+    <button class="ctrl-btn" data-mode="low">低频</button>
+    <button class="ctrl-btn active" data-mode="full">全频</button>
+    <button class="ctrl-btn" data-mode="high">高频</button>
+  `;
+  stage.appendChild(controls);
+
+  controls.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      controls.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+    });
+  });
+
+  function fakeSpectrum(t) {
+    const vals = new Array(barCount).fill(0);
+    for (let i = 0; i < barCount; i++) {
+      const freq = (i + 1) / barCount;
+      // Multiple sine waves at different rates
+      const s1 = Math.sin(t * 2 + i * 0.3) * 0.5 + 0.5;
+      const s2 = Math.sin(t * 3.7 + i * 0.15) * 0.3 + 0.3;
+      const s3 = Math.sin(t * 1.3 + i * 0.5) * 0.2 + 0.2;
+      // Frequency response curve - more energy in mids
+      const curve = Math.sin(freq * Math.PI) * 0.7 + 0.3;
+      let val = (s1 * 0.4 + s2 * 0.35 + s3 * 0.25) * curve;
+
+      if (mode === 'low') {
+        val *= Math.pow(1 - freq, 1.5);
+      } else if (mode === 'high') {
+        val *= Math.pow(freq, 0.8);
+      }
+
+      // Add some noise
+      val += (Math.random() - 0.5) * 0.08;
+      vals[i] = Math.max(0.02, Math.min(1, val));
+    }
+    return vals;
+  }
+
+  let rafId = null;
+  function loop() {
+    if (state.paused) { rafId = requestAnimationFrame(loop); return; }
+
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.2)';
+    ctx.fillRect(0, 0, w, h);
+
+    time += 0.03;
+    const spectrum = fakeSpectrum(time);
+
+    const barWidth = (w * 0.8) / barCount;
+    const gap = barWidth * 0.25;
+    const totalWidth = barCount * (barWidth + gap) - gap;
+    const startX = (w - totalWidth) / 2;
+    const maxHeight = h * 0.55;
+    const baseY = h * 0.58;
+
+    for (let i = 0; i < barCount; i++) {
+      const x = startX + i * (barWidth + gap);
+      const barH = spectrum[i] * maxHeight;
+      const y = baseY - barH;
+
+      // Gradient fill
+      const grad = ctx.createLinearGradient(0, y, 0, baseY);
+      grad.addColorStop(0, '#fff4d0');
+      grad.addColorStop(0.3, '#ffb800');
+      grad.addColorStop(1, '#ff6b1a');
+
+      ctx.fillStyle = grad;
+      ctx.shadowColor = 'rgba(255, 184, 0, 0.6)';
+      ctx.shadowBlur = 6;
+      ctx.fillRect(x, y, barWidth, barH);
+      ctx.shadowBlur = 0;
+
+      // Mirror / reflection
+      const mirrorH = barH * 0.4;
+      const mirrorGrad = ctx.createLinearGradient(0, baseY, 0, baseY + mirrorH);
+      mirrorGrad.addColorStop(0, 'rgba(255, 107, 26, 0.25)');
+      mirrorGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = mirrorGrad;
+      ctx.fillRect(x, baseY + 1, barWidth, mirrorH);
+
+      // Peak marker
+      if (spectrum[i] * maxHeight > peaks[i]) {
+        peaks[i] = spectrum[i] * maxHeight;
+        peakSpeeds[i] = 0;
+      } else {
+        peakSpeeds[i] += 0.015; // gravity
+        peaks[i] -= peakSpeeds[i];
+        if (peaks[i] < 0) peaks[i] = 0;
+      }
+
+      const peakY = baseY - peaks[i];
+      ctx.fillStyle = 'rgba(240, 230, 210, 0.9)';
+      ctx.shadowColor = 'rgba(255, 184, 0, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillRect(x, peakY - 2, barWidth, 2);
+      ctx.shadowBlur = 0;
+    }
+
+    // Horizontal baseline glow
+    const lineGrad = ctx.createLinearGradient(0, baseY, w, baseY);
+    lineGrad.addColorStop(0, 'transparent');
+    lineGrad.addColorStop(0.5, 'rgba(255, 184, 0, 0.4)');
+    lineGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, baseY - 0.5, w, 1);
+
+    updateParticleCount(barCount);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  const onResize = resize;
+  window.addEventListener('resize', onResize);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    window.removeEventListener('resize', onResize);
+  };
+}
+
+/* ========================================================
+   EXHIBIT 6: SCAN FILTER
+   ======================================================== */
+
+function initExhibit6(stage) {
+  const container = document.createElement('div');
+  container.className = 'scan-stage';
+  stage.appendChild(container);
+
+  // Base image
+  const baseImg = document.createElement('div');
+  baseImg.className = 'scan-image';
+  container.appendChild(baseImg);
+
+  // Scan-distorted layer
+  const distortLayer = document.createElement('div');
+  distortLayer.className = 'scan-distort';
+  distortLayer.style.top = '0';
+  distortLayer.style.height = '50%';
+  const distortImg = document.createElement('div');
+  distortImg.className = 'scan-image';
+  distortLayer.appendChild(distortImg);
+  container.appendChild(distortLayer);
+
+  // Scan line
+  const scanLine = document.createElement('div');
+  scanLine.className = 'scan-line';
+  scanLine.style.top = '50%';
+  container.appendChild(scanLine);
+
+  // Filter modes
+  const modeBar = document.createElement('div');
+  modeBar.className = 'filter-modes';
+  modeBar.innerHTML = `
+    <button class="filter-mode active" data-mode="chromatic">色散</button>
+    <button class="filter-mode" data-mode="glitch">故障</button>
+    <button class="filter-mode" data-mode="thermal">热成像</button>
+  `;
+  stage.appendChild(modeBar);
+
+  // Slider
+  const sliderWrap = document.createElement('div');
+  sliderWrap.className = 'scan-slider';
+  sliderWrap.innerHTML = `<input type="range" min="0" max="100" value="50">`;
+  stage.appendChild(sliderWrap);
+
+  const slider = sliderWrap.querySelector('input');
+  let scanPos = 50;
+  let currentMode = 'chromatic';
+
+  modeBar.querySelectorAll('.filter-mode').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modeBar.querySelectorAll('.filter-mode').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+      applyFilter();
+    });
+  });
+
+  slider.addEventListener('input', () => {
+    scanPos = parseFloat(slider.value);
+    scanLine.style.top = scanPos + '%';
+    applyFilter();
+  });
+
+  let animId = null;
+  let glitchTime = 0;
+
+  function applyFilter() {
+    const pos = scanPos;
+    distortLayer.style.height = pos + '%';
+    distortImg.style.top = '0';
+
+    if (currentMode === 'chromatic') {
+      distortImg.style.filter = 'none';
+      distortImg.style.mixBlendMode = 'screen';
+      distortImg.style.transform = 'translateX(4px)';
+      distortImg.style.background = `
+        radial-gradient(ellipse at 30% 40%, rgba(230, 57, 70, 0.5), transparent 60%),
+        radial-gradient(ellipse at 72% 58%, rgba(0, 200, 255, 0.3), transparent 55%),
+        radial-gradient(circle at 50% 80%, rgba(255, 107, 26, 0.3), transparent 50%),
+        linear-gradient(180deg, #1a1a24 0%, #0a0a0f 100%)
+      `;
+    } else if (currentMode === 'glitch') {
+      distortImg.style.filter = 'hue-rotate(90deg) contrast(1.2)';
+      distortImg.style.mixBlendMode = 'difference';
+      distortImg.style.transform = 'translateX(-2px)';
+      distortImg.style.background = `
+        radial-gradient(ellipse at 28% 42%, rgba(255, 184, 0, 0.5), transparent 60%),
+        radial-gradient(ellipse at 68% 62%, rgba(230, 57, 70, 0.4), transparent 55%),
+        linear-gradient(180deg, #1a1a24 0%, #0a0a0f 100%)
+      `;
+    } else if (currentMode === 'thermal') {
+      distortImg.style.filter = 'contrast(1.4) saturate(1.5)';
+      distortImg.style.mixBlendMode = 'screen';
+      distortImg.style.transform = 'translateX(0)';
+      distortImg.style.background = `
+        radial-gradient(ellipse at 30% 40%, rgba(255, 107, 26, 0.6), transparent 50%),
+        radial-gradient(ellipse at 70% 60%, rgba(230, 57, 70, 0.5), transparent 50%),
+        radial-gradient(circle at 50% 30%, rgba(255, 184, 0, 0.4), transparent 45%),
+        linear-gradient(180deg, #3a1a0a 0%, #0a0a0f 100%)
+      `;
+    }
+  }
+
+  applyFilter();
+
+  // Subtle scan shimmer
+  function animLoop() {
+    if (state.paused) { animId = requestAnimationFrame(animLoop); return; }
+    glitchTime += 0.05;
+
+    // Subtle jitter on scan line
+    const jitter = Math.sin(glitchTime * 3) * 0.5;
+    scanLine.style.transform = `translateY(${jitter}px)`;
+    scanLine.style.opacity = 0.8 + Math.sin(glitchTime * 7) * 0.2;
+
+    // Extra glitch lines in glitch mode
+    if (currentMode === 'glitch') {
+      const existing = container.querySelectorAll('.glitch-line');
+      existing.forEach(el => el.remove());
+      if (Math.random() < 0.05) {
+        const glitchLine = document.createElement('div');
+        glitchLine.className = 'glitch-line';
+        const top = Math.random() * 100;
+        const height = 1 + Math.random() * 3;
+        glitchLine.style.cssText = `
+          position: absolute;
+          left: 0; right: 0;
+          top: ${top}%;
+          height: ${height}px;
+          background: rgba(255, 184, 0, 0.6);
+          mix-blend-mode: screen;
+          pointer-events: none;
+          z-index: 3;
+        `;
+        container.appendChild(glitchLine);
+        setTimeout(() => glitchLine.remove(), 80);
+      }
+    }
+
+    animId = requestAnimationFrame(animLoop);
+  }
+  animId = requestAnimationFrame(animLoop);
+
+  updateParticleCount(1);
+
+  return () => {
+    cancelAnimationFrame(animId);
+  };
+}
+
+/* ========================================================
+   PARTICLE COUNT DISPLAY
+   ======================================================== */
+
+let lastParticleCount = 0;
+const particleCountEl = $('#particleCount');
+
+function updateParticleCount(n) {
+  if (Math.abs(n - lastParticleCount) > 1) {
+    animateNumber(particleCountEl, lastParticleCount, n, 400);
+    lastParticleCount = n;
+  }
+}
+
+/* ========================================================
+   EXHIBIT SWITCHING
+   ======================================================== */
+
+const stage = $('#stage');
+const exhibitNum = $('#exhibitNum');
+const exhibitTitle = $('#exhibitTitle');
+const exhibitDesc = $('#exhibitDesc');
+const navList = $('#navList');
+
+const exhibitInitFns = [
+  initExhibit1, initExhibit2, initExhibit3, initExhibit4, initExhibit5, initExhibit6
+];
+
+function switchExhibit(index) {
+  if (index === state.currentExhibit) return;
+
+  // Cleanup current
+  if (state.exhibitCleanup) {
+    state.exhibitCleanup();
+    state.exhibitCleanup = null;
+  }
+
+  // Update nav
+  $$('.nav-item').forEach((item, i) => {
+    item.classList.toggle('active', i === index);
+  });
+
+  // Update header
+  const exh = exhibits[index];
+  exhibitNum.textContent = 'EXHIBIT ' + exh.num;
+  exhibitTitle.textContent = exh.title;
+  exhibitDesc.innerHTML = exh.desc;
+
+  // Clear stage with transition
+  stage.innerHTML = '';
+  stage.classList.remove('exhibit-enter');
+  // Force reflow
+  void stage.offsetWidth;
+  stage.classList.add('exhibit-enter');
+
+  // Initialize new exhibit
+  state.currentExhibit = index;
+  state.exhibitCleanup = exhibitInitFns[index](stage);
+}
+
+// Nav click
+$$('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const idx = parseInt(item.dataset.index);
+    switchExhibit(idx);
+  });
+});
+
+/* ========================================================
+   INITIALIZATION
+   ======================================================== */
+
+function init() {
+  setupCursorHover();
+  initBgParticles();
+
+  // Start first exhibit
+  state.exhibitCleanup = initExhibit1(stage);
+  stage.classList.add('exhibit-enter');
+
+  // Intro fade
+  const intro = $('#introOverlay');
+  setTimeout(() => {
+    intro.classList.add('hidden');
+    setTimeout(() => intro.remove(), 1000);
+  }, 1800);
+}
+
+// Handle window close / unload
+window.addEventListener('beforeunload', () => {
+  state.rafIds.forEach(cleanup => cleanup());
+  state.timeouts.forEach(id => clearTimeout(id));
+  if (state.exhibitCleanup) state.exhibitCleanup();
+});
+
+// Start
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+/* Announce upgrade capability */
+try {
+  function announceUpgrade() {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+} catch (e) { /* no-op */ }
+
+</script>
+</body>
+</html>

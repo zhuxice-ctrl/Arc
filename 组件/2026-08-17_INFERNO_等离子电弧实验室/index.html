@@ -1,0 +1,2558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>INFERNO — Plasma Arc Effects Lab</title>
+<style>
+/* ============ RESET & BASE ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-0:#0a0604;
+  --bg-1:#140a06;
+  --bg-2:#1f100a;
+  --surface:rgba(32,18,10,0.55);
+  --surface-2:rgba(50,26,14,0.4);
+  --border:rgba(255,120,40,0.18);
+  --border-strong:rgba(255,140,50,0.45);
+  --plasma-0:#fff3c8;   /* core white-yellow */
+  --plasma-1:#ffb347;   /* amber */
+  --plasma-2:#ff6b1a;   /* orange */
+  --plasma-3:#ff2e2e;   /* red */
+  --plasma-4:#b71c1c;   /* deep red */
+  --gold:#e9b661;
+  --text-0:#fff4e8;
+  --text-1:#d8b89a;
+  --text-2:#8a6a52;
+  --accent:#ff8c3a;
+  --glow:0 0 20px rgba(255,120,40,0.5), 0 0 60px rgba(255,80,20,0.25);
+}
+html,body{height:100%;width:100%;overflow:hidden;background:var(--bg-0);color:var(--text-0);font-family:'Cinzel',serif;cursor:none;user-select:none;}
+body{font-family:'Inter',system-ui,sans-serif;}
+canvas{display:block;}
+
+/* ============ CUSTOM CURSOR ============ */
+.cursor-outer{
+  position:fixed;top:0;left:0;width:42px;height:42px;
+  border:2px solid var(--plasma-0);border-radius:50%;
+  pointer-events:none;z-index:9999;
+  transform:translate(-50%,-50%);
+  transition:width .25s cubic-bezier(.2,.8,.2,1),height .25s cubic-bezier(.2,.8,.2,1),border-color .2s,opacity .3s;
+  box-shadow:0 0 14px rgba(255,180,80,0.7),inset 0 0 10px rgba(255,120,40,0.4);
+  mix-blend-mode:screen;
+}
+.cursor-inner{
+  position:fixed;top:0;left:0;width:7px;height:7px;
+  background:var(--plasma-0);border-radius:50%;
+  pointer-events:none;z-index:9999;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 10px var(--plasma-1),0 0 20px var(--plasma-2);
+  transition:transform .12s ease-out,background .2s;
+}
+.cursor-outer.hover{width:64px;height:64px;border-color:var(--plasma-2);box-shadow:0 0 24px rgba(255,100,20,0.9),inset 0 0 18px rgba(255,80,10,0.6);}
+.cursor-inner.click{transform:translate(-50%,-50%) scale(2.2);background:var(--plasma-2);}
+.cursor-ripple{
+  position:fixed;width:10px;height:10px;border-radius:50%;
+  border:2px solid var(--plasma-1);pointer-events:none;z-index:9998;
+  transform:translate(-50%,-50%) scale(1);opacity:1;
+  animation:rippleOut .6s ease-out forwards;
+}
+@keyframes rippleOut{
+  0%{width:10px;height:10px;opacity:.9;}
+  100%{width:120px;height:120px;opacity:0;border-color:var(--plasma-3);}
+}
+
+/* ============ LAYOUT ============ */
+.app{
+  position:relative;width:100vw;height:100vh;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,90,20,0.08), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 100%, rgba(255,40,40,0.05), transparent 70%),
+    linear-gradient(180deg,var(--bg-0),var(--bg-1));
+  display:grid;grid-template-rows:auto 1fr auto;
+}
+
+/* Top bar */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 32px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(20,10,6,0.8),rgba(20,10,6,0.4));
+  backdrop-filter:blur(8px);
+  z-index:10;
+}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-mark{
+  width:36px;height:36px;position:relative;
+  border-radius:50%;
+  background:radial-gradient(circle,var(--plasma-0) 0%,var(--plasma-2) 40%,var(--plasma-4) 100%);
+  box-shadow:var(--glow);
+  animation:pulseCore 2.4s ease-in-out infinite;
+}
+.brand-mark::after{
+  content:'';position:absolute;inset:-6px;border-radius:50%;
+  border:1px solid var(--plasma-2);opacity:.5;
+  animation:ringPulse 2.4s ease-in-out infinite;
+}
+@keyframes pulseCore{
+  0%,100%{transform:scale(1);box-shadow:0 0 20px rgba(255,120,40,0.6),0 0 50px rgba(255,80,20,0.3);}
+  50%{transform:scale(1.1);box-shadow:0 0 30px rgba(255,150,60,0.9),0 0 80px rgba(255,80,20,0.5);}
+}
+@keyframes ringPulse{
+  0%,100%{transform:scale(1);opacity:.6;}
+  50%{transform:scale(1.3);opacity:.2;}
+}
+.brand-text h1{
+  font-family:'Cinzel',serif;
+  font-size:15px;letter-spacing:3px;font-weight:600;color:var(--text-0);
+  text-transform:uppercase;
+}
+.brand-text p{font-size:10px;letter-spacing:2px;color:var(--text-2);text-transform:uppercase;margin-top:2px;}
+
+.topnav{display:flex;gap:6px;}
+.topnav button{
+  background:transparent;border:1px solid var(--border);
+  color:var(--text-1);padding:8px 14px;font-size:11px;
+  letter-spacing:1.5px;text-transform:uppercase;cursor:none;
+  border-radius:2px;transition:all .25s;
+  font-family:inherit;
+}
+.topnav button:hover{color:var(--plasma-0);border-color:var(--border-strong);background:rgba(255,120,40,0.08);box-shadow:0 0 12px rgba(255,120,40,0.2);}
+.topnav button.active{color:var(--plasma-0);background:rgba(255,100,20,0.15);border-color:var(--plasma-2);box-shadow:var(--glow);}
+
+.status{
+  display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:1.5px;color:var(--text-2);
+  text-transform:uppercase;
+}
+.status-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--plasma-2);
+  box-shadow:0 0 8px var(--plasma-2);animation:blink 1.6s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* Main stage */
+.stage{
+  position:relative;overflow:hidden;
+  display:grid;grid-template-columns:260px 1fr;
+}
+
+/* Sidebar */
+.sidebar{
+  border-right:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(20,10,6,0.5),rgba(10,6,4,0.8));
+  padding:20px 0;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;
+}
+.sidebar::-webkit-scrollbar{width:4px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:2px;}
+.sidebar-title{
+  padding:0 20px 12px;font-size:10px;letter-spacing:2.5px;color:var(--text-2);
+  text-transform:uppercase;border-bottom:1px solid var(--border);margin-bottom:12px;
+  font-family:'Cinzel',serif;
+}
+.exhibit-list{display:flex;flex-direction:column;gap:2px;}
+.exhibit-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 20px;cursor:none;transition:all .2s;
+  border-left:2px solid transparent;
+  position:relative;
+}
+.exhibit-item:hover{background:rgba(255,120,40,0.06);border-left-color:var(--plasma-2);}
+.exhibit-item.active{
+  background:linear-gradient(90deg,rgba(255,100,20,0.18),transparent);
+  border-left-color:var(--plasma-0);
+  color:var(--plasma-0);
+}
+.exhibit-item.active .exhibit-name{color:var(--plasma-0);}
+.exhibit-icon{
+  width:28px;height:28px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface-2);border:1px solid var(--border);
+  flex-shrink:0;transition:all .2s;
+}
+.exhibit-item.active .exhibit-icon{
+  border-color:var(--plasma-2);background:rgba(255,100,20,0.2);
+  box-shadow:0 0 10px rgba(255,120,40,0.4);
+}
+.exhibit-icon svg{width:16px;height:16px;stroke:var(--text-2);fill:none;stroke-width:1.5;transition:stroke .2s;}
+.exhibit-item.active .exhibit-icon svg{stroke:var(--plasma-1);}
+.exhibit-name{font-size:12px;color:var(--text-1);letter-spacing:.5px;transition:color .2s;}
+.exhibit-num{
+  font-size:9px;color:var(--text-2);margin-left:auto;
+  font-family:'Courier New',monospace;letter-spacing:1px;
+}
+
+/* Viewport */
+.viewport{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255,60,10,0.04), transparent 60%),
+    var(--bg-0);
+}
+.exhibit-canvas{
+  position:absolute;inset:0;width:100%;height:100%;
+}
+.exhibit-canvas canvas{width:100%;height:100%;}
+
+/* Exhibit overlay info */
+.exhibit-info{
+  position:absolute;top:24px;left:28px;z-index:5;
+  max-width:360px;pointer-events:none;
+}
+.exhibit-info .tag{
+  display:inline-block;font-size:10px;letter-spacing:2.5px;
+  color:var(--plasma-1);text-transform:uppercase;
+  padding:4px 10px;border:1px solid var(--border-strong);
+  background:rgba(20,10,6,0.6);border-radius:2px;
+  margin-bottom:10px;
+}
+.exhibit-info h2{
+  font-family:'Cinzel',serif;font-size:32px;font-weight:500;
+  letter-spacing:1px;color:var(--text-0);margin-bottom:8px;
+  text-shadow:0 0 30px rgba(255,120,40,0.3);
+}
+.exhibit-info p{
+  font-size:13px;line-height:1.7;color:var(--text-1);
+  max-width:320px;
+}
+
+/* Control panel */
+.controls{
+  position:absolute;bottom:24px;right:28px;z-index:5;
+  background:var(--surface);backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:4px;
+  padding:16px 18px;min-width:240px;
+}
+.controls h3{
+  font-size:10px;letter-spacing:2px;color:var(--plasma-1);
+  text-transform:uppercase;margin-bottom:12px;
+  font-family:'Cinzel',serif;
+}
+.control-row{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;margin-bottom:10px;
+}
+.control-row:last-child{margin-bottom:0;}
+.control-label{font-size:11px;color:var(--text-1);letter-spacing:.5px;white-space:nowrap;}
+.control-value{font-size:11px;color:var(--plasma-0);font-family:'Courier New',monospace;min-width:36px;text-align:right;}
+.control-slider{
+  -webkit-appearance:none;appearance:none;
+  flex:1;height:3px;background:var(--surface-2);border-radius:2px;
+  outline:none;cursor:none;
+}
+.control-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:var(--plasma-1);box-shadow:0 0 8px var(--plasma-2);
+  cursor:none;
+}
+.control-toggle{
+  width:36px;height:18px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--border);
+  position:relative;cursor:none;transition:all .3s;
+}
+.control-toggle.on{background:rgba(255,100,20,0.3);border-color:var(--plasma-2);}
+.control-toggle::after{
+  content:'';position:absolute;top:2px;left:2px;
+  width:12px;height:12px;border-radius:50%;
+  background:var(--text-2);transition:all .3s;
+}
+.control-toggle.on::after{left:20px;background:var(--plasma-0);box-shadow:0 0 6px var(--plasma-1);}
+
+/* Hint */
+.hint{
+  position:absolute;bottom:24px;left:28px;z-index:5;
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;color:var(--text-2);letter-spacing:1px;
+}
+.hint-key{
+  padding:3px 7px;border:1px solid var(--border);border-radius:3px;
+  font-family:'Courier New',monospace;font-size:10px;color:var(--text-1);
+  background:var(--surface);
+}
+
+/* Bottom bar */
+.bottombar{
+  border-top:1px solid var(--border);
+  padding:10px 32px;display:flex;align-items:center;justify-content:space-between;
+  font-size:10px;color:var(--text-2);letter-spacing:1.5px;text-transform:uppercase;
+  background:rgba(10,6,4,0.6);backdrop-filter:blur(6px);
+}
+.bottombar .stats{display:flex;gap:24px;}
+.bottombar .stat{display:flex;align-items:center;gap:6px;}
+.bottombar .stat-v{color:var(--plasma-1);font-family:'Courier New',monospace;}
+
+/* Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Inter:wght@300;400;500&display=swap');
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .brand-mark,.brand-mark::after{animation:none;}
+  .status-dot{animation:none;}
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
+}
+
+/* Scrollbar hide for sidebar smooth */
+.sidebar{scrollbar-width:none;}
+.sidebar::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <h1>Inferno Lab</h1>
+        <p>Plasma Arc Effects Division</p>
+      </div>
+    </div>
+    <nav class="topnav" id="topnav">
+      <button class="active" data-cat="arc">Arc</button>
+      <button data-cat="particle">Particle</button>
+      <button data-cat="light">Light</button>
+      <button data-cat="distort">Distort</button>
+    </nav>
+    <div class="status">
+      <span class="status-dot"></span>
+      <span id="fpsCounter">60 FPS · Stable</span>
+    </div>
+  </header>
+
+  <!-- Stage -->
+  <div class="stage">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Exhibit Chambers</div>
+      <div class="exhibit-list" id="exhibitList"></div>
+    </aside>
+
+    <!-- Viewport -->
+    <div class="viewport" id="viewport">
+      <div class="exhibit-canvas" id="exhibitCanvas"></div>
+      <div class="exhibit-info" id="exhibitInfo">
+        <span class="tag" id="exhibitTag">Chamber 01</span>
+        <h2 id="exhibitTitle">Plasma Arc</h2>
+        <p id="exhibitDesc">Electric discharge sculpted into living filaments. Move your cursor to shape the arc — the plasma follows your gesture with fractal tongues of fire.</p>
+      </div>
+      <div class="controls" id="controls"></div>
+      <div class="hint">
+        <span class="hint-key">Drag</span><span>interact with the exhibit</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <footer class="bottombar">
+    <div class="stats">
+      <div class="stat">Voltage <span class="stat-v" id="statVolt">4.2 kV</span></div>
+      <div class="stat">Flux <span class="stat-v" id="statFlux">78%</span></div>
+      <div class="stat">Temp <span class="stat-v" id="statTemp">12,800 K</span></div>
+    </div>
+    <div>Chamber <span id="chamberNum">01</span> / 14 · INFERNO v3.0</div>
+  </footer>
+</div>
+
+<!-- Custom cursor -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+
+<script>
+/* ============================================================
+   INFERNO PLASMA LAB — V3 UX Interaction Mock
+   Pure vanilla JS, single file, no dependencies.
+   14 exhibit chambers, all interactive.
+   ============================================================ */
+
+// ============ UTILITIES ============
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const dist2 = (x1, y1, x2, y2) => { const dx=x2-x1, dy=y2-y1; return dx*dx+dy*dy; };
+
+// ============ CUSTOM CURSOR ============
+const cursorOuter = document.getElementById('cursorOuter');
+const cursorInner = document.getElementById('cursorInner');
+let mouseX = window.innerWidth / 2;
+let mouseY = window.innerHeight / 2;
+let targetX = mouseX, targetY = mouseY;
+let cursorHover = false;
+
+document.addEventListener('mousemove', e => {
+  targetX = e.clientX;
+  targetY = e.clientY;
+});
+
+// Initial center position
+cursorOuter.style.left = mouseX + 'px';
+cursorOuter.style.top = mouseY + 'px';
+cursorInner.style.left = mouseX + 'px';
+cursorInner.style.top = mouseY + 'px';
+
+document.addEventListener('mousedown', e => {
+  cursorInner.classList.add('click');
+  const r = document.createElement('div');
+  r.className = 'cursor-ripple';
+  r.style.left = e.clientX + 'px';
+  r.style.top = e.clientY + 'px';
+  document.body.appendChild(r);
+  setTimeout(() => r.remove(), 600);
+  setTimeout(() => cursorInner.classList.remove('click'), 200);
+});
+
+// Hover detection via delegation
+document.addEventListener('mouseover', e => {
+  if (e.target.closest('button, .exhibit-item, .control-toggle, .control-slider, .topnav button')) {
+    cursorOuter.classList.add('hover');
+    cursorHover = true;
+  }
+});
+document.addEventListener('mouseout', e => {
+  if (e.target.closest('button, .exhibit-item, .control-toggle, .control-slider, .topnav button')) {
+    cursorOuter.classList.remove('hover');
+    cursorHover = false;
+  }
+});
+
+function updateCursor() {
+  mouseX = lerp(mouseX, targetX, 0.18);
+  mouseY = lerp(mouseY, targetY, 0.18);
+  cursorOuter.style.left = mouseX + 'px';
+  cursorOuter.style.top = mouseY + 'px';
+  cursorInner.style.left = targetX + 'px';
+  cursorInner.style.top = targetY + 'px';
+}
+
+// ============ FPS COUNTER ============
+let fpsCount = 0, fpsLast = performance.now(), fpsVal = 60;
+function tickFPS(t) {
+  fpsCount++;
+  if (t - fpsLast > 500) {
+    fpsVal = Math.round(fpsCount * 1000 / (t - fpsLast));
+    document.getElementById('fpsCounter').textContent = fpsVal + ' FPS · ' + (fpsVal >= 55 ? 'Stable' : fpsVal >= 30 ? 'OK' : 'Heavy');
+    fpsCount = 0;
+    fpsLast = t;
+  }
+}
+
+// ============ EXHIBIT SYSTEM ============
+const exhibitCanvas = document.getElementById('exhibitCanvas');
+const exhibitTitle = document.getElementById('exhibitTitle');
+const exhibitDesc = document.getElementById('exhibitDesc');
+const exhibitTag = document.getElementById('exhibitTag');
+const controlsEl = document.getElementById('controls');
+const chamberNumEl = document.getElementById('chamberNum');
+const statVolt = document.getElementById('statVolt');
+const statFlux = document.getElementById('statFlux');
+const statTemp = document.getElementById('statTemp');
+
+let currentExhibit = null;
+let currentExhibitId = null;
+let rafId = null;
+let canvas, ctx;
+
+function getViewportSize() {
+  const v = document.getElementById('viewport');
+  return { w: v.clientWidth, h: v.clientHeight };
+}
+
+function setupCanvas() {
+  exhibitCanvas.innerHTML = '<canvas></canvas>';
+  canvas = exhibitCanvas.querySelector('canvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+}
+
+function resizeCanvas() {
+  if (!canvas) return;
+  const { w, h } = getViewportSize();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (currentExhibit && currentExhibit.onResize) currentExhibit.onResize();
+});
+
+// Local coords within viewport
+function getLocalMouse() {
+  const rect = canvas.getBoundingClientRect();
+  return { x: targetX - rect.left, y: targetY - rect.top };
+}
+function getLocalMouseSmoothed() {
+  const rect = canvas.getBoundingClientRect();
+  return { x: mouseX - rect.left, y: mouseY - rect.top };
+}
+
+// Visibility change — pause animation
+let running = true;
+document.addEventListener('visibilitychange', () => {
+  running = !document.hidden;
+  if (running && currentExhibit) {
+    startLoop();
+  }
+});
+
+function startLoop() {
+  cancelAnimationFrame(rafId);
+  function loop(t) {
+    if (!running) return;
+    tickFPS(t);
+    updateCursor();
+    if (currentExhibit && currentExhibit.draw) {
+      currentExhibit.draw(t);
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+// ============ CONTROLS ============
+function renderControls(defs) {
+  controlsEl.innerHTML = '<h3>Parameters</h3>';
+  defs.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+    if (d.type === 'slider') {
+      row.innerHTML = `
+        <span class="control-label">${d.label}</span>
+        <input type="range" class="control-slider" min="${d.min}" max="${d.max}" step="${d.step||1}" value="${d.value}" data-key="${d.key}">
+        <span class="control-value">${d.value}</span>
+      `;
+      const slider = row.querySelector('.control-slider');
+      const valEl = row.querySelector('.control-value');
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        valEl.textContent = v;
+        if (currentExhibit && currentExhibit.params) currentExhibit.params[d.key] = v;
+      });
+    } else if (d.type === 'toggle') {
+      row.innerHTML = `
+        <span class="control-label">${d.label}</span>
+        <div class="control-toggle ${d.value?'on':''}" data-key="${d.key}"></div>
+      `;
+      const tog = row.querySelector('.control-toggle');
+      tog.addEventListener('click', () => {
+        tog.classList.toggle('on');
+        const v = tog.classList.contains('on');
+        if (currentExhibit && currentExhibit.params) currentExhibit.params[d.key] = v;
+      });
+    }
+    controlsEl.appendChild(row);
+  });
+}
+
+// ============ EXHIBIT 01: PLASMA ARC ============
+function createPlasmaArc() {
+  const { w, h } = getViewportSize();
+  const cx = w / 2, cy = h / 2;
+  const params = {
+    segments: 12,
+    chaos: 0.6,
+    branches: 3,
+    glow: 1
+  };
+
+  function drawArc(x1, y1, x2, y2, chaos, color, width) {
+    const segs = Math.max(4, Math.floor(params.segments * (dist2(x1,y1,x2,y2) / 40000) + 4));
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const bx = lerp(x1, x2, t);
+      const by = lerp(y1, y2, t);
+      const perpX = -(y2 - y1);
+      const perpY = (x2 - x1);
+      const plen = Math.sqrt(perpX*perpX + perpY*perpY) || 1;
+      const offset = (Math.random() - 0.5) * chaos * plen * 0.3 * (1 - Math.abs(t - 0.5) * 2);
+      const ox = bx + perpX / plen * offset;
+      const oy = by + perpY / plen * offset;
+      ctx.lineTo(ox, oy);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.25)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const sourceX = cx;
+    const sourceY = h * 0.75;
+    const tipX = clamp(m.x, 40, w - 40);
+    const tipY = clamp(m.y, 40, h * 0.6);
+
+    const chaos = params.chaos * 80;
+
+    // Outer glow arc
+    ctx.shadowBlur = 30 * params.glow;
+    ctx.shadowColor = 'rgba(255, 80, 20, 0.8)';
+    drawArc(sourceX, sourceY, tipX, tipY, chaos, 'rgba(255, 100, 30, 0.25)', 20);
+
+    // Mid arc
+    ctx.shadowBlur = 15 * params.glow;
+    ctx.shadowColor = 'rgba(255, 160, 60, 0.9)';
+    drawArc(sourceX, sourceY, tipX, tipY, chaos * 0.6, 'rgba(255, 180, 80, 0.7)', 8);
+
+    // Core arc
+    ctx.shadowBlur = 8 * params.glow;
+    ctx.shadowColor = 'rgba(255, 240, 200, 1)';
+    drawArc(sourceX, sourceY, tipX, tipY, chaos * 0.3, 'rgba(255, 248, 220, 1)', 2.5);
+
+    // Branches from tip
+    ctx.shadowBlur = 12 * params.glow;
+    for (let b = 0; b < params.branches; b++) {
+      const angle = Math.PI * 0.3 + (b / Math.max(1,params.branches-1)) * Math.PI * 0.4 + Math.sin(t*0.003 + b) * 0.1;
+      const len = rand(40, 140) * params.chaos;
+      const ex = tipX + Math.cos(angle + Math.PI) * len;
+      const ey = tipY - Math.sin(angle) * len;
+      ctx.shadowColor = 'rgba(255, 140, 50, 0.6)';
+      drawArc(tipX, tipY, ex, ey, chaos * 0.8, 'rgba(255, 160, 70, 0.5)', 3);
+    }
+
+    // Source node glow
+    const pulse = 1 + Math.sin(t * 0.004) * 0.2;
+    ctx.shadowBlur = 40;
+    ctx.shadowColor = 'rgba(255, 120, 40, 0.9)';
+    ctx.fillStyle = 'rgba(255, 200, 120, 0.9)';
+    ctx.beginPath();
+    ctx.arc(sourceX, sourceY, 12 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'chaos', label:'Chaos', min:0.1, max:1.5, step:0.05, value:0.6 },
+      { type:'slider', key:'segments', label:'Segments', min:4, max:30, step:1, value:12 },
+      { type:'slider', key:'branches', label:'Branches', min:0, max:8, step:1, value:3 },
+      { type:'slider', key:'glow', label:'Glow', min:0, max:2, step:0.1, value:1 },
+    ],
+    stats: () => {
+      statVolt = '4.2 kV';
+    }
+  };
+}
+
+// ============ EXHIBIT 02: FIREFLY SWARM ============
+function createFireflySwarm() {
+  const { w, h } = getViewportSize();
+  const params = {
+    count: 120,
+    attraction: 0.4,
+    speed: 1.2,
+    trail: 0.15
+  };
+  const bugs = [];
+  for (let i = 0; i < params.count; i++) {
+    bugs.push({
+      x: rand(0, w), y: rand(0, h),
+      vx: rand(-1, 1), vy: rand(-1, 1),
+      size: rand(1.5, 3.5),
+      phase: rand(0, Math.PI * 2),
+      hue: rand(0, 40)
+    });
+  }
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = `rgba(10, 6, 4, ${params.trail})`;
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouse();
+    const attract = params.attraction;
+    const spd = params.speed;
+
+    // Repulsion between bugs (simple: only nearest)
+    for (let i = 0; i < bugs.length; i++) {
+      const b = bugs[i];
+      // Attraction to mouse
+      const dx = m.x - b.x, dy = m.y - b.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d > 1 && d < 400) {
+        const f = attract * 0.5 / (d * 0.02 + 1);
+        b.vx += dx / d * f;
+        b.vy += dy / d * f;
+      }
+      // Wander
+      b.vx += Math.sin(t * 0.001 + b.phase) * 0.05;
+      b.vy += Math.cos(t * 0.0013 + b.phase) * 0.05;
+
+      // Damping
+      b.vx *= 0.96;
+      b.vy *= 0.96;
+
+      // Speed cap
+      const sp = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+      const maxSp = 3 * spd;
+      if (sp > maxSp) { b.vx *= maxSp/sp; b.vy *= maxSp/sp; }
+
+      b.x += b.vx * spd;
+      b.y += b.vy * spd;
+
+      // Wrap
+      if (b.x < -10) b.x = w + 10;
+      if (b.x > w + 10) b.x = -10;
+      if (b.y < -10) b.y = h + 10;
+      if (b.y > h + 10) b.y = -10;
+
+      // Draw
+      const pulse = 0.6 + Math.sin(t * 0.003 + b.phase) * 0.4;
+      const hue = 20 + b.hue;
+      ctx.shadowBlur = 15 * pulse;
+      ctx.shadowColor = `hsla(${hue}, 100%, 60%, 0.9)`;
+      ctx.fillStyle = `hsla(${hue + 10}, 100%, 80%, ${pulse})`;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * pulse, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  function onResize() {
+    const { w, h } = getViewportSize();
+    bugs.forEach(b => { b.x = rand(0,w); b.y = rand(0,h); });
+  }
+
+  function updateCount() {
+    const target = Math.floor(params.count);
+    const { w, h } = getViewportSize();
+    while (bugs.length < target) {
+      bugs.push({
+        x: rand(0, w), y: rand(0, h),
+        vx: rand(-1, 1), vy: rand(-1, 1),
+        size: rand(1.5, 3.5),
+        phase: rand(0, Math.PI * 2),
+        hue: rand(0, 40)
+      });
+    }
+    while (bugs.length > target) bugs.pop();
+  }
+
+  // Proxy params.count to trigger resize
+  const origParams = params;
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) {
+      t[k] = v;
+      if (k === 'count') updateCount();
+      return true;
+    }
+  });
+
+  return {
+    params: proxyParams, draw, onResize,
+    controls: [
+      { type:'slider', key:'count', label:'Particles', min:30, max:400, step:10, value:120 },
+      { type:'slider', key:'attraction', label:'Attraction', min:0, max:2, step:0.05, value:0.4 },
+      { type:'slider', key:'speed', label:'Speed', min:0.2, max:3, step:0.1, value:1.2 },
+      { type:'slider', key:'trail', label:'Trail', min:0.02, max:0.5, step:0.01, value:0.15 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 03: NEON SHATTER TEXT ============
+function createNeonShatter() {
+  const { w, h } = getViewportSize();
+  const params = {
+    explode: 0.3,
+    rotation: 0.5,
+    glow: 1.2,
+    text: 'INFERNO'
+  };
+
+  let particles = [];
+  let textCanvas, textCtx;
+
+  function rebuild() {
+    const { w, h } = getViewportSize();
+    textCanvas = document.createElement('canvas');
+    textCtx = textCanvas.getContext('2d');
+    textCanvas.width = w;
+    textCanvas.height = h;
+    textCtx.fillStyle = '#fff';
+    textCtx.font = 'bold 140px "Cinzel", serif';
+    textCtx.textAlign = 'center';
+    textCtx.textBaseline = 'middle';
+    textCtx.fillText(params.text, w/2, h/2);
+
+    const imgData = textCtx.getImageData(0, 0, w, h).data;
+    particles = [];
+    const gap = 3;
+    for (let y = 0; y < h; y += gap) {
+      for (let x = 0; x < w; x += gap) {
+        const idx = (y * w + x) * 4 + 3;
+        if (imgData[idx] > 128) {
+          particles.push({
+            ox: x, oy: y,
+            x: x, y: y,
+            vx: 0, vy: 0,
+            size: rand(1.5, 2.5),
+            phase: rand(0, Math.PI * 2),
+            hue: rand(10, 50)
+          });
+        }
+      }
+    }
+  }
+
+  setTimeout(rebuild, 50);
+
+  let mouseDown = false;
+  let explodeForce = 0;
+  canvas && canvas.addEventListener('mousedown', () => { mouseDown = true; explodeForce = 1; });
+  document.addEventListener('mouseup', () => { mouseDown = false; });
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.15)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const exp = params.explode * (mouseDown ? 2.5 : 1) + explodeForce;
+    explodeForce *= 0.95;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const dx = p.ox - m.x, dy = p.oy - m.y;
+      const d2 = dx*dx + dy*dy;
+      const radius = 200 * exp;
+      if (d2 < radius * radius) {
+        const d = Math.sqrt(d2) || 1;
+        const force = (1 - d / radius) * exp * 12;
+        p.vx += dx / d * force;
+        p.vy += dy / d * force;
+      }
+      // Spring back
+      p.vx += (p.ox - p.x) * 0.03;
+      p.vy += (p.oy - p.y) * 0.03;
+      p.vx *= 0.82;
+      p.vy *= 0.82;
+
+      // Rotation drift
+      const rotSpeed = params.rotation * 0.002;
+      const rx = p.x - p.ox, ry = p.y - p.oy;
+      p.vx -= ry * rotSpeed;
+      p.vy += rx * rotSpeed;
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      const pulse = 0.7 + Math.sin(t * 0.004 + p.phase) * 0.3;
+      const hue = 20 + p.hue;
+      ctx.shadowBlur = 8 * params.glow * pulse;
+      ctx.shadowColor = `hsla(${hue}, 100%, 55%, 0.9)`;
+      ctx.fillStyle = `hsla(${hue + 15}, 100%, 75%, ${pulse})`;
+      ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  return {
+    params, draw,
+    onResize: rebuild,
+    controls: [
+      { type:'slider', key:'explode', label:'Explode Force', min:0, max:2, step:0.05, value:0.3 },
+      { type:'slider', key:'rotation', label:'Vortex Spin', min:0, max:2, step:0.05, value:0.5 },
+      { type:'slider', key:'glow', label:'Neon Glow', min:0, max:3, step:0.1, value:1.2 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 04: LIQUID METAL BLOBS ============
+function createLiquidMetal() {
+  const { w, h } = getViewportSize();
+  const params = {
+    blobs: 6,
+    viscosity: 0.5,
+    metallic: 0.8,
+    threshold: 0.5
+  };
+
+  const blobs = [];
+  function initBlobs() {
+    blobs.length = 0;
+    for (let i = 0; i < params.blobs; i++) {
+      blobs.push({
+        x: rand(w*0.2, w*0.8),
+        y: rand(h*0.2, h*0.8),
+        vx: rand(-0.8, 0.8),
+        vy: rand(-0.8, 0.8),
+        r: rand(60, 140),
+        phase: rand(0, Math.PI * 2)
+      });
+    }
+  }
+  initBlobs();
+
+  // Metaball via canvas pixel manipulation would be slow; use radial gradient + lighter blend trick
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.2)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const visc = params.viscosity;
+
+    // Update blobs
+    for (let i = 0; i < blobs.length; i++) {
+      const b = blobs[i];
+      // Mouse repulsion
+      const dx = b.x - m.x, dy = b.y - m.y;
+      const d2 = dx*dx + dy*dy;
+      const repR = 200;
+      if (d2 < repR * repR && d2 > 1) {
+        const d = Math.sqrt(d2);
+        const f = (1 - d / repR) * 2.5;
+        b.vx += dx / d * f * visc;
+        b.vy += dy / d * f * visc;
+      }
+      // Blob-blob attraction
+      for (let j = i + 1; j < blobs.length; j++) {
+        const b2 = blobs[j];
+        const ddx = b2.x - b.x, ddy = b2.y - b.y;
+        const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 1;
+        const target = (b.r + b2.r) * 0.7;
+        if (dd < target * 2) {
+          const aff = (dd > target ? 0.02 : -0.05) * visc;
+          b.vx += ddx / dd * aff;
+          b.vy += ddy / dd * aff;
+          b2.vx -= ddx / dd * aff;
+          b2.vy -= ddy / dd * aff;
+        }
+      }
+      b.vx *= 0.96;
+      b.vy *= 0.96;
+      b.x += b.vx;
+      b.y += b.vy;
+
+      // Bounce
+      if (b.x < b.r) { b.x = b.r; b.vx *= -0.7; }
+      if (b.x > w - b.r) { b.x = w - b.r; b.vx *= -0.7; }
+      if (b.y < b.r) { b.y = b.r; b.vy *= -0.7; }
+      if (b.y > h - b.r) { b.y = h - b.r; b.vy *= -0.7; }
+    }
+
+    // Draw metaballs using 'lighter' composite for fusion look
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of blobs) {
+      const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      const alpha = params.threshold * 0.6;
+      grad.addColorStop(0, `rgba(255, 210, 130, ${alpha})`);
+      grad.addColorStop(0.4, `rgba(255, 140, 50, ${alpha * 0.6})`);
+      grad.addColorStop(0.7, `rgba(255, 80, 20, ${alpha * 0.2})`);
+      grad.addColorStop(1, 'rgba(40, 10, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Metallic highlight overlay
+    if (params.metallic > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      for (const b of blobs) {
+        const hx = b.x - b.r * 0.3;
+        const hy = b.y - b.r * 0.3;
+        const hr = b.r * 0.4;
+        const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+        grad.addColorStop(0, `rgba(255, 248, 230, ${0.5 * params.metallic})`);
+        grad.addColorStop(1, 'rgba(255, 248, 230, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    ctx.shadowBlur = 0;
+  }
+
+  function updateCount() {
+    const target = Math.floor(params.blobs);
+    while (blobs.length < target) {
+      const { w, h } = getViewportSize();
+      blobs.push({
+        x: rand(w*0.2, w*0.8), y: rand(h*0.2, h*0.8),
+        vx: rand(-0.8, 0.8), vy: rand(-0.8, 0.8),
+        r: rand(60, 140), phase: rand(0, Math.PI * 2)
+      });
+    }
+    while (blobs.length > target) blobs.pop();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'blobs') updateCount(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    onResize: initBlobs,
+    controls: [
+      { type:'slider', key:'blobs', label:'Blobs', min:2, max:15, step:1, value:6 },
+      { type:'slider', key:'viscosity', label:'Viscosity', min:0.1, max:2, step:0.05, value:0.5 },
+      { type:'slider', key:'metallic', label:'Metalness', min:0, max:1.5, step:0.05, value:0.8 },
+      { type:'slider', key:'threshold', label:'Density', min:0.2, max:1.2, step:0.05, value:0.5 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 05: CYBER SPECTRUM ============
+function createCyberSpectrum() {
+  const { w, h } = getViewportSize();
+  const params = {
+    bars: 64,
+    amplitude: 1,
+    speed: 1,
+    symmetry: true
+  };
+
+  // Generate synthetic spectrum data (no audio needed)
+  const barsData = [];
+  for (let i = 0; i < params.bars; i++) {
+    barsData.push({
+      value: rand(0.2, 0.8),
+      target: rand(0.2, 0.8),
+      phase: rand(0, Math.PI * 2),
+      freq: rand(0.5, 3)
+    });
+  }
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.2)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const centerY = h * 0.5;
+    const barCount = Math.floor(params.bars);
+    const barW = w / barCount * 0.7;
+    const gap = w / barCount * 0.3;
+    const maxH = h * 0.4 * params.amplitude;
+
+    // Update & draw bars
+    for (let i = 0; i < barCount; i++) {
+      const b = barsData[i] || barsData[barsData.length - 1];
+      // Animate toward target with wave
+      const wave = Math.sin(t * 0.002 * params.speed + b.phase + i * 0.15) * 0.3 + 0.5;
+      // Mouse influence
+      const mx = i * (w / barCount) + barW / 2;
+      const mDist = Math.abs(m.x - mx);
+      const mInfluence = Math.max(0, 1 - mDist / 200) * 0.6;
+      const val = clamp(b.value * wave + mInfluence, 0.05, 1);
+      const bh = val * maxH;
+      const x = i * (w / barCount) + gap / 2;
+
+      // Gradient bar
+      const grad = ctx.createLinearGradient(0, centerY - bh, 0, centerY + bh);
+      grad.addColorStop(0, 'rgba(255, 240, 180, 0.95)');
+      grad.addColorStop(0.3, 'rgba(255, 160, 60, 0.9)');
+      grad.addColorStop(0.6, 'rgba(255, 80, 20, 0.7)');
+      grad.addColorStop(1, 'rgba(120, 20, 5, 0.3)');
+
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = 'rgba(255, 120, 40, 0.6)';
+      ctx.fillStyle = grad;
+
+      if (params.symmetry) {
+        ctx.fillRect(x, centerY - bh, barW, bh * 2);
+      } else {
+        ctx.fillRect(x, centerY - bh, barW, bh);
+      }
+
+      // Cap highlight
+      ctx.fillStyle = 'rgba(255, 250, 220, 0.9)';
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'rgba(255, 200, 100, 0.8)';
+      if (params.symmetry) {
+        ctx.fillRect(x, centerY - bh - 2, barW, 3);
+        ctx.fillRect(x, centerY + bh - 1, barW, 3);
+      } else {
+        ctx.fillRect(x, centerY - bh - 2, barW, 3);
+      }
+    }
+
+    // Center line
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = 'rgba(255, 150, 60, 0.8)';
+    ctx.strokeStyle = 'rgba(255, 180, 80, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(w, centerY);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+  }
+
+  function updateCount() {
+    const target = Math.floor(params.bars);
+    while (barsData.length < target) {
+      barsData.push({
+        value: rand(0.2, 0.8), target: rand(0.2, 0.8),
+        phase: rand(0, Math.PI * 2), freq: rand(0.5, 3)
+      });
+    }
+    while (barsData.length > target) barsData.pop();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'bars') updateCount(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    controls: [
+      { type:'slider', key:'bars', label:'Bars', min:16, max:256, step:8, value:64 },
+      { type:'slider', key:'amplitude', label:'Amplitude', min:0.2, max:2, step:0.05, value:1 },
+      { type:'slider', key:'speed', label:'Speed', min:0.2, max:3, step:0.1, value:1 },
+      { type:'toggle', key:'symmetry', label:'Mirror Mode', value:true },
+    ]
+  };
+}
+
+// ============ EXHIBIT 06: GLITCH FIELD ============
+function createGlitchField() {
+  const { w, h } = getViewportSize();
+  const params = {
+    intensity: 0.5,
+    bands: 12,
+    chroma: 0.7,
+    scanlines: true
+  };
+
+  // Draw a geometric scene then glitch it
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = '#0a0604';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const intensity = params.intensity;
+
+    // Draw base content: concentric circles + grid
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.rotate(t * 0.0002);
+    for (let i = 0; i < 8; i++) {
+      const r = 60 + i * 50 + Math.sin(t * 0.002 + i) * 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 130, 40, ${0.15 + i * 0.05})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Hexagram / star shape
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.rotate(t * 0.0005);
+    const size = 120 + Math.sin(t * 0.003) * 20;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 - Math.PI / 2;
+      const x = Math.cos(a) * size;
+      const y = Math.sin(a) * size;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = 'rgba(255, 100, 30, 0.8)';
+    ctx.strokeStyle = 'rgba(255, 180, 80, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    // Glitch: horizontal displacement bands
+    const bandCount = Math.floor(params.bands * intensity);
+    if (bandCount > 0) {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const temp = new Uint8ClampedArray(data.length);
+
+      for (let b = 0; b < bandCount; b++) {
+        const by = Math.floor(rand(0, h));
+        const bh = Math.floor(rand(2, 20));
+        const shift = Math.floor(rand(-40, 40) * intensity);
+        for (let y = by; y < Math.min(by + bh, h); y++) {
+          for (let x = 0; x < w; x++) {
+            const sx = (x + shift + w) % w;
+            const di = (y * w + x) * 4;
+            const si = (y * w + sx) * 4;
+            temp[di] = data[si];
+            temp[di+1] = data[si+1];
+            temp[di+2] = data[si+2];
+            temp[di+3] = data[si+3];
+          }
+        }
+      }
+
+      // Chromatic aberration
+      if (params.chroma > 0) {
+        const shift = Math.floor(3 * params.chroma * intensity);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const di = (y * w + x) * 4;
+            // R from left
+            const rx = Math.max(0, x - shift);
+            const ri = (y * w + rx) * 4;
+            // B from right
+            const bx = Math.min(w-1, x + shift);
+            const bi = (y * w + bx) * 4;
+            if (temp[di+3] > 0) {
+              temp[di] = data[ri];
+              temp[di+2] = data[bi+2];
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Scanlines
+    if (params.scanlines) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+      for (let y = 0; y < h; y += 3) {
+        ctx.fillRect(0, y, w, 1);
+      }
+    }
+
+    // Mouse interaction: glitch burst near cursor
+    const burstChance = 0.02 * intensity;
+    if (Math.random() < burstChance) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(255, 120, 40, ${0.3 * intensity})`;
+      ctx.fillRect(m.x - rand(20, 100), m.y - rand(5, 15), rand(40, 200), rand(2, 6));
+      ctx.restore();
+    }
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'intensity', label:'Glitch Intensity', min:0, max:1.5, step:0.05, value:0.5 },
+      { type:'slider', key:'bands', label:'Bands', min:2, max:40, step:1, value:12 },
+      { type:'slider', key:'chroma', label:'RGB Split', min:0, max:2, step:0.05, value:0.7 },
+      { type:'toggle', key:'scanlines', label:'Scanlines', value:true },
+    ]
+  };
+}
+
+// ============ EXHIBIT 07: ENERGY RINGS ============
+function createEnergyRings() {
+  const { w, h } = getViewportSize();
+  const params = {
+    rings: 5,
+    speed: 1,
+    thickness: 3,
+    particles: 80
+  };
+
+  // Orbiting particles
+  const parts = [];
+  for (let i = 0; i < params.particles; i++) {
+    parts.push({
+      ring: Math.floor(rand(0, 5)),
+      angle: rand(0, Math.PI * 2),
+      speed: rand(0.3, 1.2),
+      size: rand(1, 3),
+      trail: []
+    });
+  }
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.15)';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2, cy = h / 2;
+    const m = getLocalMouseSmoothed();
+    const tiltX = (m.x - cx) / w * 0.3;
+    const tiltY = (m.y - cy) / h * 0.3;
+    const nRings = Math.floor(params.rings);
+    const spd = params.speed;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    for (let r = 0; r < nRings; r++) {
+      const radius = 80 + r * 55;
+      const tilt = 0.4 + r * 0.12;
+      const rotSpeed = (r % 2 === 0 ? 1 : -1) * 0.001 * spd * (1 + r * 0.2);
+      const rot = t * rotSpeed + r;
+
+      // Ring
+      ctx.save();
+      ctx.rotate(tiltX);
+      ctx.transform(1, 0, tiltY * tilt, 1, 0, 0);
+      ctx.rotate(rot);
+
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = `hsla(${20 + r * 8}, 100%, 55%, 0.7)`;
+      ctx.strokeStyle = `hsla(${20 + r * 8}, 100%, 65%, ${0.4 + r * 0.05})`;
+      ctx.lineWidth = params.thickness;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Glowing nodes on ring
+      const nodes = 3 + r;
+      for (let n = 0; n < nodes; n++) {
+        const na = (n / nodes) * Math.PI * 2 + t * rotSpeed * 3;
+        const nx = Math.cos(na) * radius;
+        const ny = Math.sin(na) * radius;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = `hsla(${20 + r * 8}, 100%, 60%, 1)`;
+        ctx.fillStyle = `hsla(${30 + r * 8}, 100%, 85%, 1)`;
+        ctx.beginPath();
+        ctx.arc(nx, ny, 3 + r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // Orbiting particles
+    for (const p of parts) {
+      if (p.ring >= nRings) continue;
+      const r = p.ring;
+      const radius = 80 + r * 55;
+      p.angle += p.speed * 0.01 * spd * (r % 2 === 0 ? 1 : -1);
+
+      const px = Math.cos(p.angle) * radius;
+      const py = Math.sin(p.angle) * radius * (0.4 + r * 0.12);
+
+      // Trails
+      p.trail.push({ x: px, y: py });
+      if (p.trail.length > 12) p.trail.shift();
+
+      for (let i = 0; i < p.trail.length; i++) {
+        const tr = p.trail[i];
+        const alpha = i / p.trail.length * 0.5;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = `hsla(${20 + r * 8}, 100%, 70%, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, p.size * (i / p.trail.length), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = `hsla(${20 + r * 8}, 100%, 60%, 0.9)`;
+      ctx.fillStyle = `hsla(${30 + r * 8}, 100%, 90%, 1)`;
+      ctx.beginPath();
+      ctx.arc(px, py, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Core
+    const pulse = 1 + Math.sin(t * 0.004) * 0.2;
+    const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 40 * pulse);
+    coreGrad.addColorStop(0, 'rgba(255, 245, 210, 1)');
+    coreGrad.addColorStop(0.3, 'rgba(255, 170, 60, 0.9)');
+    coreGrad.addColorStop(0.7, 'rgba(255, 80, 20, 0.4)');
+    coreGrad.addColorStop(1, 'rgba(200, 30, 10, 0)');
+    ctx.shadowBlur = 40;
+    ctx.shadowColor = 'rgba(255, 120, 40, 1)';
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function updateParticles() {
+    const target = Math.floor(params.particles);
+    while (parts.length < target) {
+      parts.push({
+        ring: Math.floor(rand(0, params.rings || 5)),
+        angle: rand(0, Math.PI * 2), speed: rand(0.3, 1.2),
+        size: rand(1, 3), trail: []
+      });
+    }
+    while (parts.length > target) parts.pop();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'particles' || k === 'rings') updateParticles(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    controls: [
+      { type:'slider', key:'rings', label:'Rings', min:1, max:10, step:1, value:5 },
+      { type:'slider', key:'speed', label:'Rotation', min:0.2, max:3, step:0.1, value:1 },
+      { type:'slider', key:'thickness', label:'Thickness', min:1, max:8, step:0.5, value:3 },
+      { type:'slider', key:'particles', label:'Orbiters', min:0, max:200, step:10, value:80 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 08: MAGNETIC TILT GRID ============
+function createMagneticGrid() {
+  const { w, h } = getViewportSize();
+  const params = {
+    cols: 24,
+    rows: 16,
+    strength: 1,
+    depth: 20
+  };
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 1)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const cols = Math.floor(params.cols);
+    const rows = Math.floor(params.rows);
+    const cw = w / cols;
+    const rh = h / rows;
+    const strength = params.strength;
+    const depth = params.depth;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cx = c * cw + cw / 2;
+        const cy = r * rh + rh / 2;
+        const dx = m.x - cx, dy = m.y - cy;
+        const d2 = dx*dx + dy*dy;
+        const maxD = 180;
+        let infl = 0;
+        if (d2 < maxD * maxD) {
+          const d = Math.sqrt(d2);
+          infl = (1 - d / maxD) * strength;
+        }
+
+        // Magnetic tilt: card rotates toward/away from mouse
+        const tiltX = dy / 100 * infl * depth;
+        const tiltY = dx / 100 * infl * depth;
+        const distZ = infl * depth;
+
+        // Size based on proximity
+        const size = Math.min(cw, rh) * 0.6 * (1 + infl * 0.5);
+
+        // Glow intensity
+        const glow = infl * 0.8;
+
+        ctx.save();
+        ctx.translate(cx + tiltY, cy - tiltX);
+
+        // Card face
+        ctx.shadowBlur = glow * 15;
+        ctx.shadowColor = `rgba(255, 120, 40, ${glow})`;
+
+        const grad = ctx.createLinearGradient(-size/2, -size/2, size/2, size/2);
+        const baseLight = 15 + infl * 25;
+        grad.addColorStop(0, `hsl(20, 60%, ${baseLight}%)`);
+        grad.addColorStop(1, `hsl(30, 70%, ${baseLight - 5}%)`);
+        ctx.fillStyle = grad;
+
+        // Rounded rect
+        const rr = size * 0.2;
+        ctx.beginPath();
+        ctx.moveTo(-size/2 + rr, -size/2);
+        ctx.lineTo(size/2 - rr, -size/2);
+        ctx.quadraticCurveTo(size/2, -size/2, size/2, -size/2 + rr);
+        ctx.lineTo(size/2, size/2 - rr);
+        ctx.quadraticCurveTo(size/2, size/2, size/2 - rr, size/2);
+        ctx.lineTo(-size/2 + rr, size/2);
+        ctx.quadraticCurveTo(-size/2, size/2, -size/2, size/2 - rr);
+        ctx.lineTo(-size/2, -size/2 + rr);
+        ctx.quadraticCurveTo(-size/2, -size/2, -size/2 + rr, -size/2);
+        ctx.fill();
+
+        // Highlight
+        if (infl > 0.1) {
+          ctx.fillStyle = `rgba(255, 220, 160, ${infl * 0.6})`;
+          ctx.beginPath();
+          ctx.ellipse(0, -size*0.15, size*0.3, size*0.1, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
+
+        // Border
+        ctx.strokeStyle = `rgba(255, 150, 60, ${0.15 + infl * 0.4})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'cols', label:'Columns', min:8, max:60, step:2, value:24 },
+      { type:'slider', key:'rows', label:'Rows', min:6, max:40, step:2, value:16 },
+      { type:'slider', key:'strength', label:'Magnetism', min:0.2, max:2, step:0.05, value:1 },
+      { type:'slider', key:'depth', label:'3D Depth', min:0, max:50, step:1, value:20 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 09: LIGHT REFRACTION CRYSTAL ============
+function createCrystalRefraction() {
+  const { w, h } = getViewportSize();
+  const params = {
+    facets: 6,
+    rotation: 0.3,
+    dispersion: 1,
+    size: 180
+  };
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 1)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const cx = w / 2, cy = h / 2;
+    const facets = Math.floor(params.facets);
+    const size = params.size;
+    const rot = t * 0.0003 * params.rotation + (m.x - cx) * 0.002;
+
+    // Draw radial light beams from behind
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Light rays emanating
+    ctx.globalCompositeOperation = 'lighter';
+    const rays = 24;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + t * 0.0002;
+      const len = size * 2.5;
+      const grad = ctx.createLinearGradient(
+        Math.cos(a) * size * 0.3, Math.sin(a) * size * 0.3,
+        Math.cos(a) * len, Math.sin(a) * len
+      );
+      const hue = (i / rays) * 60 + 10;
+      grad.addColorStop(0, `hsla(${hue}, 100%, 70%, 0.3)`);
+      grad.addColorStop(1, `hsla(${hue}, 100%, 60%, 0)`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * size * 0.3, Math.sin(a) * size * 0.3);
+      ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Crystal polygon
+    ctx.save();
+    ctx.rotate(rot);
+
+    // Crystal body
+    ctx.beginPath();
+    for (let i = 0; i < facets; i++) {
+      const a = (i / facets) * Math.PI * 2 - Math.PI / 2;
+      const r = size + Math.sin(t * 0.003 + i) * 8;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    const crystalGrad = ctx.createRadialGradient(0, -size*0.3, size*0.1, 0, 0, size);
+    crystalGrad.addColorStop(0, 'rgba(255, 240, 200, 0.5)');
+    crystalGrad.addColorStop(0.4, 'rgba(255, 180, 90, 0.35)');
+    crystalGrad.addColorStop(0.8, 'rgba(255, 100, 40, 0.25)');
+    crystalGrad.addColorStop(1, 'rgba(120, 30, 10, 0.3)');
+    ctx.fillStyle = crystalGrad;
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = 'rgba(255, 140, 50, 0.7)';
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 220, 160, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Internal facets
+    for (let i = 0; i < facets; i++) {
+      const a = (i / facets) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * size * 0.8, Math.sin(a) * size * 0.8);
+      ctx.strokeStyle = `rgba(255, 200, 120, ${0.15 + Math.sin(t*0.004 + i) * 0.1})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Inner gem
+    ctx.beginPath();
+    for (let i = 0; i < facets; i++) {
+      const a = (i / facets) * Math.PI * 2 + t * 0.002 - Math.PI / 2;
+      const x = Math.cos(a) * size * 0.35;
+      const y = Math.sin(a) * size * 0.35;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.4);
+    innerGrad.addColorStop(0, 'rgba(255, 250, 230, 0.95)');
+    innerGrad.addColorStop(0.5, 'rgba(255, 190, 100, 0.7)');
+    innerGrad.addColorStop(1, 'rgba(255, 120, 40, 0.3)');
+    ctx.fillStyle = innerGrad;
+    ctx.shadowBlur = 40;
+    ctx.shadowColor = 'rgba(255, 180, 80, 1)';
+    ctx.fill();
+
+    ctx.restore();
+
+    // Dispersion color fringes (chromatic aberration)
+    if (params.dispersion > 0) {
+      ctx.save();
+      ctx.rotate(rot);
+      ctx.globalCompositeOperation = 'screen';
+      const disp = params.dispersion * 4;
+
+      // Red edge
+      ctx.beginPath();
+      for (let i = 0; i < facets; i++) {
+        const a = (i / facets) * Math.PI * 2 - Math.PI / 2;
+        const r = size + disp;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255, 60, 30, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.filter = 'blur(1px)';
+      ctx.stroke();
+
+      // Yellow edge
+      ctx.beginPath();
+      for (let i = 0; i < facets; i++) {
+        const a = (i / facets) * Math.PI * 2 - Math.PI / 2;
+        const r = size - disp;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255, 220, 100, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.filter = 'none';
+      ctx.restore();
+    }
+
+    // Sparkles
+    const sparkleCount = 8;
+    for (let i = 0; i < sparkleCount; i++) {
+      const a = (i / sparkleCount) * Math.PI * 2 + t * 0.0008;
+      const r = size * 0.6 + Math.sin(t * 0.005 + i * 2) * 30;
+      const sx = Math.cos(a + rot) * r;
+      const sy = Math.sin(a + rot) * r;
+      const ss = 2 + Math.sin(t * 0.01 + i) * 1.5;
+      ctx.fillStyle = 'rgba(255, 248, 220, 0.9)';
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(255, 200, 100, 1)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, ss, 0, Math.PI * 2);
+      ctx.fill();
+      // Cross sparkle
+      ctx.strokeStyle = 'rgba(255, 240, 200, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx - ss * 2, sy);
+      ctx.lineTo(sx + ss * 2, sy);
+      ctx.moveTo(sx, sy - ss * 2);
+      ctx.lineTo(sx, sy + ss * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'facets', label:'Facets', min:3, max:12, step:1, value:6 },
+      { type:'slider', key:'rotation', label:'Spin', min:0, max:3, step:0.1, value:0.3 },
+      { type:'slider', key:'dispersion', label:'Dispersion', min:0, max:3, step:0.1, value:1 },
+      { type:'slider', key:'size', label:'Size', min:80, max:300, step:5, value:180 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 10: HOLOGRAM SCANNER ============
+function createHologram() {
+  const { w, h } = getViewportSize();
+  const params = {
+    speed: 1,
+    density: 1,
+    glow: 1.2,
+    layers: 3
+  };
+
+  const particles = [];
+  function initCloud() {
+    particles.length = 0;
+    const { w, h } = getViewportSize();
+    const count = Math.floor(800 * params.density);
+    for (let i = 0; i < count; i++) {
+      const theta = rand(0, Math.PI * 2);
+      const phi = Math.acos(rand(-1, 1));
+      const r = rand(80, 180);
+      particles.push({
+        // 3D position on a sphere
+        x3d: r * Math.sin(phi) * Math.cos(theta),
+        y3d: r * Math.cos(phi),
+        z3d: r * Math.sin(phi) * Math.sin(theta),
+        size: rand(0.5, 2),
+        speed: rand(0.3, 1),
+        phase: rand(0, Math.PI * 2),
+        layer: Math.floor(rand(0, 3))
+      });
+    }
+  }
+  initCloud();
+
+  function project(x, y, z, rotY, rotX) {
+    // Rotate Y
+    let x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
+    let z1 = x * Math.sin(rotY) + z * Math.cos(rotY);
+    // Rotate X
+    let y1 = y * Math.cos(rotX) - z1 * Math.sin(rotX);
+    let z2 = y * Math.sin(rotX) + z1 * Math.cos(rotX);
+    // Perspective
+    const f = 400;
+    const scale = f / (f + z2);
+    return { x: x1 * scale, y: y1 * scale, z: z2, scale };
+  }
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(8, 4, 2, 0.15)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const cx = w / 2, cy = h / 2;
+    const rotY = (m.x - cx) * 0.003 + t * 0.0005 * params.speed;
+    const rotX = (m.y - cy) * 0.002 + t * 0.0003 * params.speed;
+    const layers = Math.floor(params.layers);
+
+    // Sort particles by z
+    const projected = [];
+    for (const p of particles) {
+      if (p.layer >= layers) continue;
+      const pr = project(p.x3d, p.y3d, p.z3d, rotY + p.phase * 0.1, rotX);
+      projected.push({ ...pr, p });
+    }
+    projected.sort((a, b) => a.z - b.z);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Scan line
+    const scanY = ((t * 0.15 * params.speed) % 400) - 200;
+    const scanGrad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+    scanGrad.addColorStop(0, 'rgba(255, 140, 50, 0)');
+    scanGrad.addColorStop(0.5, 'rgba(255, 180, 80, 0.25)');
+    scanGrad.addColorStop(1, 'rgba(255, 140, 50, 0)');
+    ctx.fillStyle = scanGrad;
+    ctx.fillRect(-200, scanY - 30, 400, 60);
+
+    // Grid rings (spherical latitudes)
+    ctx.strokeStyle = 'rgba(255, 140, 50, 0.15)';
+    ctx.lineWidth = 1;
+    for (let lat = 1; lat < 6; lat++) {
+      const y = -120 + lat * 48;
+      const r = Math.sqrt(14400 - y*y);
+      const pr = project(0, y, 0, rotY, rotX);
+      if (r > 0) {
+        ctx.beginPath();
+        ctx.ellipse(pr.x, pr.y, r * pr.scale * 0.3, r * pr.scale * 0.08, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Draw particles
+    for (const item of projected) {
+      const p = item.p;
+      const alpha = clamp(item.scale * 0.8, 0.2, 1.2);
+      const depth = clamp((item.z + 200) / 400, 0, 1);
+      const hue = 20 + p.layer * 15;
+
+      ctx.shadowBlur = 8 * params.glow * alpha;
+      ctx.shadowColor = `hsla(${hue}, 100%, 55%, ${alpha * 0.7})`;
+      ctx.fillStyle = `hsla(${hue + 10}, 100%, 80%, ${alpha})`;
+      const s = p.size * item.scale * 1.5;
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Brighter near scan line
+      const distToScan = Math.abs(item.y - scanY);
+      if (distToScan < 20) {
+        const scanBoost = 1 - distToScan / 20;
+        ctx.fillStyle = `hsla(40, 100%, 95%, ${scanBoost * alpha})`;
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, s * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Outer frame
+    ctx.strokeStyle = 'rgba(255, 150, 60, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.strokeRect(-190, -190, 380, 380);
+    ctx.setLineDash([]);
+
+    // Corner brackets
+    const bl = 15;
+    ctx.strokeStyle = 'rgba(255, 180, 80, 0.7)';
+    ctx.lineWidth = 2;
+    // TL
+    ctx.beginPath();
+    ctx.moveTo(-190, -190 + bl); ctx.lineTo(-190, -190); ctx.lineTo(-190 + bl, -190);
+    // TR
+    ctx.moveTo(190 - bl, -190); ctx.lineTo(190, -190); ctx.lineTo(190, -190 + bl);
+    // BL
+    ctx.moveTo(-190, 190 - bl); ctx.lineTo(-190, 190); ctx.lineTo(-190 + bl, 190);
+    // BR
+    ctx.moveTo(190 - bl, 190); ctx.lineTo(190, 190); ctx.lineTo(190, 190 - bl);
+    ctx.stroke();
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function updateDensity() {
+    initCloud();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'density') updateDensity(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    onResize: initCloud,
+    controls: [
+      { type:'slider', key:'speed', label:'Rotate Speed', min:0, max:3, step:0.1, value:1 },
+      { type:'slider', key:'density', label:'Density', min:0.3, max:2, step:0.1, value:1 },
+      { type:'slider', key:'glow', label:'Glow', min:0, max:2.5, step:0.1, value:1.2 },
+      { type:'slider', key:'layers', label:'Layers', min:1, max:5, step:1, value:3 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 11: SHOCKWAVE PULSE ============
+function createShockwave() {
+  const { w, h } = getViewportSize();
+  const params = {
+    speed: 1,
+    rings: 4,
+    thickness: 8,
+    glow: 1.5
+  };
+
+  const waves = [];
+  let spawnTimer = 0;
+
+  // Click to pulse
+  canvas && canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    waves.push({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      r: 5,
+      maxR: 300 + rand(0, 200),
+      alpha: 1
+    });
+  });
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.12)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+
+    // Auto spawn waves
+    spawnTimer++;
+    const interval = Math.floor(60 / params.speed);
+    if (spawnTimer >= interval) {
+      spawnTimer = 0;
+      waves.push({
+        x: m.x + rand(-30, 30),
+        y: m.y + rand(-30, 30),
+        r: 2,
+        maxR: 200 + rand(100, 300),
+        alpha: 0.8
+      });
+    }
+
+    // Cap waves count
+    if (waves.length > 40) waves.splice(0, waves.length - 40);
+
+    // Update and draw waves
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const wv = waves[i];
+      wv.r += 3 * params.speed;
+      wv.alpha = 1 - wv.r / wv.maxR;
+
+      if (wv.alpha <= 0) {
+        waves.splice(i, 1);
+        continue;
+      }
+
+      // Multi-ring
+      const ringCount = Math.floor(params.rings);
+      for (let r = 0; r < ringCount; r++) {
+        const rr = wv.r - r * params.thickness * 2;
+        if (rr <= 0) continue;
+        const ringAlpha = wv.alpha * (1 - r * 0.25);
+
+        ctx.save();
+        ctx.shadowBlur = 20 * params.glow;
+        ctx.shadowColor = `rgba(255, 120, 40, ${ringAlpha * 0.8})`;
+        ctx.strokeStyle = `rgba(255, 180, 80, ${ringAlpha})`;
+        ctx.lineWidth = params.thickness;
+        ctx.beginPath();
+        ctx.arc(wv.x, wv.y, rr, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner glow
+        ctx.shadowBlur = 0;
+        const grad = ctx.createRadialGradient(wv.x, wv.y, rr * 0.9, wv.x, wv.y, rr);
+        grad.addColorStop(0, `rgba(255, 160, 60, 0)`);
+        grad.addColorStop(1, `rgba(255, 100, 30, ${ringAlpha * 0.3})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(wv.x, wv.y, rr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Central glow at mouse
+    const pulse = 1 + Math.sin(t * 0.008) * 0.3;
+    ctx.save();
+    ctx.shadowBlur = 30 * params.glow;
+    ctx.shadowColor = 'rgba(255, 140, 50, 0.9)';
+    ctx.fillStyle = 'rgba(255, 220, 150, 0.8)';
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 4 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'speed', label:'Speed', min:0.3, max:3, step:0.1, value:1 },
+      { type:'slider', key:'rings', label:'Rings', min:1, max:8, step:1, value:4 },
+      { type:'slider', key:'thickness', label:'Thickness', min:2, max:20, step:1, value:8 },
+      { type:'slider', key:'glow', label:'Bloom', min:0, max:3, step:0.1, value:1.5 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 12: LIGHT TRAILS / RIBBON ============
+function createLightTrails() {
+  const { w, h } = getViewportSize();
+  const params = {
+    length: 80,
+    width: 3,
+    strands: 5,
+    glow: 2
+  };
+
+  const strands = [];
+  function initStrands() {
+    const { w, h } = getViewportSize();
+    strands.length = 0;
+    for (let i = 0; i < params.strands; i++) {
+      strands.push({
+        points: [],
+        hue: 15 + i * 10,
+        phase: rand(0, Math.PI * 2),
+        speed: rand(0.02, 0.05),
+        radius: rand(60, 150)
+      });
+    }
+  }
+  initStrands();
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(10, 6, 4, 0.08)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const cx = w / 2, cy = h / 2;
+
+    for (let si = 0; si < strands.length; si++) {
+      const s = strands[si];
+      // Add new point
+      const angle = t * s.speed + s.phase;
+      const wobble = Math.sin(t * 0.003 + si) * 40;
+      // Point orbits around mouse with offset
+      const ox = m.x + Math.cos(angle) * s.radius + wobble * 0.5;
+      const oy = m.y + Math.sin(angle * 1.3) * s.radius * 0.7 + Math.cos(t*0.002+si)*30;
+      s.points.push({ x: ox, y: oy });
+      if (s.points.length > params.length) s.points.shift();
+
+      if (s.points.length < 2) continue;
+
+      // Draw ribbon
+      ctx.save();
+      ctx.shadowBlur = 15 * params.glow;
+      ctx.shadowColor = `hsla(${s.hue}, 100%, 60%, 0.8)`;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Main strand with tapering
+      ctx.beginPath();
+      ctx.moveTo(s.points[0].x, s.points[0].y);
+      for (let i = 1; i < s.points.length; i++) {
+        ctx.lineTo(s.points[i].x, s.points[i].y);
+      }
+      ctx.strokeStyle = `hsla(${s.hue + 10}, 100%, 75%, 0.9)`;
+      ctx.lineWidth = params.width;
+      ctx.stroke();
+
+      // Inner bright core
+      ctx.shadowBlur = 5;
+      ctx.strokeStyle = `hsla(${s.hue + 20}, 100%, 95%, 0.7)`;
+      ctx.lineWidth = params.width * 0.4;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Mouse center glow
+    ctx.save();
+    ctx.shadowBlur = 25 * params.glow;
+    ctx.shadowColor = 'rgba(255, 160, 60, 0.8)';
+    const grad = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 20);
+    grad.addColorStop(0, 'rgba(255, 245, 210, 0.9)');
+    grad.addColorStop(1, 'rgba(255, 120, 40, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function updateStrands() {
+    initStrands();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'strands') updateStrands(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    onResize: initStrands,
+    controls: [
+      { type:'slider', key:'length', label:'Trail Length', min:20, max:200, step:5, value:80 },
+      { type:'slider', key:'width', label:'Width', min:1, max:10, step:0.5, value:3 },
+      { type:'slider', key:'strands', label:'Strands', min:1, max:12, step:1, value:5 },
+      { type:'slider', key:'glow', label:'Glow', min:0, max:4, step:0.1, value:2 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 13: WIREFRAME TERRAIN ============
+function createWireframeTerrain() {
+  const { w, h } = getViewportSize();
+  const params = {
+    rows: 30,
+    cols: 50,
+    height: 40,
+    speed: 0.5
+  };
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(8, 4, 2, 1)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const rows = Math.floor(params.rows);
+    const cols = Math.floor(params.cols);
+    const hh = params.height;
+    const spd = params.speed;
+
+    const gridW = w * 0.9;
+    const gridH = h * 0.7;
+    const startX = (w - gridW) / 2;
+    const startY = h * 0.3;
+    const cellW = gridW / (cols - 1);
+    const cellH = gridH / (rows - 1);
+
+    // Perspective transform
+    const horizonY = h * 0.25;
+
+    function project(gx, gy, z) {
+      // gx, gy are grid coords; z is height displacement
+      const px = startX + gx * cellW;
+      const py = startY + gy * cellH;
+      // Simple perspective: closer (higher row index) gets wider offset
+      const depth = gy / rows; // 0 at top, 1 at bottom
+      const scale = 0.3 + depth * 0.7;
+      const centerOffset = (px - w/2) * scale;
+      const projX = w/2 + centerOffset;
+      const projY = horizonY + (py - horizonY) * scale - z * scale;
+      return { x: projX, y: projY, depth, scale };
+    }
+
+    ctx.save();
+    // Draw grid
+    ctx.lineWidth = 1;
+
+    for (let r = 0; r < rows; r++) {
+      ctx.beginPath();
+      let started = false;
+      for (let c = 0; c < cols; c++) {
+        const cx = c / cols;
+        const cy = r / rows;
+        // Height noise: multiple sine waves
+        const z = Math.sin(cx * 6 + t * 0.001 * spd) * hh * 0.3
+                + Math.sin(cy * 4 + t * 0.0015 * spd) * hh * 0.3
+                + Math.sin((cx + cy) * 3 + t * 0.0008 * spd) * hh * 0.2
+                + Math.sin(cx * 10 + cy * 5) * hh * 0.1;
+        // Mouse influence
+        const mx = (m.x - w/2) / w * 2;
+        const my = (m.y - horizonY) / (h - horizonY);
+        const mdx = cx - 0.5 - mx * 0.2;
+        const mdy = cy - my;
+        const md = Math.sqrt(mdx*mdx + mdy*mdy);
+        const mInfluence = Math.max(0, 1 - md * 2) * hh * 0.8;
+        const totalZ = z + mInfluence;
+
+        const p = project(c, r, totalZ);
+        if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+      const depth = r / rows;
+      const alpha = 0.1 + depth * 0.6;
+      ctx.strokeStyle = `rgba(255, 150, 50, ${alpha})`;
+      ctx.shadowBlur = depth * 8;
+      ctx.shadowColor = 'rgba(255, 100, 30, 0.5)';
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Bottom glow
+    const bottomGrad = ctx.createLinearGradient(0, h * 0.7, 0, h);
+    bottomGrad.addColorStop(0, 'rgba(255, 80, 20, 0)');
+    bottomGrad.addColorStop(1, 'rgba(255, 60, 10, 0.15)');
+    ctx.fillStyle = bottomGrad;
+    ctx.fillRect(0, h * 0.7, w, h * 0.3);
+  }
+
+  return {
+    params, draw,
+    controls: [
+      { type:'slider', key:'cols', label:'Columns', min:10, max:100, step:5, value:50 },
+      { type:'slider', key:'rows', label:'Rows', min:6, max:60, step:2, value:30 },
+      { type:'slider', key:'height', label:'Amplitude', min:5, max:120, step:2, value:40 },
+      { type:'slider', key:'speed', label:'Flow Speed', min:0, max:3, step:0.1, value:0.5 },
+    ]
+  };
+}
+
+// ============ EXHIBIT 14: VORTEX PORTAL ============
+function createVortexPortal() {
+  const { w, h } = getViewportSize();
+  const params = {
+    arms: 4,
+    speed: 1,
+    particles: 200,
+    depth: 1
+  };
+
+  const parts = [];
+  function initParts() {
+    parts.length = 0;
+    for (let i = 0; i < params.particles; i++) {
+      parts.push({
+        angle: rand(0, Math.PI * 2),
+        radius: rand(10, 200),
+        speed: rand(0.002, 0.01),
+        size: rand(0.5, 2.5),
+        arm: Math.floor(rand(0, params.arms || 4)),
+        hue: rand(0, 40),
+        z: rand(0, 1)
+      });
+    }
+  }
+  initParts();
+
+  function draw(t) {
+    const { w, h } = getViewportSize();
+    ctx.fillStyle = 'rgba(8, 4, 2, 0.2)';
+    ctx.fillRect(0, 0, w, h);
+
+    const m = getLocalMouseSmoothed();
+    const cx = w / 2 + (m.x - w/2) * 0.1;
+    const cy = h / 2 + (m.y - h/2) * 0.1;
+    const arms = Math.floor(params.arms);
+    const spd = params.speed;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Arms glow
+    for (let a = 0; a < arms; a++) {
+      const armAngle = (a / arms) * Math.PI * 2 + t * 0.0005 * spd;
+      const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 250);
+      grad.addColorStop(0, 'rgba(255, 200, 100, 0.3)');
+      grad.addColorStop(0.5, 'rgba(255, 100, 30, 0.1)');
+      grad.addColorStop(1, 'rgba(80, 20, 5, 0)');
+
+      ctx.save();
+      ctx.rotate(armAngle);
+      ctx.beginPath();
+      // Spiral arm shape
+      for (let i = 0; i < 100; i++) {
+        const r = i * 2.5;
+        const twist = i * 0.03 * params.depth;
+        const x = Math.cos(twist) * r;
+        const y = Math.sin(twist) * r * 0.4;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      for (let i = 99; i >= 0; i--) {
+        const r = i * 2.5 + 15;
+        const twist = i * 0.03 * params.depth;
+        const x = Math.cos(twist) * r;
+        const y = Math.sin(twist) * r * 0.4;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = 'rgba(255, 120, 40, 0.5)';
+      ctx.globalAlpha = 0.5;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Particles spiraling inward
+    for (const p of parts) {
+      p.angle += p.speed * spd * 2;
+      p.radius -= 0.5 * spd;
+      if (p.radius < 5) {
+        p.radius = rand(150, 250);
+        p.angle = rand(0, Math.PI * 2);
+      }
+
+      const armOffset = (p.arm / arms) * Math.PI * 2;
+      const a = p.angle + armOffset;
+      const r = p.radius;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r * 0.5;
+      const scale = r / 250;
+
+      const alpha = clamp(scale * 1.5, 0.2, 1);
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `hsla(${20 + p.hue}, 100%, 55%, ${alpha})`;
+      ctx.fillStyle = `hsla(${30 + p.hue}, 100%, 80%, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(px, py, p.size * scale * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Center black hole
+    const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 40);
+    coreGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    coreGrad.addColorStop(0.7, 'rgba(20, 5, 0, 1)');
+    coreGrad.addColorStop(1, 'rgba(60, 15, 5, 0)');
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = 'rgba(255, 80, 20, 0.8)';
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Accretion ring
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = 'rgba(255, 180, 80, 0.9)';
+    ctx.strokeStyle = 'rgba(255, 220, 140, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 50, 15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Bright spot on accretion disk
+    const spotAngle = t * 0.003 * spd;
+    const sx = Math.cos(spotAngle) * 50;
+    const sy = Math.sin(spotAngle) * 15;
+    ctx.fillStyle = 'rgba(255, 250, 220, 1)';
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = 'rgba(255, 200, 100, 1)';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function updateCount() {
+    const target = Math.floor(params.particles);
+    while (parts.length < target) {
+      parts.push({
+        angle: rand(0, Math.PI * 2),
+        radius: rand(10, 200),
+        speed: rand(0.002, 0.01),
+        size: rand(0.5, 2.5),
+        arm: Math.floor(rand(0, params.arms || 4)),
+        hue: rand(0, 40),
+        z: rand(0, 1)
+      });
+    }
+    while (parts.length > target) parts.pop();
+  }
+
+  const proxyParams = new Proxy(params, {
+    set(t, k, v) { t[k] = v; if (k === 'particles' || k === 'arms') updateCount(); return true; }
+  });
+
+  return {
+    params: proxyParams, draw,
+    onResize: initParts,
+    controls: [
+      { type:'slider', key:'arms', label:'Arms', min:2, max:8, step:1, value:4 },
+      { type:'slider', key:'speed', label:'Spin', min:0.2, max:3, step:0.1, value:1 },
+      { type:'slider', key:'particles', label:'Debris', min:50, max:500, step:10, value:200 },
+      { type:'slider', key:'depth', label:'Tightness', min:0.3, max:2, step:0.05, value:1 },
+    ]
+  };
+}
+
+// ============ EXHIBIT REGISTRY ============
+const exhibits = [
+  {
+    id: 'plasma-arc', name: 'Plasma Arc', cat: 'arc', num: '01',
+    tag: 'Chamber 01 · Electric Discharge',
+    desc: 'Electric discharge sculpted into living filaments. Move your cursor to shape the arc — the plasma follows your gesture with fractal tongues of fire.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-2 8 9-12h-7l2-8z"/></svg>',
+    create: createPlasmaArc,
+    stats: { volt: '4.2 kV', flux: '78%', temp: '12,800 K' }
+  },
+  {
+    id: 'firefly-swarm', name: 'Firefly Swarm', cat: 'particle', num: '02',
+    tag: 'Chamber 02 · Particle System',
+    desc: 'Hundreds of luminescent particles drawn to your cursor like moths to flame. Adjust attraction strength and watch them swarm and scatter.',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="1.5"/><circle cx="17" cy="5" r="1.5"/><circle cx="5" cy="17" r="1.5"/><circle cx="15" cy="15" r="2"/><circle cx="19" cy="19" r="1.5"/></svg>',
+    create: createFireflySwarm,
+    stats: { volt: '1.8 kV', flux: '92%', temp: '3,200 K' }
+  },
+  {
+    id: 'neon-shatter', name: 'Neon Shatter', cat: 'distort', num: '03',
+    tag: 'Chamber 03 · Text Deconstruction',
+    desc: 'A typeface dissolved into ember particles. Move your cursor through the word — it explodes, swirls, and reassembles with magnetic recall.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h10M4 16h16"/></svg>',
+    create: createNeonShatter,
+    stats: { volt: '3.5 kV', flux: '64%', temp: '8,400 K' }
+  },
+  {
+    id: 'liquid-metal', name: 'Liquid Metal', cat: 'distort', num: '04',
+    tag: 'Chamber 04 · Metaball Fluids',
+    desc: 'Molten metal blobs suspended in zero gravity. They attract, merge, and deform under your cursor\'s repulsion field — pure mercury alchemy.',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="5"/><circle cx="16" cy="10" r="4"/><circle cx="14" cy="16" r="3"/></svg>',
+    create: createLiquidMetal,
+    stats: { volt: '0.9 kV', flux: '45%', temp: '1,800 K' }
+  },
+  {
+    id: 'cyber-spectrum', name: 'Cyber Spectrum', cat: 'light', num: '05',
+    tag: 'Chamber 05 · Audio Visualizer',
+    desc: 'Synthetic spectrum columns dancing to an invisible frequency. Your cursor sweeps across the bands, sending waves of amplified vibration.',
+    icon: '<svg viewBox="0 0 24 24"><rect x="3" y="10" width="2" height="10"/><rect x="7" y="6" width="2" height="14"/><rect x="11" y="2" width="2" height="18"/><rect x="15" y="8" width="2" height="12"/><rect x="19" y="4" width="2" height="16"/></svg>',
+    create: createCyberSpectrum,
+    stats: { volt: '2.1 kV', flux: '71%', temp: '5,600 K' }
+  },
+  {
+    id: 'glitch-field', name: 'Glitch Field', cat: 'distort', num: '06',
+    tag: 'Chamber 06 · Signal Degradation',
+    desc: 'A sacred geometry signal corroding under entropy. Horizontal bands slip, chromatic aberration splits the colors, and noise eats at the edges.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M3 5h18M3 9h10M3 13h14M3 17h8M17 17h4M7 17h2" stroke-dasharray="2 2"/></svg>',
+    create: createGlitchField,
+    stats: { volt: '0.0 kV', flux: '0%', temp: '— K' }
+  },
+  {
+    id: 'energy-rings', name: 'Energy Rings', cat: 'arc', num: '07',
+    tag: 'Chamber 07 · Orbital Dynamics',
+    desc: 'Concentric rings of plasma orbiting a stellar core. Move to tilt the orbital plane. Each ring rotates in counter-direction with glowing nodes.',
+    icon: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="3"/><ellipse cx="12" cy="12" rx="7" ry="6"/><circle cx="12" cy="12" r="2"/></svg>',
+    create: createEnergyRings,
+    stats: { volt: '6.8 kV', flux: '85%', temp: '24,500 K' }
+  },
+  {
+    id: 'magnetic-grid', name: 'Magnetic Grid', cat: 'light', num: '08',
+    tag: 'Chamber 08 · Magnetic Tilt',
+    desc: 'A field of ceramic tiles that tilt and glow as your magnetic presence passes. Each card has depth — the closer you get, the more they lift.',
+    icon: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="4" height="4"/><rect x="10" y="3" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/><rect x="3" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/><rect x="17" y="10" width="4" height="4"/><rect x="3" y="17" width="4" height="4"/><rect x="10" y="17" width="4" height="4"/><rect x="17" y="17" width="4" height="4"/></svg>',
+    create: createMagneticGrid,
+    stats: { volt: '1.2 kV', flux: '55%', temp: '2,100 K' }
+  },
+  {
+    id: 'crystal', name: 'Crystal Refraction', cat: 'light', num: '09',
+    tag: 'Chamber 09 · Light Refraction',
+    desc: 'A molten crystal of light suspended mid-air. Facets split the spectrum, internal reflections dance, and dispersion fringes trace every edge.',
+    icon: '<svg viewBox="0 0 24 24"><polygon points="12,2 22,8 22,16 12,22 2,16 2,8"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="8" x2="22" y2="16"/><line x1="22" y1="8" x2="2" y2="16"/></svg>',
+    create: createCrystalRefraction,
+    stats: { volt: '2.8 kV', flux: '96%', temp: '4,200 K' }
+  },
+  {
+    id: 'hologram', name: 'Hologram Scanner', cat: 'light', num: '10',
+    tag: 'Chamber 10 · Volumetric Scan',
+    desc: 'A 3D point-cloud being scanned by a horizontal light saber. Rotate it by moving your cursor — particles brighten as the beam passes through.',
+    icon: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" fill="none"/><circle cx="12" cy="12" r="6" fill="none"/><circle cx="8" cy="9" r="0.8"/><circle cx="15" cy="10" r="0.8"/><circle cx="11" cy="15" r="0.8"/><circle cx="14" cy="14" r="0.8"/></svg>',
+    create: createHologram,
+    stats: { volt: '3.1 kV', flux: '68%', temp: '6,100 K' }
+  },
+  {
+    id: 'shockwave', name: 'Shockwave Pulse', cat: 'arc', num: '11',
+    tag: 'Chamber 11 · Pressure Wave',
+    desc: 'Sonic booms radiating from your cursor. Click to detonate a pulse. The shock front expands in luminous rings with inner pressure glow.',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6" fill="none"/><circle cx="12" cy="12" r="10" fill="none"/></svg>',
+    create: createShockwave,
+    stats: { volt: '5.4 kV', flux: '82%', temp: '18,900 K' }
+  },
+  {
+    id: 'light-trails', name: 'Light Trails', cat: 'particle', num: '12',
+    tag: 'Chamber 12 · Ribbon Motion',
+    desc: 'Luminous ribbon strands spiraling around your cursor like plasma eels. Each strand has its own orbit, hue and speed — they paint with light.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M2 12 Q 8 4, 12 12 T 22 12" fill="none"/></svg>',
+    create: createLightTrails,
+    stats: { volt: '1.6 kV', flux: '73%', temp: '7,800 K' }
+  },
+  {
+    id: 'wireframe', name: 'Wireframe Terrain', cat: 'particle', num: '13',
+    tag: 'Chamber 13 · Height Field',
+    desc: 'A procedural wireframe landscape flowing like magma. Your cursor raises peaks beneath it — the terrain undulates in perspective depth.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M2 20 L 8 10 L 14 15 L 20 6 L 22 20" fill="none"/><path d="M2 18 Q 10 8, 22 16" fill="none" stroke-dasharray="1 2"/></svg>',
+    create: createWireframeTerrain,
+    stats: { volt: '0.7 kV', flux: '41%', temp: '1,250 K' }
+  },
+  {
+    id: 'vortex', name: 'Vortex Portal', cat: 'arc', num: '14',
+    tag: 'Chamber 14 · Accretion Disk',
+    desc: 'A gravity well pulling light into its event horizon. Spiral arms rotate counterclockwise. Matter spirals inward, glowing brighter before vanishing.',
+    icon: '<svg viewBox="0 0 24 24"><path d="M12 12 m -10 0 a 10 4 0 1 0 20 0 a 10 4 0 1 0 -20 0" fill="none"/><circle cx="12" cy="12" r="3"/></svg>',
+    create: createVortexPortal,
+    stats: { volt: '∞ kV', flux: '100%', temp: '∞ K' }
+  },
+];
+
+// ============ SIDEBAR POPULATION ============
+const exhibitListEl = document.getElementById('exhibitList');
+
+function renderExhibitList(catFilter = 'all') {
+  exhibitListEl.innerHTML = '';
+  exhibits.forEach(ex => {
+    if (catFilter !== 'all' && ex.cat !== catFilter) return;
+    const item = document.createElement('div');
+    item.className = 'exhibit-item' + (ex.id === currentExhibitId ? ' active' : '');
+    item.dataset.id = ex.id;
+    item.innerHTML = `
+      <div class="exhibit-icon">${ex.icon}</div>
+      <span class="exhibit-name">${ex.name}</span>
+      <span class="exhibit-num">${ex.num}</span>
+    `;
+    item.addEventListener('click', () => loadExhibit(ex.id));
+    exhibitListEl.appendChild(item);
+  });
+}
+renderExhibitList();
+
+// ============ TOP NAV CATEGORY FILTER ============
+document.getElementById('topnav').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#topnav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderExhibitList(btn.dataset.cat);
+});
+
+// ============ LOAD EXHIBIT ============
+function loadExhibit(id) {
+  const ex = exhibits.find(e => e.id === id);
+  if (!ex) return;
+
+  // Stop previous
+  if (currentExhibit && currentExhibit.cleanup) currentExhibit.cleanup();
+  currentExhibit = null;
+  currentExhibitId = id;
+
+  // Reset canvas
+  setupCanvas();
+
+  // Update UI
+  exhibitTitle.textContent = ex.name;
+  exhibitDesc.textContent = ex.desc;
+  exhibitTag.textContent = ex.tag;
+  chamberNumEl.textContent = ex.num;
+  if (ex.stats) {
+    statVolt.textContent = ex.stats.volt;
+    statFlux.textContent = ex.stats.flux;
+    statTemp.textContent = ex.stats.temp;
+  }
+
+  // Update sidebar active
+  document.querySelectorAll('.exhibit-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+
+  // Create exhibit
+  currentExhibit = ex.create();
+  renderControls(currentExhibit.controls || []);
+
+  // Start loop
+  if (running) startLoop();
+}
+
+// ============ INIT ============
+setupCanvas();
+loadExhibit('plasma-arc');
+startLoop();
+
+// Reduced motion fallback
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduceMotion) {
+  // Degrade: still interactive but slower and less flashy
+  console.log('Reduced motion enabled — effects toned down.');
+}
+
+// Expose for debugging
+window.__lab = { loadExhibit, exhibits };
+</script>
+</body>
+</html>
