@@ -1,0 +1,2189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>Chromatic Distortion Lab — V3</title>
+<style>
+  /* ============ RESET & BASE ============ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --acid: #bfff00;
+    --void: #080808;
+    --magenta: #ff00aa;
+    --acid-dim: rgba(191, 255, 0, 0.3);
+    --magenta-dim: rgba(255, 0, 170, 0.3);
+    --text: #e8e8e8;
+    --muted: #6a6a6a;
+  }
+  html, body {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--void);
+    color: var(--text);
+    font-family: 'Courier New', 'Consolas', monospace;
+    overflow-x: hidden;
+    cursor: none;
+  }
+  body {
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(191, 255, 0, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(255, 0, 170, 0.06) 0%, transparent 50%),
+      var(--void);
+  }
+  a, button { cursor: none; }
+  img { max-width: 100%; display: block; }
+
+  /* ============ CUSTOM CURSOR ============ */
+  .cursor-outer {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 36px; height: 36px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99999;
+    transform: translate(-50%, -50%);
+    transition: width 0.2s ease, height 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+    mix-blend-mode: difference;
+    box-shadow:
+      0 0 8px rgba(191, 255, 0, 0.6),
+      0 0 16px rgba(255, 0, 170, 0.4),
+      inset 0 0 8px rgba(255, 255, 255, 0.2);
+  }
+  .cursor-inner {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: var(--acid);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99999;
+    transform: translate(-50%, -50%);
+    box-shadow:
+      0 0 4px var(--acid),
+      0 0 10px var(--acid),
+      0 0 20px var(--magenta);
+    transition: width 0.15s ease, height 0.15s ease, background 0.15s ease;
+  }
+  .cursor-outer.hovering {
+    width: 56px; height: 56px;
+    border-color: var(--acid);
+    box-shadow:
+      0 0 12px var(--acid),
+      0 0 24px var(--magenta),
+      inset 0 0 12px rgba(191, 255, 0, 0.3);
+  }
+  .cursor-inner.hovering {
+    width: 3px; height: 3px;
+    background: var(--magenta);
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 10px; height: 10px;
+    border: 2px solid var(--acid);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99998;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+    animation: rippleOut 0.6s ease-out forwards;
+  }
+  @keyframes rippleOut {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 1; border-width: 3px; }
+    100% { transform: translate(-50%, -50%) scale(4); opacity: 0; border-width: 1px; }
+  }
+  /* Cursor trail canvas */
+  #cursorTrailCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 99997;
+  }
+
+  /* ============ HEADER / HERO ============ */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 40px;
+    overflow: hidden;
+  }
+  .hero-bg-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    opacity: 0.4;
+  }
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: 900px;
+  }
+  .lab-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 20px;
+    border: 1px solid var(--acid-dim);
+    border-radius: 100px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--acid);
+    margin-bottom: 32px;
+    animation: badgePulse 3s ease-in-out infinite;
+  }
+  .lab-badge-dot {
+    width: 6px; height: 6px;
+    background: var(--acid);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--acid);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes badgePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(191,255,0,0); } 50% { box-shadow: 0 0 20px 2px rgba(191,255,0,0.15); } }
+
+  .hero-title {
+    font-size: clamp(48px, 9vw, 120px);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+  }
+  .hero-title .line { display: block; position: relative; }
+  .hero-title .line-1 { color: var(--text); }
+  .hero-title .line-2 { color: var(--acid); text-shadow: 0 0 40px rgba(191,255,0,0.5); }
+  .hero-title .line-3 { color: var(--magenta); font-style: italic; text-shadow: 0 0 40px rgba(255,0,170,0.5); }
+
+  /* Glitch text effect on title */
+  .glitch-text {
+    position: relative;
+    display: inline-block;
+  }
+  .glitch-text::before,
+  .glitch-text::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .glitch-text::before {
+    color: var(--acid);
+    animation: glitch1 2.5s infinite;
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+    transform: translate(-2px, 0);
+  }
+  .glitch-text::after {
+    color: var(--magenta);
+    animation: glitch2 2.5s infinite;
+    clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+    transform: translate(2px, 0);
+  }
+  @keyframes glitch1 {
+    0%, 85%, 100% { transform: translate(0); opacity: 0; }
+    86% { transform: translate(-4px, 1px); opacity: 0.8; }
+    88% { transform: translate(3px, -1px); opacity: 0.6; }
+    90% { transform: translate(-2px, 2px); opacity: 0.7; }
+    92% { transform: translate(1px, -2px); opacity: 0.5; }
+    94% { transform: translate(0); opacity: 0; }
+  }
+  @keyframes glitch2 {
+    0%, 87%, 100% { transform: translate(0); opacity: 0; }
+    88% { transform: translate(4px, -1px); opacity: 0.8; }
+    90% { transform: translate(-3px, 1px); opacity: 0.6; }
+    92% { transform: translate(2px, -2px); opacity: 0.7; }
+    94% { transform: translate(-1px, 2px); opacity: 0.5; }
+    96% { transform: translate(0); opacity: 0; }
+  }
+
+  .hero-subtitle {
+    font-size: clamp(14px, 1.5vw, 18px);
+    color: var(--muted);
+    max-width: 600px;
+    margin: 0 auto 48px;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 48px;
+    justify-content: center;
+    margin-bottom: 48px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-number {
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--acid);
+    text-shadow: 0 0 20px rgba(191,255,0,0.4);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-number.magenta { color: var(--magenta); text-shadow: 0 0 20px rgba(255,0,170,0.4); }
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .scroll-indicator {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .scroll-line {
+    width: 1px;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent, var(--acid-dim), transparent);
+    animation: scrollPulse 2s ease-in-out infinite;
+  }
+  @keyframes scrollPulse { 0%, 100% { opacity: 0.3; transform: scaleY(1); } 50% { opacity: 1; transform: scaleY(1.2); } }
+
+  /* ============ NAV ============ */
+  .lab-nav {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    padding: 20px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1000;
+    background: linear-gradient(to bottom, rgba(8,8,8,0.8), transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(191,255,0,0.08);
+  }
+  .nav-logo {
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: var(--acid);
+    text-shadow: 0 0 10px rgba(191,255,0,0.5);
+  }
+  .nav-logo span { color: var(--magenta); }
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+  .nav-links a {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.3s, text-shadow 0.3s;
+    position: relative;
+  }
+  .nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: -4px; left: 0;
+    width: 0; height: 1px;
+    background: var(--acid);
+    transition: width 0.3s;
+    box-shadow: 0 0 8px var(--acid);
+  }
+  .nav-links a:hover { color: var(--acid); text-shadow: 0 0 10px rgba(191,255,0,0.5); }
+  .nav-links a:hover::after { width: 100%; }
+
+  /* ============ SECTIONS / ZONES ============ */
+  .zones-wrapper {
+    position: relative;
+    z-index: 1;
+  }
+  .zone {
+    min-height: 100vh;
+    padding: 120px 60px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    border-bottom: 1px solid rgba(191,255,0,0.06);
+    position: relative;
+    overflow: hidden;
+  }
+  .zone::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 1px;
+    background: linear-gradient(to right, transparent, var(--acid-dim), transparent);
+  }
+
+  .zone-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+  .zone-index {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .zone-index span {
+    color: var(--acid);
+    font-weight: 700;
+  }
+  .zone-title {
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .zone-title .accent { color: var(--acid); }
+  .zone-title.magenta .accent { color: var(--magenta); }
+  .zone-desc {
+    max-width: 400px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .zone-desc strong { color: var(--text); font-weight: 600; }
+
+  .zone-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-height: 400px;
+    border: 1px solid rgba(191,255,0,0.1);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.3);
+    overflow: hidden;
+  }
+  .zone-stage.magenta-border { border-color: rgba(255,0,170,0.15); }
+
+  .zone-controls {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .control-btn {
+    padding: 10px 22px;
+    border: 1px solid var(--acid-dim);
+    background: transparent;
+    color: var(--acid);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .control-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(191,255,0,0.2), transparent);
+    transition: left 0.5s ease;
+  }
+  .control-btn:hover::before { left: 100%; }
+  .control-btn:hover {
+    background: rgba(191,255,0,0.1);
+    border-color: var(--acid);
+    box-shadow: 0 0 20px rgba(191,255,0,0.3), inset 0 0 20px rgba(191,255,0,0.05);
+  }
+  .control-btn.magenta {
+    border-color: var(--magenta-dim);
+    color: var(--magenta);
+  }
+  .control-btn.magenta::before { background: linear-gradient(90deg, transparent, rgba(255,0,170,0.2), transparent); }
+  .control-btn.magenta:hover {
+    background: rgba(255,0,170,0.1);
+    border-color: var(--magenta);
+    box-shadow: 0 0 20px rgba(255,0,170,0.3), inset 0 0 20px rgba(255,0,170,0.05);
+  }
+  .control-btn.active {
+    background: var(--acid);
+    color: var(--void);
+    font-weight: 700;
+    box-shadow: 0 0 25px rgba(191,255,0,0.6);
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 2px;
+  }
+  .control-group label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .control-group input[type="range"] {
+    width: 120px;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 2px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 1px;
+    outline: none;
+  }
+  .control-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--acid);
+    box-shadow: 0 0 10px var(--acid);
+    cursor: none;
+  }
+
+  /* ============ ZONE 1: CHROMATIC SPLIT ============ */
+  #zone1 .zone-stage {
+    cursor: none;
+  }
+  .split-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .split-word {
+    font-size: clamp(60px, 12vw, 160px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.05em;
+    position: relative;
+    user-select: none;
+  }
+  .split-word .layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    transition: transform 0.1s ease-out;
+  }
+  .split-word .layer-r { color: var(--magenta); opacity: 0.7; mix-blend-mode: screen; }
+  .split-word .layer-g { color: var(--acid); opacity: 0.7; mix-blend-mode: screen; }
+  .split-word .layer-base { color: var(--text); position: relative; }
+
+  /* ============ ZONE 2: PIXEL SORT GLITCH ============ */
+  #pixelSortCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ============ ZONE 3: RGB CHANNEL SEPARATION IMAGE ============ */
+  .rgb-image-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .rgb-image {
+    position: relative;
+    width: 400px;
+    height: 300px;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .rgb-channel {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    transition: transform 0.15s ease-out;
+    mix-blend-mode: screen;
+  }
+  .rgb-channel.r { filter: url(#redChannel); }
+  .rgb-channel.g { filter: url(#greenChannel); }
+  .rgb-channel.b { filter: url(#blueChannel); }
+  .rgb-image svg.placeholder-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .rgb-info {
+    position: absolute;
+    bottom: 20px; left: 20px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .rgb-info span { color: var(--acid); }
+
+  /* ============ ZONE 4: CRT SCANLINE FILTER ============ */
+  .crt-container {
+    position: relative;
+    width: 100%; max-width: 600px;
+    aspect-ratio: 4/3;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow:
+      0 0 60px rgba(191,255,0,0.2),
+      inset 0 0 100px rgba(0,0,0,0.8);
+  }
+  .crt-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0a;
+    padding: 40px;
+  }
+  .crt-title {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--acid);
+    text-shadow: 0 0 20px var(--acid);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    animation: crtFlicker 0.15s infinite;
+  }
+  .crt-sub {
+    font-size: 12px;
+    color: var(--magenta);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px var(--magenta);
+    animation: crtFlicker 0.15s infinite reverse;
+  }
+  @keyframes crtFlicker {
+    0% { opacity: 1; }
+    50% { opacity: 0.97; }
+    100% { opacity: 1; }
+  }
+
+  .crt-scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.3) 2px,
+      rgba(0,0,0,0.3) 4px
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+  .crt-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .crt-curvature {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.9);
+    pointer-events: none;
+    z-index: 4;
+  }
+  .crt-static {
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 5;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    animation: staticShift 0.5s steps(10) infinite;
+  }
+  @keyframes staticShift {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(-50%, -50%); }
+  }
+  .crt-refresh-line {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to bottom, transparent, rgba(191,255,0,0.15), transparent);
+    z-index: 6;
+    animation: refreshScan 4s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes refreshScan {
+    0% { top: -10px; }
+    100% { top: 100%; }
+  }
+
+  /* ============ ZONE 5: NOISE FLOW FIELD ============ */
+  #flowFieldCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ============ ZONE 6: TEXT DECONSTRUCTION ============ */
+  .decon-stage {
+    width: 100%;
+    height: 100%;
+    min-height: 350px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1000px;
+  }
+  .decon-text {
+    font-size: clamp(40px, 8vw, 100px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.03em;
+    position: relative;
+    display: flex;
+    gap: 0;
+  }
+  .decon-char {
+    display: inline-block;
+    position: relative;
+    color: var(--text);
+    transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1), color 0.3s, text-shadow 0.3s;
+    transform-style: preserve-3d;
+  }
+  .decon-char:hover {
+    color: var(--acid);
+    text-shadow: 0 0 30px var(--acid);
+    transform: translateY(-10px) rotateX(15deg) scale(1.2);
+  }
+
+  /* ============ ZONE 7: MAGNETIC DISTORTION ============ */
+  .magnetic-stage {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    position: relative;
+    overflow: hidden;
+  }
+  #magneticCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ============ FOOTER ============ */
+  .footer {
+    padding: 60px 40px 40px;
+    text-align: center;
+    border-top: 1px solid rgba(191,255,0,0.06);
+  }
+  .footer-text {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .footer-text span { color: var(--acid); }
+
+  /* ============ SCROLL REVEAL ============ */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s cubic-bezier(0.23, 1, 0.32, 1), transform 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 { transition-delay: 0.1s; }
+  .reveal-delay-2 { transition-delay: 0.2s; }
+  .reveal-delay-3 { transition-delay: 0.3s; }
+  .reveal-delay-4 { transition-delay: 0.4s; }
+
+  /* ============ REDUCED MOTION ============ */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .glitch-text::before,
+    .glitch-text::after { display: none; }
+    .cursor-outer, .cursor-inner { display: none; }
+    html, body { cursor: auto; }
+    a, button { cursor: pointer; }
+    .crt-scanlines, .crt-static, .crt-refresh-line { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SVG Filters -->
+<svg style="position: absolute; width: 0; height: 0;">
+  <defs>
+    <filter id="redChannel">
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+    </filter>
+    <filter id="greenChannel">
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+    </filter>
+    <filter id="blueChannel">
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+    </filter>
+  </defs>
+</svg>
+
+<!-- Custom Cursor -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+<canvas id="cursorTrailCanvas"></canvas>
+
+<!-- Navigation -->
+<nav class="lab-nav">
+  <div class="nav-logo">CHROMA<span>/</span>LAB</div>
+  <ul class="nav-links">
+    <li><a href="#zone1">Split</a></li>
+    <li><a href="#zone2">Sort</a></li>
+    <li><a href="#zone3">RGB</a></li>
+    <li><a href="#zone4">CRT</a></li>
+    <li><a href="#zone5">Flow</a></li>
+    <li><a href="#zone6">Decon</a></li>
+    <li><a href="#zone7">Magnet</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <canvas class="hero-bg-canvas" id="heroCanvas"></canvas>
+  <div class="hero-content">
+    <div class="lab-badge reveal">
+      <span class="lab-badge-dot"></span>
+      V3 UX INTERACTION LAB
+    </div>
+    <h1 class="hero-title reveal reveal-delay-1">
+      <span class="line line-1 glitch-text" data-text="CHROMATIC">CHROMATIC</span>
+      <span class="line line-2 glitch-text" data-text="DISTORTION">DISTORTION</span>
+      <span class="line line-3 glitch-text" data-text="LABORATORY">LABORATORY</span>
+    </h1>
+    <p class="hero-subtitle reveal reveal-delay-2">
+      Seven interactive zones of pure visual spectacle. Move your cursor, click things,
+      watch reality bend. Every effect is hand-crafted — no presets, no templates.
+    </p>
+    <div class="hero-stats reveal reveal-delay-3">
+      <div class="stat">
+        <div class="stat-number" data-count="7">0</div>
+        <div class="stat-label">Exhibition Zones</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number magenta" data-count="15">0</div>
+        <div class="stat-label">Effect Layers</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number" data-count="100">0</div>
+        <div class="stat-label">% Vanilla JS</div>
+      </div>
+    </div>
+  </div>
+  <div class="scroll-indicator">
+    <span>Scroll to explore</span>
+    <div class="scroll-line"></div>
+  </div>
+</section>
+
+<!-- ZONES -->
+<div class="zones-wrapper">
+
+  <!-- ZONE 1: CHROMATIC SPLIT -->
+  <section class="zone" id="zone1">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>01</span> / 07</div>
+        <h2 class="zone-title"><span class="accent">Chromatic</span> Split</h2>
+      </div>
+      <p class="zone-desc">
+        <strong>Move your cursor</strong> over the text to push apart the RGB color channels.
+        The offset follows your position — the farther from center, the wider the split.
+      </p>
+    </div>
+    <div class="zone-stage reveal reveal-delay-1" id="splitStage">
+      <div class="split-container">
+        <div class="split-word" id="splitWord">
+          <span class="layer layer-base">DISTORT</span>
+          <span class="layer layer-r">DISTORT</span>
+          <span class="layer layer-g">DISTORT</span>
+        </div>
+      </div>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn active" data-split-word="DISTORT">DISTORT</button>
+      <button class="control-btn" data-split-word="GLITCH">GLITCH</button>
+      <button class="control-btn" data-split-word="FRACTURE">FRACTURE</button>
+      <div class="control-group">
+        <label>Intensity</label>
+        <input type="range" id="splitIntensity" min="5" max="40" value="20">
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 2: PIXEL SORT -->
+  <section class="zone" id="zone2">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>02</span> / 07</div>
+        <h2 class="zone-title magenta"><span class="accent">Pixel</span> Sort Glitch</h2>
+      </div>
+      <p class="zone-desc">
+        <strong>Click and drag</strong> across the canvas to generate pixel-sorted glitch bands.
+        Each horizontal slice gets sorted by brightness, creating those iconic glitch-art stripes.
+      </p>
+    </div>
+    <div class="zone-stage magenta-border reveal reveal-delay-1">
+      <canvas id="pixelSortCanvas"></canvas>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn magenta" id="pixelSortReshuffle">Reshuffle</button>
+      <button class="control-btn magenta" id="pixelSortClear">Clear</button>
+      <div class="control-group">
+        <label>Bands</label>
+        <input type="range" id="pixelSortBands" min="5" max="60" value="25">
+      </div>
+      <div class="control-group">
+        <label>Threshold</label>
+        <input type="range" id="pixelSortThreshold" min="30" max="200" value="100">
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 3: RGB CHANNEL SEPARATION -->
+  <section class="zone" id="zone3">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>03</span> / 07</div>
+        <h2 class="zone-title"><span class="accent">RGB</span> Channel Drift</h2>
+      </div>
+      <p class="zone-desc">
+        <strong>Move your mouse</strong> inside the frame. Each color channel drifts in a different
+        direction based on cursor position — red chases one way, green another, blue goes its own path.
+      </p>
+    </div>
+    <div class="zone-stage reveal reveal-delay-1" id="rgbStage">
+      <div class="rgb-image-stage">
+        <div class="rgb-image" id="rgbImage">
+          <!-- Generated SVG as placeholder image -->
+          <svg class="placeholder-svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#1a1a2e"/>
+                <stop offset="50%" style="stop-color:#16213e"/>
+                <stop offset="100%" style="stop-color:#0f0f23"/>
+              </linearGradient>
+              <radialGradient id="orb1" cx="30%" cy="40%" r="40%">
+                <stop offset="0%" style="stop-color:#bfff00;stop-opacity:0.8"/>
+                <stop offset="100%" style="stop-color:#bfff00;stop-opacity:0"/>
+              </radialGradient>
+              <radialGradient id="orb2" cx="70%" cy="60%" r="35%">
+                <stop offset="0%" style="stop-color:#ff00aa;stop-opacity:0.7"/>
+                <stop offset="100%" style="stop-color:#ff00aa;stop-opacity:0"/>
+              </radialGradient>
+            </defs>
+            <rect width="400" height="300" fill="url(#bgGrad)"/>
+            <circle cx="120" cy="120" r="100" fill="url(#orb1)"/>
+            <circle cx="280" cy="180" r="90" fill="url(#orb2)"/>
+            <line x1="0" y1="150" x2="400" y2="150" stroke="rgba(191,255,0,0.15)" stroke-width="1"/>
+            <line x1="0" y1="100" x2="400" y2="100" stroke="rgba(191,255,0,0.1)" stroke-width="1"/>
+            <line x1="0" y1="200" x2="400" y2="200" stroke="rgba(191,255,0,0.1)" stroke-width="1"/>
+            <line x1="200" y1="0" x2="200" y2="300" stroke="rgba(255,0,170,0.1)" stroke-width="1"/>
+            <text x="200" y="155" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="28" font-weight="900" letter-spacing="4">SIGNAL</text>
+            <text x="200" y="180" text-anchor="middle" fill="#bfff00" font-family="monospace" font-size="10" letter-spacing="6">DECODED</text>
+          </svg>
+          <div class="rgb-info">CH <span>R</span> / <span style="color:var(--acid)">G</span> / <span style="color:#4488ff">B</span> ACTIVE</div>
+        </div>
+      </div>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn" id="rgbAutoBtn">Auto Drift: OFF</button>
+      <div class="control-group">
+        <label>Drift Amount</label>
+        <input type="range" id="rgbDrift" min="5" max="50" value="20">
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 4: CRT FILTER -->
+  <section class="zone" id="zone4">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>04</span> / 07</div>
+        <h2 class="zone-title magenta"><span class="accent">CRT</span> Scanline Filter</h2>
+      </div>
+      <p class="zone-desc">
+        <strong>Click the monitor</strong> to toggle the full CRT effect stack — scanlines,
+        curvature vignette, phosphor glow, static noise, and the rolling refresh line.
+      </p>
+    </div>
+    <div class="zone-stage magenta-border reveal reveal-delay-1">
+      <div class="crt-container" id="crtContainer">
+        <div class="crt-content">
+          <div class="crt-title">SYSTEM.ON</div>
+          <div class="crt-sub">chromatic distortion v3.0</div>
+        </div>
+        <div class="crt-scanlines" id="crtScanlines"></div>
+        <div class="crt-glow"></div>
+        <div class="crt-curvature"></div>
+        <div class="crt-static" id="crtStatic"></div>
+        <div class="crt-refresh-line" id="crtRefresh"></div>
+      </div>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn magenta active" id="crtToggle">CRT: ON</button>
+      <button class="control-btn magenta" id="crtIntenseBtn">Intensify</button>
+      <div class="control-group">
+        <label>Glow</label>
+        <input type="range" id="crtGlowRange" min="0" max="100" value="60">
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 5: FLOW FIELD -->
+  <section class="zone" id="zone5">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>05</span> / 07</div>
+        <h2 class="zone-title"><span class="accent">Noise</span> Flow Field</h2>
+      </div>
+      <p class="zone-desc">
+        Thousands of particles flowing through a Perlin noise vector field.
+        <strong>Move your cursor</strong> to create a disturbance that repels particles.
+      </p>
+    </div>
+    <div class="zone-stage reveal reveal-delay-1" id="flowStage">
+      <canvas id="flowFieldCanvas"></canvas>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn active" id="flowToggle">Flowing</button>
+      <button class="control-btn" id="flowReset">Reset</button>
+      <div class="control-group">
+        <label>Particles</label>
+        <input type="range" id="flowCount" min="200" max="2000" value="800" step="100">
+      </div>
+      <div class="control-group">
+        <label>Speed</label>
+        <input type="range" id="flowSpeed" min="1" max="10" value="4">
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 6: TEXT DECONSTRUCTION -->
+  <section class="zone" id="zone6">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>06</span> / 07</div>
+        <h2 class="zone-title magenta"><span class="accent">Text</span> Deconstruction</h2>
+      </div>
+      <p class="zone-desc">
+        <strong>Hover each letter</strong> to see it pop out in 3D space. Type any key
+        to replace the text with your own input in real-time.
+      </p>
+    </div>
+    <div class="zone-stage magenta-border reveal reveal-delay-1">
+      <div class="decon-stage">
+        <div class="decon-text" id="deconText"></div>
+      </div>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn magenta" id="deconShuffle">Shuffle</button>
+      <button class="control-btn magenta" id="deconScatter">Scatter</button>
+      <button class="control-btn magenta" id="deconReassemble">Reassemble</button>
+      <div class="control-group">
+        <label>Mode</label>
+        <select id="deconMode" style="background:transparent; color:var(--acid); border:none; font-family:inherit; font-size:11px; letter-spacing:2px; text-transform:uppercase; cursor:none; outline:none;">
+          <option value="3d">3D Pop</option>
+          <option value="wave">Wave</option>
+          <option value="glitch">Glitch</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONE 7: MAGNETIC DISTORTION -->
+  <section class="zone" id="zone7">
+    <div class="zone-header reveal">
+      <div>
+        <div class="zone-index">ZONE <span>07</span> / 07</div>
+        <h2 class="zone-title"><span class="accent">Magnetic</span> Warp</h2>
+      </div>
+      <p class="zone-desc">
+        A grid of luminous points warped by your cursor's magnetic field.
+        <strong>Click and hold</strong> to intensify the field — points will be drawn
+        toward or repelled from your position.
+      </p>
+    </div>
+    <div class="zone-stage reveal reveal-delay-1" id="magneticStage">
+      <div class="magnetic-stage">
+        <canvas id="magneticCanvas"></canvas>
+      </div>
+    </div>
+    <div class="zone-controls reveal reveal-delay-2">
+      <button class="control-btn" id="magnetToggle">Attract Mode</button>
+      <button class="control-btn" id="magnetGridBtn">Grid Density</button>
+      <div class="control-group">
+        <label>Strength</label>
+        <input type="range" id="magnetStrength" min="20" max="200" value="80">
+      </div>
+      <div class="control-group">
+        <label>Radius</label>
+        <input type="range" id="magnetRadius" min="50" max="300" value="150">
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <p class="footer-text">CHROMATIC DISTORTION LAB <span>//</span> V3 UX INTERACTION <span>//</span> PURE VANILLA</p>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============ GLOBAL STATE ============
+  const state = {
+    mouseX: window.innerWidth / 2,
+    mouseY: window.innerHeight / 2,
+    targetMouseX: window.innerWidth / 2,
+    targetMouseY: window.innerHeight / 2,
+    isVisible: true,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    animations: new Set(),
+    timeouts: new Set(),
+    intervals: new Set(),
+  };
+
+  // Safe animation frame management
+  function safeRAF(callback) {
+    const id = { current: null, active: true };
+    function tick(t) {
+      if (!id.active || !state.isVisible) return;
+      callback(t);
+      id.current = requestAnimationFrame(tick);
+    }
+    id.current = requestAnimationFrame(tick);
+    state.animations.add(id);
+    return id;
+  }
+  function cancelSafeRAF(id) {
+    id.active = false;
+    if (id.current) cancelAnimationFrame(id.current);
+    state.animations.delete(id);
+  }
+  function safeTimeout(fn, ms) {
+    const id = setTimeout(() => {
+      state.timeouts.delete(id);
+      fn();
+    }, ms);
+    state.timeouts.add(id);
+    return id;
+  }
+  function clearSafeTimeout(id) {
+    clearTimeout(id);
+    state.timeouts.delete(id);
+  }
+  function safeInterval(fn, ms) {
+    const id = setInterval(fn, ms);
+    state.intervals.add(id);
+    return id;
+  }
+  function clearSafeInterval(id) {
+    clearInterval(id);
+    state.intervals.delete(id);
+  }
+
+  // Visibility change
+  document.addEventListener('visibilitychange', () => {
+    state.isVisible = !document.hidden;
+  });
+
+  // Cleanup on unload
+  window.addEventListener('beforeunload', () => {
+    state.animations.forEach(id => {
+      id.active = false;
+      if (id.current) cancelAnimationFrame(id.current);
+    });
+    state.timeouts.forEach(id => clearTimeout(id));
+    state.intervals.forEach(id => clearInterval(id));
+  });
+
+  // ============ CUSTOM CURSOR ============
+  const cursorOuter = document.getElementById('cursorOuter');
+  const cursorInner = document.getElementById('cursorInner');
+  const trailCanvas = document.getElementById('cursorTrailCanvas');
+  const trailCtx = trailCanvas.getContext('2d');
+
+  function resizeTrailCanvas() {
+    trailCanvas.width = window.innerWidth;
+    trailCanvas.height = window.innerHeight;
+  }
+  resizeTrailCanvas();
+  window.addEventListener('resize', resizeTrailCanvas);
+
+  // Trail particles
+  const trailParticles = [];
+  const MAX_TRAIL = 30;
+
+  document.addEventListener('mousemove', (e) => {
+    state.targetMouseX = e.clientX;
+    state.targetMouseY = e.clientY;
+
+    // Add trail particle
+    if (!state.reducedMotion && trailParticles.length < MAX_TRAIL) {
+      trailParticles.push({
+        x: e.clientX,
+        y: e.clientY,
+        size: 4 + Math.random() * 4,
+        life: 1,
+        decay: 0.03 + Math.random() * 0.02,
+        color: Math.random() > 0.5 ? '#bfff00' : '#ff00aa',
+      });
+    }
+  });
+
+  // Cursor hover detection
+  const interactiveSelectors = 'a, button, input, select, .zone-stage, .split-word, .decon-char, .crt-container, .rgb-image';
+  document.addEventListener('mouseover', (e) => {
+    if (e.target.closest(interactiveSelectors)) {
+      cursorOuter.classList.add('hovering');
+      cursorInner.classList.add('hovering');
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest(interactiveSelectors)) {
+      cursorOuter.classList.remove('hovering');
+      cursorInner.classList.remove('hovering');
+    }
+  });
+
+  // Click ripple
+  document.addEventListener('mousedown', (e) => {
+    if (state.reducedMotion) return;
+    const ripple = document.createElement('div');
+    ripple.className = 'cursor-ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    safeTimeout(() => {
+      if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+    }, 600);
+  });
+
+  // Cursor animation loop
+  if (!state.reducedMotion) {
+    safeRAF(() => {
+      // Smooth cursor follow
+      state.mouseX += (state.targetMouseX - state.mouseX) * 0.2;
+      state.mouseY += (state.targetMouseY - state.mouseY) * 0.15;
+
+      cursorOuter.style.left = state.mouseX + 'px';
+      cursorOuter.style.top = state.mouseY + 'px';
+      cursorInner.style.left = state.targetMouseX + 'px';
+      cursorInner.style.top = state.targetMouseY + 'px';
+
+      // Draw trail
+      trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+      for (let i = trailParticles.length - 1; i >= 0; i--) {
+        const p = trailParticles[i];
+        p.life -= p.decay;
+        p.size *= 0.96;
+        if (p.life <= 0) {
+          trailParticles.splice(i, 1);
+          continue;
+        }
+        trailCtx.beginPath();
+        trailCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        trailCtx.fillStyle = p.color;
+        trailCtx.globalAlpha = p.life * 0.6;
+        trailCtx.shadowColor = p.color;
+        trailCtx.shadowBlur = 15;
+        trailCtx.fill();
+      }
+      trailCtx.globalAlpha = 1;
+      trailCtx.shadowBlur = 0;
+    });
+  } else {
+    cursorOuter.style.display = 'none';
+    cursorInner.style.display = 'none';
+    trailCanvas.style.display = 'none';
+    document.body.style.cursor = 'auto';
+  }
+
+  // ============ HERO CANVAS (BACKGROUND) ============
+  const heroCanvas = document.getElementById('heroCanvas');
+  const heroCtx = heroCanvas.getContext('2d');
+  let heroAnim = null;
+  let heroParticles = [];
+
+  function resizeHeroCanvas() {
+    const rect = heroCanvas.parentElement.getBoundingClientRect();
+    heroCanvas.width = rect.width;
+    heroCanvas.height = rect.height;
+  }
+  resizeHeroCanvas();
+  window.addEventListener('resize', resizeHeroCanvas);
+
+  function initHeroParticles() {
+    heroParticles = [];
+    const count = Math.floor((heroCanvas.width * heroCanvas.height) / 15000);
+    for (let i = 0; i < count; i++) {
+      heroParticles.push({
+        x: Math.random() * heroCanvas.width,
+        y: Math.random() * heroCanvas.height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        size: Math.random() * 2 + 0.5,
+        color: Math.random() > 0.6 ? '#bfff00' : '#ff00aa',
+        alpha: Math.random() * 0.5 + 0.1,
+      });
+    }
+  }
+  initHeroParticles();
+
+  function drawHero() {
+    heroCtx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+    heroParticles.forEach((p, i) => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = heroCanvas.width;
+      if (p.x > heroCanvas.width) p.x = 0;
+      if (p.y < 0) p.y = heroCanvas.height;
+      if (p.y > heroCanvas.height) p.y = 0;
+
+      heroCtx.beginPath();
+      heroCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      heroCtx.fillStyle = p.color;
+      heroCtx.globalAlpha = p.alpha;
+      heroCtx.fill();
+
+      // Connect nearby particles
+      for (let j = i + 1; j < heroParticles.length; j++) {
+        const p2 = heroParticles[j];
+        const dx = p.x - p2.x;
+        const dy = p.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          heroCtx.beginPath();
+          heroCtx.moveTo(p.x, p.y);
+          heroCtx.lineTo(p2.x, p2.y);
+          heroCtx.strokeStyle = p.color;
+          heroCtx.globalAlpha = (1 - dist / 120) * 0.15;
+          heroCtx.lineWidth = 0.5;
+          heroCtx.stroke();
+        }
+      }
+    });
+    heroCtx.globalAlpha = 1;
+  }
+
+  if (!state.reducedMotion) {
+    heroAnim = safeRAF(drawHero);
+  }
+
+  // ============ SCROLL REVEAL ============
+  const revealEls = document.querySelectorAll('.reveal');
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => revealObserver.observe(el));
+
+  // ============ NUMBER COUNTER ============
+  const counters = document.querySelectorAll('.stat-number[data-count]');
+  const counterObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const target = parseInt(el.getAttribute('data-count'), 10);
+        const duration = 1500;
+        const start = performance.now();
+
+        function updateCounter(now) {
+          const elapsed = now - start;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          el.textContent = Math.floor(eased * target);
+          if (progress < 1) requestAnimationFrame(updateCounter);
+          else el.textContent = target;
+        }
+        if (!state.reducedMotion) {
+          requestAnimationFrame(updateCounter);
+        } else {
+          el.textContent = target;
+        }
+        counterObserver.unobserve(el);
+      }
+    });
+  }, { threshold: 0.5 });
+  counters.forEach(c => counterObserver.observe(c));
+
+  // ============ ZONE 1: CHROMATIC SPLIT ============
+  const splitStage = document.getElementById('splitStage');
+  const splitWord = document.getElementById('splitWord');
+  const layerR = splitWord.querySelector('.layer-r');
+  const layerG = splitWord.querySelector('.layer-g');
+  const layerBase = splitWord.querySelector('.layer-base');
+  const splitIntensity = document.getElementById('splitIntensity');
+
+  splitStage.addEventListener('mousemove', (e) => {
+    const rect = splitStage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    const intensity = parseInt(splitIntensity.value, 10);
+
+    layerR.style.transform = `translate(${dx * intensity}px, ${dy * intensity * 0.5}px)`;
+    layerG.style.transform = `translate(${-dx * intensity * 0.8}px, ${-dy * intensity * 0.7}px)`;
+  });
+
+  splitStage.addEventListener('mouseleave', () => {
+    layerR.style.transform = 'translate(0, 0)';
+    layerG.style.transform = 'translate(0, 0)';
+  });
+
+  // Word switcher
+  document.querySelectorAll('[data-split-word]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-split-word]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const word = btn.getAttribute('data-split-word');
+      layerBase.textContent = word;
+      layerR.textContent = word;
+      layerG.textContent = word;
+    });
+  });
+
+  // ============ ZONE 2: PIXEL SORT GLITCH ============
+  const psCanvas = document.getElementById('pixelSortCanvas');
+  const psCtx = psCanvas.getContext('2d');
+  const psBandsInput = document.getElementById('pixelSortBands');
+  const psThresholdInput = document.getElementById('pixelSortThreshold');
+  let psAnim = null;
+  let psImageData = null;
+  let psIsDragging = false;
+
+  function resizePsCanvas() {
+    const rect = psCanvas.parentElement.getBoundingClientRect();
+    psCanvas.width = rect.width;
+    psCanvas.height = rect.height;
+    initPixelSort();
+  }
+
+  function initPixelSort() {
+    const w = psCanvas.width, h = psCanvas.height;
+    // Generate base gradient/noise image
+    const imgData = psCtx.createImageData(w, h);
+    const data = imgData.data;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const noise = (Math.random() - 0.5) * 40;
+        const hue = (x / w * 360 + y / h * 60) % 360;
+
+        // Base: dark void with acid/magenta variations
+        let r, g, b;
+        const t = Math.sin(x * 0.01 + y * 0.005) * 0.5 + 0.5;
+        r = 10 + t * 60 + noise;
+        g = 10 + (1 - t) * 100 + noise;
+        b = 20 + Math.sin(x * 0.02) * 40 + noise;
+
+        // Add acid green horizontal stripes
+        const stripe = Math.sin(y * 0.05 + x * 0.01) * 0.5 + 0.5;
+        if (stripe > 0.7) {
+          r += 50; g += 100; b += 0;
+        }
+
+        data[idx] = Math.max(0, Math.min(255, r));
+        data[idx + 1] = Math.max(0, Math.min(255, g));
+        data[idx + 2] = Math.max(0, Math.min(255, b));
+        data[idx + 3] = 255;
+      }
+    }
+    psCtx.putImageData(imgData, 0, 0);
+    psImageData = psCtx.getImageData(0, 0, w, h);
+  }
+
+  function pixelSortRow(imgData, y, startX, endX, threshold) {
+    const w = imgData.width;
+    const data = imgData.data;
+    const pixels = [];
+
+    const sx = Math.max(0, Math.min(w - 1, Math.floor(startX)));
+    const ex = Math.max(0, Math.min(w - 1, Math.floor(endX)));
+
+    for (let x = sx; x <= ex; x++) {
+      const idx = (y * w + x) * 4;
+      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      pixels.push({
+        r: data[idx],
+        g: data[idx + 1],
+        b: data[idx + 2],
+        brightness: brightness,
+      });
+    }
+
+    // Sort by brightness
+    pixels.sort((a, b) => a.brightness - b.brightness);
+
+    // Write back
+    for (let i = 0; i < pixels.length; i++) {
+      const idx = (y * w + (sx + i)) * 4;
+      data[idx] = pixels[i].r;
+      data[idx + 1] = pixels[i].g;
+      data[idx + 2] = pixels[i].b;
+    }
+  }
+
+  function applyPixelSort(numBands, threshold) {
+    if (!psImageData) return;
+    const w = psCanvas.width, h = psCanvas.height;
+
+    // Copy base image
+    const sortedData = new ImageData(
+      new Uint8ClampedArray(psImageData.data), w, h
+    );
+
+    for (let i = 0; i < numBands; i++) {
+      const y = Math.floor(Math.random() * h);
+      const bandHeight = Math.floor(Math.random() * 8) + 2;
+      const startX = Math.random() * w * 0.3;
+      const endX = w - Math.random() * w * 0.3;
+
+      for (let dy = 0; dy < bandHeight; dy++) {
+        if (y + dy < h) {
+          pixelSortRow(sortedData, y + dy, startX, endX, threshold);
+        }
+      }
+    }
+
+    psCtx.putImageData(sortedData, 0, 0);
+  }
+
+  function drawGlitchLines() {
+    const w = psCanvas.width, h = psCanvas.height;
+    // Draw a few glitch horizontal displacement lines
+    const numLines = 3;
+    for (let i = 0; i < numLines; i++) {
+      const y = Math.random() * h;
+      const lineH = Math.random() * 4 + 1;
+      const offset = (Math.random() - 0.5) * 40;
+      const slice = psCtx.getImageData(0, y, w, lineH);
+      psCtx.putImageData(slice, offset, y);
+    }
+  }
+
+  psCanvas.addEventListener('mousedown', (e) => {
+    psIsDragging = true;
+    doPixelSortAt(e);
+  });
+  psCanvas.addEventListener('mousemove', (e) => {
+    if (psIsDragging && Math.random() > 0.7) {
+      doPixelSortAt(e);
+    }
+  });
+  document.addEventListener('mouseup', () => { psIsDragging = false; });
+
+  function doPixelSortAt(e) {
+    const rect = psCanvas.getBoundingClientRect();
+    const y = Math.floor(e.clientY - rect.top);
+    const bands = parseInt(psBandsInput.value, 10);
+    const threshold = parseInt(psThresholdInput.value, 10);
+    const w = psCanvas.width;
+
+    // Get current state as base, apply local sort
+    const currentData = psCtx.getImageData(0, 0, w, psCanvas.height);
+    const bandHeight = Math.floor(Math.random() * 6) + 2;
+    for (let dy = 0; dy < bandHeight; dy++) {
+      const yy = y + dy - Math.floor(bandHeight / 2);
+      if (yy >= 0 && yy < psCanvas.height) {
+        pixelSortRow(currentData, yy, 0, w, threshold);
+      }
+    }
+    psCtx.putImageData(currentData, 0, 0);
+
+    // Occasional glitch displacement
+    if (Math.random() > 0.7) drawGlitchLines();
+  }
+
+  document.getElementById('pixelSortReshuffle').addEventListener('click', () => {
+    initPixelSort();
+    const bands = parseInt(psBandsInput.value, 10);
+    const threshold = parseInt(psThresholdInput.value, 10);
+    applyPixelSort(bands, threshold);
+  });
+
+  document.getElementById('pixelSortClear').addEventListener('click', () => {
+    initPixelSort();
+  });
+
+  // Init
+  const psResizeObserver = new ResizeObserver(resizePsCanvas);
+  psResizeObserver.observe(psCanvas.parentElement);
+
+  // Initial sort
+  safeTimeout(() => {
+    applyPixelSort(25, 100);
+  }, 500);
+
+  // ============ ZONE 3: RGB CHANNEL DRIFT ============
+  const rgbStage = document.getElementById('rgbStage');
+  const rgbImage = document.getElementById('rgbImage');
+  const rgbDriftInput = document.getElementById('rgbDrift');
+  const rgbAutoBtn = document.getElementById('rgbAutoBtn');
+  let rgbAuto = false;
+  let rgbAutoAnim = null;
+  let rgbAutoTime = 0;
+
+  // Create RGB copies of the SVG
+  const svgEl = rgbImage.querySelector('.placeholder-svg');
+  const svgR = svgEl.cloneNode(true);
+  const svgG = svgEl.cloneNode(true);
+  const svgB = svgEl.cloneNode(true);
+  svgR.classList.add('rgb-channel', 'r');
+  svgG.classList.add('rgb-channel', 'g');
+  svgB.classList.add('rgb-channel', 'b');
+  svgR.style.filter = 'url(#redChannel)';
+  svgG.style.filter = 'url(#greenChannel)';
+  svgB.style.filter = 'url(#blueChannel)';
+  rgbImage.insertBefore(svgB, svgEl);
+  rgbImage.insertBefore(svgG, svgEl);
+  rgbImage.insertBefore(svgR, svgEl);
+  svgEl.style.display = 'none';
+
+  rgbStage.addEventListener('mousemove', (e) => {
+    if (rgbAuto) return;
+    const rect = rgbImage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    const drift = parseInt(rgbDriftInput.value, 10);
+
+    svgR.style.transform = `translate(${dx * drift}px, ${dy * drift * 0.3}px)`;
+    svgG.style.transform = `translate(${-dx * drift * 0.7}px, ${dy * drift * 0.8}px)`;
+    svgB.style.transform = `translate(${dx * drift * 0.5}px, ${-dy * drift * 0.9}px)`;
+  });
+
+  rgbStage.addEventListener('mouseleave', () => {
+    if (rgbAuto) return;
+    svgR.style.transform = 'translate(0, 0)';
+    svgG.style.transform = 'translate(0, 0)';
+    svgB.style.transform = 'translate(0, 0)';
+  });
+
+  rgbAutoBtn.addEventListener('click', () => {
+    rgbAuto = !rgbAuto;
+    rgbAutoBtn.textContent = 'Auto Drift: ' + (rgbAuto ? 'ON' : 'OFF');
+    rgbAutoBtn.classList.toggle('active', rgbAuto);
+
+    if (rgbAuto && !state.reducedMotion) {
+      rgbAutoTime = 0;
+      if (rgbAutoAnim) cancelSafeRAF(rgbAutoAnim);
+      rgbAutoAnim = safeRAF(() => {
+        rgbAutoTime += 0.02;
+        const drift = parseInt(rgbDriftInput.value, 10);
+        svgR.style.transform = `translate(${Math.sin(rgbAutoTime) * drift}px, ${Math.cos(rgbAutoTime * 0.7) * drift * 0.5}px)`;
+        svgG.style.transform = `translate(${Math.cos(rgbAutoTime * 1.1) * drift * 0.8}px, ${Math.sin(rgbAutoTime * 0.9) * drift * 0.7}px)`;
+        svgB.style.transform = `translate(${Math.sin(rgbAutoTime * 1.3) * drift * 0.6}px, ${Math.cos(rgbAutoTime * 0.5) * drift * 0.8}px)`;
+      });
+    } else if (rgbAutoAnim) {
+      cancelSafeRAF(rgbAutoAnim);
+      rgbAutoAnim = null;
+      svgR.style.transform = 'translate(0, 0)';
+      svgG.style.transform = 'translate(0, 0)';
+      svgB.style.transform = 'translate(0, 0)';
+    }
+  });
+
+  // ============ ZONE 4: CRT FILTER ============
+  const crtContainer = document.getElementById('crtContainer');
+  const crtScanlines = document.getElementById('crtScanlines');
+  const crtStatic = document.getElementById('crtStatic');
+  const crtRefresh = document.getElementById('crtRefresh');
+  const crtToggle = document.getElementById('crtToggle');
+  const crtGlowRange = document.getElementById('crtGlowRange');
+  const crtIntenseBtn = document.getElementById('crtIntenseBtn');
+  let crtOn = true;
+  let crtIntense = false;
+
+  function setCrtState(on) {
+    crtOn = on;
+    crtScanlines.style.display = on ? 'block' : 'none';
+    crtStatic.style.display = on ? 'block' : 'none';
+    crtRefresh.style.display = on ? 'block' : 'none';
+    crtToggle.textContent = 'CRT: ' + (on ? 'ON' : 'OFF');
+    crtToggle.classList.toggle('active', on);
+  }
+
+  crtToggle.addEventListener('click', () => setCrtState(!crtOn));
+  crtContainer.addEventListener('click', () => setCrtState(!crtOn));
+
+  crtGlowRange.addEventListener('input', () => {
+    const glowVal = parseInt(crtGlowRange.value, 10) / 100;
+    crtContainer.style.boxShadow = `
+      0 0 ${30 + glowVal * 60}px rgba(191,255,0,${0.1 + glowVal * 0.3}),
+      inset 0 0 ${50 + glowVal * 80}px rgba(0,0,0,0.8)
+    `;
+  });
+
+  crtIntenseBtn.addEventListener('click', () => {
+    crtIntense = !crtIntense;
+    crtIntenseBtn.classList.toggle('active', crtIntense);
+    if (crtIntense) {
+      crtScanlines.style.background = `
+        repeating-linear-gradient(
+          to bottom,
+          rgba(0,0,0,0) 0px,
+          rgba(0,0,0,0) 1px,
+          rgba(0,0,0,0.5) 1px,
+          rgba(0,0,0,0.5) 2px
+        )
+      `;
+      crtStatic.style.opacity = '0.08';
+      crtRefresh.style.animationDuration = '2s';
+    } else {
+      crtScanlines.style.background = '';
+      crtStatic.style.opacity = '0.03';
+      crtRefresh.style.animationDuration = '4s';
+    }
+  });
+
+  // ============ ZONE 5: NOISE FLOW FIELD ============
+  const flowCanvas = document.getElementById('flowFieldCanvas');
+  const flowCtx = flowCanvas.getContext('2d');
+  const flowCountInput = document.getElementById('flowCount');
+  const flowSpeedInput = document.getElementById('flowSpeed');
+  const flowToggleBtn = document.getElementById('flowToggle');
+  const flowResetBtn = document.getElementById('flowReset');
+  let flowAnim = null;
+  let flowParticles = [];
+  let flowRunning = true;
+  let flowTime = 0;
+  let flowMouseX = -1000;
+  let flowMouseY = -1000;
+
+  // Perlin noise helper (simplex-like, simplified)
+  class Noise2D {
+    constructor() {
+      this.perm = new Uint8Array(512);
+      const p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      // Shuffle
+      for (let i = 255; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [p[i], p[j]] = [p[j], p[i]];
+      }
+      for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+    }
+    noise(x, y) {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      const xf = x - Math.floor(x);
+      const yf = y - Math.floor(y);
+      const u = this.fade(xf);
+      const v = this.fade(yf);
+      const aa = this.perm[this.perm[X] + Y];
+      const ab = this.perm[this.perm[X] + Y + 1];
+      const ba = this.perm[this.perm[X + 1] + Y];
+      const bb = this.perm[this.perm[X + 1] + Y + 1];
+      const x1 = this.lerp(u, this.grad(aa, xf, yf), this.grad(ba, xf - 1, yf));
+      const x2 = this.lerp(u, this.grad(ab, xf, yf - 1), this.grad(bb, xf - 1, yf - 1));
+      return this.lerp(v, x1, x2);
+    }
+    fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    lerp(t, a, b) { return a + t * (b - a); }
+    grad(hash, x, y) {
+      const h = hash & 3;
+      const u = h < 2 ? x : y;
+      const v = h < 2 ? y : x;
+      return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    }
+  }
+  const noise = new Noise2D();
+
+  function resizeFlowCanvas() {
+    const rect = flowCanvas.parentElement.getBoundingClientRect();
+    flowCanvas.width = rect.width;
+    flowCanvas.height = rect.height;
+    initFlowParticles();
+  }
+
+  function initFlowParticles() {
+    const count = parseInt(flowCountInput.value, 10);
+    flowParticles = [];
+    for (let i = 0; i < count; i++) {
+      flowParticles.push({
+        x: Math.random() * flowCanvas.width,
+        y: Math.random() * flowCanvas.height,
+        vx: 0, vy: 0,
+        life: Math.random() * 200 + 50,
+        maxLife: 250,
+        color: Math.random() > 0.5 ? '#bfff00' : '#ff00aa',
+        size: Math.random() * 1.5 + 0.5,
+      });
+    }
+    // Fade trail
+    flowCtx.fillStyle = 'rgba(8, 8, 8, 0.15)';
+    flowCtx.fillRect(0, 0, flowCanvas.width, flowCanvas.height);
+  }
+
+  function stepFlow() {
+    if (!flowRunning) return;
+
+    flowTime += 0.003;
+    const speed = parseInt(flowSpeedInput.value, 10);
+    const scale = 0.004;
+
+    // Fade trail
+    flowCtx.fillStyle = 'rgba(8, 8, 8, 0.08)';
+    flowCtx.fillRect(0, 0, flowCanvas.width, flowCanvas.height);
+
+    flowParticles.forEach(p => {
+      // Get angle from noise field
+      const angle = noise.noise(p.x * scale, p.y * scale + flowTime) * Math.PI * 4;
+      p.vx = Math.cos(angle) * speed * 0.5;
+      p.vy = Math.sin(angle) * speed * 0.5;
+
+      // Mouse repulsion
+      const mdx = p.x - flowMouseX;
+      const mdy = p.y - flowMouseY;
+      const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+      if (mdist < 150 && mdist > 0) {
+        const force = (150 - mdist) / 150 * 3;
+        p.vx += (mdx / mdist) * force;
+        p.vy += (mdy / mdist) * force;
+      }
+
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+
+      // Wrap edges
+      if (p.x < 0) p.x = flowCanvas.width;
+      if (p.x > flowCanvas.width) p.x = 0;
+      if (p.y < 0) p.y = flowCanvas.height;
+      if (p.y > flowCanvas.height) p.y = 0;
+
+      // Respawn dead particles
+      if (p.life <= 0) {
+        p.x = Math.random() * flowCanvas.width;
+        p.y = Math.random() * flowCanvas.height;
+        p.life = p.maxLife;
+      }
+
+      // Draw
+      flowCtx.beginPath();
+      flowCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      flowCtx.fillStyle = p.color;
+      flowCtx.globalAlpha = 0.7;
+      flowCtx.fill();
+    });
+    flowCtx.globalAlpha = 1;
+  }
+
+  flowCanvas.parentElement.addEventListener('mousemove', (e) => {
+    const rect = flowCanvas.getBoundingClientRect();
+    flowMouseX = e.clientX - rect.left;
+    flowMouseY = e.clientY - rect.top;
+  });
+  flowCanvas.parentElement.addEventListener('mouseleave', () => {
+    flowMouseX = -1000;
+    flowMouseY = -1000;
+  });
+
+  flowToggleBtn.addEventListener('click', () => {
+    flowRunning = !flowRunning;
+    flowToggleBtn.textContent = flowRunning ? 'Flowing' : 'Paused';
+    flowToggleBtn.classList.toggle('active', flowRunning);
+  });
+
+  flowResetBtn.addEventListener('click', () => {
+    flowCtx.fillStyle = '#080808';
+    flowCtx.fillRect(0, 0, flowCanvas.width, flowCanvas.height);
+    initFlowParticles();
+  });
+
+  flowCountInput.addEventListener('change', initFlowParticles);
+
+  const flowResizeObserver = new ResizeObserver(resizeFlowCanvas);
+  flowResizeObserver.observe(flowCanvas.parentElement);
+
+  if (!state.reducedMotion) {
+    flowAnim = safeRAF(stepFlow);
+  }
+
+  // ============ ZONE 6: TEXT DECONSTRUCTION ============
+  const deconText = document.getElementById('deconText');
+  const deconMode = document.getElementById('deconMode');
+  const deconShuffle = document.getElementById('deconShuffle');
+  const deconScatter = document.getElementById('deconScatter');
+  const deconReassemble = document.getElementById('deconReassemble');
+  let currentText = 'DECONSTRUCT';
+  let deconAnim = null;
+  let scattered = false;
+
+  function buildDeconText(text) {
+    deconText.innerHTML = '';
+    const chars = text.split('');
+    chars.forEach((char, i) => {
+      const span = document.createElement('span');
+      span.className = 'decon-char';
+      span.textContent = char === ' ' ? '\u00A0' : char;
+      span.dataset.index = i;
+      deconText.appendChild(span);
+    });
+
+    // Add hover effect based on mode
+    const mode = deconMode.value;
+    document.querySelectorAll('.decon-char').forEach((char, idx) => {
+      char.addEventListener('mouseenter', () => applyCharEffect(char, idx, mode));
+      char.addEventListener('mouseleave', () => resetChar(char));
+    });
+  }
+
+  function applyCharEffect(char, idx, mode) {
+    if (scattered) return;
+    if (mode === '3d') {
+      char.style.transform = `translateY(-15px) rotateX(${10 + Math.random() * 20}deg) rotateY(${-15 + Math.random() * 30}deg) scale(1.3)`;
+      char.style.color = Math.random() > 0.5 ? 'var(--acid)' : 'var(--magenta)';
+      char.style.textShadow = `0 0 20px ${Math.random() > 0.5 ? 'var(--acid)' : 'var(--magenta)'}`;
+    } else if (mode === 'wave') {
+      char.style.transform = `translateY(${Math.sin(idx * 0.5) * 20}px) scale(1.1)`;
+      char.style.color = 'var(--acid)';
+    } else if (mode === 'glitch') {
+      char.style.transform = `translate(${(Math.random()-0.5)*10}px, ${(Math.random()-0.5)*10}px)`;
+      char.style.color = Math.random() > 0.5 ? 'var(--acid)' : 'var(--magenta)';
+      char.style.textShadow = `${(Math.random()-0.5)*8}px ${(Math.random()-0.5)*8}px var(--magenta), ${(Math.random()-0.5)*8}px ${(Math.random()-0.5)*8}px var(--acid)`;
+    }
+  }
+
+  function resetChar(char) {
+    if (scattered) return;
+    char.style.transform = '';
+    char.style.color = '';
+    char.style.textShadow = '';
+  }
+
+  deconMode.addEventListener('change', () => {
+    buildDeconText(currentText);
+  });
+
+  const shuffleWords = ['DISTORT', 'FRACTURE', 'GLITCH_ART', 'NOISE_FX', 'CHROMA', 'VOID.SIG', 'PIXEL//SORT', 'WARP.ZONE'];
+  deconShuffle.addEventListener('click', () => {
+    const newWord = shuffleWords[Math.floor(Math.random() * shuffleWords.length)];
+    currentText = newWord;
+    scattered = false;
+    buildDeconText(currentText);
+  });
+
+  deconScatter.addEventListener('click', () => {
+    scattered = true;
+    const chars = document.querySelectorAll('.decon-char');
+    chars.forEach((char, i) => {
+      const tx = (Math.random() - 0.5) * 400;
+      const ty = (Math.random() - 0.5) * 200;
+      const rot = (Math.random() - 0.5) * 360;
+      const scale = Math.random() * 0.5 + 0.5;
+      char.style.transform = `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(${scale})`;
+      char.style.opacity = Math.random() * 0.5 + 0.3;
+      char.style.color = Math.random() > 0.5 ? 'var(--acid)' : 'var(--magenta)';
+    });
+  });
+
+  deconReassemble.addEventListener('click', () => {
+    scattered = false;
+    const chars = document.querySelectorAll('.decon-char');
+    chars.forEach((char, i) => {
+      safeTimeout(() => {
+        char.style.transform = '';
+        char.style.opacity = '';
+        char.style.color = '';
+        char.style.textShadow = '';
+      }, i * 30);
+    });
+  });
+
+  // Type to change text
+  let typedBuffer = '';
+  document.addEventListener('keydown', (e) => {
+    const zone6 = document.getElementById('zone6');
+    const rect = zone6.getBoundingClientRect();
+    const isVisible = rect.top < window.innerHeight * 0.7 && rect.bottom > window.innerHeight * 0.3;
+    if (!isVisible) return;
+
+    if (e.key === 'Backspace') {
+      typedBuffer = typedBuffer.slice(0, -1);
+      if (typedBuffer.length === 0) typedBuffer = '';
+      currentText = typedBuffer || 'DECONSTRUCT';
+      scattered = false;
+      buildDeconText(currentText);
+      return;
+    }
+    if (e.key.length === 1 && typedBuffer.length < 15) {
+      typedBuffer += e.key.toUpperCase();
+      currentText = typedBuffer;
+      scattered = false;
+      buildDeconText(currentText);
+    }
+  });
+
+  buildDeconText(currentText);
+
+  // ============ ZONE 7: MAGNETIC WARP ============
+  const magCanvas = document.getElementById('magneticCanvas');
+  const magCtx = magCanvas.getContext('2d');
+  const magnetStrengthInput = document.getElementById('magnetStrength');
+  const magnetRadiusInput = document.getElementById('magnetRadius');
+  const magnetToggle = document.getElementById('magnetToggle');
+  let magAnim = null;
+  let magPoints = [];
+  let magMouseX = -1000;
+  let magMouseY = -1000;
+  let magIsDown = false;
+  let magMode = 'attract'; // attract or repel
+  let gridSize = 30;
+
+  function resizeMagCanvas() {
+    const rect = magCanvas.parentElement.getBoundingClientRect();
+    magCanvas.width = rect.width;
+    magCanvas.height = rect.height;
+    initMagPoints();
+  }
+
+  function initMagPoints() {
+    magPoints = [];
+    const w = magCanvas.width, h = magCanvas.height;
+    const cols = Math.ceil(w / gridSize) + 1;
+    const rows = Math.ceil(h / gridSize) + 1;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        magPoints.push({
+          ox: col * gridSize,
+          oy: row * gridSize,
+          x: col * gridSize,
+          y: row * gridSize,
+          vx: 0, vy: 0,
+          row, col,
+        });
+      }
+    }
+  }
+
+  function stepMag() {
+    const w = magCanvas.width, h = magCanvas.height;
+    magCtx.clearRect(0, 0, w, h);
+
+    const strength = parseInt(magnetStrengthInput.value, 10);
+    const radius = parseInt(magnetRadiusInput.value, 10);
+
+    magPoints.forEach(p => {
+      const dx = magMouseX - p.x;
+      const dy = magMouseY - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < radius && dist > 0) {
+        const force = (1 - dist / radius) * (magIsDown ? strength * 2 : strength) * 0.1;
+        if (magMode === 'attract') {
+          p.vx += (dx / dist) * force;
+          p.vy += (dy / dist) * force;
+        } else {
+          p.vx -= (dx / dist) * force;
+          p.vy -= (dy / dist) * force;
+        }
+      }
+
+      // Spring back to original
+      p.vx += (p.ox - p.x) * 0.05;
+      p.vy += (p.oy - p.y) * 0.05;
+      // Damping
+      p.vx *= 0.85;
+      p.vy *= 0.85;
+
+      p.x += p.vx;
+      p.y += p.vy;
+    });
+
+    // Draw connections
+    const cols = Math.ceil(w / gridSize) + 1;
+    magCtx.lineWidth = 0.5;
+
+    for (let i = 0; i < magPoints.length; i++) {
+      const p = magPoints[i];
+      // Draw horizontal lines
+      if ((i + 1) % cols !== 0 && i + 1 < magPoints.length) {
+        const p2 = magPoints[i + 1];
+        const dist = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
+        const alpha = Math.max(0.05, 0.3 - dist / 200);
+        magCtx.beginPath();
+        magCtx.moveTo(p.x, p.y);
+        magCtx.lineTo(p2.x, p2.y);
+        // Color based on displacement
+        const displacement = Math.sqrt((p.x - p.ox) ** 2 + (p.y - p.oy) ** 2);
+        const magentaAmount = Math.min(1, displacement / 50);
+        if (magentaAmount > 0.5) {
+          magCtx.strokeStyle = `rgba(255, 0, 170, ${alpha + magentaAmount * 0.3})`;
+        } else {
+          magCtx.strokeStyle = `rgba(191, 255, 0, ${alpha + (1 - magentaAmount) * 0.1})`;
+        }
+        magCtx.stroke();
+      }
+      // Draw vertical lines
+      if (i + cols < magPoints.length) {
+        const p2 = magPoints[i + cols];
+        const dist = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
+        const alpha = Math.max(0.05, 0.3 - dist / 200);
+        const displacement = Math.sqrt((p.x - p.ox) ** 2 + (p.y - p.oy) ** 2);
+        const magentaAmount = Math.min(1, displacement / 50);
+        if (magentaAmount > 0.5) {
+          magCtx.strokeStyle = `rgba(255, 0, 170, ${alpha + magentaAmount * 0.3})`;
+        } else {
+          magCtx.strokeStyle = `rgba(191, 255, 0, ${alpha + (1 - magentaAmount) * 0.1})`;
+        }
+        magCtx.beginPath();
+        magCtx.moveTo(p.x, p.y);
+        magCtx.lineTo(p2.x, p2.y);
+        magCtx.stroke();
+      }
+
+      // Draw point
+      const displacement = Math.sqrt((p.x - p.ox) ** 2 + (p.y - p.oy) ** 2);
+      const pointSize = 1 + displacement * 0.03;
+      magCtx.beginPath();
+      magCtx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+      if (displacement > 20) {
+        magCtx.fillStyle = '#ff00aa';
+        magCtx.shadowColor = '#ff00aa';
+        magCtx.shadowBlur = 8;
+      } else {
+        magCtx.fillStyle = 'rgba(191, 255, 0, 0.6)';
+        magCtx.shadowColor = '#bfff00';
+        magCtx.shadowBlur = 4;
+      }
+      magCtx.fill();
+    }
+    magCtx.shadowBlur = 0;
+
+    // Draw magnetic field circle
+    if (magMouseX > 0 && magMouseY > 0) {
+      magCtx.beginPath();
+      magCtx.arc(magMouseX, magMouseY, radius, 0, Math.PI * 2);
+      magCtx.strokeStyle = magMode === 'attract'
+        ? 'rgba(191, 255, 0, 0.15)'
+        : 'rgba(255, 0, 170, 0.15)';
+      magCtx.lineWidth = 1;
+      magCtx.setLineDash([5, 5]);
+      magCtx.stroke();
+      magCtx.setLineDash([]);
+    }
+  }
+
+  magCanvas.parentElement.addEventListener('mousemove', (e) => {
+    const rect = magCanvas.getBoundingClientRect();
+    magMouseX = e.clientX - rect.left;
+    magMouseY = e.clientY - rect.top;
+  });
+  magCanvas.parentElement.addEventListener('mouseleave', () => {
+    magMouseX = -1000;
+    magMouseY = -1000;
+    magIsDown = false;
+  });
+  magCanvas.parentElement.addEventListener('mousedown', () => { magIsDown = true; });
+  document.addEventListener('mouseup', () => { magIsDown = false; });
+
+  magnetToggle.addEventListener('click', () => {
+    magMode = magMode === 'attract' ? 'repel' : 'attract';
+    magnetToggle.textContent = magMode === 'attract' ? 'Attract Mode' : 'Repel Mode';
+    magnetToggle.classList.toggle('active', magMode === 'attract');
+  });
+
+  let magGridLevel = 0;
+  document.getElementById('magnetGridBtn').addEventListener('click', () => {
+    magGridLevel = (magGridLevel + 1) % 3;
+    gridSize = [30, 20, 45][magGridLevel];
+    initMagPoints();
+  });
+
+  const magResizeObserver = new ResizeObserver(resizeMagCanvas);
+  magResizeObserver.observe(magCanvas.parentElement);
+
+  if (!state.reducedMotion) {
+    magAnim = safeRAF(stepMag);
+  }
+
+  // ============ SMOOTH SCROLL FOR NAV ============
+  document.querySelectorAll('.nav-links a').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // ============ PER-ZONE CANVAS PAUSE WHEN OUT OF VIEW ============
+  const canvasZones = [
+    { canvas: heroCanvas, anim: heroAnim, active: true },
+  ];
+
+  // (Flow field and magnetic field run continuously but check their own particle count)
+  // For performance, pause flow field and magnetic when not visible
+  const flowObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!flowAnim) return;
+      if (entry.isIntersecting) {
+        // Already running via safeRAF's state.isVisible check, but we use flowRunning flag
+      } else {
+        // Let it keep running but it won't matter much; the safeRAF already respects page visibility
+      }
+    });
+  }, { threshold: 0 });
+  flowObserver.observe(document.getElementById('zone5'));
+
+})();
+</script>
+</body>
+</html>
