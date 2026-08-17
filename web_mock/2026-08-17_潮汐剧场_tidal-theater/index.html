@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" string="true">interactive-prototype">
+<title>潮汐剧场 · 海岸露天剧场</title>
+<style>
+  /* ============ 基础重置 ============ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    background: #0A1B2E;
+    color: #F0E8D8;
+    overflow-x: hidden;
+    cursor: none;
+    line-height: 1.6;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    body { cursor: auto; }
+    .custom-cursor { display: none; }
+    #waveCanvas, #particleCanvas { display: none; }
+  }
+
+  /* ============ 自定义光标 ============ */
+  .custom-cursor {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 36px; height: 36px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: difference;
+    transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.25s ease,
+                background 0.25s ease;
+  }
+  .custom-cursor::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: #FF6B5B;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px #FF6B5B, 0 0 24px rgba(255,107,91,0.5);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .custom-cursor::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 60px; height: 60px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .custom-cursor.hover {
+    width: 56px; height: 56px;
+    border-color: #E8C572;
+  }
+  .custom-cursor.hover::before {
+    width: 10px; height: 10px;
+    background: #E8C572;
+    box-shadow: 0 0 16px #E8C572, 0 0 32px rgba(232,197,114,0.5);
+  }
+  .custom-cursor.hover::after {
+    width: 80px; height: 80px;
+    border-color: rgba(232,197,114,0.3);
+  }
+  .custom-cursor.click {
+    width: 28px; height: 28px;
+    border-color: #FF6B5B;
+  }
+  .custom-cursor.click::before {
+    width: 4px; height: 4px;
+    background: #fff;
+  }
+
+  /* 点击涟漪 */
+  .cursor-ripple {
+    position: fixed;
+    border: 2px solid #FF6B5B;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+    animation: rippleExpand 0.6s ease-out forwards;
+  }
+  @keyframes rippleExpand {
+    to { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+  }
+
+  /* ============ 导航栏 ============ */
+  .navbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 20px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(10,27,46,0.9), transparent);
+    transition: background 0.4s ease, padding 0.4s ease;
+  }
+  .navbar.scrolled {
+    background: rgba(10,27,46,0.95);
+    backdrop-filter: blur(16px);
+    padding: 14px 48px;
+    border-bottom: 1px solid rgba(232,197,114,0.15);
+  }
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #E8C572;
+    letter-spacing: 4px;
+  }
+  .nav-logo-icon {
+    width: 36px; height: 36px;
+    position: relative;
+  }
+  .nav-logo-icon svg { width: 100%; height: 100%; }
+  .nav-links {
+    display: flex;
+    gap: 40px;
+    list-style: none;
+  }
+  .nav-links a {
+    color: #D0C8B8;
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: 2px;
+    position: relative;
+    padding: 6px 0;
+    transition: color 0.3s ease;
+  }
+  .nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 0; height: 2px;
+    background: #FF6B5B;
+    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .nav-links a:hover { color: #FF6B5B; }
+  .nav-links a:hover::after { width: 100%; }
+  .nav-ticket-btn {
+    padding: 10px 24px;
+    border: 1px solid #E8C572;
+    border-radius: 2px;
+    color: #E8C572;
+    text-decoration: none;
+    font-size: 13px;
+    letter-spacing: 3px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .nav-ticket-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(232,197,114,0.2), transparent);
+    transition: left 0.6s ease;
+  }
+  .nav-ticket-btn:hover {
+    background: #E8C572;
+    color: #0A1B2E;
+  }
+  .nav-ticket-btn:hover::before { left: 100%; }
+
+  /* ============ Hero 区 ============ */
+  .hero {
+    position: relative;
+    height: 100vh;
+    min-height: 700px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #0A1B2E 0%, #0A4D5C 50%, #0A3D4C 100%);
+    z-index: 0;
+  }
+  #waveCanvas {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%;
+    height: 60%;
+    z-index: 1;
+  }
+  #particleCanvas {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .hero-content {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 0 24px;
+  }
+  .hero-eyebrow {
+    font-size: 13px;
+    letter-spacing: 8px;
+    color: #E8C572;
+    margin-bottom: 24px;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 1s 0.5s ease-out forwards;
+  }
+  .hero-title {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 300;
+    letter-spacing: 16px;
+    color: #fff;
+    margin-bottom: 16px;
+    text-shadow: 0 4px 40px rgba(0,0,0,0.3);
+  }
+  .hero-title .char {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(40px);
+    animation: charRise 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes charRise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero-subtitle {
+    font-size: 16px;
+    letter-spacing: 6px;
+    color: #A8C0CC;
+    margin-bottom: 48px;
+    opacity: 0;
+    animation: fadeInUp 1s 1.4s ease-out forwards;
+  }
+  .hero-tide-info {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    margin-bottom: 48px;
+    opacity: 0;
+    animation: fadeInUp 1s 1.7s ease-out forwards;
+  }
+  .tide-metric {
+    text-align: center;
+  }
+  .tide-metric-value {
+    font-size: 36px;
+    font-weight: 300;
+    color: #E8C572;
+    font-variant-numeric: tabular-nums;
+  }
+  .tide-metric-unit {
+    font-size: 14px;
+    color: #A8C0CC;
+    margin-left: 4px;
+  }
+  .tide-metric-label {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: #68909C;
+    margin-top: 6px;
+  }
+  .hero-scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: fadeInUp 1s 2s ease-out forwards;
+  }
+  .hero-scroll-hint span {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: #68909C;
+  }
+  .scroll-line {
+    width: 1px;
+    height: 48px;
+    background: linear-gradient(to bottom, #68909C, transparent);
+    position: relative;
+    overflow: hidden;
+  }
+  .scroll-line::after {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, #E8C572, transparent);
+    animation: scrollDrop 2s ease-in-out infinite;
+  }
+  @keyframes scrollDrop {
+    0% { top: -100%; }
+    100% { top: 100%; }
+  }
+
+  /* ============ 潮汐时间线 ============ */
+  .tide-timeline-section {
+    position: relative;
+    padding: 120px 48px;
+    background: #0A1B2E;
+    overflow: hidden;
+  }
+  .section-label {
+    font-size: 12px;
+    letter-spacing: 6px;
+    color: #FF6B5B;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 42px;
+    font-weight: 300;
+    letter-spacing: 4px;
+    color: #fff;
+    margin-bottom: 16px;
+  }
+  .section-desc {
+    font-size: 15px;
+    color: #88A0AC;
+    max-width: 600px;
+    line-height: 1.8;
+  }
+  .section-header {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+
+  .tide-timeline {
+    position: relative;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 60px 0;
+  }
+  .tide-wave-svg {
+    width: 100%;
+    height: 200px;
+    position: relative;
+  }
+  .tide-wave-path {
+    fill: none;
+    stroke: rgba(232,197,114,0.3);
+    stroke-width: 2;
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    transition: stroke-dashoffset 2s ease-out;
+  }
+  .tide-wave-path.visible { stroke-dashoffset: 0; }
+  .tide-markers {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+  }
+  .tide-marker {
+    position: absolute;
+    transform: translateX(-50%);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tide-marker.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .tide-marker-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    margin: 0 auto 8px;
+    position: relative;
+  }
+  .tide-marker-dot::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 30px; height: 30px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    animation: markerPulse 2s ease-out infinite;
+  }
+  @keyframes markerPulse {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0.6; }
+    100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  }
+  .tide-marker.high .tide-marker-dot { background: #FF6B5B; color: #FF6B5B; }
+  .tide-marker.low .tide-marker-dot { background: #E8C572; color: #E8C572; }
+  .tide-marker-time {
+    font-size: 13px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+  }
+  .tide-marker-tag {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #68909C;
+    margin-top: 4px;
+  }
+
+  /* ============ 演出排期表 ============ */
+  .schedule-section {
+    padding: 120px 48px;
+    background: linear-gradient(180deg, #0A1B2E 0%, #0A2A3A 100%);
+    position: relative;
+  }
+  .schedule-days {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 60px;
+    flex-wrap: wrap;
+  }
+  .day-tab {
+    padding: 14px 28px;
+    border: 1px solid rgba(232,197,114,0.2);
+    background: transparent;
+    color: #88A0AC;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: none;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    font-family: inherit;
+  }
+  .day-tab::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,107,91,0.1), transparent);
+    transition: left 0.5s ease;
+  }
+  .day-tab:hover::before { left: 100%; }
+  .day-tab:hover {
+    border-color: rgba(255,107,91,0.5);
+    color: #FF6B5B;
+  }
+  .day-tab.active {
+    background: #FF6B5B;
+    border-color: #FF6B5B;
+    color: #fff;
+  }
+  .day-tab-day { font-weight: 600; margin-right: 6px; }
+
+  .schedule-list {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .schedule-item {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    align-items: center;
+    gap: 32px;
+    padding: 28px 32px;
+    background: rgba(10,45,60,0.5);
+    border: 1px solid rgba(104,144,156,0.15);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .schedule-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px; height: 100%;
+    transition: width 0.3s ease;
+  }
+  .schedule-item.high-tide::before { background: #FF6B5B; }
+  .schedule-item.low-tide::before { background: #E8C572; }
+  .schedule-item:hover {
+    background: rgba(10,60,80,0.7);
+    transform: translateX(8px);
+    border-color: rgba(255,107,91,0.3);
+  }
+  .schedule-item:hover::before { width: 6px; }
+  .schedule-time {
+    font-size: 24px;
+    font-weight: 300;
+    color: #E8C572;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 2px;
+  }
+  .schedule-time small {
+    display: block;
+    font-size: 11px;
+    color: #68909C;
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+  .schedule-info h3 {
+    font-size: 18px;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 6px;
+    letter-spacing: 2px;
+  }
+  .schedule-info p {
+    font-size: 13px;
+    color: #88A0AC;
+    letter-spacing: 1px;
+  }
+  .schedule-tags {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .schedule-tag {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    letter-spacing: 2px;
+  }
+  .schedule-tag.high { background: rgba(255,107,91,0.15); color: #FF6B5B; }
+  .schedule-tag.low { background: rgba(232,197,114,0.15); color: #E8C572; }
+  .schedule-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid #FF6B5B;
+    color: #FF6B5B;
+    font-size: 12px;
+    letter-spacing: 3px;
+    cursor: none;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    position: relative;
+    overflow: hidden;
+  }
+  .schedule-btn:hover {
+    background: #FF6B5B;
+    color: #fff;
+  }
+  .schedule-btn.sold-out {
+    border-color: #446;
+    color: #556;
+    cursor: not-allowed;
+  }
+  .schedule-btn.sold-out:hover {
+    background: transparent;
+    color: #556;
+  }
+
+  /* ============ 剧目卡片 ============ */
+  .shows-section {
+    padding: 120px 48px;
+    background: #0A1B2E;
+    position: relative;
+  }
+  .shows-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 32px;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+  .show-card {
+    position: relative;
+    height: 440px;
+    background: #0A2A3A;
+    border: 1px solid rgba(104,144,156,0.2);
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.4s ease;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+  }
+  .show-card:hover {
+    box-shadow: 0 20px 60px rgba(255,107,91,0.15),
+                0 0 40px rgba(255,107,91,0.08);
+  }
+  .show-card-image {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .show-card-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 30%, rgba(10,27,46,0.95) 100%);
+  }
+  .show-card-bg {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .show-card:hover .show-card-bg { transform: scale(1.08); }
+  .show-card-content {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 32px;
+    z-index: 2;
+  }
+  .show-card-type {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: #FF6B5B;
+    margin-bottom: 12px;
+  }
+  .show-card-title {
+    font-size: 24px;
+    font-weight: 500;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+  }
+  .show-card-artist {
+    font-size: 13px;
+    color: #88A0AC;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .show-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 16px;
+    border-top: 1px solid rgba(104,144,156,0.2);
+  }
+  .show-card-duration {
+    font-size: 12px;
+    color: #68909C;
+    letter-spacing: 2px;
+  }
+  .show-card-arrow {
+    width: 36px; height: 36px;
+    border: 1px solid #E8C572;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: #E8C572;
+  }
+  .show-card:hover .show-card-arrow {
+    background: #E8C572;
+    color: #0A1B2E;
+    transform: translateX(4px);
+  }
+  .show-card-gloss {
+    position: absolute;
+    top: 0; left: -100%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.8s ease;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .show-card:hover .show-card-gloss { left: 150%; }
+
+  /* ============ 剧场介绍 ============ */
+  .about-section {
+    padding: 120px 48px;
+    background: linear-gradient(180deg, #0A1B2E 0%, #0A2A3A 50%, #0A1B2E 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    max-width: 1200px;
+    margin: 0 auto;
+    align-items: center;
+  }
+  .about-text h2 {
+    font-size: 36px;
+    font-weight: 300;
+    color: #fff;
+    letter-spacing: 4px;
+    margin-bottom: 24px;
+    line-height: 1.4;
+  }
+  .about-text h2 em {
+    color: #E8C572;
+    font-style: normal;
+  }
+  .about-text p {
+    font-size: 15px;
+    color: #88A0AC;
+    line-height: 2;
+    margin-bottom: 20px;
+  }
+  .about-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 40px;
+    padding-top: 40px;
+    border-top: 1px solid rgba(104,144,156,0.2);
+  }
+  .about-stat { text-align: left; }
+  .about-stat-value {
+    font-size: 32px;
+    font-weight: 300;
+    color: #FF6B5B;
+    font-variant-numeric: tabular-nums;
+  }
+  .about-stat-label {
+    font-size: 11px;
+    color: #68909C;
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+  .about-visual {
+    position: relative;
+    height: 500px;
+    perspective: 1000px;
+  }
+  .about-visual-card {
+    position: absolute;
+    width: 70%;
+    height: 320px;
+    background: #0A2A3A;
+    border: 1px solid rgba(232,197,114,0.2);
+    overflow: hidden;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .about-visual-card:nth-child(1) {
+    top: 20px; left: 0;
+    transform: rotate(-3deg);
+    z-index: 3;
+  }
+  .about-visual-card:nth-child(2) {
+    top: 80px; right: 0;
+    transform: rotate(5deg);
+    z-index: 2;
+  }
+  .about-visual-card:nth-child(3) {
+    bottom: 0; left: 20%;
+    transform: rotate(-2deg);
+    z-index: 1;
+  }
+  .about-visual-card:hover {
+    transform: rotate(0) scale(1.02);
+    z-index: 10;
+  }
+  .about-visual-img {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+  }
+  .about-visual-caption {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #E8C572;
+    background: rgba(10,27,46,0.8);
+    padding: 6px 12px;
+  }
+
+  /* ============ 艺术家阵容 ============ */
+  .artists-section {
+    padding: 120px 48px;
+    background: #0A1B2E;
+    position: relative;
+  }
+  .artists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .artist-card {
+    text-align: center;
+    cursor: none;
+  }
+  .artist-avatar {
+    width: 160px; height: 160px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid rgba(232,197,114,0.3);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .artist-avatar::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px solid #FF6B5B;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .artist-card:hover .artist-avatar {
+    border-color: #FF6B5B;
+    transform: scale(1.05);
+  }
+  .artist-card:hover .artist-avatar::before {
+    opacity: 1;
+    transform: scale(1.1);
+    animation: avatarRing 2s ease-out infinite;
+  }
+  @keyframes avatarRing {
+    0% { transform: scale(1.1); opacity: 0.6; }
+    100% { transform: scale(1.25); opacity: 0; }
+  }
+  .artist-avatar-bg {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+  }
+  .artist-name {
+    font-size: 16px;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+  .artist-role {
+    font-size: 12px;
+    color: #68909C;
+    letter-spacing: 2px;
+  }
+
+  /* ============ 票务信息 ============ */
+  .ticket-section {
+    padding: 120px 48px;
+    background: linear-gradient(180deg, #0A1B2E 0%, #0A2A3A 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .ticket-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .ticket-card {
+    background: rgba(10,45,60,0.5);
+    border: 1px solid rgba(104,144,156,0.2);
+    padding: 40px 32px;
+    text-align: center;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .ticket-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 3px;
+    background: #E8C572;
+    transition: width 0.4s ease;
+  }
+  .ticket-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(232,197,114,0.4);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  }
+  .ticket-card:hover::before { width: 100%; }
+  .ticket-card.featured {
+    border-color: #FF6B5B;
+    background: rgba(255,107,91,0.05);
+    transform: scale(1.05);
+  }
+  .ticket-card.featured::before { background: #FF6B5B; }
+  .ticket-card.featured:hover {
+    transform: translateY(-8px) scale(1.05);
+    box-shadow: 0 20px 60px rgba(255,107,91,0.2);
+  }
+  .ticket-badge {
+    position: absolute;
+    top: 16px; right: 16px;
+    font-size: 10px;
+    padding: 4px 10px;
+    background: #FF6B5B;
+    color: #fff;
+    letter-spacing: 2px;
+  }
+  .ticket-type {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: #E8C572;
+    margin-bottom: 16px;
+  }
+  .ticket-price {
+    font-size: 48px;
+    font-weight: 300;
+    color: #fff;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ticket-price small {
+    font-size: 16px;
+    color: #68909C;
+    margin-right: 4px;
+  }
+  .ticket-desc {
+    font-size: 13px;
+    color: #88A0AC;
+    margin-bottom: 24px;
+    letter-spacing: 1px;
+  }
+  .ticket-features {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 32px;
+  }
+  .ticket-features li {
+    font-size: 13px;
+    color: #A8C0CC;
+    padding: 8px 0;
+    padding-left: 20px;
+    position: relative;
+    letter-spacing: 1px;
+  }
+  .ticket-features li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #E8C572;
+  }
+  .ticket-buy-btn {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 1px solid #E8C572;
+    color: #E8C572;
+    font-size: 13px;
+    letter-spacing: 4px;
+    cursor: none;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    position: relative;
+    overflow: hidden;
+  }
+  .ticket-buy-btn:hover {
+    background: #E8C572;
+    color: #0A1B2E;
+  }
+  .ticket-card.featured .ticket-buy-btn {
+    background: #FF6B5B;
+    border-color: #FF6B5B;
+    color: #fff;
+  }
+  .ticket-card.featured .ticket-buy-btn:hover {
+    background: #ff8577;
+    border-color: #ff8577;
+  }
+
+  /* ============ 页脚 ============ */
+  .footer {
+    padding: 80px 48px 40px;
+    background: #071520;
+    border-top: 1px solid rgba(104,144,156,0.15);
+  }
+  .footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 60px;
+    margin-bottom: 60px;
+  }
+  .footer-brand h3 {
+    font-size: 20px;
+    color: #E8C572;
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+  }
+  .footer-brand p {
+    font-size: 13px;
+    color: #68909C;
+    line-height: 1.8;
+    max-width: 300px;
+  }
+  .footer-col h4 {
+    font-size: 13px;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+  }
+  .footer-col ul { list-style: none; }
+  .footer-col li { margin-bottom: 12px; }
+  .footer-col a {
+    font-size: 13px;
+    color: #68909C;
+    text-decoration: none;
+    letter-spacing: 1px;
+    transition: color 0.3s ease;
+  }
+  .footer-col a:hover { color: #FF6B5B; }
+  .footer-bottom {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-top: 30px;
+    border-top: 1px solid rgba(104,144,156,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-bottom p {
+    font-size: 12px;
+    color: #486070;
+    letter-spacing: 2px;
+  }
+
+  /* ============ 滚动渐入 ============ */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ============ 响应式 ============ */
+  @media (max-width: 768px) {
+    .navbar { padding: 16px 24px; }
+    .nav-links { display: none; }
+    .about-grid { grid-template-columns: 1fr; gap: 40px; }
+    .hero-tide-info { gap: 30px; }
+    .tide-metric-value { font-size: 24px; }
+    .schedule-item {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .footer-content { grid-template-columns: 1fr 1fr; }
+    .ticket-card.featured { transform: none; }
+    .ticket-card.featured:hover { transform: translateY(-8px); }
+    body { cursor: auto; }
+    .custom-cursor { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="custom-cursor" id="cursor"></div>
+
+<!-- 导航栏 -->
+<nav class="navbar" id="navbar">
+  <div class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 36 36" fill="none">
+        <path d="M4 20 Q10 12, 18 20 T32 20" stroke="#E8C572" stroke-width="2" fill="none"/>
+        <path d="M4 26 Q10 18, 18 26 T32 26" stroke="#FF6B5B" stroke-width="2" fill="none" opacity="0.7"/>
+        <circle cx="18" cy="14" r="3" fill="#E8C572"/>
+      </svg>
+    </div>
+    <span>潮汐剧场</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#schedule">演出排期</a></li>
+    <li><a href="#shows">剧目介绍</a></li>
+    <li><a href="#about">剧场简介</a></li>
+    <li><a href="#artists">艺术家</a></li>
+    <li><a href="#tickets">购票</a></li>
+  </ul>
+  <a href="#tickets" class="nav-ticket-btn">立即购票</a>
+</nav>
+
+<!-- Hero 区 -->
+<section class="hero" id="hero">
+  <div class="hero-bg"></div>
+  <canvas id="waveCanvas"></canvas>
+  <canvas id="particleCanvas"></canvas>
+  <div class="hero-content">
+    <div class="hero-eyebrow">2026 夏季演出季</div>
+    <h1 class="hero-title" id="heroTitle">潮汐剧场</h1>
+    <p class="hero-subtitle">随潮起潮落，听海与舞台的回响</p>
+    <div class="hero-tide-info">
+      <div class="tide-metric">
+        <div class="tide-metric-value"><span id="tideHeight">2.3</span><span class="tide-metric-unit">米</span></div>
+        <div class="tide-metric-label">当前潮高</div>
+      </div>
+      <div class="tide-metric">
+        <div class="tide-metric-value"><span id="tideCount">8</span><span class="tide-metric-unit">场</span></div>
+        <div class="tide-metric-label">今日演出</div>
+      </div>
+      <div class="tide-metric">
+        <div class="tide-metric-value"><span id="tideNext">02:30</span></div>
+        <div class="tide-metric-label">距下一场</div>
+      </div>
+    </div>
+  </div>
+  <div class="hero-scroll-hint">
+    <span>向下探索</span>
+    <div class="scroll-line"></div>
+  </div>
+</section>
+
+<!-- 潮汐时间线 -->
+<section class="tide-timeline-section" id="tide">
+  <div class="section-header reveal">
+    <div class="section-label">潮汐节拍</div>
+    <h2 class="section-title">今日潮汐时刻表</h2>
+    <p class="section-desc">剧场依潮汐而建，每一场演出都与大海的呼吸同频。涨潮时的恢弘，退潮时的静谧，皆为舞台注入独特的灵魂。</p>
+  </div>
+  <div class="tide-timeline reveal">
+    <svg class="tide-wave-svg" viewBox="0 0 1000 200" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#FF6B5B;stop-opacity:0.8"/>
+          <stop offset="50%" style="stop-color:#E8C572;stop-opacity:0.5"/>
+          <stop offset="100%" style="stop-color:#0A4D5C;stop-opacity:0.3"/>
+        </linearGradient>
+      </defs>
+      <path class="tide-wave-path" id="tideWavePath"
+        d="M0,150 Q80,80 160,120 T320,90 T480,140 T640,70 T800,130 T1000,100 L1000,200 L0,200 Z"
+        fill="url(#waveGrad)"/>
+      <path class="tide-wave-path" id="tideWaveLine"
+        d="M0,150 Q80,80 160,120 T320,90 T480,140 T640,70 T800,130 T1000,100"
+        fill="none" stroke="#E8C572" stroke-width="2"/>
+    </svg>
+    <div class="tide-markers" id="tideMarkers">
+      <div class="tide-marker high" style="left: 16%; top: 35%;">
+        <div class="tide-marker-dot"></div>
+        <div class="tide-marker-time">05:42</div>
+        <div class="tide-marker-tag">高潮</div>
+      </div>
+      <div class="tide-marker low" style="left: 32%; top: 60%;">
+        <div class="tide-marker-dot"></div>
+        <div class="tide-marker-time">11:28</div>
+        <div class="tide-marker-tag">低潮</div>
+      </div>
+      <div class="tide-marker high" style="left: 52%; top: 25%;">
+        <div class="tide-marker-dot"></div>
+        <div class="tide-marker-time">17:55</div>
+        <div class="tide-marker-tag">高潮</div>
+      </div>
+      <div class="tide-marker low" style="left: 72%; top: 55%;">
+        <div class="tide-marker-dot"></div>
+        <div class="tide-marker-time">23:40</div>
+        <div class="tide-marker-tag">低潮</div>
+      </div>
+      <div class="tide-marker high" style="left: 90%; top: 40%;">
+        <div class="tide-marker-dot"></div>
+        <div class="tide-marker-time">次日06:15</div>
+        <div class="tide-marker-tag">高潮</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 演出排期表 -->
+<section class="schedule-section" id="schedule">
+  <div class="section-header reveal">
+    <div class="section-label">演出排期</div>
+    <h2 class="section-title">本周演出安排</h2>
+    <p class="section-desc">随潮汐节律精选的演出，每一场都是海与艺术的独特对话。选择日期，开启你的海岸之夜。</p>
+  </div>
+  <div class="schedule-days reveal" id="scheduleDays">
+    <button class="day-tab active"><span class="day-tab-day">周一</span>08/17</button>
+    <button class="day-tab"><span class="day-tab-day">周二</span>08/18</button>
+    <button class="day-tab"><span class="day-tab-day">周三</span>08/19</button>
+    <button class="day-tab"><span class="day-tab-day">周四</span>08/20</button>
+    <button class="day-tab"><span class="day-tab-day">周五</span>08/21</button>
+    <button class="day-tab"><span class="day-tab-day">周六</span>08/22</button>
+    <button class="day-tab"><span class="day-tab-day">周日</span>08/23</button>
+  </div>
+  <div class="schedule-list" id="scheduleList">
+    <!-- JS 动态渲染 -->
+  </div>
+</section>
+
+<!-- 剧目卡片 -->
+<section class="shows-section" id="shows">
+  <div class="section-header reveal">
+    <div class="section-label">剧目推荐</div>
+    <h2 class="section-title">本月精选剧目</h2>
+    <p class="section-desc">从沉浸式声音剧场到肢体表演，每一部作品都与潮汐、海风、夜空深度共鸣。</p>
+  </div>
+  <div class="shows-grid" id="showsGrid">
+    <div class="show-card reveal" data-tilt>
+      <div class="show-card-image">
+        <div class="show-card-bg" style="background: linear-gradient(135deg, #0A4D5C 0%, #FF6B5B 100%);">
+          <svg viewBox="0 0 400 440" style="width:100%;height:100%;opacity:0.3">
+            <circle cx="200" cy="180" r="80" fill="none" stroke="#fff" stroke-width="2"/>
+            <circle cx="200" cy="180" r="50" fill="none" stroke="#fff" stroke-width="1"/>
+            <path d="M120 280 Q200 240, 280 280 T400 280" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M100 320 Q200 280, 300 320 T400 310" fill="none" stroke="#fff" stroke-width="1" opacity="0.6"/>
+          </svg>
+        </div>
+      </div>
+      <div class="show-card-gloss"></div>
+      <div class="show-card-content">
+        <div class="show-card-type">声音剧场</div>
+        <h3 class="show-card-title">潮声交响</h3>
+        <p class="show-card-artist">作曲：林海潮 · 指挥：周明远</p>
+        <div class="show-card-meta">
+          <span class="show-card-duration">时长 90 分钟</span>
+          <div class="show-card-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="show-card reveal" data-tilt>
+      <div class="show-card-image">
+        <div class="show-card-bg" style="background: linear-gradient(135deg, #0A2A3A 0%, #E8C572 100%);">
+          <svg viewBox="0 0 400 440" style="width:100%;height:100%;opacity:0.3">
+            <path d="M100 300 L200 100 L300 300 Z" fill="none" stroke="#fff" stroke-width="2"/>
+            <circle cx="200" cy="200" r="40" fill="none" stroke="#fff" stroke-width="1"/>
+            <path d="M80 350 Q200 320, 320 350" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="show-card-gloss"></div>
+      <div class="show-card-content">
+        <div class="show-card-type">肢体剧场</div>
+        <h3 class="show-card-title">浪痕</h3>
+        <p class="show-card-artist">编导：李若溪 · 现代舞蹈团</p>
+        <div class="show-card-meta">
+          <span class="show-card-duration">时长 75 分钟</span>
+          <div class="show-card-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="show-card reveal" data-tilt>
+      <div class="show-card-image">
+        <div class="show-card-bg" style="background: linear-gradient(135deg, #0A1B2E 0%, #0A4D5C 60%, #FF6B5B 100%);">
+          <svg viewBox="0 0 400 440" style="width:100%;height:100%;opacity:0.3">
+            <rect x="150" y="120" width="100" height="150" fill="none" stroke="#fff" stroke-width="2"/>
+            <circle cx="200" cy="195" r="30" fill="none" stroke="#fff" stroke-width="1"/>
+            <path d="M100 320 Q200 280, 300 320 T400 310" fill="none" stroke="#fff" stroke-width="2"/>
+            <line x1="200" y1="50" x2="200" y2="120" stroke="#fff" stroke-width="2"/>
+            <circle cx="200" cy="40" r="12" fill="none" stroke="#fff" stroke-width="1.5"/>
+          </svg>
+        </div>
+      </div>
+      <div class="show-card-gloss"></div>
+      <div class="show-card-content">
+        <div class="show-card-type">沉浸戏剧</div>
+        <h3 class="show-card-title">灯塔守望者</h3>
+        <p class="show-card-artist">编剧：张墨白 · 导演：陈予安</p>
+        <div class="show-card-meta">
+          <span class="show-card-duration">时长 110 分钟</span>
+          <div class="show-card-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 剧场介绍 -->
+<section class="about-section" id="about">
+  <div class="about-grid">
+    <div class="about-text reveal">
+      <div class="section-label">剧场简介</div>
+      <h2>建在潮汐线上的<br><em>海岸露天剧场</em></h2>
+      <p>潮汐剧场坐落于东南海岸的天然岩湾之中，是国内唯一一座依潮汐节律运营的露天剧场。舞台建于潮间带之上，观众席依山势层叠而建，每场演出的开场与落幕，都与当日的潮汐精确对齐。</p>
+      <p>涨潮时，海水漫至舞台前缘，浪声成为天然伴奏；退潮时，礁石裸露，灯光在水洼间折射出万千光影。我们相信，大海才是这里真正的导演。</p>
+      <div class="about-stats">
+        <div class="about-stat">
+          <div class="about-stat-value" data-count="1200">0</div>
+          <div class="about-stat-label">观众席位</div>
+        </div>
+        <div class="about-stat">
+          <div class="about-stat-value" data-count="36">0</div>
+          <div class="about-stat-label">年度剧目</div>
+        </div>
+        <div class="about-stat">
+          <div class="about-stat-value" data-count="8">0</div>
+          <div class="about-stat-label">创办年数</div>
+        </div>
+      </div>
+    </div>
+    <div class="about-visual reveal">
+      <div class="about-visual-card">
+        <div class="about-visual-img" style="background: linear-gradient(135deg, #0A4D5C, #0A2A3A);">
+          <svg viewBox="0 0 400 320" style="width:100%;height:100%;opacity:0.4">
+            <path d="M0 200 Q100 150, 200 200 T400 180" fill="none" stroke="#E8C572" stroke-width="2"/>
+            <path d="M0 240 Q100 200, 200 240 T400 220" fill="none" stroke="#FF6B5B" stroke-width="1.5" opacity="0.6"/>
+            <path d="M0 280 Q100 250, 200 280 T400 260" fill="none" stroke="#fff" stroke-width="1" opacity="0.3"/>
+            <circle cx="300" cy="80" r="40" fill="none" stroke="#E8C572" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="about-visual-caption">主舞台 · 涨潮视角</div>
+      </div>
+      <div class="about-visual-card">
+        <div class="about-visual-img" style="background: linear-gradient(45deg, #0A1B2E, #0A4D5C);">
+          <svg viewBox="0 0 400 320" style="width:100%;height:100%;opacity:0.4">
+            <path d="M50 260 L100 180 L150 260 Z" fill="none" stroke="#FF6B5B" stroke-width="1.5"/>
+            <path d="M200 240 L250 140 L300 240 Z" fill="none" stroke="#FF6B5B" stroke-width="1.5"/>
+            <path d="M0 280 Q200 260, 400 280" fill="none" stroke="#E8C572" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="about-visual-caption">岩湾观众席</div>
+      </div>
+      <div class="about-visual-card">
+        <div class="about-visual-img" style="background: linear-gradient(160deg, #0A2A3A, #0A1B2E);">
+          <svg viewBox="0 0 400 320" style="width:100%;height:100%;opacity:0.4">
+            <line x1="200" y1="60" x2="200" y2="280" stroke="#E8C572" stroke-width="2"/>
+            <circle cx="200" cy="50" r="15" fill="none" stroke="#E8C572" stroke-width="2"/>
+            <circle cx="200" cy="50" r="25" fill="none" stroke="#E8C572" stroke-width="1" opacity="0.5"/>
+            <circle cx="200" cy="50" r="35" fill="none" stroke="#E8C572" stroke-width="0.5" opacity="0.3"/>
+            <path d="M50 280 Q200 260, 350 280" fill="none" stroke="#fff" stroke-width="1" opacity="0.3"/>
+          </svg>
+        </div>
+        <div class="about-visual-caption">夜场灯光</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 艺术家阵容 -->
+<section class="artists-section" id="artists">
+  <div class="section-header reveal">
+    <div class="section-label">艺术家阵容</div>
+    <h2 class="section-title">本季驻场艺术家</h2>
+    <p class="section-desc">来自声音、舞蹈、戏剧、视觉艺术等领域的创作者，以海为题，共同编织潮汐剧场的艺术版图。</p>
+  </div>
+  <div class="artists-grid" id="artistsGrid">
+    <div class="artist-card reveal">
+      <div class="artist-avatar">
+        <div class="artist-avatar-bg" style="background: linear-gradient(135deg, #FF6B5B, #E8C572);">
+          <svg viewBox="0 0 160 160" style="width:100%;height:100%;opacity:0.4">
+            <circle cx="80" cy="65" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M40 140 Q80 100, 120 140" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="artist-name">林海潮</div>
+      <div class="artist-role">作曲家 / 声音艺术家</div>
+    </div>
+    <div class="artist-card reveal">
+      <div class="artist-avatar">
+        <div class="artist-avatar-bg" style="background: linear-gradient(135deg, #0A4D5C, #E8C572);">
+          <svg viewBox="0 0 160 160" style="width:100%;height:100%;opacity:0.4">
+            <circle cx="80" cy="65" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M40 140 Q80 100, 120 140" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="artist-name">李若溪</div>
+      <div class="artist-role">舞蹈编导</div>
+    </div>
+    <div class="artist-card reveal">
+      <div class="artist-avatar">
+        <div class="artist-avatar-bg" style="background: linear-gradient(135deg, #0A2A3A, #FF6B5B);">
+          <svg viewBox="0 0 160 160" style="width:100%;height:100%;opacity:0.4">
+            <circle cx="80" cy="65" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M40 140 Q80 100, 120 140" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="artist-name">陈予安</div>
+      <div class="artist-role">戏剧导演</div>
+    </div>
+    <div class="artist-card reveal">
+      <div class="artist-avatar">
+        <div class="artist-avatar-bg" style="background: linear-gradient(135deg, #E8C572, #0A4D5C);">
+          <svg viewBox="0 0 160 160" style="width:100%;height:100%;opacity:0.4">
+            <circle cx="80" cy="65" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M40 140 Q80 100, 120 140" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="artist-name">苏晚晴</div>
+      <div class="artist-role">灯光设计师</div>
+    </div>
+    <div class="artist-card reveal">
+      <div class="artist-avatar">
+        <div class="artist-avatar-bg" style="background: linear-gradient(135deg, #FF6B5B, #0A2A3A);">
+          <svg viewBox="0 0 160 160" style="width:100%;height:100%;opacity:0.4">
+            <circle cx="80" cy="65" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+            <path d="M40 140 Q80 100, 120 140" fill="none" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="artist-name">周明远</div>
+      <div class="artist-role">交响乐指挥</div>
+    </div>
+  </div>
+</section>
+
+<!-- 票务信息 -->
+<section class="ticket-section" id="tickets">
+  <div class="section-header reveal">
+    <div class="section-label">票务信息</div>
+    <h2 class="section-title">选择你的观演体验</h2>
+    <p class="section-desc">不同票档对应不同的观演位置与专属体验，每一档都附赠当日潮汐手册。</p>
+  </div>
+  <div class="ticket-cards">
+    <div class="ticket-card reveal">
+      <div class="ticket-type">观海席</div>
+      <div class="ticket-price"><small>¥</small>280</div>
+      <div class="ticket-desc">上层观众席 · 全景视野</div>
+      <ul class="ticket-features">
+        <li>上层观海座位</li>
+        <li>当日潮汐手册</li>
+        <li>演出前导赏</li>
+        <li>演出纪念票根</li>
+      </ul>
+      <button class="ticket-buy-btn">选择此档</button>
+    </div>
+    <div class="ticket-card featured reveal">
+      <div class="ticket-badge">推荐</div>
+      <div class="ticket-type">听涛席</div>
+      <div class="ticket-price"><small>¥</small>580</div>
+      <div class="ticket-desc">中层观众席 · 声效最佳</div>
+      <ul class="ticket-features">
+        <li>中层听涛座位</li>
+        <li>当日潮汐手册</li>
+        <li>艺术家签名海报</li>
+        <li>中场休息饮品</li>
+        <li>演出纪念票根</li>
+      </ul>
+      <button class="ticket-buy-btn">选择此档</button>
+    </div>
+    <div class="ticket-card reveal">
+      <div class="ticket-type">亲潮席</div>
+      <div class="ticket-price"><small>¥</small>980</div>
+      <div class="ticket-desc">前排亲水区 · 沉浸体验</div>
+      <ul class="ticket-features">
+        <li>前排亲水座位</li>
+        <li>艺术家见面会</li>
+        <li>专属纪念礼盒</li>
+        <li>演出后酒会</li>
+        <li>VIP 休息区</li>
+      </ul>
+      <button class="ticket-buy-btn">选择此档</button>
+    </div>
+  </div>
+</section>
+
+<!-- 页脚 -->
+<footer class="footer">
+  <div class="footer-content">
+    <div class="footer-brand">
+      <h3>潮汐剧场</h3>
+      <p>建在潮汐线上的海岸露天剧场，随潮起潮落，听海与舞台的回响。</p>
+    </div>
+    <div class="footer-col">
+      <h4>演出</h4>
+      <ul>
+        <li><a href="#schedule">演出排期</a></li>
+        <li><a href="#shows">剧目介绍</a></li>
+        <li><a href="#artists">艺术家</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>剧场</h4>
+      <ul>
+        <li><a href="#about">关于我们</a></li>
+        <li><a href="#">交通指南</a></li>
+        <li><a href="#">常见问题</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>联系</h4>
+      <ul>
+        <li><a href="#">客服热线</a></li>
+        <li><a href="#">商务合作</a></li>
+        <li><a href="#">媒体联络</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2026 潮汐剧场 · 东南海岸岩湾艺术区</p>
+    <p>演出时间依当日潮汐调整 · 请以实际公告为准</p>
+  </div>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // ==================== 动画框架 ====================
+  var rafIds = {};
+  var timers = [];
+  var isPageVisible = true;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function safeRAF(key, fn) {
+    if (rafIds[key]) cancelAnimationFrame(rafIds[key]);
+    function loop() {
+      if (!isPageVisible || reducedMotion) {
+        rafIds[key] = requestAnimationFrame(loop);
+        return;
+      }
+      fn();
+      rafIds[key] = requestAnimationFrame(loop);
+    }
+    rafIds[key] = requestAnimationFrame(loop);
+  }
+
+  function safeTimeout(fn, delay) {
+    var t = setTimeout(function() {
+      fn();
+      var idx = timers.indexOf(t);
+      if (idx > -1) timers.splice(idx, 1);
+    }, delay);
+    timers.push(t);
+    return t;
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    isPageVisible = !document.hidden;
+  });
+
+  window.addEventListener('beforeunload', function() {
+    for (var key in rafIds) {
+      cancelAnimationFrame(rafIds[key]);
+    }
+    timers.forEach(function(t) { clearTimeout(t); });
+  });
+
+  // ==================== 自定义光标 ====================
+  var cursor = document.getElementById('cursor');
+  var cursorX = window.innerWidth / 2;
+  var cursorY = window.innerHeight / 2;
+  var targetX = cursorX;
+  var targetY = cursorY;
+  var cursorVelX = 0;
+  var cursorVelY = 0;
+
+  if (!reducedMotion && window.innerWidth > 768) {
+    document.addEventListener('mousemove', function(e) {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    });
+
+    function updateCursor() {
+      // 弹簧模型：加速度与位移成正比，阻尼衰减速度
+      var stiffness = 0.18;
+      var damping = 0.78;
+      var dx = targetX - cursorX;
+      var dy = targetY - cursorY;
+      cursorVelX = (cursorVelX + dx * stiffness) * damping;
+      cursorVelY = (cursorVelY + dy * stiffness) * damping;
+      cursorX += cursorVelX;
+      cursorY += cursorVelY;
+      cursor.style.left = cursorX + 'px';
+      cursor.style.top = cursorY + 'px';
+    }
+    safeRAF('cursor', updateCursor);
+
+    // 悬停状态
+    var hoverTargets = document.querySelectorAll('a, button, .show-card, .artist-card, .ticket-card, .schedule-item, .day-tab');
+    hoverTargets.forEach(function(el) {
+      el.addEventListener('mouseenter', function() {
+        cursor.classList.add('hover');
+      });
+      el.addEventListener('mouseleave', function() {
+        cursor.classList.remove('hover');
+      });
+    });
+
+    // 点击涟漪
+    document.addEventListener('click', function(e) {
+      cursor.classList.add('click');
+      safeTimeout(function() { cursor.classList.remove('click'); }, 200);
+
+      var ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      ripple.style.width = '40px';
+      ripple.style.height = '40px';
+      document.body.appendChild(ripple);
+      safeTimeout(function() { ripple.remove(); }, 600);
+    });
+  }
+
+  // ==================== 海浪动画 ====================
+  var waveCanvas = document.getElementById('waveCanvas');
+  var waveCtx = waveCanvas.getContext('2d');
+  var waves = [];
+
+  function resizeWaves() {
+    waveCanvas.width = window.innerWidth;
+    waveCanvas.height = waveCanvas.offsetHeight;
+  }
+  resizeWaves();
+  window.addEventListener('resize', resizeWaves);
+
+  // 初始化多层波浪
+  var waveConfigs = [
+    { amplitude: 40, frequency: 0.008, speed: 0.015, color: 'rgba(10, 77, 92, 0.8)', yOffset: 0.2 },
+    { amplitude: 30, frequency: 0.012, speed: 0.02, color: 'rgba(10, 77, 92, 0.6)', yOffset: 0.35 },
+    { amplitude: 25, frequency: 0.015, speed: 0.025, color: 'rgba(255, 107, 91, 0.15)', yOffset: 0.5 },
+    { amplitude: 18, frequency: 0.02, speed: 0.03, color: 'rgba(232, 197, 114, 0.1)', yOffset: 0.6 },
+  ];
+
+  waveConfigs.forEach(function(cfg) {
+    waves.push({
+      phase: Math.random() * Math.PI * 2,
+      cfg: cfg
+    });
+  });
+
+  function drawWaves() {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    var w = waveCanvas.width;
+    var h = waveCanvas.height;
+
+    waves.forEach(function(wave) {
+      var cfg = wave.cfg;
+      wave.phase += cfg.speed;
+
+      waveCtx.beginPath();
+      waveCtx.moveTo(0, h);
+
+      for (var x = 0; x <= w; x += 4) {
+        var y = h * cfg.yOffset
+          + Math.sin(x * cfg.frequency + wave.phase) * cfg.amplitude
+          + Math.sin(x * cfg.frequency * 2.3 + wave.phase * 1.5) * cfg.amplitude * 0.3;
+        waveCtx.lineTo(x, y);
+      }
+
+      waveCtx.lineTo(w, h);
+      waveCtx.closePath();
+      waveCtx.fillStyle = cfg.color;
+      waveCtx.fill();
+    });
+  }
+  safeRAF('waves', drawWaves);
+
+  // ==================== 粒子系统 ====================
+  var particleCanvas = document.getElementById('particleCanvas');
+  var particleCtx = particleCanvas.getContext('2d');
+  var particles = [];
+  var maxParticles = 60;
+
+  function resizeParticles() {
+    particleCanvas.width = window.innerWidth;
+    particleCanvas.height = window.innerHeight;
+  }
+  resizeParticles();
+  window.addEventListener('resize', resizeParticles);
+
+  function createParticle() {
+    return {
+      x: Math.random() * particleCanvas.width,
+      y: Math.random() * particleCanvas.height,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: -0.2 - Math.random() * 0.5,
+      size: 1 + Math.random() * 2.5,
+      opacity: 0.2 + Math.random() * 0.5,
+      life: 1,
+      decay: 0.002 + Math.random() * 0.003,
+      hue: Math.random() > 0.7 ? 30 : 185 // 大部分青绿色，少部分金黄色
+    };
+  }
+
+  for (var i = 0; i < maxParticles; i++) {
+    particles.push(createParticle());
+    particles[i].life = Math.random();
+  }
+
+  function drawParticles() {
+    particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+
+    particles.forEach(function(p, idx) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= p.decay;
+
+      if (p.life <= 0 || p.y < -10) {
+        particles[idx] = createParticle();
+        particles[idx].y = particleCanvas.height + 10;
+        return;
+      }
+
+      var color = p.hue === 30
+        ? 'rgba(232, 197, 114, ' + (p.opacity * p.life) + ')'
+        : 'rgba(168, 192, 204, ' + (p.opacity * p.life) + ')';
+
+      particleCtx.beginPath();
+      particleCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      particleCtx.fillStyle = color;
+      particleCtx.fill();
+
+      // 发光
+      particleCtx.beginPath();
+      particleCtx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2);
+      particleCtx.fillStyle = p.hue === 30
+        ? 'rgba(232, 197, 114, ' + (p.opacity * p.life * 0.15) + ')'
+        : 'rgba(168, 192, 204, ' + (p.opacity * p.life * 0.1) + ')';
+      particleCtx.fill();
+    });
+  }
+  safeRAF('particles', drawParticles);
+
+  // ==================== Hero 标题逐字动画 ====================
+  var heroTitle = document.getElementById('heroTitle');
+  var titleText = heroTitle.textContent;
+  heroTitle.innerHTML = '';
+  for (var ti = 0; ti < titleText.length; ti++) {
+    var span = document.createElement('span');
+    span.className = 'char';
+    span.textContent = titleText[ti];
+    span.style.animationDelay = (0.7 + ti * 0.12) + 's';
+    heroTitle.appendChild(span);
+  }
+
+  // ==================== 数字计数动画 ====================
+  function animateCounter(el, target, duration) {
+    if (reducedMotion) { el.textContent = target; return; }
+    var start = 0;
+    var startTime = null;
+
+    function step(timestamp) {
+      if (!startTime) startTime = timestamp;
+      var progress = Math.min((timestamp - startTime) / duration, 1);
+      // easeOutCubic
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = Math.floor(start + (target - start) * eased);
+      el.textContent = current;
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ==================== 滚动渐入 ====================
+  var revealEls = document.querySelectorAll('.reveal');
+  var revealObserved = new WeakSet();
+
+  function checkReveal() {
+    revealEls.forEach(function(el) {
+      if (revealObserved.has(el)) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.85) {
+        el.classList.add('visible');
+        revealObserved.add(el);
+
+        // 数字计数
+        var counters = el.querySelectorAll('[data-count]');
+        counters.forEach(function(c) {
+          var target = parseInt(c.getAttribute('data-count'));
+          animateCounter(c, target, 1500);
+        });
+
+        // 潮汐路径
+        var paths = el.querySelectorAll('.tide-wave-path');
+        paths.forEach(function(p, pi) {
+          safeTimeout(function() { p.classList.add('visible'); }, pi * 200);
+        });
+
+        // 潮汐标记点
+        var markers = el.querySelectorAll('.tide-marker');
+        markers.forEach(function(m, mi) {
+          safeTimeout(function() { m.classList.add('visible'); }, 600 + mi * 200);
+        });
+      }
+    });
+  }
+
+  checkReveal();
+  var scrollTicking = false;
+  window.addEventListener('scroll', function() {
+    if (!scrollTicking) {
+      requestAnimationFrame(function() {
+        checkReveal();
+        scrollTicking = false;
+      });
+      scrollTicking = true;
+    }
+  });
+
+  // ==================== 导航栏滚动效果 ====================
+  var navbar = document.getElementById('navbar');
+  var navTicking = false;
+  window.addEventListener('scroll', function() {
+    if (!navTicking) {
+      requestAnimationFrame(function() {
+        if (window.scrollY > 100) {
+          navbar.classList.add('scrolled');
+        } else {
+          navbar.classList.remove('scrolled');
+        }
+        navTicking = false;
+      });
+      navTicking = true;
+    }
+  });
+
+  // ==================== 3D 卡片倾斜 ====================
+  var tiltCards = document.querySelectorAll('[data-tilt]');
+  tiltCards.forEach(function(card) {
+    var rafId = null;
+    var targetRotateX = 0;
+    var targetRotateY = 0;
+    var currentRotateX = 0;
+    var currentRotateY = 0;
+
+    card.addEventListener('mousemove', function(e) {
+      var rect = card.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+      var centerX = rect.width / 2;
+      var centerY = rect.height / 2;
+      var maxTilt = 12;
+
+      targetRotateY = ((x - centerX) / centerX) * maxTilt;
+      targetRotateX = -((y - centerY) / centerY) * maxTilt;
+    });
+
+    card.addEventListener('mouseleave', function() {
+      targetRotateX = 0;
+      targetRotateY = 0;
+    });
+
+    function tiltLoop() {
+      // 弹簧阻尼模型
+      var stiffness = 0.12;
+      var damping = 0.85;
+      currentRotateX += (targetRotateX - currentRotateX) * stiffness;
+      currentRotateY += (targetRotateY - currentRotateY) * stiffness;
+
+      card.style.transform = 'perspective(1000px) rotateX(' + currentRotateX + 'deg) rotateY(' + currentRotateY + 'deg)';
+      rafId = requestAnimationFrame(tiltLoop);
+    }
+
+    // 仅在悬停时启动，节省性能
+    card.addEventListener('mouseenter', function() {
+      if (!reducedMotion) tiltLoop();
+    });
+    card.addEventListener('mouseleave', function() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        // 回弹
+        var resetX = currentRotateX;
+        var resetY = currentRotateY;
+        var steps = 20;
+        var stepIdx = 0;
+        function resetLoop() {
+          stepIdx++;
+          var t = stepIdx / steps;
+          var easeT = 1 - Math.pow(1 - t, 3);
+          card.style.transform = 'perspective(1000px) rotateX(' + (resetX * (1 - easeT)) + 'deg) rotateY(' + (resetY * (1 - easeT)) + 'deg)';
+          if (stepIdx < steps) requestAnimationFrame(resetLoop);
+        }
+        requestAnimationFrame(resetLoop);
+      }
+    });
+  });
+
+  // ==================== 排期表数据 & 切换 ====================
+  var scheduleData = {
+    0: [ // 周一
+      { time: '06:30', tag: 'high', type: '高潮场', title: '潮声交响·黎明篇', artist: '林海潮 作曲', desc: '随日出高潮奏响的沉浸式声音剧场' },
+      { time: '10:00', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '退潮时在礁石间的诗歌与声音实验' },
+      { time: '14:00', tag: 'rising', type: '涨潮场', title: '浪痕', artist: '李若溪 编导', desc: '现代舞与潮水上涨的同步演绎', soldOut: true },
+      { time: '17:00', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '日落时分的沉浸戏剧，高潮时刻达到顶点' },
+      { time: '20:00', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '月光下随潮水退去的交响乐夜场' },
+      { time: '22:30', tag: 'low', type: '低潮场', title: '深海低语', artist: '苏晚晴 灯光设计', desc: '退潮至最低点时的光影声音装置剧场' },
+    ],
+    1: [
+      { time: '07:15', tag: 'high', type: '高潮场', title: '潮声交响·黎明篇', artist: '林海潮 作曲', desc: '随日出高潮奏响的沉浸式声音剧场' },
+      { time: '11:00', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '退潮时在礁石间的诗歌与声音实验', soldOut: true },
+      { time: '15:30', tag: 'rising', type: '涨潮场', title: '浪痕', artist: '李若溪 编导', desc: '现代舞与潮水上涨的同步演绎' },
+      { time: '18:30', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '日落时分的沉浸戏剧' },
+      { time: '21:30', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '月光下的交响乐夜场' },
+    ],
+    2: [
+      { time: '05:50', tag: 'high', type: '高潮场', title: '潮声交响·黎明篇', artist: '林海潮 作曲', desc: '随日出高潮奏响的沉浸式声音剧场' },
+      { time: '09:30', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '退潮时在礁石间的诗歌与声音实验' },
+      { time: '14:30', tag: 'rising', type: '涨潮场', title: '浪痕', artist: '李若溪 编导', desc: '现代舞与潮水上涨的同步演绎' },
+      { time: '17:45', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '日落时分的沉浸戏剧', soldOut: true },
+      { time: '21:00', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '月光下的交响乐夜场' },
+      { time: '23:30', tag: 'low', type: '低潮场', title: '深海低语', artist: '苏晚晴 灯光设计', desc: '深夜退潮时的光影声音装置' },
+    ],
+    3: [
+      { time: '06:40', tag: 'high', type: '高潮场', title: '潮声交响·黎明篇', artist: '林海潮 作曲', desc: '随日出高潮奏响的沉浸式声音剧场' },
+      { time: '10:20', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '退潮时在礁石间的诗歌与声音实验' },
+      { time: '15:00', tag: 'rising', type: '涨潮场', title: '浪痕', artist: '李若溪 编导', desc: '现代舞与潮水上涨的同步演绎' },
+      { time: '18:00', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '日落时分的沉浸戏剧' },
+      { time: '20:45', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '月光下的交响乐夜场', soldOut: true },
+    ],
+    4: [
+      { time: '07:00', tag: 'high', type: '高潮场', title: '潮声交响·黎明篇', artist: '林海潮 作曲', desc: '周五特别场' },
+      { time: '11:15', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '退潮时在礁石间的诗歌与声音实验' },
+      { time: '15:45', tag: 'rising', type: '涨潮场', title: '浪痕', artist: '李若溪 编导', desc: '现代舞与潮水上涨的同步演绎' },
+      { time: '19:00', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '周五夜场特别加演' },
+      { time: '22:00', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '周五深夜交响乐' },
+      { time: '23:59', tag: 'low', type: '低潮场', title: '午夜潮声', artist: '特邀嘉宾', desc: '周五限定·午夜沉浸式演出' },
+    ],
+    5: [
+      { time: '06:00', tag: 'high', type: '高潮场', title: '潮声交响·日出专场', artist: '林海潮 作曲', desc: '周六特别早场·海上日出' },
+      { time: '09:00', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '上午诗歌工作坊+演出' },
+      { time: '12:30', tag: 'rising', type: '涨潮场', title: '海浪儿童剧场', artist: '亲子剧团', desc: '周六特别亲子场' },
+      { time: '16:00', tag: 'high', type: '高潮场', title: '浪痕', artist: '李若溪 编导', desc: '周六日场' },
+      { time: '19:30', tag: 'falling', type: '落潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '周六黄金场', soldOut: true },
+      { time: '22:30', tag: 'low', type: '低潮场', title: '深海低语', artist: '苏晚晴 灯光设计', desc: '周六深夜沉浸场' },
+    ],
+    6: [
+      { time: '06:30', tag: 'high', type: '高潮场', title: '潮声交响·日出专场', artist: '林海潮 作曲', desc: '周日早场' },
+      { time: '10:00', tag: 'low', type: '低潮场', title: '礁石诗会', artist: '多位艺术家', desc: '周日诗歌漫步' },
+      { time: '14:00', tag: 'rising', type: '涨潮场', title: '海浪儿童剧场', artist: '亲子剧团', desc: '周日亲子场' },
+      { time: '17:00', tag: 'high', type: '高潮场', title: '灯塔守望者', artist: '陈予安 导演', desc: '周日黄昏场' },
+      { time: '20:00', tag: 'falling', type: '落潮场', title: '月下声景', artist: '周明远 指挥', desc: '周日闭幕夜场' },
+    ]
+  };
+
+  function renderSchedule(dayIdx) {
+    var list = document.getElementById('scheduleList');
+    var data = scheduleData[dayIdx] || [];
+    list.innerHTML = '';
+
+    data.forEach(function(item, idx) {
+      var div = document.createElement('div');
+      div.className = 'schedule-item reveal ' + (item.tag === 'high' ? 'high-tide' : 'low-tide');
+      div.style.opacity = '0';
+      div.style.transform = 'translateY(20px)';
+
+      var tagClass = item.tag === 'high' ? 'high' : 'low';
+      var tagText = item.type;
+      var btnText = item.soldOut ? '已售罄' : '立即购票';
+      var btnClass = item.soldOut ? 'schedule-btn sold-out' : 'schedule-btn';
+
+      div.innerHTML =
+        '<div class="schedule-time">' + item.time + '<small>' + item.type + '</small></div>' +
+        '<div class="schedule-info">' +
+          '<h3>' + item.title + '</h3>' +
+          '<p>' + item.desc + ' · ' + item.artist + '</p>' +
+          '<div class="schedule-tags"><span class="schedule-tag ' + tagClass + '">' + tagText + '</span></div>' +
+        '</div>' +
+        '<button class="' + btnClass + '">' + btnText + '</button>';
+
+      list.appendChild(div);
+
+      // 错峰入场动画
+      safeTimeout(function() {
+        div.style.transition = 'opacity 0.6s ease, transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        div.style.opacity = '1';
+        div.style.transform = 'translateY(0)';
+      }, idx * 100);
+    });
+  }
+
+  // 初始化第一天
+  renderSchedule(0);
+
+  // 日期切换
+  var dayTabs = document.querySelectorAll('.day-tab');
+  dayTabs.forEach(function(tab, idx) {
+    tab.addEventListener('click', function() {
+      dayTabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      renderSchedule(idx);
+    });
+  });
+
+  // ==================== 潮汐高度实时模拟 ====================
+  var tideHeightEl = document.getElementById('tideHeight');
+  var tideBase = 2.3;
+  var tidePhase = 0;
+
+  function updateTideHeight() {
+    tidePhase += 0.003;
+    // 模拟潮汐涨落：正弦 + 高次谐波
+    var height = tideBase
+      + Math.sin(tidePhase) * 0.8
+      + Math.sin(tidePhase * 2.3) * 0.2
+      + Math.sin(tidePhase * 0.7) * 0.3;
+    tideHeightEl.textContent = Math.max(0.5, height).toFixed(1);
+  }
+  safeRAF('tide', updateTideHeight);
+
+  // ==================== 视差滚动 ====================
+  var heroBg = document.querySelector('.hero-bg');
+  var heroContent = document.querySelector('.hero-content');
+  var parallaxTicking = false;
+
+  window.addEventListener('scroll', function() {
+    if (!parallaxTicking && !reducedMotion) {
+      requestAnimationFrame(function() {
+        var scrollY = window.scrollY;
+        if (scrollY < window.innerHeight) {
+          heroBg.style.transform = 'translateY(' + (scrollY * 0.3) + 'px)';
+          heroContent.style.transform = 'translateY(' + (scrollY * 0.15) + 'px)';
+          heroContent.style.opacity = Math.max(0, 1 - scrollY / 500);
+        }
+        parallaxTicking = false;
+      });
+      parallaxTicking = true;
+    }
+  });
+
+  // ==================== 平滑滚动导航 ====================
+  document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      var target = document.querySelector(anchor.getAttribute('href'));
+      if (target) {
+        var top = target.offsetTop - 80;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }
+    });
+  });
+
+  // ==================== 购票按钮反馈 ====================
+  document.querySelectorAll('.ticket-buy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var original = btn.textContent;
+      btn.textContent = '正在跳转...';
+      btn.style.background = '#E8C572';
+      btn.style.color = '#0A1B2E';
+      safeTimeout(function() {
+        btn.textContent = '✓ 已加入订单';
+        safeTimeout(function() {
+          btn.textContent = original;
+          btn.style.background = '';
+          btn.style.color = '';
+        }, 2000);
+      }, 800);
+    });
+  });
+
+})();
+</script>
+</body>
+</html>
