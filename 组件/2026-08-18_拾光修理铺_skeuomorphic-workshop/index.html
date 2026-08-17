@@ -1,0 +1,2277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>V3 UX 拟物微交互实验室</title>
+<style>
+  /* ========== 基础重置 ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; cursor: none; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    background: #1a1410;
+    color: #e8d5b7;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ========== 自定义光标 ========== */
+  .cursor-outer {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 32px;
+    height: 32px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9999;
+    mix-blend-mode: difference;
+    transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.2s ease,
+                background 0.2s ease;
+    will-change: transform, width, height;
+  }
+  .cursor-inner {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    background: #ffb347;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 10000;
+    box-shadow: 0 0 8px #ffb347, 0 0 16px #ff8c00;
+    transition: width 0.15s ease, height 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    will-change: transform;
+  }
+  .cursor-glow {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 80px;
+    height: 80px;
+    background: radial-gradient(circle, rgba(255,179,71,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9998;
+    transition: width 0.3s ease, height 0.3s ease, opacity 0.3s ease;
+    will-change: transform;
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 0;
+    height: 0;
+    border: 2px solid #ffb347;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9997;
+    opacity: 0.8;
+    animation: cursorRipple 0.6s ease-out forwards;
+  }
+  @keyframes cursorRipple {
+    0% { width: 0; height: 0; opacity: 0.8; }
+    100% { width: 60px; height: 60px; opacity: 0; }
+  }
+  body.cursor-hover .cursor-outer {
+    width: 52px;
+    height: 52px;
+    border-color: #ffb347;
+    background: rgba(255,179,71,0.08);
+  }
+  body.cursor-hover .cursor-inner {
+    width: 4px;
+    height: 4px;
+  }
+  body.cursor-hover .cursor-glow {
+    width: 120px;
+    height: 120px;
+  }
+  body.cursor-drag .cursor-outer {
+    width: 20px;
+    height: 20px;
+    background: #ffb347;
+    border-color: #ffb347;
+  }
+  body.cursor-drag .cursor-inner {
+    width: 8px;
+    height: 8px;
+    background: #1a1410;
+    box-shadow: 0 0 4px #1a1410;
+  }
+
+  /* ========== 页面背景 ========== */
+  .bg-texture {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(139, 90, 43, 0.25) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(101, 67, 33, 0.3) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, #2a1f18 0%, #14100c 100%);
+    z-index: 0;
+  }
+  .bg-noise {
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  /* ========== 主容器 ========== */
+  .lab {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========== 头部 ========== */
+  .lab-header {
+    padding: 24px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(212, 165, 116, 0.15);
+    backdrop-filter: blur(8px);
+    background: rgba(26, 20, 16, 0.6);
+    z-index: 10;
+  }
+  .lab-title {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .lab-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d4a574, #8b5a2b);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    color: #1a1410;
+    box-shadow: 0 2px 12px rgba(212, 165, 116, 0.4),
+                inset 0 1px 2px rgba(255,255,255,0.3);
+    position: relative;
+  }
+  .lab-badge::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid rgba(212, 165, 116, 0.3);
+  }
+  .lab-title-text h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #e8d5b7;
+    letter-spacing: 2px;
+  }
+  .lab-title-text p {
+    font-size: 12px;
+    color: #a08968;
+    margin-top: 2px;
+    letter-spacing: 1px;
+  }
+  .lab-nav {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #654321;
+    cursor: none;
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  .nav-dot:hover {
+    background: #d4a574;
+    transform: scale(1.4);
+    box-shadow: 0 0 12px rgba(212, 165, 116, 0.6);
+  }
+  .nav-dot.active {
+    background: #ffb347;
+    box-shadow: 0 0 12px rgba(255, 179, 71, 0.8);
+  }
+  .nav-label {
+    font-size: 11px;
+    color: #a08968;
+    margin-left: 12px;
+    letter-spacing: 1px;
+  }
+
+  /* ========== 展区网格 ========== */
+  .exhibits-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    padding: 2px;
+    overflow: hidden;
+  }
+
+  .exhibit {
+    position: relative;
+    background: linear-gradient(180deg, rgba(42, 31, 24, 0.8) 0%, rgba(20, 16, 12, 0.9) 100%);
+    border: 1px solid rgba(212, 165, 116, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.3s ease, background 0.3s ease;
+  }
+  .exhibit:hover {
+    border-color: rgba(212, 165, 116, 0.3);
+  }
+  .exhibit-header {
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid rgba(212, 165, 116, 0.08);
+  }
+  .exhibit-num {
+    font-size: 11px;
+    color: #d4a574;
+    letter-spacing: 2px;
+    font-weight: 600;
+    opacity: 0.6;
+  }
+  .exhibit-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e8d5b7;
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+  .exhibit-desc {
+    font-size: 11px;
+    color: #8a7860;
+    margin-top: 3px;
+    line-height: 1.5;
+    max-width: 200px;
+  }
+  .exhibit-tag {
+    font-size: 10px;
+    color: #d4a574;
+    padding: 3px 8px;
+    border: 1px solid rgba(212, 165, 116, 0.3);
+    border-radius: 10px;
+    letter-spacing: 1px;
+    background: rgba(212, 165, 116, 0.05);
+  }
+
+  .exhibit-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ========== 展品 1: 拉绳灯 ========== */
+  .lamp-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .lamp-ceiling {
+    width: 60px;
+    height: 12px;
+    background: linear-gradient(180deg, #5a4030, #3a2a1e);
+    border-radius: 3px 3px 0 0;
+    margin-top: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .lamp-cord-container {
+    position: relative;
+    width: 4px;
+    height: 120px;
+  }
+  .lamp-cord {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(180deg, #8b7355, #6b5344);
+    transform-origin: top center;
+    transform: translateX(-50%);
+    cursor: none;
+    transition: none;
+  }
+  .lamp-pull {
+    position: absolute;
+    left: 50%;
+    bottom: -16px;
+    width: 14px;
+    height: 22px;
+    background: linear-gradient(135deg, #c9a66b, #8b6914);
+    border-radius: 4px 4px 8px 8px;
+    transform: translateX(-50%);
+    cursor: grab;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5),
+                inset 0 1px 1px rgba(255,255,255,0.3);
+    z-index: 5;
+  }
+  .lamp-pull:active { cursor: grabbing; }
+  .lamp-bulb-container {
+    position: relative;
+    margin-top: 30px;
+  }
+  .lamp-bulb {
+    width: 44px;
+    height: 56px;
+    background: radial-gradient(ellipse at 50% 40%, #fff5d6 0%, #e8d4a0 40%, #c9b480 70%, #a08860 100%);
+    border-radius: 50% 50% 45% 45%;
+    position: relative;
+    transition: all 0.4s ease;
+    filter: brightness(0.6);
+  }
+  .lamp-bulb.on {
+    filter: brightness(1.8);
+    background: radial-gradient(ellipse at 50% 40%, #fffef0 0%, #fff5c0 30%, #ffeb90 60%, #ffd700 100%);
+    box-shadow: 0 0 40px #ffd700, 0 0 80px rgba(255, 215, 0, 0.6), 0 0 120px rgba(255, 200, 0, 0.3);
+  }
+  .lamp-bulb::before {
+    content: "";
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22px;
+    height: 14px;
+    background: linear-gradient(180deg, #6b5344, #4a3828);
+    border-radius: 2px 2px 4px 4px;
+  }
+  .lamp-light {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, rgba(255, 180, 0, 0.1) 30%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .lamp-light.on {
+    opacity: 1;
+    animation: lampPulse 3s ease-in-out infinite;
+  }
+  @keyframes lampPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+    50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+  }
+
+  /* ========== 展品 2: 日月切换 ========== */
+  .daynight-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .daynight-sky {
+    position: absolute;
+    inset: 0;
+    transition: background 1s ease;
+    background: linear-gradient(180deg, #1a1a3e 0%, #2d2d6b 50%, #4a3f7a 100%);
+  }
+  .daynight-sky.day {
+    background: linear-gradient(180deg, #87ceeb 0%, #b0d4e8 50%, #e8d5a0 100%);
+  }
+  .stars {
+    position: absolute;
+    inset: 0;
+    transition: opacity 1s ease;
+  }
+  .star {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #fff;
+    border-radius: 50%;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+  .daynight-sky.day + .stars,
+  .daynight-sky.day ~ .stars {
+    opacity: 0;
+  }
+  .daynight-sky.day .stars { opacity: 0; }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
+  }
+  .cloud {
+    position: absolute;
+    background: rgba(255,255,255,0.8);
+    border-radius: 50px;
+    opacity: 0;
+    transition: opacity 1s ease;
+  }
+  .cloud::before, .cloud::after {
+    content: "";
+    position: absolute;
+    background: inherit;
+    border-radius: 50%;
+  }
+  .daynight-sky.day ~ .cloud-layer .cloud { opacity: 0.7; }
+  .cloud-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .daynight-slider-track {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 180px;
+    height: 36px;
+    background: linear-gradient(180deg, #2a2a4a, #1a1a2e);
+    border-radius: 18px;
+    border: 2px solid rgba(255,255,255,0.1);
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+    overflow: hidden;
+    cursor: none;
+  }
+  .daynight-slider-track.day {
+    background: linear-gradient(180deg, #87ceeb, #6bb3d9);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .daynight-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fff5c0, #ffd700 60%, #daa520);
+    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.6),
+                inset -2px -2px 6px rgba(0,0,0,0.2);
+    cursor: grab;
+    transition: box-shadow 0.3s ease;
+    z-index: 5;
+  }
+  .daynight-thumb.night {
+    background: radial-gradient(circle at 30% 30%, #f5f5ff, #e8e8f0 60%, #c0c0d0);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.4),
+                inset -2px -2px 6px rgba(0,0,0,0.1);
+  }
+  .daynight-thumb:active { cursor: grabbing; }
+  .daynight-thumb::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.1);
+  }
+  .daynight-thumb.night::after {
+    top: 8px;
+    right: 6px;
+    width: 6px;
+    height: 6px;
+    background: rgba(100,100,120,0.3);
+    box-shadow: -8px 4px 0 -1px rgba(100,100,120,0.25);
+  }
+
+  /* ========== 展品 3: 物理质感按钮 ========== */
+  .phys-btn-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+  .phys-btn-base {
+    position: relative;
+    width: 110px;
+    height: 80px;
+    background: linear-gradient(180deg, #3a2a1e, #2a1e14);
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.6),
+                inset 0 1px 2px rgba(255,255,255,0.1);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 8px;
+  }
+  .phys-btn {
+    width: 80px;
+    height: 50px;
+    background: linear-gradient(180deg, #e74c3c 0%, #c0392b 50%, #922b21 100%);
+    border: none;
+    border-radius: 8px;
+    cursor: none;
+    position: relative;
+    box-shadow: 0 6px 0 #641e16,
+                0 8px 16px rgba(0,0,0,0.5),
+                inset 0 2px 4px rgba(255,255,255,0.2);
+    transition: all 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: translateY(0);
+  }
+  .phys-btn::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50px;
+    height: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.3), transparent);
+    border-radius: 50%;
+    filter: blur(2px);
+  }
+  .phys-btn.pressed {
+    transform: translateY(5px);
+    box-shadow: 0 1px 0 #641e16,
+                0 2px 4px rgba(0,0,0,0.5),
+                inset 0 2px 4px rgba(0,0,0,0.3);
+  }
+  .phys-btn-label {
+    font-size: 11px;
+    color: #ffcccc;
+    letter-spacing: 2px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .btn-ripple-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+  .btn-ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.4);
+    transform: translate(-50%, -50%) scale(0);
+    animation: btnRippleAnim 0.6s ease-out forwards;
+  }
+  @keyframes btnRippleAnim {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+  }
+  .magnetic-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d4a574, #8b5a2b);
+    border: none;
+    cursor: none;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4),
+                inset 0 1px 2px rgba(255,255,255,0.3);
+    transition: box-shadow 0.3s ease;
+    will-change: transform;
+  }
+  .magnetic-btn:hover {
+    box-shadow: 0 6px 20px rgba(212, 165, 116, 0.5),
+                inset 0 1px 2px rgba(255,255,255,0.4);
+  }
+  .magnetic-btn::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    border: 2px solid rgba(26, 20, 16, 0.4);
+    border-radius: 50%;
+    border-top-color: transparent;
+    border-right-color: transparent;
+    animation: magneticSpin 3s linear infinite;
+  }
+  @keyframes magneticSpin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+
+  /* ========== 展品 4: 拨杆开关 ========== */
+  .lever-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .lever-base {
+    position: relative;
+    width: 80px;
+    height: 140px;
+    background: linear-gradient(180deg, #4a3828, #2a1e14);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6),
+                inset 0 2px 4px rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+  }
+  .lever-slot {
+    position: relative;
+    width: 20px;
+    height: 100px;
+    background: linear-gradient(90deg, #1a1410, #2a1e14, #1a1410);
+    border-radius: 10px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+  }
+  .lever-arm {
+    position: absolute;
+    left: 50%;
+    top: 10px;
+    width: 8px;
+    height: 80px;
+    background: linear-gradient(90deg, #c9a66b, #e8d5a0, #c9a66b);
+    border-radius: 4px;
+    transform: translateX(-50%) rotate(0deg);
+    transform-origin: center bottom;
+    cursor: grab;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    transition: none;
+  }
+  .lever-arm:active { cursor: grabbing; }
+  .lever-knob {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 24px;
+    background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b 70%, #8b6914);
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5),
+                inset -2px -2px 4px rgba(0,0,0,0.3);
+  }
+  .lever-lights {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    left: -16px;
+    top: 0;
+  }
+  .lever-light {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3a2a1e;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    transition: all 0.3s ease;
+  }
+  .lever-light.on {
+    background: #00ff88;
+    box-shadow: 0 0 8px #00ff88, 0 0 16px rgba(0, 255, 136, 0.5);
+  }
+
+  /* ========== 展品 5: 转盘 ========== */
+  .dial-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dial-container {
+    position: relative;
+    width: 140px;
+    height: 140px;
+  }
+  .dial-face {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #2a221a, #1a1410);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6),
+                inset 0 2px 4px rgba(255,255,255,0.05),
+                inset 0 -2px 4px rgba(0,0,0,0.5);
+  }
+  .dial-ticks {
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+  }
+  .dial-tick {
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    width: 2px;
+    height: 8px;
+    background: #d4a574;
+    transform-origin: center 62px;
+    opacity: 0.6;
+  }
+  .dial-tick.major {
+    width: 3px;
+    height: 12px;
+    opacity: 1;
+    background: #ffb347;
+  }
+  .dial-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #c9a66b 0%, #8b6914 50%, #5a4510 100%);
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.6),
+                inset 0 2px 4px rgba(255,255,255,0.2),
+                inset 0 -4px 8px rgba(0,0,0,0.3);
+    transition: box-shadow 0.2s ease;
+  }
+  .dial-knob:active { cursor: grabbing; }
+  .dial-knob::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 20px;
+    background: #fff;
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(255,255,255,0.5);
+  }
+  .dial-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #3a2a1e, #1a1410);
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.1);
+    z-index: 2;
+  }
+  .dial-value {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #d4a574;
+    letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ========== 展品 6: 摇杆 ========== */
+  .joystick-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .joystick-base {
+    position: relative;
+    width: 130px;
+    height: 70px;
+    background: linear-gradient(180deg, #3a2a1e, #2a1e14);
+    border-radius: 65px 65px 12px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6),
+                inset 0 2px 4px rgba(255,255,255,0.1);
+  }
+  .joystick-well {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #0a0806 0%, #1a1410 70%);
+    box-shadow: inset 0 4px 12px rgba(0,0,0,0.9);
+  }
+  .joystick-stick {
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    width: 10px;
+    height: 70px;
+    background: linear-gradient(90deg, #6b5344, #8b7355, #6b5344);
+    border-radius: 5px;
+    transform: translateX(-50%);
+    transform-origin: bottom center;
+    cursor: grab;
+    transition: none;
+    z-index: 3;
+  }
+  .joystick-stick:active { cursor: grabbing; }
+  .joystick-ball {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #e74c3c, #c0392b 60%, #922b21);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5),
+                inset 0 2px 6px rgba(255,255,255,0.2);
+  }
+  .joystick-ball::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 10px;
+    width: 10px;
+    height: 6px;
+    background: rgba(255,255,255,0.4);
+    border-radius: 50%;
+    filter: blur(1px);
+  }
+  .joystick-dir-indicator {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #8a7860;
+    letter-spacing: 1px;
+  }
+
+  /* ========== 展品 7: 拨动开关组 ========== */
+  .switches-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+  }
+  .switch-panel {
+    width: 140px;
+    padding: 16px;
+    background: linear-gradient(180deg, #2a221a, #1a1410);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5),
+                inset 0 1px 2px rgba(255,255,255,0.05);
+    display: flex;
+    justify-content: space-around;
+  }
+  .toggle-switch {
+    position: relative;
+    width: 28px;
+    height: 48px;
+    cursor: none;
+  }
+  .toggle-body {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #3a3028, #1a1410);
+    border-radius: 6px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.6),
+                0 1px 2px rgba(255,255,255,0.05);
+    overflow: hidden;
+  }
+  .toggle-lever {
+    position: absolute;
+    top: 4px;
+    left: 3px;
+    right: 3px;
+    height: 18px;
+    background: linear-gradient(180deg, #d4a574, #a07850);
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4),
+                inset 0 1px 1px rgba(255,255,255,0.3);
+    transition: top 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .toggle-switch.on .toggle-lever {
+    top: 26px;
+    background: linear-gradient(180deg, #ffb347, #e89520);
+  }
+  .toggle-label {
+    position: absolute;
+    bottom: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    color: #8a7860;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .switch-light-row {
+    display: flex;
+    gap: 12px;
+  }
+  .switch-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #3a2a1e;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    transition: all 0.3s ease;
+  }
+  .switch-indicator.on {
+    background: #00ff88;
+    box-shadow: 0 0 8px #00ff88, 0 0 16px rgba(0, 255, 136, 0.4);
+  }
+  .switch-indicator.on.orange {
+    background: #ff8c00;
+    box-shadow: 0 0 8px #ff8c00, 0 0 16px rgba(255, 140, 0, 0.4);
+  }
+  .switch-indicator.on.blue {
+    background: #4fc3f7;
+    box-shadow: 0 0 8px #4fc3f7, 0 0 16px rgba(79, 195, 247, 0.4);
+  }
+
+  /* ========== 展品 8: 磁吸滑块 ========== */
+  .magnetic-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  .mag-track {
+    position: relative;
+    width: 180px;
+    height: 20px;
+    background: linear-gradient(180deg, #1a1410, #2a1e14);
+    border-radius: 10px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+  }
+  .mag-zones {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+  }
+  .mag-zone {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px dashed rgba(212, 165, 116, 0.3);
+    transition: all 0.3s ease;
+  }
+  .mag-zone.active {
+    border-color: #ffb347;
+    border-style: solid;
+    background: rgba(255, 179, 71, 0.1);
+    box-shadow: 0 0 12px rgba(255, 179, 71, 0.3);
+  }
+  .mag-slider {
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #e8d5a0, #c9a66b 60%, #8b6914);
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5),
+                0 0 16px rgba(212, 165, 116, 0.3);
+    transition: box-shadow 0.3s ease;
+    z-index: 5;
+  }
+  .mag-slider:active { cursor: grabbing; }
+  .mag-slider::before {
+    content: "N";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10px;
+    font-weight: 700;
+    color: #8b4513;
+  }
+  .mag-labels {
+    display: flex;
+    gap: 20px;
+    font-size: 10px;
+    color: #8a7860;
+    letter-spacing: 1px;
+  }
+
+  /* ========== 页脚 ========== */
+  .lab-footer {
+    padding: 12px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(212, 165, 116, 0.15);
+    background: rgba(26, 20, 16, 0.6);
+    backdrop-filter: blur(8px);
+    font-size: 11px;
+    color: #8a7860;
+    z-index: 10;
+  }
+  .footer-stats {
+    display: flex;
+    gap: 24px;
+  }
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #d4a574;
+  }
+  .stat-dot.pulse {
+    animation: statPulse 2s ease-in-out infinite;
+  }
+  @keyframes statPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ========== 滚动提示入场动画 ========== */
+  .exhibit {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: exhibitEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .exhibit:nth-child(1) { animation-delay: 0.1s; }
+  .exhibit:nth-child(2) { animation-delay: 0.2s; }
+  .exhibit:nth-child(3) { animation-delay: 0.3s; }
+  .exhibit:nth-child(4) { animation-delay: 0.4s; }
+  .exhibit:nth-child(5) { animation-delay: 0.5s; }
+  .exhibit:nth-child(6) { animation-delay: 0.6s; }
+  .exhibit:nth-child(7) { animation-delay: 0.7s; }
+  .exhibit:nth-child(8) { animation-delay: 0.8s; }
+  @keyframes exhibitEnter {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ========== 光泽扫过效果 ========== */
+  .exhibit::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 200, 100, 0.03), transparent);
+    transition: left 0.6s ease;
+    pointer-events: none;
+  }
+  .exhibit:hover::after {
+    left: 150%;
+  }
+
+  /* ========== 3D 倾斜容器 ========== */
+  .tilt-container {
+    transform-style: preserve-3d;
+    perspective: 1000px;
+  }
+
+  /* ========== 响应式 ========== */
+  @media (max-width: 1200px) {
+    .exhibits-grid { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(4, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .exhibits-grid { grid-template-columns: 1fr; grid-template-rows: repeat(8, 1fr); }
+    .lab-header { padding: 16px 20px; }
+    .lab-title-text h1 { font-size: 16px; }
+  }
+
+  /* ========== 减少动效 ========== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .cursor-outer, .cursor-inner, .cursor-glow { display: none; }
+    html, body { cursor: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-texture"></div>
+<div class="bg-noise"></div>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<div class="lab">
+  <!-- 头部 -->
+  <header class="lab-header">
+    <div class="lab-title">
+      <div class="lab-badge">V3</div>
+      <div class="lab-title-text">
+        <h1>拟物微交互实验室</h1>
+        <p>SKEUOMORPHIC MICRO-INTERACTION LAB</p>
+      </div>
+    </div>
+    <nav class="lab-nav">
+      <span class="nav-dot active" data-idx="0"></span>
+      <span class="nav-dot" data-idx="1"></span>
+      <span class="nav-dot" data-idx="2"></span>
+      <span class="nav-label">展区导航</span>
+    </nav>
+  </header>
+
+  <!-- 展区网格 -->
+  <main class="exhibits-grid">
+
+    <!-- 展品 1: 拉绳灯 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 01</div>
+          <div class="exhibit-name">悬绳拉线灯</div>
+          <div class="exhibit-desc">拖拽拉绳点亮灯泡，感受光线漫溢</div>
+        </div>
+        <span class="exhibit-tag">拖拽</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="lamp-scene" id="lampScene">
+          <div class="lamp-ceiling"></div>
+          <div class="lamp-cord-container">
+            <div class="lamp-cord" id="lampCord"></div>
+            <div class="lamp-pull" id="lampPull"></div>
+          </div>
+          <div class="lamp-bulb-container">
+            <div class="lamp-light" id="lampLight"></div>
+            <div class="lamp-bulb" id="lampBulb"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 2: 日月切换 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 02</div>
+          <div class="exhibit-name">晨昏滑动开关</div>
+          <div class="exhibit-desc">拖动天体滑块，切换昼夜星云海</div>
+        </div>
+        <span class="exhibit-tag">滑动</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="daynight-scene" id="daynightScene">
+          <div class="daynight-sky" id="daynightSky">
+            <div class="stars" id="starsContainer"></div>
+          </div>
+          <div class="cloud-layer" id="cloudLayer"></div>
+          <div class="daynight-slider-track" id="dnTrack">
+            <div class="daynight-thumb" id="dnThumb"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 3: 物理质感按钮 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 03</div>
+          <div class="exhibit-name">物理按压按键</div>
+          <div class="exhibit-desc">按压回弹涟漪，磁吸吸附归位</div>
+        </div>
+        <span class="exhibit-tag">点击</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="phys-btn-scene">
+          <div class="phys-btn-base">
+            <button class="phys-btn" id="physBtn">
+              <span class="phys-btn-label">按 压</span>
+              <div class="btn-ripple-container" id="btnRippleContainer"></div>
+            </button>
+          </div>
+          <button class="magnetic-btn" id="magneticBtn"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 4: 拨杆开关 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 04</div>
+          <div class="exhibit-name">黄铜拨杆</div>
+          <div class="exhibit-desc">拨动档位，灯光逐级亮起</div>
+        </div>
+        <span class="exhibit-tag">拖动</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="lever-scene">
+          <div class="lever-base">
+            <div class="lever-slot">
+              <div class="lever-lights" id="leverLights">
+                <div class="lever-light" data-level="3"></div>
+                <div class="lever-light" data-level="2"></div>
+                <div class="lever-light" data-level="1"></div>
+                <div class="lever-light" data-level="0"></div>
+              </div>
+              <div class="lever-arm" id="leverArm">
+                <div class="lever-knob"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 5: 转盘 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 05</div>
+          <div class="exhibit-name">刻度转盘</div>
+          <div class="exhibit-desc">旋转调节，阻尼惯性细腻反馈</div>
+        </div>
+        <span class="exhibit-tag">旋转</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="dial-scene">
+          <div class="dial-container">
+            <div class="dial-face"></div>
+            <div class="dial-ticks" id="dialTicks"></div>
+            <div class="dial-knob" id="dialKnob"></div>
+            <div class="dial-center"></div>
+            <div class="dial-value" id="dialValue">000</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 6: 摇杆 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 06</div>
+          <div class="exhibit-name">街机摇杆</div>
+          <div class="exhibit-desc">全向拨动，弹簧回弹阻尼手感</div>
+        </div>
+        <span class="exhibit-tag">拖动</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="joystick-scene">
+          <div class="joystick-base">
+            <div class="joystick-well">
+              <div class="joystick-stick" id="joystickStick">
+                <div class="joystick-ball"></div>
+              </div>
+            </div>
+            <div class="joystick-dir-indicator" id="joyIndicator">回 中</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 7: 拨动开关组 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 07</div>
+          <div class="exhibit-name">电路拨键组</div>
+          <div class="exhibit-desc">三路独立开关，指示灯联动反馈</div>
+        </div>
+        <span class="exhibit-tag">点击</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="switches-scene">
+          <div class="switch-light-row" id="switchIndicators">
+            <div class="switch-indicator on" data-idx="0"></div>
+            <div class="switch-indicator on orange" data-idx="1"></div>
+            <div class="switch-indicator on blue" data-idx="2"></div>
+          </div>
+          <div class="switch-panel">
+            <div class="toggle-switch on" data-switch="0">
+              <div class="toggle-body"><div class="toggle-lever"></div></div>
+              <div class="toggle-label">电源</div>
+            </div>
+            <div class="toggle-switch on" data-switch="1">
+              <div class="toggle-body"><div class="toggle-lever"></div></div>
+              <div class="toggle-label">信号</div>
+            </div>
+            <div class="toggle-switch on" data-switch="2">
+              <div class="toggle-body"><div class="toggle-lever"></div></div>
+              <div class="toggle-label">音频</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 展品 8: 磁吸滑块 -->
+    <section class="exhibit tilt-container" data-tilt>
+      <div class="exhibit-header">
+        <div>
+          <div class="exhibit-num">EXHIBIT 08</div>
+          <div class="exhibit-name">磁吸档位</div>
+          <div class="exhibit-desc">磁吸附档位，反平方引力手感</div>
+        </div>
+        <span class="exhibit-tag">拖拽</span>
+      </div>
+      <div class="exhibit-stage">
+        <div class="magnetic-scene">
+          <div class="mag-track" id="magTrack">
+            <div class="mag-zones" id="magZones"></div>
+            <div class="mag-slider" id="magSlider"></div>
+          </div>
+          <div class="mag-labels">
+            <span>低</span>
+            <span>中</span>
+            <span>高</span>
+            <span>满</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="lab-footer">
+    <div class="footer-stats">
+      <div class="stat">
+        <div class="stat-dot pulse"></div>
+        <span>展区在线 · 8 组装置</span>
+      </div>
+      <div class="stat">
+        <div class="stat-dot"></div>
+        <span>交互模式 · 悬停 / 点击 / 拖拽</span>
+      </div>
+    </div>
+    <div>光标驱动拟物化实验室 · V3</div>
+  </footer>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== 减少动效检测 ==========
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ========== 动画帧管理 ==========
+  let rafId = null;
+  const tickCallbacks = new Set();
+  let lastTime = 0;
+  let isPaused = false;
+
+  function rafLoop(ts) {
+    if (isPaused) { rafId = null; return; }
+    const dt = Math.min(32, ts - lastTime);
+    lastTime = ts;
+    tickCallbacks.forEach(cb => {
+      try { cb(dt, ts); } catch(e) { console.error(e); }
+    });
+    rafId = requestAnimationFrame(rafLoop);
+  }
+
+  function startLoop() {
+    if (rafId || prefersReducedMotion) return;
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(rafLoop);
+  }
+
+  function stopLoop() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  function addTick(cb) {
+    tickCallbacks.add(cb);
+    startLoop();
+  }
+
+  function removeTick(cb) {
+    tickCallbacks.delete(cb);
+    if (tickCallbacks.size === 0) stopLoop();
+  }
+
+  // 页面可见性切换
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      isPaused = true;
+      stopLoop();
+    } else {
+      isPaused = false;
+      lastTime = performance.now();
+      if (tickCallbacks.size > 0) startLoop();
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function() {
+    stopLoop();
+    tickCallbacks.clear();
+  });
+
+  // ========== 自定义光标 ==========
+  const cursorOuter = document.getElementById('cursorOuter');
+  const cursorInner = document.getElementById('cursorInner');
+  const cursorGlow = document.getElementById('cursorGlow');
+
+  // 弹簧光标 (外缓内紧)
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let outerX = cursorX;
+  let outerY = cursorY;
+  let glowX = cursorX;
+  let glowY = cursorY;
+
+  if (!prefersReducedMotion) {
+    document.addEventListener('mousemove', function(e) {
+      cursorX = e.clientX;
+      cursorY = e.clientY;
+      cursorInner.style.transform = 'translate(' + (cursorX - 3) + 'px, ' + (cursorY - 3) + 'px)';
+    });
+
+    addTick(function(dt) {
+      // 外环弹簧跟随
+      const spring = 0.18;
+      outerX += (cursorX - outerX) * spring;
+      outerY += (cursorY - outerY) * spring;
+      cursorOuter.style.transform = 'translate(' + (outerX - 16) + 'px, ' + (outerY - 16) + 'px)';
+
+      // 光晕更缓慢跟随
+      glowX += (cursorX - glowX) * 0.08;
+      glowY += (cursorY - glowY) * 0.08;
+      cursorGlow.style.transform = 'translate(' + (glowX - 40) + 'px, ' + (glowY - 40) + 'px)';
+    });
+
+    // 可交互元素悬停态
+    const interactiveSelector = 'button, .lamp-pull, .daynight-thumb, .lever-arm, .dial-knob, .joystick-stick, .toggle-switch, .mag-slider, .nav-dot';
+
+    document.addEventListener('mouseover', function(e) {
+      if (e.target.closest(interactiveSelector)) {
+        document.body.classList.add('cursor-hover');
+      }
+    });
+    document.addEventListener('mouseout', function(e) {
+      if (e.target.closest(interactiveSelector)) {
+        document.body.classList.remove('cursor-hover');
+      }
+    });
+
+    // 点击涟漪
+    document.addEventListener('mousedown', function(e) {
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      document.body.appendChild(ripple);
+      setTimeout(function() { ripple.remove(); }, 600);
+    });
+  }
+
+  // ========== 工具函数 ==========
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function mapRange(v, inMin, inMax, outMin, outMax) {
+    return outMin + (outMax - outMin) * ((v - inMin) / (inMax - inMin));
+  }
+
+  // ========== 展品 1: 拉绳灯 ==========
+  (function() {
+    const pull = document.getElementById('lampPull');
+    const cord = document.getElementById('lampCord');
+    const bulb = document.getElementById('lampBulb');
+    const light = document.getElementById('lampLight');
+    const scene = document.getElementById('lampScene');
+    if (!pull || !cord || !bulb || !light) return;
+
+    let isOn = false;
+    let isDragging = false;
+    let pullY = 0;
+    let targetY = 0;
+    let velocity = 0;
+    let lastClickY = 0;
+    const maxPull = 40;
+    const toggleThreshold = 25;
+    let hasTriggered = false;
+
+    // 弹簧阻尼系统
+    function physicsTick(dt) {
+      if (isDragging) return;
+      const spring = 0.25;
+      const damping = 0.82;
+      const force = (targetY - pullY) * spring;
+      velocity += force;
+      velocity *= damping;
+      pullY += velocity;
+
+      pull.style.transform = 'translateX(-50%) translateY(' + pullY + 'px)';
+      cord.style.height = (100 + pullY) + 'px';
+
+      // 摆动效果 (基于速度的微摆动)
+      const sway = velocity * 0.3;
+      cord.style.transform = 'translateX(-50%) rotate(' + sway + 'deg)';
+    }
+    if (!prefersReducedMotion) addTick(physicsTick);
+
+    function toggle() {
+      isOn = !isOn;
+      bulb.classList.toggle('on', isOn);
+      light.classList.toggle('on', isOn);
+    }
+
+    pull.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      lastClickY = e.clientY;
+      hasTriggered = false;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dy = e.clientY - lastClickY;
+      pullY = clamp(dy, 0, maxPull);
+      targetY = pullY;
+      pull.style.transform = 'translateX(-50%) translateY(' + pullY + 'px)';
+      cord.style.height = (100 + pullY) + 'px';
+      cord.style.transform = 'translateX(-50%)';
+
+      // 超过阈值触发切换
+      if (pullY > toggleThreshold && !hasTriggered) {
+        hasTriggered = true;
+        toggle();
+        // 视觉弹跳
+        velocity = -8;
+      }
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+      targetY = 0;
+      if (pullY > 5) velocity = -3;
+    });
+  })();
+
+  // ========== 展品 2: 日月切换 ==========
+  (function() {
+    const sky = document.getElementById('daynightSky');
+    const thumb = document.getElementById('dnThumb');
+    const track = document.getElementById('dnTrack');
+    const starsContainer = document.getElementById('starsContainer');
+    const cloudLayer = document.getElementById('cloudLayer');
+    if (!sky || !thumb || !track) return;
+
+    // 生成星星
+    if (starsContainer) {
+      for (let i = 0; i < 30; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        star.style.left = Math.random() * 100 + '%';
+        star.style.top = Math.random() * 60 + '%';
+        star.style.animationDelay = (Math.random() * 3) + 's';
+        star.style.width = (1 + Math.random() * 2) + 'px';
+        star.style.height = star.style.width;
+        starsContainer.appendChild(star);
+      }
+    }
+
+    // 生成云
+    if (cloudLayer) {
+      const clouds = [
+        { top: '15%', left: '10%', w: 60, h: 18 },
+        { top: '30%', left: '60%', w: 80, h: 22 },
+        { top: '45%', left: '25%', w: 50, h: 14 },
+      ];
+      clouds.forEach(function(c) {
+        const cloud = document.createElement('div');
+        cloud.className = 'cloud';
+        cloud.style.top = c.top;
+        cloud.style.left = c.left;
+        cloud.style.width = c.w + 'px';
+        cloud.style.height = c.h + 'px';
+        cloud.style.animation = 'cloudDrift ' + (20 + Math.random() * 15) + 's linear infinite';
+        cloudLayer.appendChild(cloud);
+      });
+    }
+
+    // 云飘动keyframes
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = '@keyframes cloudDrift { 0% { transform: translateX(-20px); } 100% { transform: translateX(40px); } }';
+    document.head.appendChild(styleSheet);
+
+    let isDragging = false;
+    let isDay = false;
+    let thumbX = 0;
+    let startX = 0;
+    let startThumbX = 0;
+    const trackW = 176; // 180 - 2*2 (边框)
+    const thumbW = 28;
+    const maxX = trackW - thumbW - 4;
+
+    function setThumb(x) {
+      thumbX = clamp(x, 0, maxX);
+      thumb.style.left = (2 + thumbX) + 'px';
+
+      // 进度 0 ~ 1
+      const progress = thumbX / maxX;
+      isDay = progress > 0.5;
+
+      sky.classList.toggle('day', isDay);
+      thumb.classList.toggle('night', !isDay);
+      track.classList.toggle('day', isDay);
+
+      // 渐变背景随进度
+      if (progress < 0.5) {
+        // 夜 -> 昏
+        const t = progress / 0.5;
+        sky.style.background = 'linear-gradient(180deg, ' +
+          lerpColor([26,26,62], [70,60,90], t) + ' 0%, ' +
+          lerpColor([45,45,107], [120,90,100], t) + ' 50%, ' +
+          lerpColor([74,63,122], [160,120,90], t) + ' 100%)';
+      } else {
+        // 晨 -> 昼
+        const t = (progress - 0.5) / 0.5;
+        sky.style.background = 'linear-gradient(180deg, ' +
+          lerpColor([120,100,140], [135,206,235], t) + ' 0%, ' +
+          lerpColor([180,140,130], [176,212,232], t) + ' 50%, ' +
+          lerpColor([220,180,140], [232,213,160], t) + ' 100%)';
+      }
+    }
+
+    function lerpColor(a, b, t) {
+      const r = Math.round(lerp(a[0], b[0], t));
+      const g = Math.round(lerp(a[1], b[1], t));
+      const bl = Math.round(lerp(a[2], b[2], t));
+      return 'rgb(' + r + ',' + g + ',' + bl + ')';
+    }
+
+    thumb.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      startX = e.clientX;
+      startThumbX = thumbX;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      setThumb(startThumbX + dx);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+      // 弹簧吸附到端点
+      const snapTarget = thumbX > maxX / 2 ? maxX : 0;
+      snapTo(snapTarget);
+    });
+
+    // 点击轨道切换
+    track.addEventListener('click', function(e) {
+      if (isDragging) return;
+      const rect = track.getBoundingClientRect();
+      const clickX = e.clientX - rect.left - thumbW / 2;
+      const target = clickX > maxX / 2 ? maxX : 0;
+      snapTo(target);
+    });
+
+    function snapTo(target) {
+      if (prefersReducedMotion) {
+        setThumb(target);
+        return;
+      }
+      const startPos = thumbX;
+      const dist = target - startPos;
+      const duration = 400;
+      const startTime = performance.now();
+
+      function snapTick(dt, ts) {
+        const elapsed = ts - startTime;
+        const t = clamp(elapsed / duration, 0, 1);
+        // easeOutElastic
+        const eased = t === 0 ? 0 : t === 1 ? 1 :
+          Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1;
+        setThumb(startPos + dist * eased);
+        if (t >= 1) removeTick(snapTick);
+      }
+      addTick(snapTick);
+    }
+  })();
+
+  // ========== 展品 3: 物理按钮 + 磁吸按钮 ==========
+  (function() {
+    const btn = document.getElementById('physBtn');
+    const rippleContainer = document.getElementById('btnRippleContainer');
+    const magBtn = document.getElementById('magneticBtn');
+    if (!btn) return;
+
+    // 按压按钮
+    btn.addEventListener('mousedown', function(e) {
+      btn.classList.add('pressed');
+
+      // 涟漪
+      const rect = btn.getBoundingClientRect();
+      const ripple = document.createElement('div');
+      ripple.className = 'btn-ripple';
+      ripple.style.left = (e.clientX - rect.left) + 'px';
+      ripple.style.top = (e.clientY - rect.top) + 'px';
+      ripple.style.width = '20px';
+      ripple.style.height = '20px';
+      rippleContainer.appendChild(ripple);
+      setTimeout(function() { ripple.remove(); }, 600);
+    });
+
+    document.addEventListener('mouseup', function() {
+      btn.classList.remove('pressed');
+    });
+
+    // 磁吸按钮
+    if (magBtn && !prefersReducedMotion) {
+      const magnetStrength = 0.4;
+      const magnetRadius = 80;
+
+      magBtn.parentElement.addEventListener('mousemove', function(e) {
+        const rect = magBtn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < magnetRadius) {
+          const force = (1 - dist / magnetRadius) * magnetStrength * 20;
+          const angle = Math.atan2(dy, dx);
+          const tx = Math.cos(angle) * force;
+          const ty = Math.sin(angle) * force;
+          magBtn.style.transform = 'translate(' + tx + 'px, ' + ty + 'px)';
+        } else {
+          // 弹簧回归
+          springBack();
+        }
+      });
+
+      magBtn.parentElement.addEventListener('mouseleave', springBack);
+
+      let springVelX = 0, springVelY = 0;
+      let springX = 0, springY = 0;
+      let springTargetX = 0, springTargetY = 0;
+      let springActive = false;
+
+      function springBack() {
+        springTargetX = 0;
+        springTargetY = 0;
+        const rect = magBtn.getBoundingClientRect();
+        const transform = new DOMMatrix(getComputedStyle(magBtn).transform);
+        springX = transform.m41;
+        springY = transform.m42;
+        if (!springActive) {
+          springActive = true;
+          addTick(springTick);
+        }
+      }
+
+      function springTick(dt) {
+        const k = 0.15;
+        const damping = 0.78;
+        const ax = (springTargetX - springX) * k;
+        const ay = (springTargetY - springY) * k;
+        springVelX += ax;
+        springVelY += ay;
+        springVelX *= damping;
+        springVelY *= damping;
+        springX += springVelX;
+        springY += springVelY;
+
+        magBtn.style.transform = 'translate(' + springX + 'px, ' + springY + 'px)';
+
+        if (Math.abs(springX) < 0.1 && Math.abs(springY) < 0.1 &&
+            Math.abs(springVelX) < 0.1 && Math.abs(springVelY) < 0.1) {
+          magBtn.style.transform = 'translate(0, 0)';
+          springActive = false;
+          removeTick(springTick);
+        }
+      }
+
+      // 点击弹出效果
+      magBtn.addEventListener('click', function() {
+        const original = springX;
+        springVelX = -10;
+        springVelY = -8;
+        if (!springActive) {
+          springActive = true;
+          addTick(springTick);
+        }
+      });
+    }
+  })();
+
+  // ========== 展品 4: 拨杆 ==========
+  (function() {
+    const arm = document.getElementById('leverArm');
+    const lights = document.querySelectorAll('#leverLights .lever-light');
+    if (!arm || !lights.length) return;
+
+    let isDragging = false;
+    let angle = 0; // -30 (top) ~ 30 (bottom), 0 = middle
+    let velocity = 0;
+    let startAngle = 0;
+    let startY = 0;
+    const maxAngle = 35;
+    const step = 17.5; // 3档
+    let currentLevel = 1; // 0~3
+
+    function setAngle(a) {
+      angle = clamp(a, -maxAngle, maxAngle);
+      arm.style.transform = 'translateX(-50%) rotate(' + angle + 'deg)';
+
+      // 档位计算
+      const normalized = (angle + maxAngle) / (2 * maxAngle); // 0~1
+      const level = Math.round(normalized * 3);
+      if (level !== currentLevel) {
+        currentLevel = level;
+        lights.forEach(function(l) {
+          const lvl = parseInt(l.dataset.level, 10);
+          l.classList.toggle('on', lvl <= currentLevel);
+        });
+      }
+    }
+
+    function physicsTick(dt) {
+      if (isDragging) return;
+      // 弹簧回到最近档位
+      const targetLevel = clamp(Math.round((angle + maxAngle) / step / 2) * step * 2 - maxAngle, -maxAngle, maxAngle);
+      const spring = 0.2;
+      const damping = 0.75;
+      const force = (targetLevel - angle) * spring;
+      velocity += force;
+      velocity *= damping;
+      angle += velocity;
+      setAngle(angle);
+    }
+    if (!prefersReducedMotion) addTick(physicsTick);
+
+    arm.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      startY = e.clientY;
+      startAngle = angle;
+      velocity = 0;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dy = e.clientY - startY;
+      const newAngle = startAngle + dy * 0.8;
+      setAngle(newAngle);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+      // 给点初始速度让弹动更自然
+      velocity *= 0.5;
+    });
+
+    // 初始化
+    setAngle(0);
+  })();
+
+  // ========== 展品 5: 转盘 ==========
+  (function() {
+    const knob = document.getElementById('dialKnob');
+    const ticksContainer = document.getElementById('dialTicks');
+    const valueDisplay = document.getElementById('dialValue');
+    if (!knob || !ticksContainer) return;
+
+    // 生成刻度
+    const totalTicks = 24;
+    for (let i = 0; i < totalTicks; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'dial-tick' + (i % 4 === 0 ? ' major' : '');
+      tick.style.transform = 'translateX(-50%) rotate(' + (i * (360 / totalTicks)) + 'deg)';
+      ticksContainer.appendChild(tick);
+    }
+
+    let isDragging = false;
+    let rotation = 0;
+    let startRotation = 0;
+    let startAngle = 0;
+    let angularVelocity = 0;
+    let lastAngle = 0;
+    let lastTime = 0;
+    const minRot = -150;
+    const maxRot = 150;
+
+    function setRotation(r) {
+      rotation = clamp(r, minRot, maxRot);
+      knob.style.transform = 'translate(-50%, -50%) rotate(' + rotation + 'deg)';
+      if (valueDisplay) {
+        const val = Math.round(mapRange(rotation, minRot, maxRot, 0, 100));
+        valueDisplay.textContent = String(val).padStart(3, '0');
+      }
+    }
+
+    function physicsTick(dt, ts) {
+      if (isDragging) {
+        // 计算角速度
+        const dtSec = (ts - lastTime) / 1000;
+        if (dtSec > 0) {
+          angularVelocity = (rotation - lastAngle) / dtSec; // deg/s
+        }
+        lastAngle = rotation;
+        lastTime = ts;
+        return;
+      }
+      // 阻尼减速
+      if (Math.abs(angularVelocity) > 1) {
+        angularVelocity *= 0.94;
+        setRotation(rotation + angularVelocity * (dt / 1000));
+      } else {
+        angularVelocity = 0;
+      }
+    }
+    if (!prefersReducedMotion) addTick(physicsTick);
+
+    function getAngleFromEvent(e, centerX, centerY) {
+      return Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+    }
+
+    knob.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      const rect = knob.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      startAngle = getAngleFromEvent(e, cx, cy);
+      startRotation = rotation;
+      lastAngle = rotation;
+      lastTime = performance.now();
+      angularVelocity = 0;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const rect = knob.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const currentAngle = getAngleFromEvent(e, cx, cy);
+      let delta = currentAngle - startAngle;
+      // 处理180度跳跃
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      setRotation(startRotation + delta);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+    });
+
+    setRotation(0);
+  })();
+
+  // ========== 展品 6: 摇杆 ==========
+  (function() {
+    const stick = document.getElementById('joystickStick');
+    const indicator = document.getElementById('joyIndicator');
+    if (!stick) return;
+
+    let isDragging = false;
+    let tiltX = 0; // 左右
+    let tiltY = 0; // 前后 (负=前/推离, 正=后/拉近)
+    let velX = 0;
+    let velY = 0;
+    const maxTilt = 25;
+    let startX = 0, startY = 0;
+
+    function setTilt() {
+      const dist = Math.sqrt(tiltX * tiltX + tiltY * tiltY);
+      if (dist > maxTilt) {
+        tiltX = (tiltX / dist) * maxTilt;
+        tiltY = (tiltY / dist) * maxTilt;
+      }
+
+      // 3D 倾斜效果
+      stick.style.transform = 'translateX(-50%) rotateY(' + tiltX + 'deg) rotateX(' + (-tiltY) + 'deg)';
+
+      // 方向指示
+      if (Math.abs(tiltX) < 3 && Math.abs(tiltY) < 3) {
+        if (indicator) indicator.textContent = '回 中';
+      } else {
+        let dir = '';
+        if (tiltY < -5) dir += '上';
+        if (tiltY > 5) dir += '下';
+        if (tiltX < -5) dir += '左';
+        if (tiltX > 5) dir += '右';
+        if (indicator) indicator.textContent = dir || '回 中';
+      }
+    }
+
+    function physicsTick(dt) {
+      if (isDragging) return;
+      const spring = 0.15;
+      const damping = 0.78;
+
+      const fx = -tiltX * spring;
+      const fy = -tiltY * spring;
+      velX += fx;
+      velY += fy;
+      velX *= damping;
+      velY *= damping;
+      tiltX += velX;
+      tiltY += velY;
+
+      setTilt();
+    }
+    if (!prefersReducedMotion) addTick(physicsTick);
+
+    stick.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      startX = e.clientX;
+      startY = e.clientY;
+      velX = 0; velY = 0;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      tiltX = dx * 0.5;
+      tiltY = dy * 0.5;
+      setTilt();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+    });
+
+    setTilt();
+  })();
+
+  // ========== 展品 7: 拨动开关组 ==========
+  (function() {
+    const switches = document.querySelectorAll('.toggle-switch');
+    const indicators = document.querySelectorAll('#switchIndicators .switch-indicator');
+    if (!switches.length) return;
+
+    switches.forEach(function(sw, idx) {
+      sw.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const isOn = sw.classList.toggle('on');
+        if (indicators[idx]) {
+          indicators[idx].classList.toggle('on', isOn);
+        }
+
+        // 拨动时的微振动
+        if (!prefersReducedMotion) {
+          sw.animate([
+            { transform: 'translateY(0)' },
+            { transform: 'translateY(-2px)' },
+            { transform: 'translateY(1px)' },
+            { transform: 'translateY(0)' }
+          ], { duration: 200, easing: 'ease-out' });
+        }
+      });
+    });
+  })();
+
+  // ========== 展品 8: 磁吸滑块 ==========
+  (function() {
+    const slider = document.getElementById('magSlider');
+    const track = document.getElementById('magTrack');
+    const zonesContainer = document.getElementById('magZones');
+    if (!slider || !track || !zonesContainer) return;
+
+    const zones = [10, 30, 50, 70]; // 百分比位置
+    const zoneEls = [];
+
+    zones.forEach(function(z, i) {
+      const zone = document.createElement('div');
+      zone.className = 'mag-zone';
+      zone.style.position = 'absolute';
+      zone.style.left = 'calc(' + z + '% - 8px)';
+      zone.style.top = '50%';
+      zone.style.transform = 'translateY(-50%)';
+      zonesContainer.appendChild(zone);
+      zoneEls.push(zone);
+    });
+
+    let isDragging = false;
+    let position = 10; // 百分比
+    let velocity = 0;
+    let startX = 0;
+    let startPos = 0;
+    const minPos = 5;
+    const maxPos = 75;
+
+    function setPosition(p) {
+      position = clamp(p, minPos, maxPos);
+      slider.style.left = position + '%';
+
+      // 激活最近的档位
+      let closest = 0, minDist = Infinity;
+      zones.forEach(function(z, i) {
+        const d = Math.abs(position - z);
+        if (d < minDist) { minDist = d; closest = i; }
+      });
+      zoneEls.forEach(function(z, i) {
+        z.classList.toggle('active', i === closest);
+      });
+    }
+
+    function physicsTick(dt) {
+      if (isDragging) return;
+
+      // 反平方引力: 每个磁点对滑块产生吸引力
+      let totalForce = 0;
+      zones.forEach(function(z) {
+        const dist = z - position;
+        const absDist = Math.abs(dist);
+        if (absDist < 0.5) return;
+        // F = k / dist^2, 方向朝向磁点
+        const force = (dist > 0 ? 1 : -1) * (2 / (absDist * absDist + 0.5));
+        totalForce += force;
+      });
+
+      velocity += totalForce;
+      velocity *= 0.88; // 阻尼
+      position += velocity;
+      setPosition(position);
+
+      if (Math.abs(velocity) < 0.02 && Math.abs(totalForce) < 0.01) {
+        velocity = 0;
+      }
+    }
+    if (!prefersReducedMotion) addTick(physicsTick);
+
+    slider.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      document.body.classList.add('cursor-drag');
+      startX = e.clientX;
+      startPos = position;
+      velocity = 0;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const rect = track.getBoundingClientRect();
+      const dx = e.clientX - startX;
+      const dxPercent = (dx / rect.width) * 100;
+      setPosition(startPos + dxPercent);
+    });
+
+    document.addEventListener('mouseup', function(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag');
+    });
+
+    setPosition(10);
+  })();
+
+  // ========== 3D 倾斜效果 (展区卡片) ==========
+  (function() {
+    if (prefersReducedMotion) return;
+    const cards = document.querySelectorAll('[data-tilt]');
+    const maxTilt = 4;
+
+    cards.forEach(function(card) {
+      card.addEventListener('mousemove', function(e) {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        const rx = mapRange(y, 0, rect.height, maxTilt, -maxTilt);
+        const ry = mapRange(x, 0, rect.width, -maxTilt, maxTilt);
+
+        card.style.transform = 'perspective(1000px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
+
+        // 内部展品做反向微调, 增加景深
+        const stage = card.querySelector('.exhibit-stage');
+        if (stage) {
+          stage.style.transform = 'translateZ(10px)';
+        }
+      });
+
+      card.addEventListener('mouseleave', function() {
+        card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+        const stage = card.querySelector('.exhibit-stage');
+        if (stage) stage.style.transform = 'translateZ(0)';
+      });
+    });
+  })();
+
+  // ========== 导航点提示 ==========
+  (function() {
+    const dots = document.querySelectorAll('.nav-dot');
+    dots.forEach(function(dot) {
+      dot.addEventListener('click', function() {
+        dots.forEach(d => d.classList.remove('active'));
+        dot.classList.add('active');
+      });
+    });
+  })();
+
+  // ========== 初始化启动 ==========
+  // 确保光标初始在屏幕中央
+  if (!prefersReducedMotion) {
+    cursorInner.style.transform = 'translate(calc(50vw - 3px), calc(50vh - 3px))';
+  }
+
+})();
+</script>
+</body>
+</html>

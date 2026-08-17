@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>松烟阁 · 古籍修复技艺展</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;500;600;700;900&family=Ma+Shan+Zheng&family=ZCOOL+XiaoWei&display=swap" />
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --paper: #F3EBD9;
+    --paper-deep: #E8DDC4;
+    --ink: #1A1612;
+    --ink-soft: #2B241C;
+    --vermilion: #B23A28;
+    --vermilion-deep: #8C2A1A;
+    --ochre: #C47A3A;
+    --silk: #D9C89A;
+    --bone: #FAF4E5;
+    --gold: #A67C3A;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    cursor: none;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
+
+  /* 宣纸纹理背景 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.6;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(178,58,40,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(196,122,58,0.05) 0%, transparent 45%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: multiply;
+  }
+
+  /* 自定义光标 */
+  .cursor-outer {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 36px; height: 36px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s cubic-bezier(0.22,1,0.36,1),
+                height 0.3s cubic-bezier(0.22,1,0.36,1),
+                border-color 0.3s,
+                background 0.3s;
+    mix-blend-mode: difference;
+    border-color: #fff;
+  }
+  .cursor-outer.hover {
+    width: 60px; height: 60px;
+    border-color: var(--vermilion);
+    background: rgba(178,58,40,0.1);
+  }
+  .cursor-outer.clicking {
+    width: 24px; height: 24px;
+  }
+  .cursor-inner {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: var(--vermilion);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px var(--vermilion), 0 0 24px rgba(178,58,40,0.5);
+    transition: transform 0.15s ease-out;
+  }
+
+  /* 涟漪 */
+  .ripple {
+    position: fixed;
+    border: 2px solid var(--vermilion);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.8;
+    animation: rippleExpand 0.7s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  @keyframes rippleExpand {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0.8; border-width: 3px; }
+    100% { transform: translate(-50%, -50%) scale(3); opacity: 0; border-width: 0.5px; }
+  }
+
+  /* 墨粒粒子画布 */
+  #ink-canvas {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* 导航 */
+  .nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 24px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.4s, backdrop-filter 0.4s, padding 0.4s;
+  }
+  .nav.scrolled {
+    background: rgba(243,235,217,0.85);
+    backdrop-filter: blur(12px);
+    padding: 16px 48px;
+    border-bottom: 1px solid rgba(26,22,18,0.1);
+  }
+  .nav-logo {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 28px;
+    color: var(--ink);
+    letter-spacing: 4px;
+  }
+  .nav-logo span {
+    color: var(--vermilion);
+  }
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    list-style: none;
+  }
+  .nav-links a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: 2px;
+    position: relative;
+    padding: 4px 0;
+    transition: color 0.3s;
+  }
+  .nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%;
+    width: 0; height: 1.5px;
+    background: var(--vermilion);
+    transition: width 0.3s ease, left 0.3s ease;
+  }
+  .nav-links a:hover {
+    color: var(--vermilion);
+  }
+  .nav-links a:hover::after {
+    width: 100%;
+    left: 0;
+  }
+  .nav-seal {
+    width: 36px; height: 36px;
+    background: var(--vermilion);
+    color: var(--bone);
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transform: rotate(-4deg);
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .nav-seal:hover {
+    transform: rotate(4deg) scale(1.1);
+  }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 5;
+    padding: 120px 24px 80px;
+  }
+  .hero-sub {
+    font-size: 14px;
+    letter-spacing: 8px;
+    color: var(--ochre);
+    margin-bottom: 32px;
+    opacity: 0;
+    animation: fadeInUp 1s 0.3s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  .hero-title-wrap {
+    position: relative;
+    margin-bottom: 24px;
+  }
+  .hero-title {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: clamp(72px, 14vw, 180px);
+    line-height: 1;
+    color: var(--ink);
+    letter-spacing: 12px;
+    position: relative;
+    display: inline-block;
+  }
+  .hero-title .char {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(40px);
+    animation: charReveal 0.9s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  .hero-title .char:nth-child(1) { animation-delay: 0.6s; }
+  .hero-title .char:nth-child(2) { animation-delay: 0.75s; }
+  .hero-title .char:nth-child(3) { animation-delay: 0.9s; }
+  .hero-title .char:nth-child(4) { animation-delay: 1.05s; }
+  @keyframes charReveal {
+    0% { opacity: 0; transform: translateY(40px); filter: blur(8px); }
+    100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
+  .hero-seal {
+    position: absolute;
+    top: -10px; right: -30px;
+    width: 72px; height: 72px;
+    background: var(--vermilion);
+    color: var(--bone);
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transform: rotate(8deg) scale(0);
+    animation: sealStamp 0.6s 1.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    box-shadow: 0 4px 20px rgba(178,58,40,0.3);
+  }
+  @keyframes sealStamp {
+    0% { transform: rotate(8deg) scale(3); opacity: 0; }
+    60% { transform: rotate(8deg) scale(0.9); opacity: 1; }
+    100% { transform: rotate(8deg) scale(1); opacity: 1; }
+  }
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--ink-soft);
+    letter-spacing: 6px;
+    margin-top: 16px;
+    opacity: 0;
+    animation: fadeInUp 1s 1.2s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  .hero-desc {
+    max-width: 480px;
+    margin-top: 40px;
+    font-size: 14px;
+    line-height: 2;
+    color: var(--ink-soft);
+    opacity: 0.8;
+    opacity: 0;
+    animation: fadeInUp 1s 1.4s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  .hero-cta {
+    margin-top: 48px;
+    display: flex;
+    gap: 20px;
+    opacity: 0;
+    animation: fadeInUp 1s 1.6s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+  @keyframes fadeInUp {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .btn {
+    padding: 14px 32px;
+    font-size: 14px;
+    letter-spacing: 3px;
+    border: none;
+    background: transparent;
+    cursor: none;
+    font-family: "Noto Serif SC", serif;
+    position: relative;
+    transition: all 0.3s;
+    overflow: hidden;
+  }
+  .btn-primary {
+    background: var(--vermilion);
+    color: var(--bone);
+    border: 1.5px solid var(--vermilion);
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--vermilion-deep);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s cubic-bezier(0.22,1,0.36,1);
+    z-index: 0;
+  }
+  .btn-primary:hover::before {
+    transform: scaleX(1);
+  }
+  .btn-primary span { position: relative; z-index: 1; }
+  .btn-ghost {
+    color: var(--ink);
+    border: 1.5px solid var(--ink);
+    transition: color 0.3s, border-color 0.3s;
+  }
+  .btn-ghost:hover {
+    color: var(--vermilion);
+    border-color: var(--vermilion);
+  }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    letter-spacing: 3px;
+    opacity: 0.6;
+    animation: bounceScroll 2s ease-in-out infinite;
+  }
+  .hero-scroll-line {
+    width: 1px; height: 40px;
+    background: linear-gradient(to bottom, var(--ink), transparent);
+  }
+  @keyframes bounceScroll {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(8px); }
+  }
+
+  /* 章节通用 */
+  .section {
+    position: relative;
+    z-index: 5;
+    padding: 120px 48px;
+  }
+  .section-head {
+    text-align: center;
+    margin-bottom: 72px;
+  }
+  .section-label {
+    font-size: 12px;
+    letter-spacing: 6px;
+    color: var(--ochre);
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: clamp(36px, 5vw, 56px);
+    color: var(--ink);
+    letter-spacing: 8px;
+    margin-bottom: 16px;
+  }
+  .section-divider {
+    width: 60px; height: 2px;
+    background: var(--vermilion);
+    margin: 0 auto;
+    position: relative;
+  }
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 8px; height: 8px;
+    background: var(--vermilion);
+    border-radius: 50%;
+    transform: translateY(-50%);
+  }
+  .section-divider::before { left: -20px; }
+  .section-divider::after { right: -20px; }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s cubic-bezier(0.22,1,0.36,1),
+                transform 0.8s cubic-bezier(0.22,1,0.36,1);
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* 工序卡片 */
+  .process-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .process-card {
+    background: var(--bone);
+    border: 1px solid rgba(26,22,18,0.1);
+    padding: 40px 28px;
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.22,1,0.36,1);
+    transform-style: preserve-3d;
+    perspective: 1000px;
+    will-change: transform;
+  }
+  .process-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 0; height: 100%;
+    background: var(--vermilion);
+    transition: width 0.4s cubic-bezier(0.22,1,0.36,1);
+    z-index: 0;
+  }
+  .process-card:hover::before {
+    width: 4px;
+  }
+  .process-card:hover {
+    box-shadow: 0 20px 50px rgba(26,22,18,0.15);
+    border-color: transparent;
+    transform: translateY(-4px);
+  }
+  .process-num {
+    font-family: "ZCOOL XiaoWei", serif;
+    font-size: 56px;
+    color: var(--silk);
+    line-height: 1;
+    margin-bottom: 20px;
+    transition: color 0.4s;
+    position: relative;
+    z-index: 1;
+  }
+  .process-card:hover .process-num {
+    color: var(--vermilion);
+  }
+  .process-icon {
+    width: 48px; height: 48px;
+    margin-bottom: 20px;
+    color: var(--vermilion);
+    position: relative;
+    z-index: 1;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .process-card:hover .process-icon {
+    transform: scale(1.15) rotate(-5deg);
+  }
+  .process-name {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 24px;
+    color: var(--ink);
+    margin-bottom: 12px;
+    letter-spacing: 4px;
+    position: relative;
+    z-index: 1;
+  }
+  .process-desc {
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--ink-soft);
+    opacity: 0.8;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 修复师 */
+  .masters-section {
+    background: var(--ink);
+    color: var(--bone);
+    position: relative;
+    overflow: hidden;
+  }
+  .masters-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 20%, rgba(178,58,40,0.15), transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(196,122,58,0.1), transparent 50%);
+    pointer-events: none;
+  }
+  .masters-section .section-title { color: var(--bone); }
+  .masters-section .section-label { color: var(--silk); }
+
+  .masters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+  }
+  .master-card {
+    text-align: center;
+    position: relative;
+  }
+  .master-portrait-wrap {
+    position: relative;
+    width: 160px; height: 160px;
+    margin: 0 auto 24px;
+  }
+  .master-portrait {
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--ink-soft), #3a2e22);
+    border: 2px solid var(--gold);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 64px;
+    color: var(--silk);
+  }
+  .master-pulse {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 1px solid var(--vermilion);
+    opacity: 0;
+    animation: pulseRing 3s ease-in-out infinite;
+  }
+  .master-card:nth-child(2) .master-pulse { animation-delay: 1s; }
+  .master-card:nth-child(3) .master-pulse { animation-delay: 2s; }
+  @keyframes pulseRing {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+  .master-name {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 28px;
+    color: var(--bone);
+    letter-spacing: 6px;
+    margin-bottom: 8px;
+  }
+  .master-title {
+    font-size: 12px;
+    color: var(--gold);
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+  }
+  .master-bio {
+    font-size: 13px;
+    line-height: 1.9;
+    color: rgba(250,244,229,0.7);
+    max-width: 280px;
+    margin: 0 auto;
+  }
+
+  /* 珍品展厅 */
+  .treasures-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .treasure-card {
+    position: relative;
+    aspect-ratio: 3/4;
+    background: var(--paper-deep);
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.5s cubic-bezier(0.22,1,0.36,1);
+  }
+  .treasure-card:hover {
+    transform: translateY(-8px);
+  }
+  .treasure-img {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: transform 0.6s cubic-bezier(0.22,1,0.36,1),
+                filter 0.6s;
+    filter: sepia(0.3) saturate(0.8);
+  }
+  .treasure-card:hover .treasure-img {
+    transform: scale(1.08);
+    filter: sepia(0.1) saturate(1);
+  }
+  .treasure-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(26,22,18,0.85), transparent 50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 28px;
+    transition: background 0.4s;
+  }
+  .treasure-card:hover .treasure-overlay {
+    background: linear-gradient(to top, rgba(26,22,18,0.9), rgba(178,58,40,0.2) 100%);
+  }
+  .treasure-dynasty {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--ochre);
+    margin-bottom: 8px;
+  }
+  .treasure-name {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 24px;
+    color: var(--bone);
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+  }
+  .treasure-meta {
+    font-size: 12px;
+    color: rgba(250,244,229,0.7);
+    display: flex;
+    gap: 16px;
+  }
+  /* 光泽扫过 */
+  .treasure-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.7s ease;
+    pointer-events: none;
+  }
+  .treasure-card:hover::after {
+    left: 130%;
+  }
+
+  /* 数字统计 */
+  .stats-section {
+    background: var(--vermilion-deep);
+    color: var(--bone);
+    position: relative;
+    overflow: hidden;
+  }
+  .stats-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.05 0 0 0 0 0.03 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+  }
+  .stat-num {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: clamp(48px, 6vw, 72px);
+    line-height: 1;
+    margin-bottom: 12px;
+    color: var(--bone);
+  }
+  .stat-unit {
+    font-size: 18px;
+    color: var(--silk);
+    margin-left: 4px;
+  }
+  .stat-label {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgba(250,244,229,0.8);
+  }
+
+  /* 预约体验 */
+  .booking-section {
+    position: relative;
+  }
+  .booking-wrap {
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--bone);
+    border: 1px solid rgba(26,22,18,0.1);
+    padding: 64px;
+    position: relative;
+  }
+  .booking-wrap::before {
+    content: '';
+    position: absolute;
+    top: 8px; left: 8px;
+    right: -8px; bottom: -8px;
+    border: 1px solid var(--vermilion);
+    z-index: -1;
+    opacity: 0.3;
+  }
+  .booking-title {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 36px;
+    letter-spacing: 6px;
+    text-align: center;
+    margin-bottom: 16px;
+    color: var(--ink);
+  }
+  .booking-subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 40px;
+    letter-spacing: 2px;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .form-field.full { grid-column: 1 / -1; }
+  .form-label {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--ink-soft);
+  }
+  .form-input {
+    padding: 12px 16px;
+    background: var(--paper);
+    border: 1px solid rgba(26,22,18,0.15);
+    font-family: "Noto Serif SC", serif;
+    font-size: 14px;
+    color: var(--ink);
+    transition: border-color 0.3s, box-shadow 0.3s;
+    cursor: none;
+  }
+  .form-input:focus {
+    outline: none;
+    border-color: var(--vermilion);
+    box-shadow: 0 0 0 3px rgba(178,58,40,0.1);
+  }
+  .form-textarea {
+    min-height: 100px;
+    resize: vertical;
+  }
+  .booking-submit {
+    width: 100%;
+    padding: 16px;
+    background: var(--vermilion);
+    color: var(--bone);
+    border: none;
+    font-family: "Noto Serif SC", serif;
+    font-size: 14px;
+    letter-spacing: 6px;
+    cursor: none;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+  .booking-submit:hover {
+    background: var(--vermilion-deep);
+  }
+  .booking-submit::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+  }
+  .booking-submit:active::after {
+    width: 400px; height: 400px;
+  }
+
+  /* 页脚 */
+  .footer {
+    background: var(--ink);
+    color: var(--silk);
+    padding: 80px 48px 40px;
+    position: relative;
+    z-index: 5;
+  }
+  .footer-top {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 48px;
+    max-width: 1200px;
+    margin: 0 auto 48px;
+  }
+  .footer-logo {
+    font-family: "Ma Shan Zheng", cursive;
+    font-size: 32px;
+    color: var(--bone);
+    letter-spacing: 6px;
+    margin-bottom: 16px;
+  }
+  .footer-logo span { color: var(--vermilion); }
+  .footer-desc {
+    font-size: 13px;
+    line-height: 1.9;
+    color: rgba(217,200,154,0.6);
+    max-width: 320px;
+  }
+  .footer-col h4 {
+    font-size: 14px;
+    color: var(--bone);
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(217,200,154,0.2);
+  }
+  .footer-col ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .footer-col a {
+    color: rgba(217,200,154,0.6);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.3s;
+    letter-spacing: 1px;
+  }
+  .footer-col a:hover {
+    color: var(--vermilion);
+  }
+  .footer-bottom {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-top: 24px;
+    border-top: 1px solid rgba(217,200,154,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: rgba(217,200,154,0.4);
+    letter-spacing: 2px;
+  }
+
+  /* 视差装饰 */
+  .parallax-deco {
+    position: absolute;
+    pointer-events: none;
+    will-change: transform;
+    font-family: "Ma Shan Zheng", cursive;
+    color: rgba(26,22,18,0.04);
+    font-size: 200px;
+    line-height: 1;
+    z-index: 1;
+  }
+
+  /* 打字机效果 */
+  .typewriter-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--vermilion);
+    margin-left: 4px;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* 响应式 */
+  @media (max-width: 768px) {
+    .nav { padding: 16px 20px; }
+    .nav-links { display: none; }
+    .section { padding: 80px 20px; }
+    .process-grid { grid-template-columns: 1fr; }
+    .masters-grid { grid-template-columns: 1fr; }
+    .treasures-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 32px 20px; }
+    .booking-wrap { padding: 32px 20px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .footer-top { grid-template-columns: 1fr; gap: 32px; }
+    .footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
+    .hero-seal { width: 48px; height: 48px; font-size: 14px; right: -10px; }
+    html, body { cursor: auto; }
+    .cursor-outer, .cursor-inner { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor-outer" class="cursor-outer"></div>
+<div id="cursor-inner" class="cursor-inner"></div>
+<canvas id="ink-canvas"></canvas>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ============== 自定义光标 ==============
+function useCustomCursor() {
+  useEffect(() => {
+    const outer = document.getElementById('cursor-outer');
+    const inner = document.getElementById('cursor-inner');
+    if (!outer || !inner) return;
+    if (window.matchMedia('(max-width: 768px)').matches) return;
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let outerX = mouseX;
+    let outerY = mouseY;
+    let innerX = mouseX;
+    let innerY = mouseY;
+    let rafId = null;
+    let visible = !document.hidden;
+
+    const onMove = (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    };
+
+    // 阻尼跟随：外圈慢，内圈快
+    const animate = () => {
+      if (!visible) { rafId = requestAnimationFrame(animate); return; }
+      // 外圈 - 弹簧阻尼
+      const outerK = 0.08;
+      const outerDamp = 0.7;
+      outerX += (mouseX - outerX) * outerK;
+      outerY += (mouseY - outerY) * outerK;
+      outer.style.left = outerX + 'px';
+      outer.style.top = outerY + 'px';
+
+      // 内圈 - 更紧的跟随
+      const innerK = 0.25;
+      innerX += (mouseX - innerX) * innerK;
+      innerY += (mouseY - innerY) * innerK;
+      inner.style.left = innerX + 'px';
+      inner.style.top = innerY + 'px';
+
+      rafId = requestAnimationFrame(animate);
+    };
+    rafId = requestAnimationFrame(animate);
+
+    // 悬停交互元素
+    const interactiveSelector = 'a, button, .btn, .process-card, .treasure-card, .master-card, .form-input, .booking-submit, .nav-seal';
+    const onOver = (e) => {
+      if (e.target.closest(interactiveSelector)) {
+        outer.classList.add('hover');
+      }
+    };
+    const onOut = (e) => {
+      if (e.target.closest(interactiveSelector)) {
+        outer.classList.remove('hover');
+      }
+    };
+
+    // 点击涟漪
+    const onClick = (e) => {
+      outer.classList.add('clicking');
+      setTimeout(() => outer.classList.remove('clicking'), 150);
+
+      const ripple = document.createElement('div');
+      ripple.className = 'ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      ripple.style.width = '20px';
+      ripple.style.height = '20px';
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 700);
+    };
+
+    const onVisibility = () => {
+      visible = !document.hidden;
+    };
+
+    window.addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mouseover', onOver);
+    document.addEventListener('mouseout', onOut);
+    document.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseover', onOver);
+      document.removeEventListener('mouseout', onOut);
+      document.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+}
+
+// ============== 墨粒粒子系统 ==============
+function useInkParticles() {
+  useEffect(() => {
+    const canvas = document.getElementById('ink-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    canvas.width = width * window.devicePixelRatio;
+    canvas.height = height * window.devicePixelRatio;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const particles = [];
+    const count = reduced ? 15 : 45;
+
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.15 - 0.05,
+        size: Math.random() * 3 + 1,
+        opacity: Math.random() * 0.25 + 0.05,
+        // 不同周期
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.002 + Math.random() * 0.003,
+        // 颜色 - 墨色/赭石/朱砂混合
+        colorType: Math.random() < 0.6 ? 'ink' : (Math.random() < 0.7 ? 'ochre' : 'vermilion')
+      });
+    }
+
+    let rafId = null;
+    let visible = !document.hidden;
+    let time = 0;
+
+    const animate = () => {
+      if (!visible) { rafId = requestAnimationFrame(animate); return; }
+      ctx.clearRect(0, 0, width, height);
+      time += 1;
+
+      for (const p of particles) {
+        // 布朗运动 + 缓漂
+        p.phase += p.speed;
+        const driftX = Math.sin(p.phase) * 0.2;
+        const driftY = Math.cos(p.phase * 0.7) * 0.1;
+
+        p.x += p.vx + driftX;
+        p.y += p.vy + driftY;
+
+        // 边界环绕
+        if (p.x < -10) p.x = width + 10;
+        if (p.x > width + 10) p.x = -10;
+        if (p.y < -10) p.y = height + 10;
+        if (p.y > height + 10) p.y = -10;
+
+        // 呼吸感透明度
+        const breath = Math.sin(p.phase * 1.3) * 0.3 + 0.7;
+        const alpha = p.opacity * breath;
+
+        let color;
+        if (p.colorType === 'ink') color = `rgba(26,22,18,${alpha})`;
+        else if (p.colorType === 'ochre') color = `rgba(196,122,58,${alpha})`;
+        else color = `rgba(178,58,40,${alpha})`;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+
+      rafId = requestAnimationFrame(animate);
+    };
+    rafId = requestAnimationFrame(animate);
+
+    const onResize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * window.devicePixelRatio;
+      canvas.height = height * window.devicePixelRatio;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    };
+
+    const onVisibility = () => { visible = !document.hidden; };
+
+    window.addEventListener('resize', onResize);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+}
+
+// ============== 滚动渐入 ==============
+function useScrollReveal() {
+  useEffect(() => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('in-view'));
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in-view');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+
+    const els = document.querySelectorAll('.reveal');
+    els.forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+}
+
+// ============== 数字计数 ==============
+function useCountUp(target, ref, duration = 2000) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { el.textContent = target; return; }
+
+    let rafId = null;
+    let started = false;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !started) {
+          started = true;
+          const start = 0;
+          const startTime = performance.now();
+
+          // easeOutCubic
+          const ease = t => 1 - Math.pow(1 - t, 3);
+
+          const tick = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const value = Math.floor(start + (target - start) * ease(progress));
+            el.textContent = value.toLocaleString();
+            if (progress < 1) rafId = requestAnimationFrame(tick);
+          };
+          rafId = requestAnimationFrame(tick);
+          observer.unobserve(el);
+        }
+      });
+    }, { threshold: 0.5 });
+
+    observer.observe(el);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
+  }, [target, duration]);
+}
+
+// ============== 打字机效果 ==============
+function useTypewriter(text, ref, speed = 120) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { el.textContent = text; return; }
+
+    let timeoutId = null;
+    let index = 0;
+    el.textContent = '';
+
+    const type = () => {
+      if (index < text.length) {
+        el.textContent += text[index];
+        index++;
+        timeoutId = setTimeout(type, speed + Math.random() * 60);
+      }
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          type();
+          observer.unobserve(el);
+        }
+      });
+    }, { threshold: 0.5 });
+
+    observer.observe(el);
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [text, speed]);
+}
+
+// ============== 卡片 3D 倾斜 ==============
+function useCardTilt(selector) {
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 768px)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const cards = document.querySelectorAll(selector);
+    const handlers = [];
+
+    cards.forEach(card => {
+      let rafId = null;
+      let targetRX = 0, targetRY = 0;
+      let currentRX = 0, currentRY = 0;
+
+      const onMove = (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        targetRY = ((x - cx) / cx) * 8;
+        targetRX = -((y - cy) / cy) * 6;
+        if (!rafId) rafId = requestAnimationFrame(tick);
+      };
+
+      const tick = () => {
+        currentRX += (targetRX - currentRX) * 0.15;
+        currentRY += (targetRY - currentRY) * 0.15;
+        card.style.transform = `perspective(1000px) rotateX(${currentRX}deg) rotateY(${currentRY}deg) translateY(-4px)`;
+        if (Math.abs(targetRX - currentRX) > 0.05 || Math.abs(targetRY - currentRY) > 0.05) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          rafId = null;
+        }
+      };
+
+      const onLeave = () => {
+        targetRX = 0;
+        targetRY = 0;
+        if (!rafId) rafId = requestAnimationFrame(tick);
+      };
+
+      card.addEventListener('mousemove', onMove);
+      card.addEventListener('mouseleave', onLeave);
+      handlers.push(() => {
+        card.removeEventListener('mousemove', onMove);
+        card.removeEventListener('mouseleave', onLeave);
+        if (rafId) cancelAnimationFrame(rafId);
+      });
+    });
+
+    return () => handlers.forEach(fn => fn());
+  }, [selector]);
+}
+
+// ============== 视差 ==============
+function useParallax(selector, speed = 0.1) {
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const els = document.querySelectorAll(selector);
+    let rafId = null;
+    let scrollY = window.scrollY;
+    let visible = !document.hidden;
+
+    const onScroll = () => { scrollY = window.scrollY; if (!rafId && visible) rafId = requestAnimationFrame(update); };
+
+    const update = () => {
+      els.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        const delta = (centerY - window.innerHeight / 2) * speed;
+        el.style.transform = `translateY(${delta}px)`;
+      });
+      rafId = null;
+    };
+
+    const onVisibility = () => { visible = !document.hidden; };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [selector, speed]);
+}
+
+// ============== 导航滚动效果 ==============
+function useNavScroll() {
+  useEffect(() => {
+    const nav = document.getElementById('main-nav');
+    if (!nav) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          if (window.scrollY > 50) nav.classList.add('scrolled');
+          else nav.classList.remove('scrolled');
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+}
+
+// ============== 磁性按钮 ==============
+function useMagneticButtons(selector, strength = 0.3) {
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 768px)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const btns = document.querySelectorAll(selector);
+    const handlers = [];
+
+    btns.forEach(btn => {
+      let rafId = null;
+      let targetX = 0, targetY = 0;
+      let curX = 0, curY = 0;
+
+      const onMove = (e) => {
+        const rect = btn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = (e.clientX - cx) * strength;
+        const dy = (e.clientY - cy) * strength;
+        targetX = dx;
+        targetY = dy;
+        if (!rafId) rafId = requestAnimationFrame(tick);
+      };
+
+      const tick = () => {
+        curX += (targetX - curX) * 0.15;
+        curY += (targetY - curY) * 0.15;
+        btn.style.transform = `translate(${curX}px, ${curY}px)`;
+        if (Math.abs(targetX - curX) > 0.1 || Math.abs(targetY - curY) > 0.1) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          rafId = null;
+        }
+      };
+
+      const onLeave = () => {
+        targetX = 0;
+        targetY = 0;
+        if (!rafId) rafId = requestAnimationFrame(tick);
+      };
+
+      btn.addEventListener('mousemove', onMove);
+      btn.addEventListener('mouseleave', onLeave);
+      handlers.push(() => {
+        btn.removeEventListener('mousemove', onMove);
+        btn.removeEventListener('mouseleave', onLeave);
+        if (rafId) cancelAnimationFrame(rafId);
+        btn.style.transform = '';
+      });
+    });
+
+    return () => handlers.forEach(fn => fn());
+  }, [selector, strength]);
+}
+
+// ============== 主应用 ==============
+function App() {
+  const heroTypeRef = useRef(null);
+  const statRef1 = useRef(null);
+  const statRef2 = useRef(null);
+  const statRef3 = useRef(null);
+  const statRef4 = useRef(null);
+
+  useCustomCursor();
+  useInkParticles();
+  useScrollReveal();
+  useCountUp(1276, statRef1);
+  useCountUp(87, statRef2);
+  useCountUp(36, statRef3);
+  useCountUp(2800, statRef4);
+  useTypewriter('一灯如豆，纸寿千年', heroTypeRef, 100);
+  useCardTilt('.process-card');
+  useParallax('.parallax-deco', -0.08);
+  useNavScroll();
+  useMagneticButtons('.btn-magnetic', 0.25);
+
+  const [formData, setFormData] = useState({ name: '', phone: '', date: '', message: '' });
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleForm = (e) => {
+    e.preventDefault();
+    setSubmitted(true);
+    setTimeout(() => setSubmitted(false), 3000);
+    setFormData({ name: '', phone: '', date: '', message: '' });
+  };
+
+  const processes = [
+    { num: '壹', name: '诊纸', desc: '先观纸色、纸质、帘纹，辨其年代与产地，察虫蛀、霉斑、脆化之症，以定修复方案。' },
+    { num: '贰', name: '拆书', desc: '拆去旧线，揭下护叶，逐一编号。如遇胶黏，以温水或蒸气润透，小心翼翼，不损半字。' },
+    { num: '叁', name: '补缀', desc: '选同代同纹旧纸为料，以糨糊点于蛀洞边缘，补纸覆上，纹理相合，天衣无缝。' },
+    { num: '肆', name: '托裱', desc: '补缀之后，托以新纸为底，全幅托裱，使薄纸归厚，残卷归整，如老树发新芽。' },
+    { num: '伍', name: '镶衬', desc: '四边镶以素纸，使版心居中，天头地脚比例得宜。古纸不足，新纸补之，称之谓「金镶玉」。' },
+    { num: '陆', name: '重装', desc: '压实压平，打眼穿线，重订为册。旧装如原式，新装循古法，完璧归赵，重见天日。' },
+  ];
+
+  const masters = [
+    { name: '沈墨言', title: '国家级非遗传承人', bio: '从业四十七年，修复宋版典籍三百余部，以「宋纸宋墨」之法著称，人称「沈一刀」。', initial: '沈' },
+    { name: '苏绫', title: '宫廷装裱技艺传人', bio: '师承故宫博物院，擅清宫样式装帧，以绫绢配色、织锦函套闻名，复修清宫旧藏近百卷。', initial: '苏' },
+    { name: '周砚秋', title: '古籍鉴定与修复双师', bio: '精于版本目录学，修复前必究其源流，以「先辨伪、再动笔」为训，修复元明孤本数十种。', initial: '周' },
+  ];
+
+  const treasures = [
+    { name: '南华真经', dynasty: '南宋 淳熙年间', meta: ['蝴蝶装', '十卷全本'], img: 'linear-gradient(135deg, #8B7355 0%, #C4A47A 50%, #6B5344 100%)' },
+    { name: '永乐大典残卷', dynasty: '明代 永乐年间', meta: ['包背装', '卷之二千三百四十'], img: 'linear-gradient(135deg, #A67C52 0%, #D4A574 50%, #8B6914 100%)' },
+    { name: '金刚般若波罗蜜经', dynasty: '唐代 咸通九年', meta: ['卷轴装', '敦煌藏经洞出'], img: 'linear-gradient(135deg, #CD853F 0%, #DEB887 50%, #8B4513 100%)' },
+  ];
+
+  return (
+    <>
+      {/* 导航 */}
+      <nav id="main-nav" className="nav">
+        <div className="nav-logo">松烟<span>阁</span></div>
+        <ul className="nav-links">
+          <li><a href="#process">修复工序</a></li>
+          <li><a href="#masters">修复大师</a></li>
+          <li><a href="#treasures">珍品展厅</a></li>
+          <li><a href="#booking">预约体验</a></li>
+        </ul>
+        <div className="nav-seal">珍</div>
+      </nav>
+
+      {/* Hero */}
+      <section className="hero">
+        <div className="hero-sub">宋 元 明 清  千 年 遗 珍</div>
+        <div className="hero-title-wrap">
+          <h1 className="hero-title">
+            <span className="char">松</span>
+            <span className="char">烟</span>
+            <span className="char">阁</span>
+            <span className="char">藏</span>
+          </h1>
+          <div className="hero-seal">古籍</div>
+        </div>
+        <div className="hero-subtitle">
+          <span ref={heroTypeRef}></span>
+          <span className="typewriter-cursor"></span>
+        </div>
+        <p className="hero-desc">
+          松烟阁以历代古籍修复技艺为宗，集宋元明清珍稀善本之藏。
+          一灯一砚，一刀一纸，续千年文脉于指掌之间。
+        </p>
+        <div className="hero-cta">
+          <button className="btn btn-primary btn-magnetic"><span>预约参观</span></button>
+          <button className="btn btn-ghost btn-magnetic"><span>了解技艺</span></button>
+        </div>
+        <div className="hero-scroll">
+          <div className="hero-scroll-line"></div>
+          <span>向 下 滑 动</span>
+        </div>
+      </section>
+
+      {/* 修复工序 */}
+      <section id="process" className="section">
+        <div className="parallax-deco" style={{top: '10%', left: '-20px'}}>修</div>
+        <div className="section-head reveal">
+          <div className="section-label">RESTORATION PROCESS</div>
+          <h2 className="section-title">六道工 序</h2>
+          <div className="section-divider"></div>
+        </div>
+        <div className="process-grid">
+          {processes.map((p, i) => (
+            <div key={i} className="process-card reveal" style={{ transitionDelay: `${i * 0.1}s` }}>
+              <div className="process-num">{p.num}</div>
+              <svg className="process-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5">
+                {i === 0 && <><path d="M24 6v36M10 12h28M10 36h28"/><circle cx="24" cy="24" r="6"/></>}
+                {i === 1 && <><rect x="8" y="10" width="32" height="28" rx="2"/><path d="M14 18h20M14 24h20M14 30h14"/></>}
+                {i === 2 && <><path d="M8 40l16-32 16 32"/><path d="M16 40l8-16 8 16"/><circle cx="24" cy="34" r="2"/></>}
+                {i === 3 && <><rect x="6" y="8" width="36" height="32" rx="2"/><rect x="10" y="12" width="28" height="24" rx="1"/><path d="M14 20h20M14 26h20"/></>}
+                {i === 4 && <><rect x="8" y="10" width="32" height="28"/><rect x="14" y="14" width="20" height="20" fill="currentColor" opacity="0.1"/><path d="M8 10l32 28M40 10L8 38"/></>}
+                {i === 5 && <><rect x="10" y="8" width="28" height="32" rx="2"/><path d="M16 8v32M32 8v32"/><circle cx="24" cy="20" r="1.5" fill="currentColor"/><circle cx="24" cy="28" r="1.5" fill="currentColor"/></>}
+              </svg>
+              <h3 className="process-name">{p.name}</h3>
+              <p className="process-desc">{p.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 修复大师 */}
+      <section id="masters" className="section masters-section">
+        <div className="section-head reveal">
+          <div className="section-label">MASTER RESTORERS</div>
+          <h2 className="section-title">三 位 大 匠</h2>
+          <div className="section-divider"></div>
+        </div>
+        <div className="masters-grid">
+          {masters.map((m, i) => (
+            <div key={i} className="master-card reveal" style={{ transitionDelay: `${i * 0.15}s` }}>
+              <div className="master-portrait-wrap">
+                <div className="master-pulse"></div>
+                <div className="master-portrait">{m.initial}</div>
+              </div>
+              <h3 className="master-name">{m.name}</h3>
+              <div className="master-title">{m.title}</div>
+              <p className="master-bio">{m.bio}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 珍品展厅 */}
+      <section id="treasures" className="section">
+        <div className="parallax-deco" style={{top: '20%', right: '-30px'}}>藏</div>
+        <div className="section-head reveal">
+          <div className="section-label">RARE BOOKS COLLECTION</div>
+          <h2 className="section-title">珍 品 厅</h2>
+          <div className="section-divider"></div>
+        </div>
+        <div className="treasures-grid">
+          {treasures.map((t, i) => (
+            <div key={i} className="treasure-card reveal" style={{ transitionDelay: `${i * 0.12}s` }}>
+              <div className="treasure-img" style={{ background: t.img }}></div>
+              <div className="treasure-overlay">
+                <div className="treasure-dynasty">{t.dynasty}</div>
+                <h3 className="treasure-name">{t.name}</h3>
+                <div className="treasure-meta">
+                  {t.meta.map((m, j) => <span key={j}>{m}</span>)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 数字统计 */}
+      <section className="section stats-section">
+        <div className="stats-grid">
+          <div className="reveal">
+            <div className="stat-num"><span ref={statRef1}>0</span><span className="stat-unit">卷</span></div>
+            <div className="stat-label">已修复典籍</div>
+          </div>
+          <div className="reveal" style={{ transitionDelay: '0.1s' }}>
+            <div className="stat-num"><span ref={statRef2}>0</span><span className="stat-unit">位</span></div>
+            <div className="stat-label">在册修复师</div>
+          </div>
+          <div className="reveal" style={{ transitionDelay: '0.2s' }}>
+            <div className="stat-num"><span ref={statRef3}>0</span><span className="stat-unit">载</span></div>
+            <div className="stat-label">传习历史</div>
+          </div>
+          <div className="reveal" style={{ transitionDelay: '0.3s' }}>
+            <div className="stat-num"><span ref={statRef4}>0</span><span className="stat-unit">平</span></div>
+            <div className="stat-label">馆藏面积</div>
+          </div>
+        </div>
+      </section>
+
+      {/* 预约体验 */}
+      <section id="booking" className="section booking-section">
+        <div className="booking-wrap reveal">
+          <h2 className="booking-title">亲 临 体 验</h2>
+          <p className="booking-subtitle">亲手揭开一页千年故纸，感受匠人指尖的温度</p>
+          <form onSubmit={handleForm}>
+            <div className="form-grid">
+              <div className="form-field">
+                <label className="form-label">姓名</label>
+                <input type="text" className="form-input" placeholder="请输入您的姓名"
+                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+              </div>
+              <div className="form-field">
+                <label className="form-label">联系电话</label>
+                <input type="tel" className="form-input" placeholder="请输入手机号码"
+                  value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+              </div>
+              <div className="form-field full">
+                <label className="form-label">期望到访日期</label>
+                <input type="date" className="form-input"
+                  value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+              </div>
+              <div className="form-field full">
+                <label className="form-label">留言</label>
+                <textarea className="form-input form-textarea" placeholder="有什么想要了解的……"
+                  value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})}></textarea>
+              </div>
+            </div>
+            <button type="submit" className="booking-submit">
+              {submitted ? '预 约 已 提 交' : '提 交 预 约'}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* 页脚 */}
+      <footer className="footer">
+        <div className="footer-top">
+          <div>
+            <div className="footer-logo">松烟<span>阁</span></div>
+            <p className="footer-desc">
+              松烟阁古籍修复技艺传习所，承继千年纸寿之学，
+              以匠心守文脉，以技艺续古书。一盏灯，一方砚，
+              让每一页故纸重见天日。
+            </p>
+          </div>
+          <div className="footer-col">
+            <h4>参观</h4>
+            <ul>
+              <li><a href="#">开放时间</a></li>
+              <li><a href="#">门票预约</a></li>
+              <li><a href="#">导览服务</a></li>
+              <li><a href="#">交通指引</a></li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h4>传习</h4>
+            <ul>
+              <li><a href="#">修复课程</a></li>
+              <li><a href="#">学徒招募</a></li>
+              <li><a href="#">学术研究</a></li>
+              <li><a href="#">出版物</a></li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h4>联系</h4>
+            <ul>
+              <li><a href="#">松烟阁·总馆</a></li>
+              <li><a href="#">service@songyange.cn</a></li>
+              <li><a href="#">0571-8888-0000</a></li>
+              <li><a href="#">杭州市西湖区文三路 88 号</a></li>
+            </ul>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <span>© 2026 松烟阁古籍修复技艺传习所</span>
+          <span>守一纸千年 · 续文脉不绝</span>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+// 宣告可升级为全栈应用
+(function announceUpgrade() {
+  window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+})();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', () => {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }, { once: true });
+}
+</script>
+</body>
+</html>

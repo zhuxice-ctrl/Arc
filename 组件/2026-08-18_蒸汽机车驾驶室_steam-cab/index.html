@@ -1,0 +1,2604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>蒸汽机车驾驶室 · 拟物化微交互实验室</title>
+  <meta name="creative-medium" content="interactive-prototype">
+  <meta name="description" content="蒸汽机车驾驶室 —— 一座可把玩的拟物化微交互实验室，用光标驱动的物理质感装置">
+  <style>
+    /* ========== 基础重置 ========== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --coal-black: #17150F;
+      --coal-deep: #0E0D0A;
+      --brass: #B98A3C;
+      --brass-light: #D4A85A;
+      --brass-dark: #8C6528;
+      --fire-orange: #E2622B;
+      --fire-yellow: #FFB347;
+      --fire-deep: #C43D1A;
+      --steam-white: #EDE6D6;
+      --steam-mute: #A8A090;
+      --wood-brown: #5A3E28;
+      --iron-gray: #3A3630;
+      --iron-light: #5A5448;
+
+      --shadow-soft: 0 4px 24px rgba(0,0,0,0.4);
+      --shadow-inset: inset 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--coal-deep);
+      font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+      color: var(--steam-white);
+      cursor: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ========== 自定义光标 ========== */
+    .cursor-outer {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 36px;
+      height: 36px;
+      border: 2.5px solid rgba(237, 230, 214, 0.9);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: width 0.18s cubic-bezier(.25,.8,.3,1.2),
+                  height 0.18s cubic-bezier(.25,.8,.3,1.2),
+                  border-color 0.2s ease,
+                  opacity 0.2s ease;
+      mix-blend-mode: normal;
+      will-change: transform, width, height;
+      box-shadow: 0 0 12px rgba(185, 138, 60, 0.4),
+                  0 0 24px rgba(185, 138, 60, 0.2),
+                  inset 0 0 8px rgba(255, 255, 255, 0.1);
+    }
+
+    .cursor-inner {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: var(--brass);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 10000;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 8px var(--brass),
+                  0 0 16px rgba(185, 138, 60, 0.6);
+      will-change: transform;
+    }
+
+    .cursor-outer.is-hover {
+      width: 52px;
+      height: 52px;
+      border-color: var(--brass-light);
+      box-shadow: 0 0 20px rgba(185, 138, 60, 0.6),
+                  0 0 40px rgba(226, 98, 43, 0.3),
+                  inset 0 0 12px rgba(226, 98, 43, 0.2);
+    }
+
+    .cursor-outer.is-drag {
+      width: 28px;
+      height: 28px;
+      border-color: var(--fire-orange);
+      box-shadow: 0 0 16px var(--fire-orange),
+                  0 0 32px rgba(226, 98, 43, 0.4);
+    }
+
+    .cursor-outer.is-drag .cursor-inner { display: none; }
+
+    .cursor-ripple {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--brass-light);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      opacity: 0;
+      transform: translate(-50%, -50%);
+    }
+
+    @keyframes cursor-ripple-anim {
+      0% { opacity: 0.8; width: 10px; height: 10px; }
+      100% { opacity: 0; width: 80px; height: 80px; }
+    }
+
+    /* ========== 驾驶台整体容器 ========== */
+    .cab {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background:
+        radial-gradient(ellipse at 50% 60%, #2A2418 0%, #17150F 55%, #0A0907 100%);
+      overflow: hidden;
+    }
+
+    /* 背景蒸汽层 */
+    .steam-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.15;
+      transition: opacity 1s ease;
+    }
+
+    .steam-bg::before {
+      content: '';
+      position: absolute;
+      width: 200%;
+      height: 100%;
+      top: 0;
+      left: -50%;
+      background:
+        radial-gradient(ellipse 300px 120px at 20% 30%, rgba(237,230,214,0.3), transparent 60%),
+        radial-gradient(ellipse 250px 100px at 55% 20%, rgba(237,230,214,0.25), transparent 60%),
+        radial-gradient(ellipse 350px 150px at 80% 40%, rgba(237,230,214,0.2), transparent 60%);
+      animation: steam-drift 18s ease-in-out infinite alternate;
+    }
+
+    @keyframes steam-drift {
+      0% { transform: translateX(-5%) translateY(2%); }
+      100% { transform: translateX(5%) translateY(-2%); }
+    }
+
+    /* 驾驶台标题 */
+    .cab-title {
+      position: absolute;
+      top: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .cab-title h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 8px;
+      color: var(--brass-light);
+      text-shadow: 0 0 20px rgba(185, 138, 60, 0.4);
+    }
+
+    .cab-title p {
+      font-size: 11px;
+      color: var(--steam-mute);
+      letter-spacing: 4px;
+      margin-top: 4px;
+    }
+
+    /* 驾驶台主体区域 */
+    .cab-panel {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1200px;
+      max-width: 96vw;
+      height: 68%;
+      perspective: 1200px;
+    }
+
+    .dashboard {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        linear-gradient(180deg,
+          rgba(90, 62, 40, 0.1) 0%,
+          rgba(60, 45, 30, 0.3) 30%,
+          rgba(42, 36, 24, 0.7) 60%,
+          rgba(23, 21, 15, 0.95) 100%);
+      border-top: 2px solid var(--brass-dark);
+      border-radius: 12px 12px 0 0;
+      box-shadow:
+        0 -8px 40px rgba(0,0,0,0.6),
+        inset 0 2px 0 rgba(185, 138, 60, 0.3);
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr 1fr 1fr;
+      grid-template-rows: 1fr auto;
+      gap: 24px;
+      padding: 40px 40px 30px;
+      align-items: end;
+    }
+
+    /* 装置通用外壳 */
+    .device {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      cursor: none;
+    }
+
+    .device-label {
+      font-size: 12px;
+      color: var(--brass-light);
+      letter-spacing: 3px;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .device-hint {
+      font-size: 10px;
+      color: var(--steam-mute);
+      letter-spacing: 1px;
+    }
+
+    /* ========== 装置 1: 汽笛拉绳 ========== */
+    .whistle-zone {
+      grid-column: 1;
+      align-self: start;
+      justify-self: center;
+      margin-top: 20px;
+    }
+
+    .whistle-mount {
+      width: 60px;
+      height: 30px;
+      background: linear-gradient(180deg, var(--iron-light), var(--iron-gray));
+      border-radius: 4px 4px 0 0;
+      border: 1px solid var(--brass-dark);
+      position: relative;
+    }
+
+    .whistle-bell {
+      width: 80px;
+      height: 45px;
+      background: linear-gradient(180deg, var(--brass-light), var(--brass) 40%, var(--brass-dark));
+      border-radius: 50% 50% 40% 40% / 70% 70% 30% 30%;
+      position: relative;
+      margin-top: -2px;
+      box-shadow:
+        inset 0 -4px 8px rgba(0,0,0,0.4),
+        0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    .whistle-bell::before {
+      content: '';
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 20px;
+      height: 20px;
+      background: radial-gradient(circle, #3a2a18, #1a120a);
+      border-radius: 50%;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    }
+
+    .rope {
+      width: 4px;
+      height: 180px;
+      background: linear-gradient(180deg,
+        #8B7355 0%,
+        #6B5344 20%,
+        #5A4435 50%,
+        #6B5344 80%,
+        #8B7355 100%);
+      border-radius: 2px;
+      position: relative;
+      transform-origin: top center;
+      cursor: grab;
+      box-shadow: 1px 0 2px rgba(0,0,0,0.4);
+    }
+
+    .rope::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent 0px,
+          transparent 6px,
+          rgba(0,0,0,0.25) 6px,
+          rgba(0,0,0,0.25) 8px
+        );
+      border-radius: 2px;
+    }
+
+    .rope-ball {
+      position: absolute;
+      bottom: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 22px;
+      background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass) 50%, var(--brass-dark));
+      border-radius: 50%;
+      box-shadow:
+        0 4px 8px rgba(0,0,0,0.5),
+        inset -2px -2px 6px rgba(0,0,0,0.3);
+    }
+
+    .whistle-steam {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: 80px;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    /* ========== 装置 2: 主蒸汽阀铜转轮 ========== */
+    .valve-zone {
+      grid-column: 2;
+      align-self: center;
+      margin-bottom: 20px;
+    }
+
+    .valve-wheel {
+      width: 130px;
+      height: 130px;
+      position: relative;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .valve-wheel:active { cursor: grabbing; }
+
+    .valve-rim {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%,
+          var(--brass-light) 0%,
+          var(--brass) 30%,
+          var(--brass-dark) 70%,
+          #5C4218 100%);
+      box-shadow:
+        0 6px 20px rgba(0,0,0,0.6),
+        inset 0 -4px 12px rgba(0,0,0,0.4),
+        inset 0 2px 6px rgba(255, 220, 150, 0.4);
+      border: 2px solid var(--brass-dark);
+    }
+
+    .valve-inner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 50px;
+      height: 50px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 40% 35%,
+          var(--brass-light),
+          var(--brass-dark) 80%);
+      box-shadow:
+        inset 0 -2px 4px rgba(0,0,0,0.5),
+        0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    .valve-spoke {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 50px;
+      background: linear-gradient(90deg, var(--brass-dark), var(--brass-light), var(--brass-dark));
+      transform-origin: center top;
+      border-radius: 2px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    .valve-handle {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 18px;
+      height: 18px;
+      background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass-dark));
+      border-radius: 50%;
+      box-shadow:
+        0 3px 6px rgba(0,0,0,0.5),
+        inset -1px -1px 3px rgba(0,0,0,0.4);
+    }
+
+    .valve-gauge-ring {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--steam-mute);
+      letter-spacing: 1px;
+    }
+
+    /* ========== 装置 3: 锅炉炉门 ========== */
+    .furnace-zone {
+      grid-column: 3;
+      align-self: end;
+      margin-bottom: 10px;
+    }
+
+    .furnace-frame {
+      width: 140px;
+      height: 160px;
+      background:
+        linear-gradient(180deg, var(--iron-light), var(--iron-gray) 30%, var(--coal-deep));
+      border: 3px solid var(--brass-dark);
+      border-radius: 8px 8px 4px 4px;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 6px 20px rgba(0,0,0,0.6),
+        inset 0 2px 4px rgba(255,200,120,0.1);
+    }
+
+    .furnace-fire {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 70%;
+      background:
+        radial-gradient(ellipse at 50% 100%,
+          var(--fire-yellow) 0%,
+          var(--fire-orange) 30%,
+          var(--fire-deep) 60%,
+          #4A1A0A 100%);
+      opacity: 0.85;
+      transition: opacity 0.5s ease;
+      filter: blur(1px);
+    }
+
+    .furnace-fire::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 30px 20px at 30% 80%, rgba(255,200,80,0.7), transparent),
+        radial-gradient(ellipse 40px 25px at 60% 60%, rgba(255,140,40,0.5), transparent),
+        radial-gradient(ellipse 25px 15px at 75% 75%, rgba(255,180,60,0.6), transparent);
+      animation: fire-flicker 0.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes fire-flicker {
+      0% { opacity: 0.8; transform: translateY(1px) scale(1); }
+      100% { opacity: 1; transform: translateY(-1px) scale(1.02); }
+    }
+
+    .furnace-door {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        linear-gradient(180deg, var(--iron-light), var(--iron-gray) 50%, var(--iron-dark, #2A2620));
+      border: 2px solid var(--brass);
+      border-radius: 6px 6px 2px 2px;
+      transform-origin: top center;
+      transform: rotateX(0deg);
+      cursor: grab;
+      box-shadow:
+        0 4px 12px rgba(0,0,0,0.5),
+        inset 0 1px 2px rgba(255,255,255,0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+    }
+
+    .furnace-door.open {
+      transform: rotateX(-75deg);
+    }
+
+    .furnace-door-handle {
+      width: 40px;
+      height: 12px;
+      background: linear-gradient(180deg, var(--brass-light), var(--brass-dark));
+      border-radius: 3px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .furnace-door-bar {
+      width: 60px;
+      height: 3px;
+      background: var(--brass-dark);
+      border-radius: 2px;
+    }
+
+    .coal-count {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      font-size: 10px;
+      color: var(--brass-light);
+      background: rgba(0,0,0,0.6);
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--brass-dark);
+    }
+
+    .fire-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 200px;
+      height: 200px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, rgba(226, 98, 43, 0.3), transparent 60%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .fire-glow.active { opacity: 1; }
+
+    /* ========== 装置 4: 节流阀推杆 ========== */
+    .throttle-zone {
+      grid-column: 4;
+      align-self: center;
+      margin-bottom: 20px;
+    }
+
+    .throttle-track {
+      width: 40px;
+      height: 200px;
+      background:
+        linear-gradient(90deg, var(--iron-gray), var(--iron-light) 50%, var(--iron-gray));
+      border: 2px solid var(--brass-dark);
+      border-radius: 8px;
+      position: relative;
+      box-shadow:
+        inset 0 2px 6px rgba(0,0,0,0.6),
+        0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .throttle-track::before {
+      content: '';
+      position: absolute;
+      top: 10px;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 8px;
+      background: var(--coal-deep);
+      border-radius: 4px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    }
+
+    .throttle-handle {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: 50px;
+      cursor: grab;
+      z-index: 2;
+    }
+
+    .throttle-handle:active { cursor: grabbing; }
+
+    .throttle-grip {
+      width: 100%;
+      height: 30px;
+      background:
+        radial-gradient(ellipse at 35% 30%,
+          var(--brass-light),
+          var(--brass) 40%,
+          var(--brass-dark));
+      border-radius: 6px;
+      border: 2px solid var(--brass-dark);
+      box-shadow:
+        0 4px 10px rgba(0,0,0,0.5),
+        inset 0 -2px 4px rgba(0,0,0,0.3),
+        inset 0 1px 2px rgba(255,240,200,0.3);
+    }
+
+    .throttle-stem {
+      width: 14px;
+      height: 20px;
+      background: linear-gradient(90deg, var(--iron-gray), var(--iron-light), var(--iron-gray));
+      margin: -2px auto 0;
+      border: 1px solid var(--brass-dark);
+      border-radius: 0 0 3px 3px;
+    }
+
+    .throttle-marks {
+      position: absolute;
+      right: -20px;
+      top: 5px;
+      bottom: 5px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--steam-mute);
+    }
+
+    /* ========== 速度表（节流阀联动） ========== */
+    .speed-gauge {
+      width: 80px;
+      height: 80px;
+      position: relative;
+      margin-top: 12px;
+    }
+
+    .speed-gauge-face {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle,
+          #F5EFE0 0%,
+          #EDE6D6 50%,
+          #C8BFA8 100%);
+      border: 4px solid var(--brass);
+      box-shadow:
+        0 4px 12px rgba(0,0,0,0.5),
+        inset 0 1px 3px rgba(0,0,0,0.2);
+      position: relative;
+    }
+
+    .speed-gauge-face::before {
+      content: '速度';
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px;
+      color: var(--brass-dark);
+      letter-spacing: 2px;
+    }
+
+    .speed-ticks {
+      position: absolute;
+      inset: 6px;
+    }
+
+    .speed-tick {
+      position: absolute;
+      left: 50%;
+      top: 2px;
+      width: 1px;
+      height: 6px;
+      background: var(--brass-dark);
+      transform-origin: center calc(50% - 2px + 30px);
+    }
+
+    .speed-needle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 2px;
+      height: 28px;
+      background: linear-gradient(180deg, var(--fire-deep), var(--fire-orange));
+      transform-origin: center bottom;
+      transform: translate(-50%, -100%) rotate(-120deg);
+      border-radius: 1px;
+      box-shadow: 0 0 4px rgba(226, 98, 43, 0.6);
+      transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+    }
+
+    .speed-needle-pivot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass-dark));
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+
+    /* ========== 装置 5: 铜铃 ========== */
+    .bell-zone {
+      grid-column: 5;
+      align-self: start;
+      margin-top: 20px;
+    }
+
+    .bell-mount {
+      width: 50px;
+      height: 20px;
+      background: linear-gradient(180deg, var(--iron-light), var(--iron-gray));
+      border: 1px solid var(--brass-dark);
+      border-radius: 3px 3px 0 0;
+    }
+
+    .bell-body {
+      width: 70px;
+      height: 55px;
+      background:
+        radial-gradient(ellipse at 35% 30%,
+          var(--brass-light) 0%,
+          var(--brass) 40%,
+          var(--brass-dark) 80%);
+      border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+      position: relative;
+      margin-top: -2px;
+      transform-origin: top center;
+      cursor: pointer;
+      box-shadow:
+        0 5px 15px rgba(0,0,0,0.5),
+        inset 0 -4px 8px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(255,240,200,0.4);
+    }
+
+    .bell-body::after {
+      content: '';
+      position: absolute;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 26px;
+      height: 14px;
+      background: radial-gradient(ellipse, #3a2a18, #1a120a);
+      border-radius: 50%;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    }
+
+    .bell-clapper {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      width: 10px;
+      height: 18px;
+      transform: translateX(-50%);
+      background: linear-gradient(180deg, var(--brass-dark), #5C4218);
+      border-radius: 50% 50% 40% 40%;
+      z-index: -1;
+    }
+
+    .bell-wave {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--brass-light);
+      border-radius: 50%;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -50%);
+    }
+
+    /* ========== 装置 6: 压力表 ========== */
+    .pressure-zone {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: start;
+      justify-self: center;
+      margin-top: 30px;
+    }
+
+    .pressure-gauge {
+      width: 110px;
+      height: 110px;
+      position: relative;
+    }
+
+    .pressure-face {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle,
+          #F0E8D0 0%,
+          #D8D0B8 70%,
+          #A89878 100%);
+      border: 5px solid var(--brass);
+      box-shadow:
+        0 6px 20px rgba(0,0,0,0.6),
+        inset 0 2px 6px rgba(0,0,0,0.15),
+        0 0 30px rgba(226, 98, 43, 0);
+      position: relative;
+      transition: box-shadow 0.5s ease;
+    }
+
+    .pressure-face.danger {
+      box-shadow:
+        0 6px 20px rgba(0,0,0,0.6),
+        inset 0 2px 6px rgba(0,0,0,0.15),
+        0 0 20px rgba(226, 98, 43, 0.5);
+    }
+
+    .pressure-face::before {
+      content: '压力表';
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: var(--brass-dark);
+      letter-spacing: 2px;
+    }
+
+    .pressure-face::after {
+      content: '0  5  10  15  20';
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px;
+      color: var(--brass-dark);
+      letter-spacing: 1px;
+    }
+
+    .pressure-ticks {
+      position: absolute;
+      inset: 8px;
+    }
+
+    .pressure-tick {
+      position: absolute;
+      left: 50%;
+      top: 4px;
+      width: 1.5px;
+      height: 8px;
+      background: var(--brass-dark);
+      transform-origin: center calc(47px);
+    }
+
+    .pressure-tick.danger-zone {
+      background: var(--fire-deep);
+    }
+
+    .pressure-needle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 2.5px;
+      height: 38px;
+      background: linear-gradient(180deg, #1a1a1a, #3a3a3a);
+      transform-origin: center bottom;
+      transform: translate(-50%, -100%) rotate(-135deg);
+      border-radius: 1.5px 1.5px 0 0;
+    }
+
+    .pressure-needle.secondary {
+      height: 28px;
+      background: linear-gradient(180deg, var(--brass-dark), var(--brass));
+      width: 2px;
+    }
+
+    .pressure-pivot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 12px;
+      height: 12px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass-dark));
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      z-index: 3;
+    }
+
+    /* ========== 装置 7: 信号灯切换杆 ========== */
+    .signal-zone {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: end;
+      justify-self: center;
+      margin-bottom: 10px;
+    }
+
+    .signal-housing {
+      width: 70px;
+      height: 160px;
+      background:
+        linear-gradient(90deg, var(--iron-gray), var(--iron-light) 50%, var(--iron-gray));
+      border: 2px solid var(--brass-dark);
+      border-radius: 8px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-around;
+      padding: 12px 0;
+      box-shadow:
+        0 6px 16px rgba(0,0,0,0.5),
+        inset 0 1px 2px rgba(255,255,255,0.08);
+    }
+
+    .signal-lens {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--coal-deep);
+      border: 3px solid var(--brass);
+      position: relative;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+      transition: all 0.4s ease;
+    }
+
+    .signal-lens.green.on {
+      background: radial-gradient(circle at 40% 35%, #7FFF7F, #2ECC40 50%, #0D6E1A);
+      box-shadow:
+        0 0 20px #2ECC40,
+        0 0 40px rgba(46, 204, 64, 0.5),
+        inset 0 2px 6px rgba(255,255,255,0.4);
+    }
+
+    .signal-lens.yellow.on {
+      background: radial-gradient(circle at 40% 35%, #FFE066, #FFB347 50%, #C77A1A);
+      box-shadow:
+        0 0 20px #FFB347,
+        0 0 40px rgba(255, 179, 71, 0.5),
+        inset 0 2px 6px rgba(255,255,255,0.4);
+    }
+
+    .signal-lens.red.on {
+      background: radial-gradient(circle at 40% 35%, #FF6666, #E2622B 50%, #8B1A1A);
+      box-shadow:
+        0 0 20px var(--fire-orange),
+        0 0 40px rgba(226, 98, 43, 0.5),
+        inset 0 2px 6px rgba(255,255,255,0.4);
+    }
+
+    .signal-lever {
+      position: absolute;
+      right: -24px;
+      top: 50%;
+      width: 8px;
+      height: 50px;
+      background: linear-gradient(90deg, var(--brass-dark), var(--brass-light), var(--brass-dark));
+      border-radius: 4px;
+      transform-origin: center bottom;
+      transform: translateY(-100%) rotate(30deg);
+      cursor: grab;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+
+    .signal-lever::after {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 16px;
+      height: 16px;
+      background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass-dark));
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .signal-lever-base {
+      position: absolute;
+      right: -22px;
+      top: calc(50% + 40px);
+      width: 12px;
+      height: 14px;
+      background: linear-gradient(90deg, var(--iron-gray), var(--iron-light), var(--iron-gray));
+      border-radius: 2px;
+      border: 1px solid var(--brass-dark);
+    }
+
+    /* ========== 震动效果 ========== */
+    .cab-panel.shake {
+      animation: cab-shake 0.2s ease-in-out;
+    }
+
+    @keyframes cab-shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-1px); }
+      75% { transform: translateX(1px); }
+    }
+
+    /* ========== 粒子系统容器 ========== */
+    .particle-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 20;
+    }
+
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* ========== 说明文字 ========== */
+    .instruction {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: var(--steam-mute);
+      letter-spacing: 2px;
+      z-index: 10;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .instruction strong {
+      color: var(--brass-light);
+      font-weight: 500;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 900px) {
+      .cab-panel { width: 98vw; }
+      .dashboard {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        padding: 30px 20px 20px;
+      }
+      .device-label { font-size: 10px; letter-spacing: 1px; }
+    }
+
+    /* ========== reduced motion ========== */
+    @media (prefers-reduced-motion: reduce) {
+      .steam-bg::before { animation: none; }
+      .furnace-fire::before { animation: none; }
+      .rope { transition: transform 0.1s linear; }
+      .valve-wheel { transition: none; }
+      .bell-body { transition: none; }
+      * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+    }
+
+    /* ========== 锅炉光晕环境光 ========== */
+    .ambient-glow {
+      position: absolute;
+      bottom: 25%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      height: 300px;
+      background: radial-gradient(ellipse at center top,
+        rgba(226, 98, 43, 0.12),
+        transparent 70%);
+      pointer-events: none;
+      transition: opacity 0.8s ease;
+      z-index: 1;
+    }
+
+    /* ========== 蒸汽粒子 ========== */
+    .steam-particle {
+      position: absolute;
+      background: radial-gradient(circle, rgba(237,230,214,0.6), transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* ========== 火星粒子 ========== */
+    .spark {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--fire-yellow);
+      border-radius: 50%;
+      pointer-events: none;
+      box-shadow: 0 0 6px var(--fire-orange);
+    }
+
+    /* ========== 标题装饰 ========== */
+    .title-ornament {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .title-ornament::before,
+    .title-ornament::after {
+      content: '';
+      width: 40px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--brass), transparent);
+    }
+  </style>
+</head>
+<body>
+  <div class="cab" id="cab">
+    <!-- 背景蒸汽 -->
+    <div class="steam-bg" id="steamBg"></div>
+
+    <!-- 环境炉光 -->
+    <div class="ambient-glow" id="ambientGlow"></div>
+
+    <!-- 粒子画布 -->
+    <div class="particle-canvas" id="particleCanvas"></div>
+
+    <!-- 标题 -->
+    <div class="cab-title">
+      <div class="title-ornament">
+        <h1>蒸汽机车驾驶室</h1>
+      </div>
+      <p>STEAM CAB · 拟物化微交互实验室</p>
+    </div>
+
+    <!-- 驾驶台面板 -->
+    <div class="cab-panel" id="cabPanel">
+      <div class="dashboard" id="dashboard">
+
+        <!-- 装置 1: 汽笛拉绳 -->
+        <div class="device whistle-zone" data-device="whistle">
+          <div class="device-label">汽笛</div>
+          <div class="whistle-mount"></div>
+          <div class="whistle-bell" id="whistleBell"></div>
+          <div class="whistle-steam" id="whistleSteam"></div>
+          <div class="rope" id="whistleRope">
+            <div class="rope-ball" id="ropeBall"></div>
+          </div>
+          <div class="device-hint">下拉鸣笛</div>
+        </div>
+
+        <!-- 装置 7: 信号灯 -->
+        <div class="device signal-zone" data-device="signal">
+          <div class="device-label">信号灯</div>
+          <div class="signal-housing">
+            <div class="signal-lens green" id="sigGreen"></div>
+            <div class="signal-lens yellow on" id="sigYellow"></div>
+            <div class="signal-lens red" id="sigRed"></div>
+            <div class="signal-lever-base"></div>
+            <div class="signal-lever" id="signalLever"></div>
+          </div>
+          <div class="device-hint">拨杆切换</div>
+        </div>
+
+        <!-- 装置 6: 压力表 -->
+        <div class="device pressure-zone" data-device="pressure">
+          <div class="device-label">主压力表</div>
+          <div class="pressure-gauge" id="pressureGauge">
+            <div class="pressure-face" id="pressureFace">
+              <div class="pressure-ticks" id="pressureTicks"></div>
+              <div class="pressure-needle secondary" id="pressureNeedle2"></div>
+              <div class="pressure-needle" id="pressureNeedle"></div>
+              <div class="pressure-pivot"></div>
+            </div>
+          </div>
+          <div class="device-hint">联动显示</div>
+        </div>
+
+        <!-- 装置 2: 主蒸汽阀 -->
+        <div class="device valve-zone" data-device="valve">
+          <div class="device-label">主汽阀</div>
+          <div class="valve-wheel" id="valveWheel">
+            <div class="valve-rim"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(0deg);"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(60deg);"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(120deg);"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(180deg);"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(240deg);"></div>
+            <div class="valve-spoke" style="transform: translate(-50%, 0) rotate(300deg);"></div>
+            <div class="valve-inner"></div>
+            <div class="valve-handle"></div>
+          </div>
+          <div class="valve-gauge-ring">
+            开度 <span id="valvePercent">0</span>%
+          </div>
+        </div>
+
+        <!-- 装置 3: 锅炉炉门 -->
+        <div class="device furnace-zone" data-device="furnace">
+          <div class="device-label">锅炉炉门</div>
+          <div class="furnace-frame" id="furnaceFrame">
+            <div class="fire-glow" id="fireGlow"></div>
+            <div class="furnace-fire" id="furnaceFire"></div>
+            <div class="furnace-door" id="furnaceDoor">
+              <div class="furnace-door-handle"></div>
+              <div class="furnace-door-bar"></div>
+            </div>
+            <div class="coal-count">煤 <span id="coalCount">3</span> 块</div>
+          </div>
+          <div class="device-hint">拉门 / 投煤</div>
+        </div>
+
+        <!-- 装置 4: 节流阀 -->
+        <div class="device throttle-zone" data-device="throttle">
+          <div class="device-label">节流阀</div>
+          <div class="throttle-track" id="throttleTrack">
+            <div class="throttle-handle" id="throttleHandle">
+              <div class="throttle-grip"></div>
+              <div class="throttle-stem"></div>
+            </div>
+            <div class="throttle-marks">
+              <span>满</span>
+              <span>半</span>
+              <span>空</span>
+            </div>
+          </div>
+          <div class="speed-gauge" id="speedGauge">
+            <div class="speed-gauge-face">
+              <div class="speed-ticks" id="speedTicks"></div>
+              <div class="speed-needle" id="speedNeedle"></div>
+              <div class="speed-needle-pivot"></div>
+            </div>
+          </div>
+          <div class="device-hint">推杆调速</div>
+        </div>
+
+        <!-- 装置 5: 铜铃 -->
+        <div class="device bell-zone" data-device="bell">
+          <div class="device-label">铜铃</div>
+          <div class="bell-mount"></div>
+          <div style="position: relative;">
+            <div class="bell-body" id="bellBody">
+              <div class="bell-wave" id="bellWave1"></div>
+              <div class="bell-wave" id="bellWave2"></div>
+              <div class="bell-wave" id="bellWave3"></div>
+            </div>
+            <div class="bell-clapper" id="bellClapper"></div>
+          </div>
+          <div class="rope" id="bellRope" style="height: 100px;">
+            <div class="rope-ball"></div>
+          </div>
+          <div class="device-hint">点击/拉绳</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 操作提示 -->
+    <div class="instruction">
+      <strong>提示：</strong>用光标悬停、点击、拖拽各装置，感受拟物化微交互 · 装置状态彼此联动
+    </div>
+  </div>
+
+  <!-- 自定义光标 -->
+  <div class="cursor-outer" id="cursorOuter">
+    <div class="cursor-inner" id="cursorInner"></div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ============================================================
+    // 1. 工具函数 & 物理常量
+    // ============================================================
+    var $ = function(id) { return document.getElementById(id); };
+
+    var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var physics = {
+      // 弹簧阻尼积分（返回新位置和速度）
+      springDamp: function(pos, vel, target, stiffness, damping, dt) {
+        var force = -stiffness * (pos - target);
+        var dampingForce = -damping * vel;
+        var acceleration = force + dampingForce;
+        var newVel = vel + acceleration * dt;
+        var newPos = pos + newVel * dt;
+        return { pos: newPos, vel: newVel };
+      },
+
+      // 摩擦减速
+      friction: function(vel, friction, dt) {
+        return vel * Math.pow(friction, dt * 60);
+      },
+
+      // 角度差（最小角度）
+      angleDiff: function(a, b) {
+        var diff = a - b;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        return diff;
+      },
+
+      clamp: function(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      },
+
+      lerp: function(a, b, t) {
+        return a + (b - a) * t;
+      }
+    };
+
+    // ============================================================
+    // 2. RAF 管理器（visibilitychange 自动暂停 / 卸载清理）
+    // ============================================================
+    var rafId = null;
+    var isPaused = false;
+    var lastTime = 0;
+    var tickHandlers = [];
+
+    function addTick(handler) {
+      tickHandlers.push(handler);
+    }
+
+    function removeTick(handler) {
+      var idx = tickHandlers.indexOf(handler);
+      if (idx >= 0) tickHandlers.splice(idx, 1);
+    }
+
+    function loop(now) {
+      rafId = requestAnimationFrame(loop);
+      if (isPaused) { lastTime = now; return; }
+      var dt = Math.min((now - lastTime) / 1000, 0.05); // 最大 50ms 步长
+      lastTime = now;
+      for (var i = 0; i < tickHandlers.length; i++) {
+        try { tickHandlers[i](dt, now); } catch (e) { /* 防御 */ }
+      }
+    }
+
+    function startLoop() {
+      if (rafId) return;
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    function stopLoop() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+
+    function onVisibilityChange() {
+      isPaused = document.hidden;
+      if (!isPaused) lastTime = performance.now();
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('beforeunload', function() {
+      stopLoop();
+      // 清理 WebAudio
+      if (audioCtx) { try { audioCtx.close(); } catch(e) {} }
+    });
+
+    // ============================================================
+    // 3. 自定义光标
+    // ============================================================
+    var cursorOuter = $('cursorOuter');
+    var cursorInner = $('cursorInner');
+    var cursorX = window.innerWidth / 2;
+    var cursorY = window.innerHeight / 2;
+    var targetX = cursorX;
+    var targetY = cursorY;
+    var cursorVelX = 0;
+    var cursorVelY = 0;
+
+    function updateCursorPos(dt) {
+      // 弹簧跟随
+      var result = physics.springDamp(cursorX, cursorVelX, targetX, 180, 14, dt);
+      cursorX = result.pos;
+      cursorVelX = result.vel;
+      result = physics.springDamp(cursorY, cursorVelY, targetY, 180, 14, dt);
+      cursorY = result.pos;
+      cursorVelY = result.vel;
+
+      cursorOuter.style.transform = 'translate(' + (cursorX - window.innerWidth/2) + 'px, ' + (cursorY - window.innerHeight/2) + 'px) translate(-50%, -50%)';
+      cursorInner.style.transform = 'translate(' + (cursorX - window.innerWidth/2) + 'px, ' + (cursorY - window.innerHeight/2) + 'px) translate(-50%, -50%)';
+    }
+
+    document.addEventListener('mousemove', function(e) {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    });
+
+    // 悬停检测
+    var hoverElements = [];
+
+    function initHoverTargets() {
+      var devices = document.querySelectorAll('[data-device]');
+      devices.forEach(function(el) {
+        hoverElements.push(el);
+        el.addEventListener('mouseenter', function() {
+          cursorOuter.classList.add('is-hover');
+        });
+        el.addEventListener('mouseleave', function() {
+          if (!isDragging) {
+            cursorOuter.classList.remove('is-hover');
+          }
+        });
+      });
+    }
+
+    // 拖拽状态
+    var isDragging = false;
+    function setDragState(dragging) {
+      isDragging = dragging;
+      if (dragging) {
+        cursorOuter.classList.add('is-drag');
+        cursorOuter.classList.remove('is-hover');
+      } else {
+        cursorOuter.classList.remove('is-drag');
+      }
+    }
+
+    // 点击涟漪
+    var ripplePool = [];
+    function spawnRipple(x, y) {
+      if (prefersReducedMotion) return;
+      var ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = x + 'px';
+      ripple.style.top = y + 'px';
+      ripple.style.animation = 'cursor-ripple-anim 0.6s ease-out forwards';
+      document.body.appendChild(ripple);
+      ripplePool.push(ripple);
+      setTimeout(function() {
+        if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+        var idx = ripplePool.indexOf(ripple);
+        if (idx >= 0) ripplePool.splice(idx, 1);
+      }, 650);
+    }
+
+    document.addEventListener('mousedown', function(e) {
+      spawnRipple(e.clientX, e.clientY);
+    });
+
+    // ============================================================
+    // 4. WebAudio 声音
+    // ============================================================
+    var audioCtx = null;
+
+    function ensureAudio() {
+      if (!audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch(e) {
+          audioCtx = null;
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // 汽笛声
+    function playWhistle(intensity) {
+      var ctx = ensureAudio();
+      if (!ctx) return;
+      var now = ctx.currentTime;
+      var dur = 0.8 + intensity * 0.6;
+
+      // 主音：方波+正弦
+      var osc1 = ctx.createOscillator();
+      osc1.type = 'square';
+      osc1.frequency.setValueAtTime(480 + intensity * 120, now);
+      osc1.frequency.exponentialRampToValueAtTime(380 + intensity * 80, now + dur * 0.3);
+      osc1.frequency.exponentialRampToValueAtTime(320 + intensity * 60, now + dur);
+
+      var osc2 = ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(960 + intensity * 200, now);
+      osc2.frequency.exponentialRampToValueAtTime(760 + intensity * 150, now + dur);
+
+      var gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.15 + intensity * 0.1, now + 0.08);
+      gain.gain.linearRampToValueAtTime(0.1 + intensity * 0.08, now + dur * 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      var filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 600;
+      filter.Q.value = 2;
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + dur + 0.05);
+      osc2.stop(now + dur + 0.05);
+    }
+
+    // 铜铃声
+    function playBell(velocity) {
+      var ctx = ensureAudio();
+      if (!ctx) return;
+      var now = ctx.currentTime;
+      var dur = 1.5 + velocity * 0.5;
+      var vol = 0.08 + velocity * 0.1;
+
+      // 多泛音模拟铜铃
+      var freqs = [880, 1320, 1760, 2200];
+      var gains = [1, 0.6, 0.3, 0.15];
+
+      for (var i = 0; i < freqs.length; i++) {
+        var osc = ctx.createOscillator();
+        osc.type = i === 0 ? 'sine' : 'triangle';
+        osc.frequency.value = freqs[i] + (Math.random() - 0.5) * 5;
+
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(0, now);
+        g.gain.linearRampToValueAtTime(vol * gains[i], now + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + dur * (i === 0 ? 1 : 0.7));
+
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur + 0.1);
+      }
+    }
+
+    // 风声（白噪声 + 滤波）
+    var windNode = null;
+    var windGain = null;
+    var windFilter = null;
+
+    function ensureWind() {
+      if (windNode) return;
+      var ctx = ensureAudio();
+      if (!ctx) return;
+
+      // 创建白噪声缓冲
+      var bufferSize = 2 * ctx.sampleRate;
+      var noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      var output = noiseBuffer.getChannelData(0);
+      for (var i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+
+      windNode = ctx.createBufferSource();
+      windNode.buffer = noiseBuffer;
+      windNode.loop = true;
+
+      windFilter = ctx.createBiquadFilter();
+      windFilter.type = 'lowpass';
+      windFilter.frequency.value = 400;
+      windFilter.Q.value = 0.5;
+
+      windGain = ctx.createGain();
+      windGain.gain.value = 0;
+
+      windNode.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.connect(ctx.destination);
+
+      windNode.start();
+    }
+
+    function setWindIntensity(v) {
+      ensureWind();
+      if (!windGain) return;
+      var ctx = audioCtx;
+      if (!ctx) return;
+      windGain.gain.setTargetAtTime(v * 0.04, ctx.currentTime, 0.3);
+      if (windFilter) {
+        windFilter.frequency.setTargetAtTime(300 + v * 800, ctx.currentTime, 0.3);
+      }
+    }
+
+    // 锅炉隆隆声
+    var fireNode = null;
+    var fireGain = null;
+
+    function ensureFireSound() {
+      if (fireNode) return;
+      var ctx = ensureAudio();
+      if (!ctx) return;
+
+      var bufferSize = 2 * ctx.sampleRate;
+      var noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      var output = noiseBuffer.getChannelData(0);
+      for (var i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+
+      fireNode = ctx.createBufferSource();
+      fireNode.buffer = noiseBuffer;
+      fireNode.loop = true;
+
+      var filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 180;
+      filter.Q.value = 1;
+
+      fireGain = ctx.createGain();
+      fireGain.gain.value = 0;
+
+      fireNode.connect(filter);
+      filter.connect(fireGain);
+      fireGain.connect(ctx.destination);
+
+      fireNode.start();
+    }
+
+    function setFireIntensity(v) {
+      ensureFireSound();
+      if (!fireGain || !audioCtx) return;
+      fireGain.gain.setTargetAtTime(v * 0.03, audioCtx.currentTime, 0.5);
+    }
+
+    // 投煤声
+    function playCoalSound() {
+      var ctx = ensureAudio();
+      if (!ctx) return;
+      var now = ctx.currentTime;
+
+      var osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(60, now + 0.15);
+
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0.12, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+      // 加上短促的噪声
+      var noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+      var data = noiseBuffer.getChannelData(0);
+      for (var i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      }
+      var noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuffer;
+      var noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.08;
+
+      osc.connect(g);
+      g.connect(ctx.destination);
+      noiseSrc.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.2);
+      noiseSrc.start(now);
+    }
+
+    // ============================================================
+    // 5. 粒子系统
+    // ============================================================
+    var particleCanvas = $('particleCanvas');
+    var particles = [];
+
+    function spawnSteamParticle(x, y, size, duration) {
+      if (prefersReducedMotion) return;
+      var p = document.createElement('div');
+      p.className = 'steam-particle';
+      var s = size || 30;
+      p.style.width = s + 'px';
+      p.style.height = s + 'px';
+      p.style.left = (x - s/2) + 'px';
+      p.style.top = (y - s/2) + 'px';
+      p.style.opacity = '0.6';
+      particleCanvas.appendChild(p);
+
+      var particle = {
+        el: p,
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * 20,
+        vy: -30 - Math.random() * 40,
+        size: s,
+        maxSize: s * (1.5 + Math.random()),
+        life: 0,
+        duration: duration || 2 + Math.random() * 1.5,
+        type: 'steam'
+      };
+      particles.push(particle);
+      return particle;
+    }
+
+    function spawnSpark(x, y) {
+      if (prefersReducedMotion) return;
+      var p = document.createElement('div');
+      p.className = 'spark';
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      particleCanvas.appendChild(p);
+
+      var angle = -Math.PI/2 + (Math.random() - 0.5) * Math.PI * 0.8;
+      var speed = 40 + Math.random() * 80;
+      var particle = {
+        el: p,
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        duration: 0.8 + Math.random() * 0.6,
+        type: 'spark',
+        gravity: 120
+      };
+      particles.push(particle);
+    }
+
+    function updateParticles(dt) {
+      for (var i = particles.length - 1; i >= 0; i--) {
+        var p = particles[i];
+        p.life += dt;
+        var t = p.life / p.duration;
+
+        if (t >= 1) {
+          if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
+          particles.splice(i, 1);
+          continue;
+        }
+
+        if (p.type === 'steam') {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy *= 0.98; // 上升减速
+          p.vx *= 0.99;
+          var currentSize = physics.lerp(p.size, p.maxSize, t);
+          p.el.style.width = currentSize + 'px';
+          p.el.style.height = currentSize + 'px';
+          p.el.style.left = (p.x - currentSize/2) + 'px';
+          p.el.style.top = (p.y - currentSize/2) + 'px';
+          p.el.style.opacity = (1 - t) * 0.5;
+        } else if (p.type === 'spark') {
+          p.vy += p.gravity * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.el.style.left = p.x + 'px';
+          p.el.style.top = p.y + 'px';
+          p.el.style.opacity = 1 - t;
+          var scale = 1 - t * 0.5;
+          p.el.style.transform = 'scale(' + scale + ')';
+        }
+      }
+    }
+
+    // ============================================================
+    // 6. 全局状态（联动核心）
+    // ============================================================
+    var state = {
+      valveOpen: 0,        // 0~1 主汽阀开度
+      throttle: 0,         // 0~1 节流阀
+      coalCount: 3,        // 煤块数
+      fireIntensity: 0.6,  // 0~1 火力
+      pressure: 0.4,       // 0~1 压力（红区 0.85+）
+      pressure2: 0.35,     // 副针
+      speed: 0,            // 0~1 速度
+      signalColor: 'yellow', // green, yellow, red
+      furnaceOpen: false,
+      steamLevel: 0.2      // 背景蒸汽浓度
+    };
+
+    // ============================================================
+    // 7. 装置 1: 汽笛拉绳
+    // ============================================================
+    var whistleRope = $('whistleRope');
+    var ropeBall = $('ropeBall');
+    var whistleBell = $('whistleBell');
+    var whistleSteam = $('whistleSteam');
+    var ropeState = {
+      swingAngle: 0,
+      swingVel: 0,
+      dragY: 0,
+      isDragging: false,
+      pullAmount: 0,
+      returnVel: 0
+    };
+
+    function initWhistle() {
+      // 初始微摆
+      if (!prefersReducedMotion) {
+        ropeState.swingVel = 0.02;
+      }
+
+      var startY = 0;
+      var startPull = 0;
+      var rect;
+
+      function onRopeDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        ropeState.isDragging = true;
+        setDragState(true);
+        startY = e.clientY;
+        startPull = ropeState.pullAmount;
+        rect = whistleRope.getBoundingClientRect();
+        document.addEventListener('mousemove', onRopeMove);
+        document.addEventListener('mouseup', onRopeUp, { once: true });
+      }
+
+      function onRopeMove(e) {
+        if (!ropeState.isDragging) return;
+        var dy = e.clientY - startY;
+        var maxPull = 120;
+        ropeState.pullAmount = physics.clamp(startPull + dy / maxPull, 0, 1);
+        // 实时更新绳体
+        updateRopeVisual();
+      }
+
+      function onRopeUp() {
+        ropeState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onRopeMove);
+
+        // 触发汽笛（基于拉动量）
+        if (ropeState.pullAmount > 0.3 && state.pressure > 0.1) {
+          triggerWhistle(ropeState.pullAmount);
+        }
+
+        // 弹性回缩
+        ropeState.returnVel = 0;
+      }
+
+      whistleRope.addEventListener('mousedown', onRopeDown);
+      ropeBall.addEventListener('mousedown', onRopeDown);
+    }
+
+    function triggerWhistle(intensity) {
+      var effectiveIntensity = intensity * state.pressure;
+      playWhistle(effectiveIntensity);
+
+      // 蒸汽喷出粒子
+      var bellRect = whistleBell.getBoundingClientRect();
+      var baseX = bellRect.left + bellRect.width / 2;
+      var baseY = bellRect.top;
+      for (var i = 0; i < 12; i++) {
+        (function(idx) {
+          setTimeout(function() {
+            spawnSteamParticle(
+              baseX + (Math.random() - 0.5) * 20,
+              baseY - Math.random() * 10,
+              20 + Math.random() * 20,
+              1.5 + Math.random()
+            );
+          }, idx * 30);
+        })(i);
+      }
+
+      // 消耗一点压力
+      state.pressure = Math.max(0.1, state.pressure - 0.05 * intensity);
+    }
+
+    function updateRopeVisual() {
+      // 绳体拉伸 + 摆动
+      var baseHeight = 180;
+      var stretch = ropeState.pullAmount * 80;
+      var swingDeg = ropeState.swingAngle * 180 / Math.PI;
+
+      whistleRope.style.height = (baseHeight + stretch) + 'px';
+      whistleRope.style.transform = 'rotate(' + swingDeg + 'deg)';
+    }
+
+    function tickWhistle(dt) {
+      // 摆动物理（单摆简化）
+      if (!ropeState.isDragging) {
+        // 回弹
+        if (ropeState.pullAmount > 0) {
+          var result = physics.springDamp(ropeState.pullAmount, ropeState.returnVel, 0, 80, 6, dt);
+          ropeState.pullAmount = Math.max(0, result.pos);
+          ropeState.returnVel = result.vel;
+        }
+
+        // 自然摆动（阻尼振荡）
+        if (!prefersReducedMotion) {
+          ropeState.swingVel += -20 * ropeState.swingAngle * dt;
+          ropeState.swingVel = physics.friction(ropeState.swingVel, 0.97, dt);
+          ropeState.swingAngle += ropeState.swingVel * dt;
+        }
+      } else {
+        // 拖拽时摆动减小
+        ropeState.swingVel *= 0.9;
+      }
+
+      updateRopeVisual();
+    }
+
+    // ============================================================
+    // 8. 装置 2: 主蒸汽阀转轮
+    // ============================================================
+    var valveWheel = $('valveWheel');
+    var valvePercent = $('valvePercent');
+    var valveState = {
+      angle: -Math.PI / 2,  // 当前角度（弧度）
+      targetAngle: -Math.PI / 2,
+      angularVel: 0,
+      isDragging: false,
+      startAngle: 0,
+      startRot: 0,
+      centerX: 0,
+      centerY: 0,
+      // 限制范围 -PI/2 (0%) 到 PI/2 (100%)，总弧度 PI
+      minAngle: -Math.PI / 2,
+      maxAngle: Math.PI / 2
+    };
+
+    function initValve() {
+      function onWheelDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        valveState.isDragging = true;
+        setDragState(true);
+        var rect = valveWheel.getBoundingClientRect();
+        valveState.centerX = rect.left + rect.width / 2;
+        valveState.centerY = rect.top + rect.height / 2;
+        valveState.startAngle = Math.atan2(
+          e.clientY - valveState.centerY,
+          e.clientX - valveState.centerX
+        );
+        valveState.startRot = valveState.angle;
+        document.addEventListener('mousemove', onWheelMove);
+        document.addEventListener('mouseup', onWheelUp, { once: true });
+      }
+
+      function onWheelMove(e) {
+        if (!valveState.isDragging) return;
+        var currentAngle = Math.atan2(
+          e.clientY - valveState.centerY,
+          e.clientX - valveState.centerX
+        );
+        var delta = physics.angleDiff(currentAngle, valveState.startAngle);
+        valveState.angle = physics.clamp(
+          valveState.startRot + delta,
+          valveState.minAngle,
+          valveState.maxAngle
+        );
+        valveState.angularVel = delta * 10; // 估算角速度
+
+        // 实时更新
+        updateValveVisual();
+        updateValveOpen();
+      }
+
+      function onWheelUp() {
+        valveState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onWheelMove);
+      }
+
+      valveWheel.addEventListener('mousedown', onWheelDown);
+    }
+
+    function updateValveVisual() {
+      var deg = valveState.angle * 180 / Math.PI;
+      valveWheel.style.transform = 'rotate(' + deg + 'deg)';
+    }
+
+    function updateValveOpen() {
+      var t = (valveState.angle - valveState.minAngle) / (valveState.maxAngle - valveState.minAngle);
+      state.valveOpen = physics.clamp(t, 0, 1);
+      valvePercent.textContent = Math.round(state.valveOpen * 100);
+    }
+
+    function tickValve(dt) {
+      if (!valveState.isDragging) {
+        // 惯性 + 摩擦
+        if (Math.abs(valveState.angularVel) > 0.001) {
+          valveState.angle += valveState.angularVel * dt;
+          // 边界反弹
+          if (valveState.angle <= valveState.minAngle) {
+            valveState.angle = valveState.minAngle;
+            valveState.angularVel = -valveState.angularVel * 0.3;
+          }
+          if (valveState.angle >= valveState.maxAngle) {
+            valveState.angle = valveState.maxAngle;
+            valveState.angularVel = -valveState.angularVel * 0.3;
+          }
+          valveState.angularVel = physics.friction(valveState.angularVel, 0.92, dt);
+          updateValveVisual();
+          updateValveOpen();
+        }
+      }
+    }
+
+    // ============================================================
+    // 9. 装置 3: 锅炉炉门
+    // ============================================================
+    var furnaceDoor = $('furnaceDoor');
+    var furnaceFire = $('furnaceFire');
+    var fireGlow = $('fireGlow');
+    var coalCountEl = $('coalCount');
+    var ambientGlow = $('ambientGlow');
+    var furnaceState = {
+      openAmount: 0, // 0 关闭 ~ 1 全开
+      targetOpen: 0,
+      openVel: 0,
+      isDragging: false,
+      startY: 0,
+      startOpen: 0,
+      flameFlicker: 0
+    };
+
+    function initFurnace() {
+      function onDoorDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        furnaceState.isDragging = true;
+        setDragState(true);
+        furnaceState.startY = e.clientY;
+        furnaceState.startOpen = furnaceState.openAmount;
+        document.addEventListener('mousemove', onDoorMove);
+        document.addEventListener('mouseup', onDoorUp, { once: true });
+      }
+
+      function onDoorMove(e) {
+        if (!furnaceState.isDragging) return;
+        var dy = e.clientY - furnaceState.startY;
+        furnaceState.openAmount = physics.clamp(furnaceState.startOpen + dy / 120, 0, 1);
+        updateFurnaceVisual();
+      }
+
+      function onDoorUp() {
+        furnaceState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onDoorMove);
+        furnaceState.targetOpen = furnaceState.openAmount > 0.5 ? 1 : 0;
+        state.furnaceOpen = furnaceState.targetOpen > 0.5;
+      }
+
+      furnaceDoor.addEventListener('mousedown', onDoorDown);
+
+      // 点击炉膛投煤（开门时）
+      furnaceFire.addEventListener('click', function(e) {
+        if (furnaceState.openAmount > 0.6) {
+          addCoal();
+          // 火星
+          var rect = furnaceFire.getBoundingClientRect();
+          for (var i = 0; i < 8; i++) {
+            spawnSpark(e.clientX + (Math.random()-0.5)*20, e.clientY);
+          }
+        }
+      });
+    }
+
+    function addCoal() {
+      state.coalCount++;
+      coalCountEl.textContent = state.coalCount;
+      state.fireIntensity = physics.clamp(state.fireIntensity + 0.12, 0, 1);
+      playCoalSound();
+    }
+
+    function updateFurnaceVisual() {
+      var openDeg = furnaceState.openAmount * -75;
+      furnaceDoor.style.transform = 'perspective(400px) rotateX(' + openDeg + 'deg)';
+
+      // 火光外溢
+      var glowIntensity = furnaceState.openAmount * 0.8;
+      fireGlow.classList.toggle('active', furnaceState.openAmount > 0.3);
+      fireGlow.style.opacity = glowIntensity;
+    }
+
+    function tickFurnace(dt) {
+      if (!furnaceState.isDragging) {
+        // 弹簧归位
+        var result = physics.springDamp(
+          furnaceState.openAmount,
+          furnaceState.openVel,
+          furnaceState.targetOpen,
+          200, 15, dt
+        );
+        furnaceState.openAmount = result.pos;
+        furnaceState.openVel = result.vel;
+        updateFurnaceVisual();
+      }
+
+      // 火焰闪烁相位
+      furnaceState.flameFlicker += dt;
+      var flick = 0.9 + Math.sin(furnaceState.flameFlicker * 8) * 0.08
+                      + Math.sin(furnaceState.flameFlicker * 13 + 1) * 0.05;
+
+      // 火力影响火焰亮度
+      var fireOpacity = 0.5 + state.fireIntensity * 0.5;
+      furnaceFire.style.opacity = fireOpacity * flick;
+
+      // 环境炉光
+      ambientGlow.style.opacity = 0.3 + state.fireIntensity * 0.7;
+
+      // 煤块消耗（缓慢）
+      if (state.fireIntensity > 0.1 && state.coalCount > 0) {
+        // 每 10 秒消耗一块煤（按火力加速）
+        state.coalCount = Math.max(0, state.coalCount - dt * 0.1 * state.fireIntensity);
+        coalCountEl.textContent = Math.floor(state.coalCount);
+        // 火力随煤量下降
+        if (state.coalCount < 1) {
+          state.fireIntensity = Math.max(0.05, state.fireIntensity - dt * 0.05);
+        }
+      }
+    }
+
+    // ============================================================
+    // 10. 装置 4: 节流阀推杆 + 速度表
+    // ============================================================
+    var throttleHandle = $('throttleHandle');
+    var throttleTrack = $('throttleTrack');
+    var speedNeedle = $('speedNeedle');
+    var speedTicks = $('speedTicks');
+    var throttleState = {
+      position: 1, // 0 顶部（满） ~ 1 底部（空）
+      targetPos: 1,
+      vel: 0,
+      isDragging: false,
+      startY: 0,
+      startPos: 0,
+      trackHeight: 160
+    };
+
+    function initThrottle() {
+      // 生成速度表刻度
+      var ticksHtml = '';
+      for (var i = 0; i < 21; i++) {
+        var angle = -120 + i * 12; // -120 到 120 度
+        ticksHtml += '<div class="speed-tick" style="transform: translateX(-50%) rotate(' + angle + 'deg);"></div>';
+      }
+      speedTicks.innerHTML = ticksHtml;
+
+      function onHandleDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        throttleState.isDragging = true;
+        setDragState(true);
+        throttleState.startY = e.clientY;
+        throttleState.startPos = throttleState.position;
+        document.addEventListener('mousemove', onHandleMove);
+        document.addEventListener('mouseup', onHandleUp, { once: true });
+      }
+
+      function onHandleMove(e) {
+        if (!throttleState.isDragging) return;
+        var dy = e.clientY - throttleState.startY;
+        throttleState.position = physics.clamp(
+          throttleState.startPos + dy / throttleState.trackHeight,
+          0, 1
+        );
+        updateThrottleVisual();
+        // 实时更新 target
+        state.throttle = 1 - throttleState.position;
+      }
+
+      function onHandleUp() {
+        throttleState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onHandleMove);
+        throttleState.targetPos = throttleState.position;
+      }
+
+      throttleHandle.addEventListener('mousedown', onHandleDown);
+
+      // 初始位置
+      updateThrottleVisual();
+    }
+
+    function updateThrottleVisual() {
+      var trackRect = throttleTrack.getBoundingClientRect();
+      var travel = trackRect.height - 50; // handle 高度
+      var y = throttleState.position * travel;
+      throttleHandle.style.top = y + 'px';
+    }
+
+    function tickThrottle(dt) {
+      if (!throttleState.isDragging) {
+        // 弹簧微调整
+        if (Math.abs(throttleState.position - throttleState.targetPos) > 0.001) {
+          var result = physics.springDamp(
+            throttleState.position, throttleState.vel,
+            throttleState.targetPos, 150, 12, dt
+          );
+          throttleState.position = result.pos;
+          throttleState.vel = result.vel;
+          updateThrottleVisual();
+        }
+      }
+
+      // 速度表指针：基于节流阀 + 压力，带阻尼超调
+      // targetSpeed 受 throttle 和 pressure 共同影响
+      var targetSpeed = state.throttle * state.pressure;
+      var speedDiff = targetSpeed - state.speed;
+
+      // 加速快，减速慢（惯性）
+      if (speedDiff > 0) {
+        state.speed += speedDiff * Math.min(dt * 0.8, 0.1);
+      } else {
+        state.speed += speedDiff * Math.min(dt * 0.3, 0.05);
+      }
+
+      state.speed = physics.clamp(state.speed, 0, 1);
+
+      // 超调效果：超过目标后小幅回弹
+      var needleAngle = -120 + state.speed * 240; // -120 to 120 deg
+      speedNeedle.style.transform = 'translate(-50%, -100%) rotate(' + needleAngle + 'deg)';
+
+      // 风声强度
+      setWindIntensity(state.speed);
+
+      // 震感（高速时）
+      if (state.speed > 0.3 && !prefersReducedMotion && Math.random() < state.speed * dt * 4) {
+        shakeCab(state.speed * 0.5);
+      }
+    }
+
+    var cabPanel = $('cabPanel');
+    var shakeTimer = null;
+    function shakeCab(intensity) {
+      if (prefersReducedMotion) return;
+      if (shakeTimer) clearTimeout(shakeTimer);
+      cabPanel.classList.add('shake');
+      shakeTimer = setTimeout(function() {
+        cabPanel.classList.remove('shake');
+        shakeTimer = null;
+      }, 200);
+    }
+
+    // ============================================================
+    // 11. 装置 5: 铜铃
+    // ============================================================
+    var bellBody = $('bellBody');
+    var bellRope = $('bellRope');
+    var bellWave1 = $('bellWave1');
+    var bellWave2 = $('bellWave2');
+    var bellWave3 = $('bellWave3');
+    var bellState = {
+      angle: 0,
+      vel: 0,
+      isDragging: false,
+      pullAmount: 0,
+      returnVel: 0,
+      swingAngle: 0,
+      swingVel: 0
+    };
+
+    function initBell() {
+      // 点击铃身
+      bellBody.addEventListener('click', function(e) {
+        e.stopPropagation();
+        ensureAudio();
+        ringBell(0.8);
+      });
+
+      // 拉绳
+      var startY = 0;
+      var startPull = 0;
+
+      function onRopeDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        bellState.isDragging = true;
+        setDragState(true);
+        startY = e.clientY;
+        startPull = bellState.pullAmount;
+        document.addEventListener('mousemove', onRopeMove);
+        document.addEventListener('mouseup', onRopeUp, { once: true });
+      }
+
+      function onRopeMove(e) {
+        if (!bellState.isDragging) return;
+        var dy = e.clientY - startY;
+        bellState.pullAmount = physics.clamp(startPull + dy / 80, 0, 1);
+        updateBellRopeVisual();
+      }
+
+      function onRopeUp() {
+        bellState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onRopeMove);
+
+        if (bellState.pullAmount > 0.3) {
+          ringBell(bellState.pullAmount);
+        }
+        bellState.returnVel = 0;
+      }
+
+      bellRope.addEventListener('mousedown', onRopeDown);
+    }
+
+    function ringBell(velocity) {
+      playBell(velocity);
+      // 铃体摆动（衰减振荡）
+      bellState.vel = velocity * 6;
+      bellState.angle = 0;
+
+      // 声波涟漪
+      spawnBellWave(bellWave1, 0);
+      spawnBellWave(bellWave2, 150);
+      spawnBellWave(bellWave3, 300);
+    }
+
+    var waveTimers = [null, null, null];
+    function spawnBellWave(waveEl, delay) {
+      if (prefersReducedMotion) return;
+      if (waveTimers[waveEl === bellWave1 ? 0 : waveEl === bellWave2 ? 1 : 2]) {
+        clearTimeout(waveTimers[waveEl === bellWave1 ? 0 : waveEl === bellWave2 ? 1 : 2]);
+      }
+      var idx = waveEl === bellWave1 ? 0 : waveEl === bellWave2 ? 1 : 2;
+      waveTimers[idx] = setTimeout(function() {
+        waveEl.style.transition = 'none';
+        waveEl.style.opacity = '0.8';
+        waveEl.style.width = '30px';
+        waveEl.style.height = '30px';
+        // 强制 reflow
+        void waveEl.offsetWidth;
+        waveEl.style.transition = 'all 0.8s ease-out';
+        waveEl.style.opacity = '0';
+        waveEl.style.width = '120px';
+        waveEl.style.height = '120px';
+        waveTimers[idx] = null;
+      }, delay);
+    }
+
+    function updateBellRopeVisual() {
+      var baseHeight = 100;
+      var stretch = bellState.pullAmount * 40;
+      bellRope.style.height = (baseHeight + stretch) + 'px';
+    }
+
+    function tickBell(dt) {
+      // 铃体摆动物理
+      if (Math.abs(bellState.vel) > 0.001 || Math.abs(bellState.angle) > 0.001) {
+        // 回复力 + 阻尼
+        bellState.vel += -25 * bellState.angle * dt;
+        bellState.vel = physics.friction(bellState.vel, 0.94, dt);
+        bellState.angle += bellState.vel * dt;
+
+        var deg = bellState.angle * 180 / Math.PI;
+        bellBody.style.transform = 'rotate(' + deg + 'deg)';
+      }
+
+      // 拉绳回弹
+      if (!bellState.isDragging && bellState.pullAmount > 0) {
+        var result = physics.springDamp(bellState.pullAmount, bellState.returnVel, 0, 100, 10, dt);
+        bellState.pullAmount = Math.max(0, result.pos);
+        bellState.returnVel = result.vel;
+        updateBellRopeVisual();
+      }
+
+      // 拉绳微摆
+      if (!prefersReducedMotion && !bellState.isDragging) {
+        bellState.swingVel += -18 * bellState.swingAngle * dt;
+        bellState.swingVel = physics.friction(bellState.swingVel, 0.96, dt);
+        bellState.swingAngle += bellState.swingVel * dt;
+        // 初始给一点
+        if (Math.abs(bellState.swingVel) < 0.005 && Math.abs(bellState.swingAngle) < 0.005) {
+          bellState.swingVel = 0.01;
+        }
+        bellRope.style.transform = 'rotate(' + (bellState.swingAngle * 180/Math.PI) + 'deg)';
+      }
+    }
+
+    // ============================================================
+    // 12. 装置 6: 压力表
+    // ============================================================
+    var pressureNeedle = $('pressureNeedle');
+    var pressureNeedle2 = $('pressureNeedle2');
+    var pressureFace = $('pressureFace');
+    var pressureTicks = $('pressureTicks');
+    var steamBg = $('steamBg');
+
+    function initPressure() {
+      // 生成刻度（-135 度到 135 度，共 270 度）
+      var ticksHtml = '';
+      for (var i = 0; i <= 40; i++) {
+        var pct = i / 40;
+        var angle = -135 + pct * 270;
+        var isDanger = pct > 0.8;
+        var h = (i % 4 === 0) ? 10 : 5;
+        ticksHtml += '<div class="pressure-tick ' + (isDanger ? 'danger-zone' : '') +
+          '" style="transform: translateX(-50%) rotate(' + angle + 'deg); height: ' + h + 'px;"></div>';
+      }
+      pressureTicks.innerHTML = ticksHtml;
+    }
+
+    function tickPressure(dt) {
+      // 压力受火力 + 汽阀开度影响
+      // 火力产生压力，开阀消耗压力
+      var pressureGain = state.fireIntensity * 0.08 * dt; // 每秒
+      var pressureLoss = state.valveOpen * state.pressure * 0.15 * dt;
+      state.pressure += pressureGain - pressureLoss;
+      state.pressure = physics.clamp(state.pressure, 0, 1);
+
+      // 副针是压力的轻微波动版本
+      var targetP2 = state.pressure * 0.8 + Math.sin(performance.now() / 800) * 0.03;
+      state.pressure2 = physics.lerp(state.pressure2, targetP2, dt * 2);
+
+      // 主针角度：-135 ~ 135 度
+      var mainAngle = -135 + state.pressure * 270;
+      var subAngle = -135 + state.pressure2 * 270;
+
+      pressureNeedle.style.transform =
+        'translate(-50%, -100%) rotate(' + mainAngle + 'deg)';
+      pressureNeedle2.style.transform =
+        'translate(-50%, -100%) rotate(' + subAngle + 'deg)';
+
+      // 红区抖动
+      var isDanger = state.pressure > 0.85;
+      pressureFace.classList.toggle('danger', isDanger);
+
+      if (isDanger && !prefersReducedMotion) {
+        // 抖动
+        var shakeX = (Math.random() - 0.5) * 2;
+        var shakeY = (Math.random() - 0.5) * 2;
+        pressureNeedle.style.transform += ' translateX(' + shakeX + 'px)';
+      }
+
+      // 背景蒸汽浓度
+      var targetSteam = 0.1 + state.valveOpen * 0.4 + state.pressure * 0.2;
+      steamBg.style.opacity = Math.min(0.6, targetSteam);
+    }
+
+    // ============================================================
+    // 13. 装置 7: 信号灯切换杆
+    // ============================================================
+    var sigGreen = $('sigGreen');
+    var sigYellow = $('sigYellow');
+    var sigRed = $('sigRed');
+    var signalLever = $('signalLever');
+    var signalState = {
+      index: 1, // 0 green, 1 yellow, 2 red
+      angle: 0, // 拨杆角度
+      targetAngle: 0,
+      vel: 0,
+      isDragging: false,
+      startAngle: 0,
+      startRot: 0,
+      baseX: 0,
+      baseY: 0
+    };
+
+    var signalColors = ['green', 'yellow', 'red'];
+    var leverAngles = [45, 0, -45]; // 对应上中下
+
+    function initSignal() {
+      updateSignalLights();
+      signalState.angle = leverAngles[1] * Math.PI / 180;
+      signalState.targetAngle = signalState.angle;
+      updateSignalVisual();
+
+      function onLeverDown(e) {
+        e.preventDefault();
+        ensureAudio();
+        signalState.isDragging = true;
+        setDragState(true);
+        var rect = signalLever.getBoundingClientRect();
+        // 支点在底部
+        signalState.baseX = rect.left + rect.width / 2;
+        signalState.baseY = rect.bottom;
+        signalState.startAngle = Math.atan2(
+          signalState.baseY - e.clientY,
+          e.clientX - signalState.baseX
+        );
+        signalState.startRot = signalState.angle;
+        document.addEventListener('mousemove', onLeverMove);
+        document.addEventListener('mouseup', onLeverUp, { once: true });
+      }
+
+      function onLeverMove(e) {
+        if (!signalState.isDragging) return;
+        var currentAngle = Math.atan2(
+          signalState.baseY - e.clientY,
+          e.clientX - signalState.baseX
+        );
+        var delta = physics.angleDiff(currentAngle, signalState.startAngle);
+        var newAngle = signalState.startRot + delta;
+        // 限制范围
+        newAngle = physics.clamp(newAngle, -60 * Math.PI/180, 60 * Math.PI/180);
+        signalState.angle = newAngle;
+        signalState.vel = delta * 8;
+        updateSignalVisual();
+      }
+
+      function onLeverUp() {
+        signalState.isDragging = false;
+        setDragState(false);
+        document.removeEventListener('mousemove', onLeverMove);
+
+        // 吸附到最近档位
+        var deg = signalState.angle * 180 / Math.PI;
+        var closestIdx = 1;
+        var minDist = 999;
+        for (var i = 0; i < leverAngles.length; i++) {
+          var d = Math.abs(deg - leverAngles[i]);
+          if (d < minDist) { minDist = d; closestIdx = i; }
+        }
+
+        if (closestIdx !== signalState.index) {
+          signalState.index = closestIdx;
+          state.signalColor = signalColors[closestIdx];
+          updateSignalLights();
+        }
+
+        signalState.targetAngle = leverAngles[closestIdx] * Math.PI / 180;
+      }
+
+      signalLever.addEventListener('mousedown', onLeverDown);
+    }
+
+    function updateSignalVisual() {
+      var deg = signalState.angle * 180 / Math.PI;
+      signalLever.style.transform = 'translateY(-100%) rotate(' + deg + 'deg)';
+    }
+
+    function updateSignalLights() {
+      sigGreen.classList.toggle('on', state.signalColor === 'green');
+      sigYellow.classList.toggle('on', state.signalColor === 'yellow');
+      sigRed.classList.toggle('on', state.signalColor === 'red');
+
+      // 面板映色
+      var color;
+      if (state.signalColor === 'green') color = 'rgba(46, 204, 64, 0.08)';
+      else if (state.signalColor === 'yellow') color = 'rgba(255, 179, 71, 0.08)';
+      else color = 'rgba(226, 98, 43, 0.1)';
+
+      document.getElementById('dashboard').style.boxShadow =
+        'inset 0 0 80px ' + color;
+    }
+
+    function tickSignal(dt) {
+      if (!signalState.isDragging) {
+        // 弹簧吸附到目标角度
+        var diff = signalState.targetAngle - signalState.angle;
+        if (Math.abs(diff) > 0.001 || Math.abs(signalState.vel) > 0.001) {
+          var result = physics.springDamp(
+            signalState.angle, signalState.vel,
+            signalState.targetAngle, 200, 14, dt
+          );
+          signalState.angle = result.pos;
+          signalState.vel = result.vel;
+          updateSignalVisual();
+        }
+      }
+    }
+
+    // ============================================================
+    // 14. 全局联动 tick
+    // ============================================================
+    function globalTick(dt) {
+      // 炉声强度
+      setFireIntensity(state.fireIntensity);
+    }
+
+    // ============================================================
+    // 15. 初始化
+    // ============================================================
+    function init() {
+      initHoverTargets();
+
+      initWhistle();
+      initValve();
+      initFurnace();
+      initThrottle();
+      initBell();
+      initPressure();
+      initSignal();
+
+      // 注册 tick
+      addTick(updateCursorPos);
+      addTick(updateParticles);
+      addTick(tickWhistle);
+      addTick(tickValve);
+      addTick(tickFurnace);
+      addTick(tickThrottle);
+      addTick(tickBell);
+      addTick(tickPressure);
+      addTick(tickSignal);
+      addTick(globalTick);
+
+      // 启动 RAF
+      startLoop();
+
+      // 初始给一点微摆动的扰动
+      if (!prefersReducedMotion) {
+        ropeState.swingVel = 0.015;
+        bellState.swingVel = 0.01;
+      }
+    }
+
+    // DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+
+  })();
+  </script>
+</body>
+</html>
