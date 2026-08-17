@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>暗房机关实验室 · V3 UX 交互设计</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+  /* ============ 基础重置 ============ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+    background: #0e0a0a;
+    color: #f2e2b8;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ============ 自定义光标 ============ */
+  .cursor-outer, .cursor-inner, .cursor-ring {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9999;
+    border-radius: 50%;
+    mix-blend-mode: difference;
+  }
+  .cursor-outer {
+    width: 40px; height: 40px;
+    border: 2px solid rgba(255,255,255,0.9);
+    box-shadow: 0 0 8px rgba(242,226,184,0.4), inset 0 0 6px rgba(242,226,184,0.3);
+    transition: width 0.25s cubic-bezier(0.34,1.56,0.64,1),
+                height 0.25s cubic-bezier(0.34,1.56,0.64,1),
+                border-color 0.2s,
+                background-color 0.2s;
+  }
+  .cursor-outer.is-hover {
+    width: 56px; height: 56px;
+    border-color: #f2e2b8;
+    background: rgba(242,226,184,0.08);
+  }
+  .cursor-outer.is-drag {
+    width: 28px; height: 28px;
+    border-color: #e85a4f;
+    background: rgba(232,90,79,0.15);
+  }
+  .cursor-inner {
+    width: 6px; height: 6px;
+    background: #e85a4f;
+    box-shadow: 0 0 10px #e85a4f, 0 0 20px rgba(232,90,79,0.5);
+    transition: width 0.2s, height 0.2s, background 0.2s;
+  }
+  .cursor-inner.is-hover {
+    width: 4px; height: 4px;
+    background: #f2e2b8;
+    box-shadow: 0 0 8px #f2e2b8;
+  }
+  .cursor-ring {
+    width: 0; height: 0;
+    border: 2px solid #f2e2b8;
+    opacity: 0.8;
+  }
+  @keyframes cursorRipple {
+    0%   { width: 0;   height: 0;   opacity: 0.8; }
+    100% { width: 80px; height: 80px; opacity: 0; }
+  }
+
+  /* ============ 背景 & 氛围 ============ */
+  .scene {
+    position: relative;
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(139,30,30,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse at 20% 80%, rgba(139,30,30,0.12) 0%, transparent 50%),
+      linear-gradient(180deg, #121010 0%, #0a0808 100%);
+    overflow: hidden;
+  }
+  /* 胶片颗粒 */
+  .film-grain {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    opacity: 0.08;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.8'/></svg>");
+    animation: grainShift 0.8s steps(4) infinite;
+  }
+  @keyframes grainShift {
+    0%   { transform: translate(0,0); }
+    25%  { transform: translate(-5%, 3%); }
+    50%  { transform: translate(3%, -4%); }
+    75%  { transform: translate(-2%, 5%); }
+    100% { transform: translate(0,0); }
+  }
+  /* 暗角呼吸 */
+  .vignette {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 180px 60px rgba(0,0,0,0.85);
+    animation: vignetteBreath 6s ease-in-out infinite alternate;
+  }
+  @keyframes vignetteBreath {
+    from { box-shadow: inset 0 0 160px 50px rgba(0,0,0,0.8); }
+    to   { box-shadow: inset 0 0 220px 80px rgba(0,0,0,0.92); }
+  }
+  /* 尘埃粒子画布 */
+  #dustCanvas {
+    position: absolute; inset: 0;
+    pointer-events: none;
+  }
+
+  /* ============ 标题区 ============ */
+  .header {
+    position: absolute;
+    top: 32px; left: 48px;
+    z-index: 10;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: 6px;
+    color: #f2e2b8;
+    text-shadow: 0 0 20px rgba(139,30,30,0.5);
+  }
+  .header h1 em {
+    font-style: normal;
+    color: #e85a4f;
+    font-weight: 500;
+  }
+  .header .subtitle {
+    margin-top: 6px;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: #8a8378;
+    text-transform: uppercase;
+  }
+
+  /* 指示 */
+  .hint {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: #8a8378;
+    z-index: 10;
+    opacity: 0.7;
+  }
+  .hint .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #e85a4f;
+    margin: 0 8px;
+    animation: blink 1.6s ease-in-out infinite;
+    vertical-align: middle;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px #e85a4f; }
+    50%      { opacity: 0.3; box-shadow: 0 0 2px #e85a4f; }
+  }
+
+  /* ============ 展区网格 ============ */
+  .exhibit-grid {
+    position: absolute;
+    top: 110px; bottom: 70px;
+    left: 48px; right: 48px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr 1fr;
+    gap: 28px;
+  }
+  .exhibit {
+    position: relative;
+    background: linear-gradient(180deg, rgba(30,22,22,0.9) 0%, rgba(18,14,14,0.95) 100%);
+    border: 1px solid rgba(138,131,120,0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.3s, box-shadow 0.4s;
+  }
+  .exhibit:hover {
+    border-color: rgba(232,90,79,0.4);
+    box-shadow: 0 0 30px rgba(139,30,30,0.2), inset 0 0 40px rgba(139,30,30,0.05);
+  }
+  .exhibit-label {
+    position: absolute;
+    top: 14px; left: 16px;
+    z-index: 2;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #8a8378;
+    text-transform: uppercase;
+  }
+  .exhibit-title {
+    position: absolute;
+    top: 30px; left: 16px;
+    z-index: 2;
+    font-size: 16px;
+    font-weight: 500;
+    color: #f2e2b8;
+    letter-spacing: 1px;
+  }
+  .exhibit-stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .exhibit-desc {
+    padding: 10px 16px 14px;
+    font-size: 12px;
+    color: #6b6560;
+    line-height: 1.6;
+    border-top: 1px solid rgba(138,131,120,0.12);
+  }
+  .exhibit-desc .tag {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 4px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #e85a4f;
+    border: 1px solid rgba(232,90,79,0.3);
+    border-radius: 2px;
+  }
+
+  /* ================================================================ */
+  /* 展品 1：拉绳安全灯                                               */
+  /* ================================================================ */
+  .safelight-stage {
+    background:
+      radial-gradient(ellipse at 50% 20%, rgba(139,30,30,0) 0%, transparent 60%);
+    transition: background 0.5s;
+  }
+  .safelight-stage.is-on {
+    background: radial-gradient(ellipse at 50% 20%, rgba(232,90,79,0.35) 0%, transparent 65%);
+  }
+  .safelight-fixture {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 80px; height: 30px;
+    background: linear-gradient(180deg, #2a2220, #1a1413);
+    border-radius: 0 0 8px 8px;
+    border: 1px solid #3a2e2b;
+  }
+  .safelight-bulb {
+    position: absolute;
+    top: 26px; left: 50%;
+    transform: translateX(-50%);
+    width: 50px; height: 40px;
+    background: radial-gradient(ellipse at 50% 40%, #5a1515, #2a0a0a);
+    border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+    border: 1px solid #3a1414;
+    transition: background 0.4s, box-shadow 0.6s;
+  }
+  .safelight-stage.is-on .safelight-bulb {
+    background: radial-gradient(ellipse at 50% 40%, #e85a4f, #8b1e1e);
+    box-shadow: 0 0 40px #e85a4f, 0 0 80px rgba(232,90,79,0.6), 0 0 120px rgba(232,90,79,0.3);
+  }
+  .pull-cord {
+    position: absolute;
+    top: 58px; left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 120px;
+    background: linear-gradient(180deg, #6b6560, #4a4440);
+    transform-origin: top center;
+    cursor: none;
+    z-index: 5;
+  }
+  .pull-cord .knob {
+    position: absolute;
+    bottom: -14px; left: 50%;
+    transform: translateX(-50%);
+    width: 20px; height: 28px;
+    background: linear-gradient(180deg, #8a8378, #5a5450);
+    border-radius: 6px 6px 10px 10px;
+    border: 1px solid #3a3430;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  }
+
+  /* ================================================================ */
+  /* 展品 2：相纸显影                                                 */
+  /* ================================================================ */
+  .developer-tray {
+    position: relative;
+    width: 220px; height: 140px;
+    background: linear-gradient(180deg, #1a1413, #0d0909);
+    border: 2px solid #3a2e2b;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 10px 30px rgba(0,0,0,0.6);
+  }
+  .developer-liquid {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 55%;
+    background: linear-gradient(180deg,
+      rgba(80,20,20,0.9) 0%,
+      rgba(50,10,10,0.95) 40%,
+      rgba(30,5,5,1) 100%);
+    border-top: 1px solid rgba(232,90,79,0.3);
+  }
+  .developer-liquid::before {
+    content: '';
+    position: absolute;
+    top: -3px; left: 0; right: 0;
+    height: 6px;
+    background: linear-gradient(180deg, rgba(232,90,79,0.4), transparent);
+    animation: liquidWave 3s ease-in-out infinite alternate;
+  }
+  @keyframes liquidWave {
+    from { transform: translateX(-10px); }
+    to   { transform: translateX(10px); }
+  }
+  .photo-paper {
+    position: absolute;
+    top: 10%; left: 50%;
+    width: 120px; height: 90px;
+    background: #e8e0d0;
+    border: 1px solid #c0b8a8;
+    transform: translateX(-50%);
+    cursor: grab;
+    z-index: 3;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    transition: box-shadow 0.3s;
+    overflow: hidden;
+  }
+  .photo-paper:active { cursor: grabbing; }
+  .photo-paper .photo-image {
+    position: absolute; inset: 6px;
+    background: #d8d0c0;
+    opacity: 0;
+    transition: opacity 0.1s;
+    /* 显影影像 — 抽象人像剪影 */
+    background-image:
+      radial-gradient(ellipse at 50% 35%, #3a2e2b 0%, transparent 40%),
+      linear-gradient(180deg, transparent 55%, #2a2220 55%, #2a2220 70%, transparent 70%);
+  }
+  .photo-paper.is-developing .photo-image {
+    opacity: var(--develop-level, 0);
+  }
+
+  /* ================================================================ */
+  /* 展品 3：快门速度拨盘                                             */
+  /* ================================================================ */
+  .shutter-dial-wrap {
+    position: relative;
+    width: 180px; height: 180px;
+  }
+  .shutter-dial {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 30%, #5a5450, #2a2420 60%, #1a1413);
+    border: 3px solid #3a3430;
+    box-shadow:
+      inset 0 2px 8px rgba(255,255,255,0.08),
+      inset 0 -4px 10px rgba(0,0,0,0.6),
+      0 6px 20px rgba(0,0,0,0.6);
+    cursor: grab;
+  }
+  .shutter-dial:active { cursor: grabbing; }
+  .shutter-dial .knurl {
+    position: absolute;
+    top: 4px; left: 4px; right: 4px; bottom: 4px;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      #2a2420 0deg 2deg,
+      #3a3430 2deg 4deg
+    );
+    mask: radial-gradient(circle, transparent 55%, black 55%, black 75%, transparent 75%);
+    -webkit-mask: radial-gradient(circle, transparent 55%, black 55%, black 75%, transparent 75%);
+  }
+  .shutter-dial .dial-face {
+    position: absolute;
+    top: 18px; left: 18px; right: 18px; bottom: 18px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #3a3430, #201a18);
+    border: 1px solid #4a4440;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    color: #f2e2b8;
+    letter-spacing: 1px;
+  }
+  .shutter-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .shutter-marker {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 2px; height: 8px;
+    background: #f2e2b8;
+    transform-origin: 50% 82px;
+    opacity: 0.6;
+  }
+  .shutter-indicator {
+    position: absolute;
+    top: -8px; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 10px solid #e85a4f;
+    z-index: 3;
+    filter: drop-shadow(0 0 4px rgba(232,90,79,0.8));
+  }
+
+  /* ================================================================ */
+  /* 展品 4：光圈环                                                   */
+  /* ================================================================ */
+  .aperture-wrap {
+    position: relative;
+    width: 200px; height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .aperture-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #5a5450, #3a3430, #5a5450, #3a3430, #5a5450);
+    border: 2px solid #2a2420;
+    cursor: grab;
+    box-shadow:
+      inset 0 0 20px rgba(0,0,0,0.6),
+      0 4px 15px rgba(0,0,0,0.5);
+  }
+  .aperture-ring:active { cursor: grabbing; }
+  .aperture-ring::before {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      #2a2420 0deg 1.5deg,
+      #4a4440 1.5deg 3deg
+    );
+    mask: radial-gradient(circle, transparent 65%, black 65%, black 85%, transparent 85%);
+    -webkit-mask: radial-gradient(circle, transparent 65%, black 65%, black 85%, transparent 85%);
+  }
+  .aperture-lens {
+    position: absolute;
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%,
+      rgba(242,226,184,0.25) 0%,
+      rgba(139,30,30,0.15) 30%,
+      #121010 70%);
+    border: 2px solid #3a3430;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+  .iris {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #0a0808;
+    clip-path: polygon(var(--iris-points,
+      50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%
+    ));
+    transition: clip-path 0.15s ease-out;
+  }
+  .aperture-fstop {
+    position: absolute;
+    bottom: -26px; left: 50%;
+    transform: translateX(-50%);
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    color: #f2e2b8;
+    letter-spacing: 1px;
+  }
+
+  /* ================================================================ */
+  /* 展品 5：胶片回卷把手                                             */
+  /* ================================================================ */
+  .film-rewind-wrap {
+    position: relative;
+    width: 200px; height: 170px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 20px;
+  }
+  .film-canister {
+    position: relative;
+    width: 120px; height: 70px;
+    background: linear-gradient(180deg, #2a2220 0%, #1a1413 100%);
+    border: 2px solid #3a2e2b;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+  }
+  .film-canister::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 100%;
+    transform: translateY(-50%);
+    width: 16px; height: 8px;
+    background: #3a3430;
+    border-radius: 0 3px 3px 0;
+  }
+  .film-strip {
+    position: absolute;
+    top: 50%; left: calc(100% + 16px);
+    width: var(--film-length, 60px);
+    height: 6px;
+    background: repeating-linear-gradient(90deg,
+      #2a2420 0px, #2a2420 4px,
+      #1a1413 4px, #1a1413 8px
+    );
+    transform: translateY(-50%);
+    border-radius: 0 2px 2px 0;
+    transition: width 0.1s linear;
+  }
+  .rewind-handle {
+    position: relative;
+    margin-top: 20px;
+    width: 90px; height: 90px;
+    cursor: grab;
+  }
+  .rewind-handle:active { cursor: grabbing; }
+  .rewind-base {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #6b6560, #3a3430);
+    border: 2px solid #2a2420;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  }
+  .rewind-arm {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 40px; height: 4px;
+    background: linear-gradient(90deg, #3a3430, #5a5450);
+    transform-origin: left center;
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .rewind-knob {
+    position: absolute;
+    top: 50%; left: calc(50% + 40px);
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #8a8378, #4a4440);
+    border: 1px solid #2a2420;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+
+  /* ================================================================ */
+  /* 展品 6：曝光计时器                                               */
+  /* ================================================================ */
+  .timer-wrap {
+    position: relative;
+    width: 180px; height: 180px;
+  }
+  .timer-body {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #2a2220, #121010);
+    border: 3px solid #3a2e2b;
+    box-shadow:
+      inset 0 2px 8px rgba(255,255,255,0.05),
+      0 6px 20px rgba(0,0,0,0.6);
+  }
+  .timer-face {
+    position: absolute;
+    top: 14px; left: 14px; right: 14px; bottom: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #f2e2b8 0%, #d8c898 100%);
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+  }
+  .timer-numbers {
+    position: absolute;
+    inset: 0;
+    font-family: "Courier New", monospace;
+    font-size: 10px;
+    font-weight: bold;
+    color: #3a2e2b;
+  }
+  .timer-num {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform-origin: 0 0;
+  }
+  .timer-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #8b1e1e;
+    box-shadow: 0 0 4px rgba(139,30,30,0.8);
+    z-index: 3;
+  }
+  .timer-hand {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 3px; height: 70px;
+    background: #8b1e1e;
+    transform-origin: 50% 100%;
+    transform: translate(-50%, -100%) rotate(0deg);
+    border-radius: 2px 2px 0 0;
+    z-index: 2;
+    transition: transform 0.1s linear;
+  }
+  .timer-winder {
+    position: absolute;
+    top: -20px; right: 10%;
+    width: 14px; height: 24px;
+    background: linear-gradient(180deg, #6b6560, #3a3430);
+    border-radius: 3px;
+    border: 1px solid #2a2420;
+    cursor: pointer;
+    z-index: 5;
+    transition: transform 0.1s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+  .timer-winder:hover { transform: translateY(-2px); }
+  .timer-winder:active { transform: translateY(1px); }
+  .timer-status {
+    position: absolute;
+    bottom: -28px; left: 50%;
+    transform: translateX(-50%);
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    color: #f2e2b8;
+    letter-spacing: 2px;
+  }
+
+  /* 光晕扫过效果 — 各展品 hover 时 */
+  .exhibit::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(242,226,184,0.04), transparent);
+    transform: skewX(-15deg);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .exhibit:hover::after {
+    opacity: 1;
+    animation: shine 2.5s ease-in-out infinite;
+  }
+  @keyframes shine {
+    0%   { left: -100%; }
+    60%  { left: 150%; }
+    100% { left: 150%; }
+  }
+
+  /* 数字计数/滚动渐入 */
+  .exhibit {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+  .exhibit:nth-child(1) { animation-delay: 0.1s; }
+  .exhibit:nth-child(2) { animation-delay: 0.25s; }
+  .exhibit:nth-child(3) { animation-delay: 0.4s; }
+  .exhibit:nth-child(4) { animation-delay: 0.55s; }
+  .exhibit:nth-child(5) { animation-delay: 0.7s; }
+  .exhibit:nth-child(6) { animation-delay: 0.85s; }
+  @keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <!-- 氛围层 -->
+  <canvas id="dustCanvas"></canvas>
+  <div class="film-grain"></div>
+  <div class="vignette"></div>
+
+  <!-- 自定义光标 -->
+  <div class="cursor-outer" id="cursorOuter"></div>
+  <div class="cursor-inner" id="cursorInner"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+
+  <!-- 标题 -->
+  <header class="header">
+    <h1>暗房<em>机关</em>实验室</h1>
+    <div class="subtitle">Darkroom Mechanism Lab · V3 UX</div>
+  </header>
+
+  <!-- 展区网格 -->
+  <div class="exhibit-grid">
+
+    <!-- 1. 拉绳安全灯 -->
+    <div class="exhibit" data-screen-label="01">
+      <span class="exhibit-label">展区 01</span>
+      <span class="exhibit-title">拉绳安全灯</span>
+      <div class="exhibit-stage safelight-stage" id="safelightStage">
+        <div class="safelight-fixture"></div>
+        <div class="safelight-bulb"></div>
+        <div class="pull-cord" id="pullCord">
+          <div class="knob"></div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">拖拽</span>
+        下拉拉绳点亮暗房红灯，松手后弹簧回弹。
+      </div>
+    </div>
+
+    <!-- 2. 相纸显影 -->
+    <div class="exhibit" data-screen-label="02">
+      <span class="exhibit-label">展区 02</span>
+      <span class="exhibit-title">相纸显影</span>
+      <div class="exhibit-stage" id="developerStage">
+        <div class="developer-tray" id="developerTray">
+          <div class="developer-liquid"></div>
+        </div>
+        <div class="photo-paper" id="photoPaper">
+          <div class="photo-image"></div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">拖拽</span>
+        将相纸拖入显影液，影像随浸泡时间逐渐浮现。
+      </div>
+    </div>
+
+    <!-- 3. 快门速度拨盘 -->
+    <div class="exhibit" data-screen-label="03">
+      <span class="exhibit-label">展区 03</span>
+      <span class="exhibit-title">快门拨盘</span>
+      <div class="exhibit-stage">
+        <div class="shutter-dial-wrap">
+          <div class="shutter-indicator"></div>
+          <div class="shutter-dial" id="shutterDial">
+            <div class="knurl"></div>
+            <div class="dial-face" id="shutterValue">1/125s</div>
+          </div>
+          <div class="shutter-markers" id="shutterMarkers"></div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">旋转</span>
+        拖拽旋转拨盘，棘轮档位手感，刻度回弹咔哒。
+      </div>
+    </div>
+
+    <!-- 4. 光圈环 -->
+    <div class="exhibit" data-screen-label="04">
+      <span class="exhibit-label">展区 04</span>
+      <span class="exhibit-title">光圈叶片</span>
+      <div class="exhibit-stage">
+        <div class="aperture-wrap">
+          <div class="aperture-ring" id="apertureRing">
+          </div>
+          <div class="aperture-lens" id="apertureLens">
+            <div class="iris" id="iris"></div>
+          </div>
+          <div class="aperture-fstop" id="fStopDisplay">f / 5.6</div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">旋转</span>
+        转动光圈环，叶片缩放联动取景亮度。
+      </div>
+    </div>
+
+    <!-- 5. 胶片回卷 -->
+    <div class="exhibit" data-screen-label="05">
+      <span class="exhibit-label">展区 05</span>
+      <span class="exhibit-title">胶片回卷</span>
+      <div class="exhibit-stage">
+        <div class="film-rewind-wrap">
+          <div class="film-canister">
+            <div class="film-strip" id="filmStrip"></div>
+          </div>
+          <div class="rewind-handle" id="rewindHandle">
+            <div class="rewind-base"></div>
+            <div class="rewind-arm" id="rewindArm">
+              <div class="rewind-knob"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">旋转</span>
+        拖拽回卷把手，松手后惯性阻尼减速。
+      </div>
+    </div>
+
+    <!-- 6. 曝光计时器 -->
+    <div class="exhibit" data-screen-label="06">
+      <span class="exhibit-label">展区 06</span>
+      <span class="exhibit-title">曝光计时</span>
+      <div class="exhibit-stage">
+        <div class="timer-wrap">
+          <div class="timer-body">
+            <div class="timer-face">
+              <div class="timer-numbers" id="timerNumbers"></div>
+              <div class="timer-hand" id="timerHand"></div>
+              <div class="timer-center"></div>
+            </div>
+            <div class="timer-winder" id="timerWinder"></div>
+          </div>
+          <div class="timer-status" id="timerStatus">0.0 秒</div>
+        </div>
+      </div>
+      <div class="exhibit-desc">
+        <span class="tag">点击</span>
+        点击发条上链，指针随阻尼走动倒计时。
+      </div>
+    </div>
+
+  </div>
+
+  <div class="hint">
+    <span class="dot"></span>
+    悬停 · 拖拽 · 旋转 · 点击——每一件都等你亲手操作
+    <span class="dot"></span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   工具 & 全局
+================================================================ */
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// 弹簧/阻尼工具函数
+function spring(current, target, velocity, stiffness, damping, dt) {
+  const force = -stiffness * (current - target);
+  const dampingForce = -damping * velocity;
+  const acceleration = force + dampingForce;
+  velocity += acceleration * dt;
+  current += velocity * dt;
+  return { current, velocity };
+}
+
+// 清理 RAF 的通用管理器
+const RAF = {
+  _ids: new Set(),
+  _visible: true,
+  add(id) { this._ids.add(id); },
+  cancel(id) {
+    cancelAnimationFrame(id);
+    this._ids.delete(id);
+  },
+  cancelAll() {
+    this._ids.forEach(id => cancelAnimationFrame(id));
+    this._ids.clear();
+  }
+};
+document.addEventListener('visibilitychange', () => {
+  RAF._visible = !document.hidden;
+});
+window.addEventListener('beforeunload', () => RAF.cancelAll());
+
+/* ================================================================
+   自定义光标
+================================================================ */
+(function initCursor() {
+  const outer = document.getElementById('cursorOuter');
+  const inner = document.getElementById('cursorInner');
+  const ring = document.getElementById('cursorRing');
+
+  let targetX = window.innerWidth / 2;
+  let targetY = window.innerHeight / 2;
+  let outerX = targetX;
+  let outerY = targetY;
+  let velX = 0, velY = 0;
+
+  function onMouseMove(e) {
+    targetX = e.clientX;
+    targetY = e.clientY;
+  }
+  document.addEventListener('mousemove', onMouseMove);
+
+  // 光标循环
+  let cursorRAF;
+  function animateCursor() {
+    if (!prefersReducedMotion && RAF._visible) {
+      const s1 = spring(outerX, targetX, velX, 0.3, 0.25, 1);
+      const s2 = spring(outerY, targetY, velY, 0.3, 0.25, 1);
+      outerX = s1.current; velX = s1.velocity;
+      outerY = s2.current; velY = s2.velocity;
+
+      outer.style.left = outerX + 'px';
+      outer.style.top = outerY + 'px';
+    } else {
+      outer.style.left = targetX + 'px';
+      outer.style.top = targetY + 'px';
+    }
+    inner.style.left = targetX + 'px';
+    inner.style.top = targetY + 'px';
+
+    cursorRAF = requestAnimationFrame(animateCursor);
+  }
+  cursorRAF = requestAnimationFrame(animateCursor);
+  RAF.add(cursorRAF);
+
+  // 点击涟漪
+  document.addEventListener('mousedown', (e) => {
+    const ripple = ring.cloneNode();
+    ripple.classList.add('cursor-ring');
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    ripple.style.animation = 'cursorRipple 0.6s ease-out forwards';
+    document.body.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 650);
+  });
+
+  // 悬停态 — 为可交互元素加 .cursor-hover
+  const hoverables = document.querySelectorAll(
+    '.pull-cord, .photo-paper, .shutter-dial, .aperture-ring, .rewind-handle, .timer-winder, .exhibit'
+  );
+  hoverables.forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      outer.classList.add('is-hover');
+      inner.classList.add('is-hover');
+    });
+    el.addEventListener('mouseleave', () => {
+      if (!isDragging) {
+        outer.classList.remove('is-hover');
+        inner.classList.remove('is-hover');
+      }
+    });
+  });
+})();
+
+let isDragging = false;
+
+/* ================================================================
+   尘埃粒子
+================================================================ */
+(function initDust() {
+  if (prefersReducedMotion) return;
+  const canvas = document.getElementById('dustCanvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const COUNT = 60;
+  for (let i = 0; i < COUNT; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: Math.random() * 1.5 + 0.5,
+      vy: Math.random() * 0.3 + 0.1,
+      vx: (Math.random() - 0.5) * 0.2,
+      alpha: Math.random() * 0.4 + 0.1,
+      drift: Math.random() * Math.PI * 2
+    });
+  }
+
+  let dustRAF;
+  function tick() {
+    if (!RAF._visible) { dustRAF = requestAnimationFrame(tick); return; }
+    ctx.clearRect(0, 0, w, h);
+    for (const p of particles) {
+      p.drift += 0.01;
+      p.x += p.vx + Math.sin(p.drift) * 0.2;
+      p.y += p.vy;
+      if (p.y > h + 5) { p.y = -5; p.x = Math.random() * w; }
+      if (p.x > w + 5) p.x = -5;
+      if (p.x < -5) p.x = w + 5;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(242, 226, 184, ${p.alpha})`;
+      ctx.fill();
+    }
+    dustRAF = requestAnimationFrame(tick);
+  }
+  dustRAF = requestAnimationFrame(tick);
+  RAF.add(dustRAF);
+})();
+
+/* ================================================================
+   展品 1：拉绳安全灯（弹簧物理）
+================================================================ */
+(function initPullCord() {
+  const cord = document.getElementById('pullCord');
+  const stage = document.getElementById('safelightStage');
+  const restY = 0;
+  let pullY = 0;
+  let velocity = 0;
+  let isOn = false;
+  let dragging = false;
+  let startY = 0;
+  let startPullY = 0;
+  let cordRAF = null;
+
+  // 拉绳显示：使用 skew/scale 模拟下垂形变
+  function render() {
+    const stretch = 1 + pullY / 120;
+    cord.style.transform = `translateX(-50%) scaleY(${stretch})`;
+  }
+
+  function startAnim() {
+    if (cordRAF) return;
+    function loop() {
+      if (!RAF._visible) { cordRAF = requestAnimationFrame(loop); return; }
+      if (!dragging) {
+        const s = spring(pullY, restY, velocity, 0.08, 0.18, 1);
+        pullY = s.current;
+        velocity = s.velocity;
+        if (Math.abs(pullY - restY) < 0.1 && Math.abs(velocity) < 0.1) {
+          pullY = restY;
+          velocity = 0;
+          render();
+          cordRAF = null;
+          return;
+        }
+      }
+      render();
+      cordRAF = requestAnimationFrame(loop);
+    }
+    cordRAF = requestAnimationFrame(loop);
+    RAF.add(cordRAF);
+  }
+
+  cord.addEventListener('mousedown', (e) => {
+    dragging = true;
+    isDragging = true;
+    startY = e.clientY;
+    startPullY = pullY;
+    velocity = 0;
+    document.getElementById('cursorOuter').classList.add('is-drag');
+    document.getElementById('cursorOuter').classList.remove('is-hover');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    pullY = Math.max(0, startPullY + dy);
+    velocity = 0;
+    render();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    isDragging = false;
+    document.getElementById('cursorOuter').classList.remove('is-drag');
+
+    // 触发阈值：拉过 40px 切换开关
+    if (pullY > 40) {
+      isOn = !isOn;
+      stage.classList.toggle('is-on', isOn);
+    }
+    startAnim();
+  });
+
+  render();
+})();
+
+/* ================================================================
+   展品 2：相纸显影（拖拽 + 浸泡计时）
+================================================================ */
+(function initDeveloper() {
+  const paper = document.getElementById('photoPaper');
+  const tray = document.getElementById('developerTray');
+  const stage = document.getElementById('developerStage');
+  const image = paper.querySelector('.photo-image');
+
+  let dragging = false;
+  let offsetX = 0, offsetY = 0;
+  let developLevel = 0;
+  let developRAF = null;
+  let lastTime = 0;
+
+  function setDevelopLevel(v) {
+    developLevel = Math.max(0, Math.min(1, v));
+    image.style.setProperty('--develop-level', developLevel);
+    paper.classList.toggle('is-developing', developLevel > 0);
+  }
+
+  function getTrayRect() {
+    const tRect = tray.getBoundingClientRect();
+    const sRect = stage.getBoundingClientRect();
+    return {
+      top: tRect.top - sRect.top,
+      left: tRect.left - sRect.left,
+      width: tRect.width,
+      height: tRect.height
+    };
+  }
+
+  function isInTray() {
+    const pRect = paper.getBoundingClientRect();
+    const tRect = tray.getBoundingClientRect();
+    const overlapY = Math.min(pRect.bottom, tRect.bottom) - Math.max(pRect.top, tRect.top);
+    const paperH = pRect.height;
+    return overlapY > paperH * 0.3; // 浸入 30% 以上开始显影
+  }
+
+  paper.addEventListener('mousedown', (e) => {
+    dragging = true;
+    isDragging = true;
+    const rect = paper.getBoundingClientRect();
+    const sRect = stage.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    paper.style.position = 'absolute';
+    document.getElementById('cursorOuter').classList.add('is-drag');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const sRect = stage.getBoundingClientRect();
+    let x = e.clientX - sRect.left - offsetX;
+    let y = e.clientY - sRect.top - offsetY;
+    x = Math.max(0, Math.min(sRect.width - paper.offsetWidth, x));
+    y = Math.max(0, Math.min(sRect.height - paper.offsetHeight, y));
+    paper.style.left = x + 'px';
+    paper.style.top = y + 'px';
+    paper.style.transform = 'none';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    isDragging = false;
+    document.getElementById('cursorOuter').classList.remove('is-drag');
+  });
+
+  // 显影循环
+  function developLoop(ts) {
+    if (!lastTime) lastTime = ts;
+    const dt = Math.min(50, ts - lastTime) / 1000;
+    lastTime = ts;
+
+    if (RAF._visible) {
+      if (isInTray()) {
+        setDevelopLevel(developLevel + dt * 0.25); // 约 4 秒满显影
+      }
+    }
+    developRAF = requestAnimationFrame(developLoop);
+  }
+  developRAF = requestAnimationFrame(developLoop);
+  RAF.add(developRAF);
+
+  setDevelopLevel(0);
+})();
+
+/* ================================================================
+   展品 3：快门速度拨盘（旋转 + 棘轮）
+================================================================ */
+(function initShutterDial() {
+  const dial = document.getElementById('shutterDial');
+  const valueEl = document.getElementById('shutterValue');
+  const markersEl = document.getElementById('shutterMarkers');
+
+  const speeds = ['1/1000', '1/500', '1/250', '1/125', '1/60', '1/30', '1/15', '1/8', '1/4', '1/2', '1', '2s', '4s'];
+  const totalGears = speeds.length;
+  let currentIdx = 3; // 1/125
+  let angle = 0;
+  let dragging = false;
+  let lastAngle = 0;
+  let dialCenterX = 0, dialCenterY = 0;
+
+  // 生成刻度
+  for (let i = 0; i < totalGears; i++) {
+    const m = document.createElement('div');
+    m.className = 'shutter-marker';
+    const deg = (i / totalGears) * 360 - 90;
+    m.style.transform = `translate(-50%, 0) rotate(${deg + 90}deg) translateY(-82px)`;
+    if (i % 2 === 0) { m.style.background = '#f2e2b8'; m.style.opacity = '0.8'; m.style.height = '10px'; }
+    markersEl.appendChild(m);
+  }
+
+  function getAngle(clientX, clientY) {
+    const rect = dial.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
+  }
+
+  function updateDial() {
+    const step = 360 / totalGears;
+    const snappedAngle = Math.round(angle / step) * step;
+    dial.style.transform = `rotate(${snappedAngle}deg)`;
+    currentIdx = ((Math.round(angle / step) % totalGears) + totalGears) % totalGears;
+    valueEl.textContent = speeds[currentIdx] + 's';
+  }
+
+  dial.addEventListener('mousedown', (e) => {
+    dragging = true;
+    isDragging = true;
+    lastAngle = getAngle(e.clientX, e.clientY);
+    document.getElementById('cursorOuter').classList.add('is-drag');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const a = getAngle(e.clientX, e.clientY);
+    let delta = a - lastAngle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    angle += delta;
+    lastAngle = a;
+    updateDial();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    isDragging = false;
+    document.getElementById('cursorOuter').classList.remove('is-drag');
+    // 棘轮回弹 — 吸附到最近档位
+    const step = 360 / totalGears;
+    const target = Math.round(angle / step) * step;
+    // 微小弹簧回弹
+    let v = 0;
+    let raf;
+    function snap() {
+      const s = spring(angle, target, v, 0.4, 0.25, 1);
+      angle = s.current; v = s.velocity;
+      updateDial();
+      if (Math.abs(angle - target) < 0.3 && Math.abs(v) < 0.3) {
+        angle = target;
+        updateDial();
+        cancelAnimationFrame(raf);
+      } else {
+        raf = requestAnimationFrame(snap);
+        RAF.add(raf);
+      }
+    }
+    snap();
+  });
+
+  updateDial();
+})();
+
+/* ================================================================
+   展品 4：光圈环（旋转 + 叶片）
+================================================================ */
+(function initAperture() {
+  const ring = document.getElementById('apertureRing');
+  const iris = document.getElementById('iris');
+  const fstopDisplay = document.getElementById('fStopDisplay');
+  const lens = document.getElementById('apertureLens');
+
+  const fStops = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22];
+  let currentIdx = 4; // f/5.6
+  let angle = 0;
+  let dragging = false;
+  let lastAngle = 0;
+  const blades = 7;
+
+  function getAngle(clientX, clientY) {
+    const rect = ring.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
+  }
+
+  function buildIrisPoints(openRatio) {
+    // openRatio: 0 = 全闭, 1 = 全开
+    const outerR = 50; // 百分比
+    const innerR = 5 + 45 * openRatio; // 5% ~ 50%
+    const points = [];
+    for (let i = 0; i < blades; i++) {
+      const a1 = (i / blades) * 360;
+      const a2 = ((i + 0.5) / blades) * 360;
+      // 两个外点 + 内点构成三角形叶片
+      const r1 = outerR;
+      const r2 = innerR;
+      const rad1 = a1 * Math.PI / 180;
+      const rad2 = a2 * Math.PI / 180;
+      points.push(`${50 + r1 * Math.cos(rad1)}% ${50 + r1 * Math.sin(rad1)}%`);
+      points.push(`${50 + r2 * Math.cos(rad2)}% ${50 + r2 * Math.sin(rad2)}%`);
+    }
+    return points.join(', ');
+  }
+
+  function updateAperture() {
+    const total = fStops.length - 1;
+    const step = 300 / total; // 旋转范围 300 度
+    const rawIdx = angle / step;
+    currentIdx = Math.max(0, Math.min(total, Math.round(rawIdx + 4 - 4))); // 基准偏移
+    // 改用更直接的映射
+    const normalized = Math.max(0, Math.min(1, (angle + 150) / 300));
+    const idx = Math.round(normalized * (fStops.length - 1));
+    currentIdx = Math.max(0, Math.min(fStops.length - 1, idx));
+
+    ring.style.transform = `rotate(${angle}deg)`;
+    fstopDisplay.textContent = 'f / ' + fStops[currentIdx];
+
+    // 光圈大小：f 值越大，光圈越小
+    const openRatio = 1 - (currentIdx / (fStops.length - 1));
+    iris.style.setProperty('--iris-points', buildIrisPoints(openRatio));
+    iris.style.clipPath = `polygon(${buildIrisPoints(openRatio)})`;
+
+    // 取景亮度联动
+    const brightness = 0.2 + openRatio * 0.8;
+    lens.style.background = `radial-gradient(circle at 35% 35%,
+      rgba(242,226,184,${0.1 + openRatio * 0.2}) 0%,
+      rgba(139,30,30,${0.1 + openRatio * 0.08}) 30%,
+      rgba(18,16,16,${1 - openRatio * 0.5}) 70%)`;
+  }
+
+  ring.addEventListener('mousedown', (e) => {
+    dragging = true;
+    isDragging = true;
+    lastAngle = getAngle(e.clientX, e.clientY);
+    document.getElementById('cursorOuter').classList.add('is-drag');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const a = getAngle(e.clientX, e.clientY);
+    let delta = a - lastAngle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    angle += delta;
+    angle = Math.max(-150, Math.min(150, angle)); // 限位
+    lastAngle = a;
+    updateAperture();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    isDragging = false;
+    document.getElementById('cursorOuter').classList.remove('is-drag');
+  });
+
+  // 初始角度对应 f/5.6 (index 4)
+  angle = -30;
+  updateAperture();
+})();
+
+/* ================================================================
+   展品 5：胶片回卷把手（旋转惯性 + 阻尼）
+================================================================ */
+(function initRewind() {
+  const handle = document.getElementById('rewindHandle');
+  const arm = document.getElementById('rewindArm');
+  const film = document.getElementById('filmStrip');
+
+  let angle = 0;
+  let angularVel = 0;
+  let dragging = false;
+  let lastAngle = 0;
+  let lastTime = 0;
+  let rewindRAF = null;
+  let filmLength = 60;
+
+  function getAngle(clientX, clientY) {
+    const rect = handle.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
+  }
+
+  function updateFilm() {
+    // 胶片长度随回卷减少
+    const totalRevs = Math.abs(angle) / 360;
+    filmLength = Math.max(0, 60 - totalRevs * 25);
+    film.style.setProperty('--film-length', filmLength + 'px');
+  }
+
+  function render() {
+    arm.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+    updateFilm();
+  }
+
+  function startInertia() {
+    if (rewindRAF) return;
+    lastTime = performance.now();
+    function loop(ts) {
+      if (!RAF._visible) { rewindRAF = requestAnimationFrame(loop); return; }
+      const dt = Math.min(50, ts - lastTime) / 1000;
+      lastTime = ts;
+
+      // 阻尼减速
+      angularVel *= Math.pow(0.95, dt * 60);
+      angle += angularVel * dt * 60;
+
+      // 胶片回卷阻力（有胶片时额外阻尼）
+      if (filmLength > 0) {
+        angularVel *= Math.pow(0.98, dt * 60);
+      }
+
+      render();
+
+      if (Math.abs(angularVel) < 0.5) {
+        angularVel = 0;
+        rewindRAF = null;
+        return;
+      }
+      rewindRAF = requestAnimationFrame(loop);
+    }
+    rewindRAF = requestAnimationFrame(loop);
+    RAF.add(rewindRAF);
+  }
+
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true;
+    isDragging = true;
+    lastAngle = getAngle(e.clientX, e.clientY);
+    lastTime = performance.now();
+    angularVel = 0;
+    if (rewindRAF) { cancelAnimationFrame(rewindRAF); rewindRAF = null; }
+    document.getElementById('cursorOuter').classList.add('is-drag');
+  });
+
+  let prevTs = 0;
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const a = getAngle(e.clientX, e.clientY);
+    let delta = a - lastAngle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    angle += delta;
+
+    const now = performance.now();
+    const dt = Math.max(1, now - prevTs);
+    prevTs = now;
+    angularVel = delta / (dt / 16.67); // 归一到每帧速度
+
+    lastAngle = a;
+    render();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    isDragging = false;
+    document.getElementById('cursorOuter').classList.remove('is-drag');
+    if (Math.abs(angularVel) > 1) {
+      startInertia();
+    }
+  });
+
+  render();
+})();
+
+/* ================================================================
+   展品 6：曝光计时器（点击上链 + 阻尼倒计时）
+================================================================ */
+(function initTimer() {
+  const winder = document.getElementById('timerWinder');
+  const hand = document.getElementById('timerHand');
+  const statusEl = document.getElementById('timerStatus');
+  const numbersEl = document.getElementById('timerNumbers');
+
+  const MAX_TIME = 60; // 秒
+  let currentTime = 0;
+  let windAngle = 0; // 发条累积
+  let timerRAF = null;
+  let lastTs = 0;
+  let ticking = false;
+
+  // 生成刻度数字
+  const marks = [0, 10, 20, 30, 40, 50, 60];
+  marks.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'timer-num';
+    el.textContent = m;
+    const deg = (i / (marks.length - 1)) * 360 - 90;
+    const rad = deg * Math.PI / 180;
+    const r = 58; // px
+    const x = r * Math.cos(rad);
+    const y = r * Math.sin(rad);
+    el.style.transform = `translate(calc(${x}px - 50%), calc(${y}px - 50%))`;
+    numbersEl.appendChild(el);
+  });
+
+  function updateHand() {
+    const ratio = currentTime / MAX_TIME;
+    const deg = ratio * 360;
+    hand.style.transform = `translate(-50%, -100%) rotate(${deg}deg)`;
+    statusEl.textContent = currentTime.toFixed(1) + ' 秒';
+  }
+
+  function startTicking() {
+    if (timerRAF) return;
+    lastTs = performance.now();
+    ticking = true;
+    function loop(ts) {
+      if (!RAF._visible) { timerRAF = requestAnimationFrame(loop); return; }
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+
+      // 发条阻尼：时间越长走得越慢
+      const damping = 0.8 + 0.2 * (1 - currentTime / MAX_TIME);
+      currentTime -= dt * damping;
+
+      if (currentTime <= 0) {
+        currentTime = 0;
+        ticking = false;
+        updateHand();
+        timerRAF = null;
+        return;
+      }
+      updateHand();
+      timerRAF = requestAnimationFrame(loop);
+    }
+    timerRAF = requestAnimationFrame(loop);
+    RAF.add(timerRAF);
+  }
+
+  winder.addEventListener('click', () => {
+    // 上链 5 秒
+    currentTime = Math.min(MAX_TIME, currentTime + 5);
+    updateHand();
+    // 发条压缩动画
+    winder.style.transform = 'translateY(3px)';
+    setTimeout(() => { winder.style.transform = ''; }, 100);
+
+    if (!ticking && currentTime > 0) {
+      startTicking();
+    }
+  });
+
+  updateHand();
+})();
+
+/* ================================================================
+   光泽扫过 + 磁性吸附（对所有展品标题 & 可交互元素）
+================================================================ */
+(function initMagnetic() {
+  if (prefersReducedMotion) return;
+  const targets = document.querySelectorAll('.exhibit-title, .exhibit-label');
+  targets.forEach(el => {
+    el.addEventListener('mousemove', (e) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = (e.clientX - cx) * 0.15;
+      const dy = (e.clientY - cy) * 0.15;
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+    });
+    el.addEventListener('mouseleave', () => {
+      el.style.transform = '';
+      el.style.transition = 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+      setTimeout(() => { el.style.transition = ''; }, 300);
+    });
+  });
+})();
+</script>
+</body>
+</html>

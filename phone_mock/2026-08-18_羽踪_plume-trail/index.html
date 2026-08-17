@@ -1,0 +1,2475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>羽踪 · 观鸟记录 App</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" />
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #1a2a24;
+    font-family: 'Noto Sans SC', -apple-system, system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    color: #1F2937;
+  }
+  #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+  /* ── Custom cursor ── */
+  .cursor-outer {
+    position: fixed; width: 36px; height: 36px;
+    border: 2px solid #fff; border-radius: 50%;
+    pointer-events: none; z-index: 2147483647;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(.3,.7,.4,1), height 0.25s cubic-bezier(.3,.7,.4,1),
+                border-color 0.25s, background 0.25s;
+    mix-blend-mode: difference;
+    filter: drop-shadow(0 0 8px rgba(255,255,255,0.4));
+  }
+  .cursor-inner {
+    position: fixed; width: 6px; height: 6px;
+    background: #E8873B; border-radius: 50%;
+    pointer-events: none; z-index: 2147483647;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px #E8873B, 0 0 24px rgba(232,135,59,0.5);
+  }
+  .cursor-hover .cursor-outer {
+    width: 56px; height: 56px;
+    border-color: #E8873B;
+    background: rgba(232,135,59,0.08);
+  }
+  .cursor-ripple {
+    position: fixed; width: 10px; height: 10px;
+    border: 2px solid #fff; border-radius: 50%;
+    pointer-events: none; z-index: 2147483646;
+    transform: translate(-50%, -50%);
+    animation: rippleOut 0.6s cubic-bezier(.2,.7,.3,1) forwards;
+    mix-blend-mode: difference;
+  }
+  @keyframes rippleOut {
+    0% { width: 10px; height: 10px; opacity: 0.8; }
+    100% { width: 80px; height: 80px; opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-outer, .cursor-inner, .cursor-ripple { display: none; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ── Stage ── */
+  .stage {
+    position: relative;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px;
+    padding: 40px;
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(232,135,59,0.08), transparent 50%),
+      radial-gradient(ellipse at 70% 80%, rgba(31,77,61,0.4), transparent 60%),
+      #0d1a15;
+    overflow: auto;
+  }
+  .stage-title {
+    color: #F7F2E8;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+    opacity: 0.9;
+  }
+  .stage-sub {
+    color: #9CA3AF;
+    font-size: 13px;
+    text-align: center;
+    margin-top: -16px;
+    letter-spacing: 0.05em;
+  }
+  .page-nav {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    max-width: 560px;
+  }
+  .page-nav button {
+    padding: 7px 14px;
+    font-size: 12px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.04);
+    color: #d1d5db;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  .page-nav button.active {
+    background: #E8873B;
+    border-color: #E8873B;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(232,135,59,0.3);
+  }
+  .page-nav button:hover { background: rgba(255,255,255,0.08); }
+  .page-nav button.active:hover { background: #F2944D; }
+
+  /* ── Feather particles (signature) ── */
+  .feather-particle {
+    position: absolute;
+    width: 14px; height: 14px;
+    pointer-events: none;
+    opacity: 0.4;
+    animation: featherFloat linear infinite;
+  }
+  @keyframes featherFloat {
+    0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+    10% { opacity: 0.5; }
+    90% { opacity: 0.3; }
+    100% { transform: translateY(calc(100vh + 40px)) rotate(360deg); opacity: 0; }
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* ── Animation utilities ── */
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes slideOutRight {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+  }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 4px 20px rgba(232,135,59,0.3), 0 0 0 0 rgba(232,135,59,0.4); }
+    50% { box-shadow: 0 4px 30px rgba(232,135,59,0.5), 0 0 0 10px rgba(232,135,59,0); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes countPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); color: #E8873B; }
+    100% { transform: scale(1); }
+  }
+  @keyframes bounceIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.05); }
+    70% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes floatY {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+/* EDITMODE-BEGIN */
+const TWEAK_DEFAULTS = {
+  "primaryColor": "#1F4D3D",
+  "accentColor": "#E8873B",
+  "surfaceColor": "#F7F2E8",
+  "neutralColor": "#6B7280",
+  "density": "regular",
+  "showParticles": true,
+  "reducedMotion": false
+};
+/* EDITMODE-END */
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── Color tokens ──
+const C = {
+  ink: '#1F4D3D',          // 深墨绿 主色
+  inkDeep: '#0F3327',
+  inkLight: '#2E6B54',
+  inkSoft: '#3A8268',
+  accent: '#E8873B',       // 暖橙 强调色
+  accentDeep: '#C46A22',
+  accentLight: '#F4A565',
+  accentSoft: '#FBCC9E',
+  surface: '#F7F2E8',      // 米白 表面色
+  surfaceWarm: '#F2EADD',
+  surfaceDeep: '#E8DFCE',
+  feather: '#6B7280',      // 羽灰 中性
+  featherLight: '#9CA3AF',
+  featherPale: '#D1D5DB',
+  text: '#1F2937',
+  textSoft: '#4B5563',
+  textMute: '#9CA3AF',
+  success: '#3A8268',
+  warn: '#D97757',
+};
+
+// ── Bird data (real Chinese birds) ──
+const BIRDS = [
+  {
+    id: 'b1', name: '红嘴相思鸟', lat: 'Leiothrix lutea',
+    family: '噪鹛科', size: '13-15cm', status: '无危',
+    color: '#E8873B',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm4jvuiiq_ve_miaoda',
+    desc: '羽色艳丽，叫声婉转动听，是中国南方常见的小型鸣禽。常结群活动于常绿阔叶林和灌木丛中，以昆虫和果实为食。',
+    habitat: '常绿阔叶林、灌木丛、竹林边缘',
+    diet: '昆虫、浆果、种子',
+    season: '留鸟，全年可见',
+    call: '清脆响亮的"唧-唧-唧"声，繁殖期鸣声更为复杂悦耳',
+  },
+  {
+    id: 'b2', name: '画眉', lat: 'Garrulax canorus',
+    family: '噪鹛科', size: '21-25cm', status: '近危',
+    color: '#8B6914',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm4j6m6cq_ve_miaoda',
+    desc: '眼圈白色并向后延伸成眉纹，是中国传统鸣禽。雄鸟鸣声悠扬婉转，被誉为"林中歌手"。性机敏胆怯，常在灌丛中穿梭。',
+    habitat: '丘陵灌丛、竹林、庭院林缘',
+    diet: '昆虫、种子、果实',
+    season: '留鸟，繁殖期4-7月',
+    call: '婉转动听的多音节鸣唱，能模仿其他鸟类叫声',
+  },
+  {
+    id: 'b3', name: '灰喜鹊', lat: 'Cyanopica cyanus',
+    family: '鸦科', size: '33-40cm', status: '无危',
+    color: '#4A7B9D',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm4j6m6bq_ve_miaoda',
+    desc: '头部黑色，背灰色，翅膀和尾羽呈天蓝色，尾长且末端白色。性活泼大胆，常结大群活动，是城市公园常见鸟类。',
+    habitat: '城市公园、林地、农田村落',
+    diet: '昆虫、果实、小型脊椎动物',
+    season: '留鸟，全年可见',
+    call: '粗哑的"喳-喳-喳"声',
+  },
+  {
+    id: 'b4', name: '鸳鸯', lat: 'Aix galericulata',
+    family: '鸭科', size: '38-45cm', status: '无危',
+    color: '#C2410C',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm3r2qcfq_ve_miaoda',
+    desc: '雄鸟羽色艳丽，具金属光泽的冠羽和帆状饰羽，是中国文化中爱情的象征。栖息于山地森林的河流湖泊中。',
+    habitat: '山地森林河流、湖泊、沼泽',
+    diet: '植物种子、水生无脊椎动物',
+    season: '旅鸟，春秋迁徙途经',
+    call: '低沉的"ohr"声',
+  },
+  {
+    id: 'b5', name: '暗绿绣眼鸟', lat: 'Zosterops japonicus',
+    family: '绣眼鸟科', size: '9-11cm', status: '无危',
+    color: '#4ADE80',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm5dydmig_ve_miaoda',
+    desc: '体羽鲜绿色，眼周有一圈明显的白色羽环。体型小巧灵活，常在树冠层活动，以花蜜、果实和昆虫为食。',
+    habitat: '阔叶林、果园、城市绿化树',
+    diet: '花蜜、果实、昆虫',
+    season: '留鸟，冬季南迁',
+    call: '清脆响亮的"铃-铃"声',
+  },
+  {
+    id: 'b6', name: '白鹭', lat: 'Egretta garzetta',
+    family: '鹭科', size: '55-65cm', status: '无危',
+    color: '#F0F4F8',
+    img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm3r2qcgq_ve_miaoda',
+    desc: '全身纯白色，喙黑色细长，脚黑色。繁殖期会长出丝状蓑羽。常见于湿地、稻田和河口，常单脚站立静候猎物。',
+    habitat: '湿地、稻田、河口、滩涂',
+    diet: '鱼类、蛙类、水生昆虫',
+    season: '留鸟，部分冬季南迁',
+    call: '飞行时发出沙哑的"呱呱"声',
+  },
+];
+
+const SPOTS = [
+  { id: 's1', name: '西山国家森林公园', dist: '3.2km', count: 42, rating: 4.8,
+    tag: ['森林', '山地'], img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqmwt5fegg_ve_miaoda' },
+  { id: 's2', name: '野鸭湖湿地公园', dist: '12.8km', count: 67, rating: 4.9,
+    tag: ['湿地', '水鸟'], img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm3r2qcgq_ve_miaoda' },
+  { id: 's3', name: '植物园樱桃沟', dist: '5.6km', count: 31, rating: 4.6,
+    tag: ['林鸟', '溪流'], img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqmwt5fegg_ve_miaoda' },
+  { id: 's4', name: '奥林匹克森林公园', dist: '8.1km', count: 54, rating: 4.5,
+    tag: ['城市公园', '常见鸟'], img: '/spark/app/app_17can6vwwg8/runtime/api/v1/storage/object/bucket_aadkqnb5o3maq_static/static%2Faadkqm3r2qcgq_ve_miaoda' },
+];
+
+const RECORDS = [
+  { id: 'r1', bird: BIRDS[0], date: '今天 07:42', loc: '西山国家森林公园', count: 3, note: '清晨在杜鹃花丛旁见到一群，鸣声悦耳。' },
+  { id: 'r2', bird: BIRDS[2], date: '昨天 16:20', loc: '小区花园', count: 7, note: '一群灰喜鹊在樟树上筑巢，很是热闹。' },
+  { id: 'r3', bird: BIRDS[4], date: '3天前', loc: '植物园', count: 5, note: '樱花盛开时绣眼鸟成群在花间穿梭吸蜜。' },
+];
+
+// ── Icons (inline SVG) ──
+const Icon = {
+  Home: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-9.5z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>
+  ),
+  Book: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M4 5a2 2 0 012-2h5v18H6a2 2 0 01-2-2V5zM13 3h5a2 2 0 012 2v14a2 2 0 01-2 2h-5V3z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>
+  ),
+  Map: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2zM9 3v16M15 5v16" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>
+  ),
+  User: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+  ),
+  Plus: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke={c} strokeWidth="2.2" strokeLinecap="round"/></svg>
+  ),
+  Back: (s = 24, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  ),
+  Search: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.8"/><path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+  ),
+  Pin: (s = 18, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M12 22s-7-7.5-7-13a7 7 0 1114 0c0 5.5-7 13-7 13z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="9" r="2.5" stroke={c} strokeWidth="1.8"/></svg>
+  ),
+  Star: (s = 16, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill={c}><path d="M12 2l2.9 6.9L22 10l-5.5 4.7L18 22l-6-3.6L6 22l1.5-7.3L2 10l7.1-1.1L12 2z"/></svg>
+  ),
+  Camera: (s = 22, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="13" r="4" stroke={c} strokeWidth="1.8"/></svg>
+  ),
+  Feather: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M20 4c-3 0-7 2-9 6s-4 8-6 9l3 3c1-2 3-5 6-7s6-6 6-9l0-2z" stroke={c} strokeWidth="1.6" strokeLinejoin="round"/><path d="M14 10l-4 4" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>
+  ),
+  Binoculars: (s = 22, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M6 7h3v-2a2 2 0 012-2h2a2 2 0 012 2v2h3v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><path d="M12 7v13" stroke={c} strokeWidth="1.8"/></svg>
+  ),
+  Clock: (s = 18, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.8"/><path d="M12 7v5l3 2" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+  ),
+  Share: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M12 4v12M7 8l5-4 5 4M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  ),
+  Sound: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M4 10v4h3l5 4V6L7 10H4z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+  ),
+  ChevronRight: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  ),
+  Down: (s = 18, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  ),
+  More: (s = 22, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.5" fill={c}/><circle cx="12" cy="12" r="1.5" fill={c}/><circle cx="19" cy="12" r="1.5" fill={c}/></svg>
+  ),
+  Filter: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M4 5h16l-6 8v5l-4-2v-3L4 5z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>
+  ),
+  Check: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  ),
+  Close: (s = 20, c = 'currentColor') => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke={c} strokeWidth="2" strokeLinecap="round"/></svg>
+  ),
+};
+
+// ── Utility: spring/bounce easing ──
+const springEase = (t) => {
+  const c4 = (2 * Math.PI) / 3;
+  return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+};
+
+// ── Custom Cursor ──
+function CustomCursor() {
+  const outerRef = useRef(null);
+  const innerRef = useRef(null);
+  const posRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const targetRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const rafRef = useRef(null);
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  useEffect(() => {
+    if (reduced) return;
+    const move = (e) => {
+      targetRef.current = { x: e.clientX, y: e.clientY };
+    };
+    const hover = (e) => {
+      const t = e.target.closest('button, a, [role="button"], .clickable, input, textarea, select');
+      if (t) document.body.classList.add('cursor-hover');
+    };
+    const leave = (e) => {
+      if (!e.target.closest('button, a, [role="button"], .clickable, input, textarea, select')) return;
+      document.body.classList.remove('cursor-hover');
+    };
+    const click = (e) => {
+      const r = document.createElement('div');
+      r.className = 'cursor-ripple';
+      r.style.left = e.clientX + 'px';
+      r.style.top = e.clientY + 'px';
+      document.body.appendChild(r);
+      setTimeout(() => r.remove(), 600);
+    };
+
+    const animate = () => {
+      const p = posRef.current;
+      const t = targetRef.current;
+      // lerp with damping (smoother follow)
+      p.x += (t.x - p.x) * 0.18;
+      p.y += (t.y - p.y) * 0.18;
+      if (outerRef.current) {
+        outerRef.current.style.left = p.x + 'px';
+        outerRef.current.style.top = p.y + 'px';
+      }
+      if (innerRef.current) {
+        innerRef.current.style.left = t.x + 'px';
+        innerRef.current.style.top = t.y + 'px';
+      }
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+
+    window.addEventListener('mousemove', move);
+    document.addEventListener('mouseover', hover);
+    document.addEventListener('mouseout', leave);
+    document.addEventListener('click', click);
+
+    const vis = () => {
+      if (document.hidden) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      } else {
+        rafRef.current = requestAnimationFrame(animate);
+      }
+    };
+    document.addEventListener('visibilitychange', vis);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseover', hover);
+      document.removeEventListener('mouseout', leave);
+      document.removeEventListener('click', click);
+      document.removeEventListener('visibilitychange', vis);
+    };
+  }, [reduced]);
+
+  if (reduced) return null;
+  return (
+    <>
+      <div ref={outerRef} className="cursor-outer" />
+      <div ref={innerRef} className="cursor-inner" />
+    </>
+  );
+}
+
+// ── Feather Particles (signature ambient) ──
+function FeatherParticles({ count = 12, show = true }) {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!show || reduced) return null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+      {Array.from({ length: count }).map((_, i) => {
+        const left = Math.random() * 100;
+        const duration = 12 + Math.random() * 18;
+        const delay = -Math.random() * 20;
+        const size = 8 + Math.random() * 10;
+        const opacity = 0.15 + Math.random() * 0.25;
+        return (
+          <div key={i} className="feather-particle"
+            style={{
+              left: left + '%',
+              width: size, height: size,
+              animationDuration: duration + 's',
+              animationDelay: delay + 's',
+              opacity,
+            }}>
+            <svg viewBox="0 0 24 24" width={size} height={size} fill="none">
+              <path d="M20 4c-3 0-7 2-9 6s-4 8-6 9l3 3c1-2 3-5 6-7s6-6 6-9z"
+                    stroke={i % 2 ? '#E8873B' : '#F7F2E8'} strokeWidth="1.5" strokeLinejoin="round" opacity="0.6"/>
+            </svg>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Animated Number (count-up) ──
+function AnimatedNumber({ value, duration = 1200, suffix = '', prefix = '', decimals = 0 }) {
+  const [display, setDisplay] = useState(0);
+  const rafRef = useRef(null);
+  const startTimeRef = useRef(null);
+  const startValRef = useRef(0);
+
+  useEffect(() => {
+    startValRef.current = display;
+    startTimeRef.current = null;
+    const step = (ts) => {
+      if (!startTimeRef.current) startTimeRef.current = ts;
+      const t = Math.min(1, (ts - startTimeRef.current) / duration);
+      const eased = springEase(t);
+      const v = startValRef.current + (value - startValRef.current) * eased;
+      setDisplay(v);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    const vis = () => {
+      if (document.hidden && rafRef.current) cancelAnimationFrame(rafRef.current);
+      else if (!document.hidden) rafRef.current = requestAnimationFrame(step);
+    };
+    document.addEventListener('visibilitychange', vis);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      document.removeEventListener('visibilitychange', vis);
+    };
+  }, [value, duration]);
+
+  return <span>{prefix}{display.toFixed(decimals)}{suffix}</span>;
+}
+
+// ── Circular Progress Ring ──
+function CircularRing({ value = 70, max = 100, size = 120, stroke = 8, color = '#E8873B', bg = '#E5E7EB', label, sub }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const target = value / max;
+    let start = null;
+    const step = (ts) => {
+      if (!start) start = ts;
+      const t = Math.min(1, (ts - start) / 1400);
+      const eased = springEase(t);
+      setProgress(target * eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [value, max]);
+
+  const offset = c * (1 - progress);
+  return (
+    <div style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size/2} cy={size/2} r={r} stroke={bg} strokeWidth={stroke} fill="none" />
+        <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth={stroke} fill="none"
+                strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+                style={{ filter: `drop-shadow(0 0 6px ${color}80)` }}/>
+      </svg>
+      <div style={{ position: 'absolute', textAlign: 'center' }}>
+        {label && <div style={{ fontSize: size * 0.28, fontWeight: 700, color: '#1F2937', lineHeight: 1 }}>{label}</div>}
+        {sub && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+// ── TabBar (iOS-style) ──
+function TabBar({ active, onChange, dark = false }) {
+  const items = [
+    { key: 'home', label: '首页', icon: Icon.Home },
+    { key: 'guide', label: '图鉴', icon: Icon.Book },
+    { key: 'fab', label: '记录', icon: Icon.Plus },
+    { key: 'map', label: '地点', icon: Icon.Map },
+    { key: 'profile', label: '我的', icon: Icon.User },
+  ];
+  const bg = dark ? 'rgba(15,25,20,0.85)' : 'rgba(247,242,232,0.85)';
+  const text = dark ? '#9CA3AF' : '#6B7280';
+  const activeText = dark ? '#E8873B' : '#1F4D3D';
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: 0, left: 0, right: 0,
+      height: 83, paddingBottom: 34,
+      background: bg,
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      borderTop: `0.5px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+      zIndex: 100,
+    }}>
+      {items.map((item) => {
+        const isActive = active === item.key;
+        const isFab = item.key === 'fab';
+        if (isFab) {
+          return (
+            <button key={item.key} className="clickable"
+              onClick={() => onChange('add')}
+              style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: `linear-gradient(135deg, ${C.accentLight}, ${C.accent})`,
+                border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff',
+                boxShadow: '0 4px 16px rgba(232,135,59,0.45), 0 2px 6px rgba(0,0,0,0.1)',
+                marginTop: -24,
+                animation: 'pulseGlow 3s ease-in-out infinite',
+                position: 'relative',
+              }}>
+              {item.icon(26, '#fff')}
+            </button>
+          );
+        }
+        return (
+          <button key={item.key} className="clickable"
+            onClick={() => onChange(item.key)}
+            style={{
+              flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 3, paddingTop: 6,
+              color: isActive ? activeText : text,
+              transition: 'color 0.2s',
+            }}>
+            <div style={{
+              transform: isActive ? 'scale(1.1)' : 'scale(1)',
+              transition: 'transform 0.25s cubic-bezier(.3,.7,.4,1)',
+            }}>
+              {item.icon(24, 'currentColor')}
+            </div>
+            <span style={{ fontSize: 10, fontWeight: isActive ? 600 : 400 }}>{item.label}</span>
+            {isActive && (
+              <div style={{
+                width: 4, height: 4, borderRadius: '50%',
+                background: isActive ? activeText : 'transparent',
+                marginTop: 1,
+              }} />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Navigation Header (large title style) ──
+function NavHeader({ title, subtitle, onBack, right, dark = false, large = true }) {
+  const textColor = dark ? '#fff' : C.text;
+  const subColor = dark ? 'rgba(255,255,255,0.6)' : C.textMute;
+  return (
+    <div style={{
+      paddingTop: 62, paddingLeft: 20, paddingRight: 20,
+      paddingBottom: large ? 12 : 10,
+      background: dark ? 'transparent' : C.surface,
+      position: 'sticky', top: 0, zIndex: 50,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: large ? 12 : 0 }}>
+        {onBack ? (
+          <button className="clickable" onClick={onBack} style={{
+            width: 36, height: 36, borderRadius: '50%', border: 'none',
+            background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: textColor, cursor: 'pointer',
+          }}>
+            {Icon.Back(20, 'currentColor')}
+          </button>
+        ) : <div style={{ width: 36 }} />}
+        {!large && (
+          <div style={{ fontSize: 17, fontWeight: 600, color: textColor }}>{title}</div>
+        )}
+        {right ? right : <div style={{ width: 36 }} />}
+      </div>
+      {large && (
+        <div>
+          {subtitle && <div style={{ fontSize: 13, color: subColor, marginBottom: 4, fontWeight: 400 }}>{subtitle}</div>}
+          <h1 style={{
+            fontSize: 34, fontWeight: 700, color: textColor,
+            fontFamily: "'Noto Serif SC', serif",
+            letterSpacing: '-0.5px', lineHeight: 1.2,
+          }}>{title}</h1>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page 1: Home (今日观鸟) — Hero + cards + signature entrance animation ──
+function HomePage({ onNavigate }) {
+  const [mounted, setMounted] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pullY, setPullY] = useState(0);
+  const startY = useRef(0);
+  const scrollRef = useRef(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Pull-to-refresh (signature: elastic bounce)
+  const onTouchStart = (e) => {
+    if (scrollRef.current?.scrollTop === 0) startY.current = e.touches[0].clientY;
+  };
+  const onTouchMove = (e) => {
+    if (scrollRef.current?.scrollTop === 0 && startY.current) {
+      const delta = e.touches[0].clientY - startY.current;
+      if (delta > 0) {
+        // resistance (damping curve)
+        const resisted = Math.min(80, delta * 0.45);
+        setPullY(resisted);
+      }
+    }
+  };
+  const onTouchEnd = () => {
+    if (pullY > 60 && !refreshing) {
+      setRefreshing(true);
+      setPullY(50);
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullY(0);
+      }, 1600);
+    } else {
+      setPullY(0);
+    }
+    startY.current = 0;
+  };
+
+  const todayCount = 3;
+  const totalSpecies = 42;
+  const streak = 7;
+
+  return (
+    <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: C.surface }}>
+      {/* Pull indicator */}
+      <div style={{
+        position: 'absolute', top: 62, left: 0, right: 0, height: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 5, transform: `translateY(${pullY - 50}px)`,
+        transition: refreshing ? 'none' : 'transform 0.3s cubic-bezier(.3,.7,.4,1)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          color: C.feather, fontSize: 13,
+        }}>
+          <div style={{
+            width: 20, height: 20, border: `2px solid ${refreshing ? C.accent : C.featherLight}`,
+            borderTopColor: 'transparent', borderRadius: '50%',
+            animation: refreshing ? 'spin 0.8s linear infinite' : 'none',
+            transform: `rotate(${pullY * 6}deg)`,
+          }} />
+          <span>{refreshing ? '更新中…' : pullY > 60 ? '松开刷新' : '下拉刷新'}</span>
+        </div>
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <div ref={scrollRef}
+           onTouchStart={onTouchStart}
+           onTouchMove={onTouchMove}
+           onTouchEnd={onTouchEnd}
+           style={{
+             height: '100%', overflowY: 'auto',
+             transform: `translateY(${pullY}px)`,
+             transition: refreshing ? 'none' : 'transform 0.3s cubic-bezier(.3,.7,.4,1)',
+           }}>
+        {/* Hero — signature entrance sequence */}
+        <div style={{
+          position: 'relative', height: 280,
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'all 0.8s cubic-bezier(.2,.7,.3,1)',
+        }}>
+          <img src={BIRDS[0].img} alt="" style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            filter: 'brightness(0.55)',
+          }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, rgba(31,77,61,0.3) 0%, rgba(31,77,61,0.7) 60%, #1F4D3D 100%)',
+          }} />
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, padding: '0 20px 24px',
+            color: '#fff',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.8,
+              marginBottom: 8,
+              opacity: mounted ? 0.8 : 0,
+              transition: 'opacity 0.6s 0.2s',
+            }}>
+              {Icon.Feather(14, '#FBCC9E')}
+              <span>今日观鸟 · 星期二</span>
+            </div>
+            <h2 style={{
+              fontFamily: "'Noto Serif SC', serif", fontSize: 28, fontWeight: 700,
+              marginBottom: 6, lineHeight: 1.2,
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(10px)',
+              transition: 'all 0.7s 0.3s cubic-bezier(.2,.7,.3,1)',
+            }}>清晨的林间歌者</h2>
+            <p style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.5,
+                        opacity: mounted ? 0.75 : 0,
+                        transition: 'opacity 0.7s 0.5s',
+            }}>今日已记录 <b style={{ color: C.accentSoft }}>{todayCount}</b> 种鸟类，本月累计 {totalSpecies} 种</p>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
+          padding: '20px 16px', marginTop: -20, position: 'relative',
+        }}>
+          {[
+            { val: totalSpecies, lbl: '累计鸟种', icon: Icon.Binoculars, color: C.ink, bg: '#fff' },
+            { val: 128, lbl: '观测记录', icon: Icon.Book, color: C.accent, bg: '#fff' },
+            { val: streak, lbl: '连续观鸟', suf: '天', icon: Icon.Feather, color: C.success, bg: '#fff' },
+          ].map((s, i) => (
+            <div key={i} style={{
+              background: s.bg, borderRadius: 16, padding: '16px 12px',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+              transition: `all 0.6s ${0.5 + i * 0.1}s cubic-bezier(.2,.7,.3,1)`,
+            }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: s.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color, marginBottom: 10 }}>
+                {s.icon(20, 'currentColor')}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: s.color, lineHeight: 1, fontFamily: "'Noto Serif SC', serif" }}>
+                <AnimatedNumber value={s.val} />
+                {s.suf && <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 2 }}>{s.suf}</span>}
+              </div>
+              <div style={{ fontSize: 11, color: C.feather, marginTop: 6 }}>{s.lbl}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Today's records — horizontal scroll cards */}
+        <div style={{ padding: '4px 20px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 600, color: C.text, fontFamily: "'Noto Serif SC', serif" }}>今日观测</h3>
+            <button className="clickable" onClick={() => onNavigate('guide')} style={{
+              fontSize: 13, color: C.accent, background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 2,
+            }}>
+              查看全部 {Icon.ChevronRight(14, C.accent)}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, margin: '0 -20px', paddingLeft: 20, paddingRight: 20 }}>
+            {RECORDS.map((r, i) => (
+              <button key={r.id} className="clickable"
+                onClick={() => onNavigate('bird-detail', r.bird)}
+                style={{
+                  flexShrink: 0, width: 180, background: '#fff', borderRadius: 16,
+                  overflow: 'hidden', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                  transition: 'transform 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                <div style={{ height: 120, overflow: 'hidden', position: 'relative' }}>
+                  <img src={r.bird.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{
+                    position: 'absolute', top: 8, right: 8, padding: '3px 8px',
+                    background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+                    borderRadius: 999, fontSize: 11, color: '#fff', display: 'flex', alignItems: 'center', gap: 3,
+                  }}>
+                    {Icon.Pin(12, '#fff')} {r.count}
+                  </div>
+                </div>
+                <div style={{ padding: '10px 12px 12px' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>{r.bird.name}</div>
+                  <div style={{ fontSize: 11, color: C.feather, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {Icon.Clock(12, C.featherLight)} {r.date}
+                  </div>
+                </div>
+              </button>
+            ))}
+            {/* Add card */}
+            <button className="clickable"
+              onClick={() => onNavigate('add')}
+              style={{
+                flexShrink: 0, width: 100, background: C.ink + '08', borderRadius: 16,
+                border: `1.5px dashed ${C.ink}30`, cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 6, color: C.ink,
+              }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.ink, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {Icon.Plus(18, '#fff')}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 500 }}>添加记录</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Nearby spots preview */}
+        <div style={{ padding: '8px 20px 100px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 600, color: C.text, fontFamily: "'Noto Serif SC', serif" }}>附近观鸟点</h3>
+            <button className="clickable" onClick={() => onNavigate('map')} style={{
+              fontSize: 13, color: C.accent, background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 2,
+            }}>
+              地图 {Icon.ChevronRight(14, C.accent)}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {SPOTS.slice(0, 2).map((s, i) => (
+              <button key={s.id} className="clickable"
+                onClick={() => onNavigate('map')}
+                style={{
+                  display: 'flex', gap: 12, background: '#fff', borderRadius: 14,
+                  padding: 10, border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
+                }}>
+                <img src={s.img} alt="" style={{ width: 72, height: 72, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '2px 0' }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: C.feather, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {Icon.Pin(12, C.featherLight)} {s.dist} · {s.count}种鸟
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {s.tag.slice(0, 2).map(t => (
+                      <span key={t} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, background: C.accent + '15', color: C.accentDeep }}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page 2: Bird Guide (鸟种图鉴) — masonry / waterfall layout ──
+function GuidePage({ onNavigate }) {
+  const [tab, setTab] = useState('all');
+  const [search, setSearch] = useState('');
+  const tabs = [
+    { key: 'all', label: '全部' },
+    { key: 'forest', label: '林鸟' },
+    { key: 'water', label: '水鸟' },
+    { key: 'city', label: '城市' },
+  ];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface }}>
+      <NavHeader title="鸟种图鉴" subtitle="共 42 种" dark={false} />
+
+      {/* Search bar */}
+      <div style={{ padding: '0 16px 12px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#fff', borderRadius: 12, padding: '10px 14px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}>
+          {Icon.Search(18, C.feather)}
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索鸟种名称、特征…"
+            style={{
+              flex: 1, border: 'none', outline: 'none', background: 'transparent',
+              fontSize: 14, color: C.text, fontFamily: 'inherit',
+            }} />
+          <button className="clickable" style={{ background: 'none', border: 'none', color: C.feather, cursor: 'pointer' }}>
+            {Icon.Filter(18, C.feather)}
+          </button>
+        </div>
+      </div>
+
+      {/* Category tabs (scrollable) */}
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 16px', overflowX: 'auto' }}>
+        {tabs.map((t) => (
+          <button key={t.key} className="clickable" onClick={() => setTab(t.key)}
+            style={{
+              padding: '7px 16px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
+              background: tab === t.key ? C.ink : '#fff',
+              color: tab === t.key ? '#fff' : C.textSoft,
+              boxShadow: tab === t.key ? '0 2px 8px rgba(31,77,61,0.3)' : '0 1px 2px rgba(0,0,0,0.04)',
+              flexShrink: 0, transition: 'all 0.2s',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Waterfall grid */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {BIRDS.map((b, i) => (
+            <button key={b.id} className="clickable"
+              onClick={() => onNavigate('bird-detail', b)}
+              style={{
+                borderRadius: 16, overflow: 'hidden', border: 'none', cursor: 'pointer',
+                background: '#fff', padding: 0, textAlign: 'left',
+                gridRow: i % 3 === 0 ? 'span 2' : 'span 1',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                transition: 'transform 0.25s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+              <div style={{ position: 'relative', overflow: 'hidden' }}>
+                <img src={b.img} alt="" style={{
+                  width: '100%',
+                  height: i % 3 === 0 ? 220 : 130,
+                  objectFit: 'cover',
+                  display: 'block',
+                  transition: 'transform 0.5s',
+                }} />
+                <div style={{
+                  position: 'absolute', top: 8, left: 8, padding: '3px 8px',
+                  background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(6px)',
+                  borderRadius: 999, fontSize: 10, fontWeight: 500, color: b.color,
+                }}>{b.family}</div>
+                <div style={{
+                  position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+                  borderRadius: '50%', background: 'rgba(255,255,255,0.85)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backdropFilter: 'blur(6px)',
+                }}>
+                  {b.status === '近危' ? (
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.warn }} />
+                  ) : (
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.success }} />
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: '10px 12px' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>{b.name}</div>
+                <div style={{ fontSize: 11, color: C.feather, fontStyle: 'italic' }}>{b.lat}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page 3: Bird Detail (鸟种详情) — hero image + parallax scroll ──
+function BirdDetailPage({ bird, onBack }) {
+  const [scrollY, setScrollY] = useState(0);
+  const [tab, setTab] = useState('intro');
+  const [liked, setLiked] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [longPress, setLongPress] = useState(false);
+  const pressTimer = useRef(null);
+
+  const onScroll = (e) => setScrollY(e.target.scrollTop);
+
+  // Long press for quick action menu
+  const handlePressStart = () => {
+    pressTimer.current = setTimeout(() => {
+      setLongPress(true);
+    }, 500);
+  };
+  const handlePressEnd = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+  };
+
+  const headerOpacity = Math.min(1, Math.max(0, scrollY / 200));
+  const heroScale = 1 + Math.max(0, -scrollY / 300);
+  const heroTranslateY = scrollY > 0 ? scrollY * 0.4 : 0;
+
+  const tabs = [
+    { key: 'intro', label: '简介' },
+    { key: 'habitat', label: '栖息' },
+    { key: 'call', label: '鸣声' },
+  ];
+
+  return (
+    <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#fff' }}>
+      {/* Hero image with parallax */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 320, overflow: 'hidden',
+      }}>
+        <img src={bird.img} alt="" style={{
+          width: '100%', height: '100%', objectFit: 'cover',
+          transform: `scale(${heroScale}) translateY(${heroTranslateY}px)`,
+        }} />
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.1) 40%, rgba(255,255,255,0) 70%, #fff 100%)',
+        }} />
+      </div>
+
+      {/* Sticky header */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 50,
+        paddingTop: 50, paddingBottom: 6,
+        background: `rgba(255,255,255,${headerOpacity})`,
+        backdropFilter: `blur(${headerOpacity * 16}px)`,
+        WebkitBackdropFilter: `blur(${headerOpacity * 16}px)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingLeft: 16, paddingRight: 16,
+        transition: 'background 0.2s',
+      }}>
+        <button className="clickable" onClick={onBack} style={{
+          width: 36, height: 36, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(8px)',
+          border: 'none', color: '#fff', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {Icon.Back(20, '#fff')}
+        </button>
+        <div style={{
+          fontSize: 16, fontWeight: 600, color: `rgba(31,41,55,${headerOpacity})`,
+          transition: 'opacity 0.2s',
+        }}>{bird.name}</div>
+        <button className="clickable" onClick={() => setShowModal(true)} style={{
+          width: 36, height: 36, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(8px)',
+          border: 'none', color: '#fff', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {Icon.More(20, '#fff')}
+        </button>
+      </div>
+
+      {/* Scroll content */}
+      <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', position: 'relative', zIndex: 1 }}>
+        <div style={{ height: 260 }} /> {/* Spacer for hero */}
+
+        {/* Bird info card (floating up from hero) */}
+        <div style={{
+          position: 'relative', background: '#fff', borderRadius: '28px 28px 0 0',
+          marginTop: -28, padding: '24px 20px 100px',
+        }}>
+          {/* Family + status chips */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <span style={{
+              padding: '4px 10px', fontSize: 11, borderRadius: 999,
+              background: bird.color + '15', color: bird.color, fontWeight: 500,
+            }}>{bird.family}</span>
+            <span style={{
+              padding: '4px 10px', fontSize: 11, borderRadius: 999,
+              background: bird.status === '近危' ? C.warn + '20' : C.success + '20',
+              color: bird.status === '近危' ? C.warn : C.success, fontWeight: 500,
+            }}>{bird.status}</span>
+            <span style={{
+              padding: '4px 10px', fontSize: 11, borderRadius: 999,
+              background: C.featherPale + '50', color: C.feather, fontWeight: 500,
+            }}>{bird.size}</span>
+          </div>
+
+          <h1 style={{
+            fontSize: 28, fontWeight: 700, color: C.text,
+            fontFamily: "'Noto Serif SC', serif", marginBottom: 4,
+          }}>{bird.name}</h1>
+          <p style={{ fontSize: 13, color: C.feather, fontStyle: 'italic', marginBottom: 16 }}>{bird.lat}</p>
+
+          {/* Sound bar */}
+          <button onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
+            onTouchStart={handlePressStart} onTouchEnd={handlePressEnd}
+            className="clickable"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+              padding: 14, borderRadius: 16, background: C.ink + '08',
+              border: 'none', cursor: 'pointer', marginBottom: 20,
+            }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%',
+              background: `linear-gradient(135deg, ${C.ink}, ${C.inkLight})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+              boxShadow: '0 2px 8px rgba(31,77,61,0.3)',
+            }}>
+              {Icon.Sound(20, '#fff')}
+            </div>
+            <div style={{ flex: 1, textAlign: 'left' }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>听鸣声</div>
+              {/* Audio waveform visualization */}
+              <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 16 }}>
+                {Array.from({ length: 28 }).map((_, i) => (
+                  <div key={i} style={{
+                    width: 2, borderRadius: 1,
+                    height: 4 + (Math.sin(i * 0.8) + 1) * 5,
+                    background: i < 10 ? C.accent : C.featherPale,
+                    animation: `wave ${1 + Math.random() * 0.5}s ease-in-out ${i * 0.05}s infinite alternate`,
+                  }} />
+                ))}
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: C.feather }}>0:18</span>
+          </button>
+
+          <style>{`@keyframes wave { from { height: 3px; } to { height: 14px; } }`}</style>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 24, marginBottom: 16, borderBottom: `1px solid ${C.featherPale}` }}>
+            {tabs.map(t => (
+              <button key={t.key} className="clickable" onClick={() => setTab(t.key)}
+                style={{
+                  padding: '10px 0', fontSize: 14, border: 'none', background: 'none',
+                  cursor: 'pointer', color: tab === t.key ? C.text : C.feather,
+                  fontWeight: tab === t.key ? 600 : 400,
+                  position: 'relative', fontFamily: 'inherit',
+                }}>
+                {t.label}
+                {tab === t.key && (
+                  <div style={{
+                    position: 'absolute', bottom: -1, left: 0, right: 0, height: 2.5,
+                    background: C.accent, borderRadius: 2,
+                  }} />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div style={{ fontSize: 14, lineHeight: 1.75, color: C.textSoft }}>
+            {tab === 'intro' && <p>{bird.desc}</p>}
+            {tab === 'habitat' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: C.ink + '12', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.ink }}>
+                    {Icon.Pin(18, 'currentColor')}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>栖息地</div>
+                    <div style={{ fontSize: 13, color: C.textSoft }}>{bird.habitat}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: C.accent + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.accentDeep }}>
+                    {Icon.Binoculars(18, 'currentColor')}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>食性</div>
+                    <div style={{ fontSize: 13, color: C.textSoft }}>{bird.diet}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: C.success + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.success }}>
+                    {Icon.Clock(18, 'currentColor')}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>季节</div>
+                    <div style={{ fontSize: 13, color: C.textSoft }}>{bird.season}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {tab === 'call' && <p>{bird.call}</p>}
+          </div>
+
+          {/* Photo gallery section */}
+          <div style={{ marginTop: 28 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 600, color: C.text, marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>图鉴照片</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[bird.img, BIRDS[1].img, BIRDS[2].img, bird.img, BIRDS[3].img, BIRDS[4].img].map((src, i) => (
+                <img key={i} src={src} alt="" style={{
+                  width: '100%', aspectRatio: '1/1', borderRadius: 8, objectFit: 'cover',
+                }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom action bar */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        padding: '12px 16px 30px',
+        background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(16px)',
+        borderTop: '0.5px solid rgba(0,0,0,0.05)',
+        display: 'flex', gap: 12, alignItems: 'center',
+      }}>
+        <button className="clickable" onClick={() => setLiked(!liked)}
+          style={{
+            width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
+            background: liked ? C.accent + '15' : C.featherPale + '50',
+            color: liked ? C.accent : C.feather,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.3s',
+            transform: liked ? 'scale(1.05)' : 'scale(1)',
+          }}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill={liked ? C.accent : 'none'} stroke={liked ? C.accent : 'currentColor'} strokeWidth="1.8">
+            <path d="M12 21s-7-4.5-7-11a4 4 0 017-2.6A4 4 0 0119 10c0 6.5-7 11-7 11z" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <button className="clickable" style={{
+          width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          background: C.featherPale + '50', color: C.feather,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {Icon.Share(20, 'currentColor')}
+        </button>
+        <button className="clickable" onClick={() => {}}
+          style={{
+            flex: 1, height: 46, borderRadius: 23, border: 'none', cursor: 'pointer',
+            background: `linear-gradient(135deg, ${C.inkLight}, ${C.ink})`,
+            color: '#fff', fontSize: 15, fontWeight: 600,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            boxShadow: '0 4px 16px rgba(31,77,61,0.3)',
+          }}>
+          {Icon.Camera(20, '#fff')} 记录观测
+        </button>
+      </div>
+
+      {/* Long press quick action sheet */}
+      {longPress && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          animation: 'fadeIn 0.2s',
+        }} onClick={() => setLongPress(false)}>
+          <div style={{
+            width: '100%', maxWidth: 370, background: C.surface,
+            borderRadius: '20px 20px 0 0', padding: '12px 16px 28px',
+            animation: 'slideUp 0.3s cubic-bezier(.3,.7,.4,1)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ width: 40, height: 5, borderRadius: 999, background: C.featherPale, margin: '0 auto 16px' }} />
+            <div style={{ textAlign: 'center', fontSize: 13, color: C.feather, marginBottom: 12 }}>{bird.name} · 快捷操作</div>
+            {[{label: '加入收藏', icon: '❤'},{label: '分享图鉴', icon: '↗'},{label: '下载图片', icon: '↓'},{label: '举报错误', icon: '!'}].map((a, i) => (
+              <button key={i} className="clickable" onClick={() => setLongPress(false)}
+                style={{
+                  width: '100%', padding: '14px 16px', border: 'none',
+                  background: '#fff', borderRadius: 12, marginBottom: 8,
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  fontSize: 15, color: C.text, cursor: 'pointer',
+                  fontFamily: 'inherit', fontWeight: i === 3 ? 400 : 500,
+                }}>
+                <span style={{ fontSize: 18 }}>{a.icon}</span>
+                {a.label}
+              </button>
+            ))}
+            <button className="clickable" onClick={() => setLongPress(false)}
+              style={{
+                width: '100%', padding: '14px 16px', border: 'none',
+                background: '#fff', borderRadius: 12, marginTop: 4,
+                fontSize: 15, color: C.text, cursor: 'pointer',
+                fontFamily: 'inherit', fontWeight: 600,
+              }}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {showModal && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'fadeIn 0.2s',
+        }} onClick={() => setShowModal(false)}>
+          <div style={{
+            width: 280, background: '#fff', borderRadius: 20, padding: 20,
+            animation: 'bounceIn 0.4s cubic-bezier(.3,.7,.4,1)',
+            textAlign: 'center',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%', margin: '0 auto 12px',
+              background: C.ink + '10', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{Icon.Share(28, C.ink)}</div>
+            <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 6, fontFamily: "'Noto Serif SC', serif" }}>分享图鉴</h3>
+            <p style={{ fontSize: 13, color: C.feather, marginBottom: 16, lineHeight: 1.5 }}>将 {bird.name} 的图鉴分享给观鸟同好</p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 20 }}>
+              {['微信','朋友圈','复制链接','保存'].map(s => (
+                <button key={s} className="clickable" style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: C.accent + '12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.accent }}>
+                    {Icon.Share(22, 'currentColor')}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.feather }}>{s}</span>
+                </button>
+              ))}
+            </div>
+            <button className="clickable" onClick={() => setShowModal(false)}
+              style={{
+                width: '100%', padding: '12px', border: 'none', borderRadius: 12,
+                background: C.featherPale + '40', color: C.text, fontSize: 14, cursor: 'pointer',
+                fontFamily: 'inherit', fontWeight: 500,
+              }}>取消</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page 4: Add Record (新增观测记录) — bottom sheet style form ──
+function AddRecordPage({ onBack, onComplete }) {
+  const [bird, setBird] = useState(BIRDS[0]);
+  const [count, setCount] = useState(1);
+  const [step, setStep] = useState(1);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface }}>
+      <NavHeader
+        title="新增记录"
+        subtitle={step === 1 ? '第 1 步：选择鸟种' : '第 2 步：记录详情'}
+        onBack={onBack}
+        large
+      />
+
+      {step === 1 && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+          <div style={{ marginBottom: 12 }}>
+            <input placeholder="搜索鸟种…" style={{
+              width: '100%', padding: '12px 16px', borderRadius: 12, border: 'none',
+              background: '#fff', fontSize: 14, fontFamily: 'inherit', outline: 'none',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+            }} />
+          </div>
+          <div style={{ fontSize: 12, color: C.feather, marginBottom: 10, paddingLeft: 4 }}>最近观测</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {BIRDS.slice(0, 4).map(b => (
+              <button key={b.id} className="clickable"
+                onClick={() => { setBird(b); setStep(2); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: 10, background: '#fff', borderRadius: 14,
+                  border: bird.id === b.id ? `2px solid ${C.accent}` : '2px solid transparent',
+                  cursor: 'pointer', textAlign: 'left',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                }}>
+                <img src={b.img} alt="" style={{ width: 54, height: 54, borderRadius: 12, objectFit: 'cover' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 2 }}>{b.name}</div>
+                  <div style={{ fontSize: 11, color: C.feather }}>{b.family} · {b.size}</div>
+                </div>
+                {Icon.ChevronRight(18, C.featherPale)}
+              </button>
+            ))}
+          </div>
+
+          <button className="clickable" style={{
+            marginTop: 16, width: '100%', padding: 14, borderRadius: 14,
+            border: `1.5px dashed ${C.ink}40`, background: C.ink + '05',
+            color: C.ink, fontSize: 14, fontWeight: 500, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            fontFamily: 'inherit',
+          }}>
+            {Icon.Camera(18, 'currentColor')} 拍照识别鸟种
+          </button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+          {/* Selected bird */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: 12, background: '#fff', borderRadius: 16, marginBottom: 16,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <img src={bird.img} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{bird.name}</div>
+              <div style={{ fontSize: 12, color: C.feather }}>{bird.family}</div>
+            </div>
+            <button className="clickable" onClick={() => setStep(1)}
+              style={{ fontSize: 12, color: C.accent, background: 'none', border: 'none', cursor: 'pointer' }}>
+              更换
+            </button>
+          </div>
+
+          {/* Count stepper */}
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ fontSize: 13, color: C.feather, marginBottom: 12 }}>观测数量</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <button className="clickable" onClick={() => setCount(Math.max(1, count - 1))}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: 'none',
+                  background: C.featherPale + '40', color: C.feather, fontSize: 20,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>−</button>
+              <div style={{ fontSize: 32, fontWeight: 700, color: C.ink, fontFamily: "'Noto Serif SC', serif" }}>
+                {count}
+              </div>
+              <button className="clickable" onClick={() => setCount(count + 1)}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: 'none',
+                  background: C.ink, color: '#fff', fontSize: 20,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(31,77,61,0.3)',
+                }}>+</button>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ fontSize: 13, color: C.feather, marginBottom: 10 }}>观测地点</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: C.accent + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.accentDeep }}>
+                {Icon.Pin(18, 'currentColor')}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>西山国家森林公园</div>
+                <div style={{ fontSize: 11, color: C.feather }}>当前位置 · 误差约 15m</div>
+              </div>
+              {Icon.ChevronRight(16, C.featherPale)}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ fontSize: 13, color: C.feather, marginBottom: 10 }}>观察备注</div>
+            <textarea
+              placeholder="记录行为、羽色、环境等细节…"
+              rows={4}
+              style={{
+                width: '100%', border: 'none', outline: 'none', resize: 'none',
+                fontSize: 14, color: C.text, fontFamily: 'inherit', lineHeight: 1.6,
+                background: 'transparent',
+              }} />
+          </div>
+
+          {/* Photo upload */}
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ fontSize: 13, color: C.feather, marginBottom: 12 }}>添加照片</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[bird.img, BIRDS[3].img].map((src, i) => (
+                <div key={i} style={{
+                  width: 72, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative',
+                }}>
+                  <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <button className="clickable" style={{
+                    position: 'absolute', top: 4, right: 4, width: 20, height: 20,
+                    borderRadius: '50%', background: 'rgba(0,0,0,0.5)', border: 'none',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', fontSize: 12,
+                  }}>✕</button>
+                </div>
+              ))}
+              <button className="clickable" style={{
+                width: 72, height: 72, borderRadius: 10,
+                border: `1.5px dashed ${C.featherPale}`, background: C.featherPale + '20',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 4, color: C.feather, cursor: 'pointer',
+              }}>
+                {Icon.Plus(20, 'currentColor')}
+                <span style={{ fontSize: 10 }}>添加</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom CTA */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        padding: '12px 16px 30px',
+        background: 'rgba(247,242,232,0.95)', backdropFilter: 'blur(16px)',
+        borderTop: '0.5px solid rgba(0,0,0,0.05)',
+      }}>
+        {step === 1 ? (
+          <button className="clickable" onClick={() => setStep(2)}
+            style={{
+              width: '100%', height: 50, borderRadius: 25, border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, ${C.inkLight}, ${C.ink})`,
+              color: '#fff', fontSize: 16, fontWeight: 600, fontFamily: 'inherit',
+              boxShadow: '0 4px 16px rgba(31,77,61,0.3)',
+            }}>下一步</button>
+        ) : (
+          <button className="clickable" onClick={onComplete}
+            style={{
+              width: '100%', height: 50, borderRadius: 25, border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, ${C.accentLight}, ${C.accent})`,
+              color: '#fff', fontSize: 16, fontWeight: 600, fontFamily: 'inherit',
+              boxShadow: '0 4px 16px rgba(232,135,59,0.4)',
+            }}>保存记录</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Page 5: Map / Spots (观鸟地点) — map + list split layout ──
+function MapPage({ onNavigate }) {
+  const [view, setView] = useState('map'); // map | list
+  const [selectedSpot, setSelectedSpot] = useState(null);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface }}>
+      <NavHeader
+        title="观鸟地点"
+        subtitle="附近 12 个观鸟点"
+        large
+        right={
+          <div style={{
+            display: 'flex', background: '#fff', borderRadius: 999, padding: 3,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          }}>
+            {[{k:'map',l:'地图'},{k:'list',l:'列表'}].map(t => (
+              <button key={t.k} className="clickable" onClick={() => setView(t.k)}
+                style={{
+                  padding: '6px 14px', fontSize: 12, borderRadius: 999, border: 'none',
+                  cursor: 'pointer', fontWeight: 500, fontFamily: 'inherit',
+                  background: view === t.k ? C.ink : 'transparent',
+                  color: view === t.k ? '#fff' : C.feather,
+                  transition: 'all 0.2s',
+                }}>{t.l}</button>
+            ))}
+          </div>
+        }
+      />
+
+      {view === 'map' ? (
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {/* Map placeholder — stylized terrain */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: `
+              radial-gradient(ellipse at 30% 40%, #3A826830 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 60%, #E8873B20 0%, transparent 40%),
+              linear-gradient(135deg, #E8DFCE 0%, #D4CBB8 100%)
+            `,
+          }} />
+          {/* Grid lines */}
+          <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.15 }}>
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke={C.ink} strokeWidth="0.5"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+          </svg>
+
+          {/* Pin markers with pulse animation */}
+          {SPOTS.map((s, i) => {
+            const positions = [
+              { x: '30%', y: '35%' },
+              { x: '65%', y: '55%' },
+              { x: '45%', y: '70%' },
+              { x: '75%', y: '30%' },
+            ];
+            const p = positions[i];
+            return (
+              <button key={s.id} className="clickable"
+                onClick={() => setSelectedSpot(s)}
+                style={{
+                  position: 'absolute', left: p.x, top: p.y,
+                  transform: 'translate(-50%, -100%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  zIndex: selectedSpot?.id === s.id ? 10 : 5,
+                }}>
+                <div style={{
+                  position: 'relative',
+                  animation: selectedSpot?.id === s.id ? 'floatY 2s ease-in-out infinite' : 'none',
+                }}>
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: selectedSpot?.id === s.id ? C.accent + '40' : C.ink + '30',
+                    animation: 'pulseGlow 2s ease-in-out infinite',
+                  }} />
+                  <div style={{
+                    position: 'relative', width: 32, height: 40,
+                    background: selectedSpot?.id === s.id ? C.accent : C.ink,
+                    borderRadius: '50% 50% 50% 0',
+                    transform: 'rotate(-45deg)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 3px 10px rgba(0,0,0,0.2)',
+                  }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: '50%', background: '#fff',
+                      transform: 'rotate(45deg)',
+                    }} />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+
+          {/* Bottom sheet for selected spot */}
+          {selectedSpot && (
+            <div style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+              background: '#fff', borderRadius: '20px 20px 0 0',
+              padding: '12px 20px 24px',
+              boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
+              animation: 'slideUp 0.35s cubic-bezier(.3,.7,.4,1)',
+            }}>
+              <div style={{ width: 40, height: 5, borderRadius: 999, background: C.featherPale, margin: '0 auto 14px' }} />
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                <img src={selectedSpot.img} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 4 }}>{selectedSpot.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.feather }}>
+                    {Icon.Pin(14, C.featherLight)} {selectedSpot.dist}
+                    <span style={{ color: C.featherPale }}>·</span>
+                    {selectedSpot.count} 种鸟
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    {selectedSpot.tag.map(t => (
+                      <span key={t} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: C.accent + '12', color: C.accentDeep }}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="clickable" style={{
+                  flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${C.featherPale}`,
+                  background: '#fff', color: C.text, fontSize: 13, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  fontFamily: 'inherit',
+                }}>
+                  {Icon.Pin(14, C.feather)} 导航
+                </button>
+                <button className="clickable" style={{
+                  flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                  background: C.ink, color: '#fff', fontSize: 13, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  fontFamily: 'inherit', fontWeight: 500,
+                }}>查看详情</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {SPOTS.map(s => (
+              <button key={s.id} className="clickable"
+                onClick={() => onNavigate('spec')}
+                style={{
+                  borderRadius: 18, overflow: 'hidden', border: 'none',
+                  background: '#fff', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                }}>
+                <div style={{ position: 'relative', height: 140 }}>
+                  <img src={s.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{
+                    position: 'absolute', top: 12, right: 12, padding: '4px 10px',
+                    background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)',
+                    borderRadius: 999, fontSize: 11, color: '#fff',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    {Icon.Star(12, '#FBBF24')} {s.rating}
+                  </div>
+                </div>
+                <div style={{ padding: '14px 16px 16px' }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>{s.name}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, color: C.feather, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {Icon.Pin(14, C.featherLight)} {s.dist}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {s.tag.map(t => (
+                        <span key={t} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: C.ink + '10', color: C.ink }}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page 6: Profile (个人中心) — circular progress + stats grid ──
+function ProfilePage({ onNavigate }) {
+  const totalSpecies = 42;
+  const totalRecords = 128;
+  const streak = 7;
+  const yearGoal = 60;
+  const yearProgress = Math.round(totalSpecies / yearGoal * 100);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface, overflowY: 'auto' }}>
+      {/* Hero section with circular progress (signature) */}
+      <div style={{
+        position: 'relative', padding: '82px 20px 32px',
+        background: `linear-gradient(135deg, ${C.inkDeep} 0%, ${C.ink} 60%, ${C.inkLight} 100%)`,
+        borderRadius: '0 0 32px 32px',
+        overflow: 'hidden',
+      }}>
+        {/* Decorative feather pattern */}
+        <svg width="200" height="200" viewBox="0 0 200 200" style={{
+          position: 'absolute', top: -30, right: -40, opacity: 0.06,
+        }}>
+          <path d="M160 20C120 20 80 60 60 110s-40 70-40 70l40-10c0-20 10-50 30-70s50-40 70-50z" fill="#fff"/>
+        </svg>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${C.accentLight}, ${C.accent})`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 24, fontWeight: 700,
+            boxShadow: '0 4px 16px rgba(232,135,59,0.4)',
+            fontFamily: "'Noto Serif SC', serif",
+          }}>朱</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', fontFamily: "'Noto Serif SC', serif" }}>朱曦策</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>观鸟爱好者 · 入门级</div>
+          </div>
+        </div>
+
+        {/* Year goal ring */}
+        <div style={{
+          background: 'rgba(255,255,255,0.08)',
+          borderRadius: 20, padding: 20,
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', gap: 20,
+        }}>
+          <CircularRing
+            value={totalSpecies} max={yearGoal}
+            size={90} stroke={7}
+            color={C.accent} bg="rgba(255,255,255,0.15)"
+            label={totalSpecies}
+            sub={`/ ${yearGoal} 种`}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>年度目标</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 6 }}>发现 {yearGoal} 种鸟类</div>
+            <div style={{ fontSize: 12, color: C.accentSoft }}>已完成 {yearProgress}%，继续加油！</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stat cards grid */}
+      <div style={{ padding: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          {[
+            { val: totalRecords, lbl: '观测记录', icon: Icon.Book, color: C.accent, bg: '#FFF7EE' },
+            { val: streak, lbl: '连续观鸟天', suf: '天', icon: Icon.Feather, color: C.success, bg: '#EEF7F2' },
+            { val: 12, lbl: '本月新种', icon: Icon.Star, color: C.ink, bg: '#E8F0ED' },
+            { val: 4, lbl: '收藏地点', icon: Icon.Pin, color: '#D97757', bg: '#FDF1ED' },
+          ].map((s, i) => (
+            <div key={i} style={{
+              background: s.bg, borderRadius: 16, padding: 16,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                {s.icon(18, '#fff')}
+              </div>
+              <div>
+                <span style={{ fontSize: 24, fontWeight: 700, color: s.color, fontFamily: "'Noto Serif SC', serif" }}>
+                  <AnimatedNumber value={s.val} duration={1500} />
+                  {s.suf && <span style={{ fontSize: 12, fontWeight: 500 }}>{s.suf}</span>}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: C.feather }}>{s.lbl}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Menu list */}
+        <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.03)' }}>
+          {[
+            { label: '我的图鉴收藏', detail: '8 种', icon: Icon.Book },
+            { label: '观鸟成就徽章', detail: '3 枚', icon: Icon.Star },
+            { label: '数据同步', detail: '已同步', icon: Icon.Camera },
+          ].map((item, i) => (
+            <button key={i} className="clickable"
+              onClick={() => {
+                if (i === 0) onNavigate('guide');
+                else if (i === 2) onNavigate('api');
+              }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                padding: '14px 16px', background: 'none', border: 'none',
+                cursor: 'pointer', borderBottom: i < 2 ? `1px solid ${C.featherPale}40` : 'none',
+                fontFamily: 'inherit',
+              }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: C.ink + '10', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.ink }}>
+                {item.icon(16, 'currentColor')}
+              </div>
+              <span style={{ flex: 1, textAlign: 'left', fontSize: 14, color: C.text }}>{item.label}</span>
+              <span style={{ fontSize: 13, color: C.feather }}>{item.detail}</span>
+              {Icon.ChevronRight(16, C.featherPale)}
+            </button>
+          ))}
+        </div>
+
+        {/* Design & API links */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16, marginBottom: 100 }}>
+          <button className="clickable" onClick={() => onNavigate('spec')}
+            style={{
+              padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, #FBCC9E, ${C.accentLight})`,
+              color: C.inkDeep, textAlign: 'left',
+              display: 'flex', flexDirection: 'column', gap: 4,
+              fontFamily: 'inherit',
+            }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>设计规范</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>颜色 / 字体 / 组件</div>
+          </button>
+          <button className="clickable" onClick={() => onNavigate('api')}
+            style={{
+              padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, ${C.inkLight}, ${C.ink})`,
+              color: '#fff', textAlign: 'left',
+              display: 'flex', flexDirection: 'column', gap: 4,
+              fontFamily: 'inherit',
+            }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>接口文档</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>API / 数据结构</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page 7: Design Spec (设计规范页) ──
+function SpecPage({ onBack }) {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface }}>
+      <NavHeader title="设计规范" subtitle="羽踪 App 设计系统" onBack={onBack} large />
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+        {/* Color palette */}
+        <div style={{ marginBottom: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>色彩体系</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { name: '主色 · 深墨绿', hex: C.ink, desc: 'Primary - 品牌主色，用于核心按钮、重要文字' },
+              { name: '深墨绿·深', hex: C.inkDeep, desc: 'Primary Dark - 深色背景、次级强调' },
+              { name: '深墨绿·浅', hex: C.inkLight, desc: 'Primary Light - 渐变、hover 状态' },
+              { name: '强调色 · 暖橙', hex: C.accent, desc: 'Accent - 关键行动点、进度、徽章' },
+              { name: '暖橙·浅', hex: C.accentLight, desc: 'Accent Light - 渐变起始、标签底色' },
+              { name: '表面色 · 米白', hex: C.surface, desc: 'Surface - 页面背景、卡片底色' },
+              { name: '中性 · 羽灰', hex: C.feather, desc: 'Neutral - 次级文字、图标' },
+            ].map(c => (
+              <div key={c.hex} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                background: '#fff', borderRadius: 12, padding: 10,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 10,
+                  background: c.hex,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                  flexShrink: 0,
+                  position: 'relative', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, height: '50%',
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.3), transparent)',
+                  }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: C.feather, fontFamily: 'monospace' }}>{c.hex.toUpperCase()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Typography */}
+        <div style={{ marginBottom: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>字体排印</h3>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: C.feather, marginBottom: 4 }}>展示字体 · Noto Serif SC</div>
+              <div style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 28, fontWeight: 700, color: C.text }}>羽踪 林间之歌</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: C.feather, marginBottom: 4 }}>正文字体 · Noto Sans SC</div>
+              <div style={{ fontFamily: "'Noto Sans SC', sans-serif", fontSize: 15, color: C.text, lineHeight: 1.6 }}>
+                观鸟是一种慢下来的生活方式。在清晨的林间，聆听第一声鸟鸣。
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.feather, marginBottom: 4 }}>字号层级</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { s: 34, l: '大标题', w: 700 },
+                  { s: 22, l: '标题一', w: 600 },
+                  { s: 17, l: '标题二', w: 600 },
+                  { s: 15, l: '正文', w: 400 },
+                  { s: 13, l: '辅助', w: 400 },
+                  { s: 11, l: '标注', w: 400 },
+                ].map(t => (
+                  <div key={t.s} style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                    <span style={{ fontSize: t.s, fontWeight: t.w, color: C.text, minWidth: 80, fontFamily: t.s >= 22 ? "'Noto Serif SC', serif" : 'inherit' }}>Aa</span>
+                    <span style={{ fontSize: 11, color: C.feather }}>{t.l} · {t.s}px / {t.w}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Components */}
+        <div style={{ marginBottom: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>组件样式</h3>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+            <div style={{ fontSize: 12, color: C.feather, marginBottom: 10 }}>按钮</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="clickable" style={{
+                  flex: 1, height: 44, borderRadius: 22, border: 'none',
+                  background: `linear-gradient(135deg, ${C.inkLight}, ${C.ink})`,
+                  color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}>主按钮</button>
+                <button className="clickable" style={{
+                  flex: 1, height: 44, borderRadius: 22, border: 'none',
+                  background: `linear-gradient(135deg, ${C.accentLight}, ${C.accent})`,
+                  color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}>强调按钮</button>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="clickable" style={{
+                  flex: 1, height: 44, borderRadius: 22, border: `1.5px solid ${C.featherPale}`,
+                  background: '#fff', color: C.text, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+                }}>次要按钮</button>
+                <button className="clickable" style={{
+                  width: 44, height: 44, borderRadius: '50%', border: 'none',
+                  background: C.accent, color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(232,135,59,0.4)',
+                }}>{Icon.Plus(20, '#fff')}</button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: C.feather, margin: '16px 0 10px' }}>标签</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[
+                { t: '林鸟', c: C.ink },
+                { t: '水鸟', c: C.accent },
+                { t: '无危', c: C.success },
+                { t: '近危', c: C.warn },
+              ].map(t => (
+                <span key={t.t} style={{
+                  padding: '4px 12px', fontSize: 12, borderRadius: 999,
+                  background: t.c + '15', color: t.c, fontWeight: 500,
+                }}>{t.t}</span>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 12, color: C.feather, margin: '16px 0 10px' }}>卡片</div>
+            <div style={{
+              display: 'flex', gap: 10, borderRadius: 14, padding: 12,
+              background: C.surfaceWarm, border: `1px solid ${C.surfaceDeep}`,
+            }}>
+              <div style={{ width: 48, height: 48, borderRadius: 10, background: C.ink + '20' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 3 }}>卡片标题</div>
+                <div style={{ fontSize: 11, color: C.feather }}>辅助描述文字</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Design principles */}
+        <div>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 12, fontFamily: "'Noto Serif SC', serif" }}>设计原则</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[
+              { t: '自然质感', d: '取材于真实自然环境，颜色来自森林与鸟类羽毛' },
+              { t: '轻盈呼吸', d: '充足留白与柔和阴影，模拟林间穿透的光线' },
+              { t: '细节温度', d: '每个动效与微交互都呼应观鸟的细腻体验' },
+            ].map((p, i) => (
+              <div key={i} style={{
+                background: '#fff', borderRadius: 14, padding: 14,
+                display: 'flex', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  background: i === 0 ? C.ink + '15' : i === 1 ? C.accent + '15' : C.success + '15',
+                  color: i === 0 ? C.ink : i === 1 ? C.accentDeep : C.success,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, fontFamily: "'Noto Serif SC', serif",
+                }}>{i + 1}</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>{p.t}</div>
+                  <div style={{ fontSize: 12, color: C.feather, lineHeight: 1.5 }}>{p.d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page 8: API Document (接口文档页) ──
+function ApiPage({ onBack }) {
+  const [tab, setTab] = useState('birds');
+  const tabs = [
+    { key: 'birds', label: '鸟种' },
+    { key: 'records', label: '记录' },
+    { key: 'spots', label: '地点' },
+  ];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.surface }}>
+      <NavHeader title="接口文档" subtitle="羽踪 API v1.0" onBack={onBack} large />
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, padding: '0 16px 12px' }}>
+        {tabs.map(t => (
+          <button key={t.key} className="clickable" onClick={() => setTab(t.key)}
+            style={{
+              padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
+              background: tab === t.key ? C.ink : 'transparent',
+              color: tab === t.key ? '#fff' : C.feather,
+              fontFamily: 'inherit',
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 100px' }}>
+        {/* Endpoint card */}
+        <div style={{
+          background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+              background: C.success + '20', color: C.success, letterSpacing: '0.05em',
+            }}>GET</span>
+            <code style={{ fontSize: 12, color: C.text, fontFamily: 'monospace' }}>/api/v1/birds</code>
+          </div>
+          <div style={{ fontSize: 13, color: C.textSoft, lineHeight: 1.6, marginBottom: 12 }}>
+            获取鸟种列表，支持分页、筛选与搜索。返回鸟种的基本信息、保护级别与分布数据。
+          </div>
+
+          <div style={{ fontSize: 11, color: C.feather, marginBottom: 8, fontWeight: 500 }}>查询参数</div>
+          <div style={{
+            background: C.surface, borderRadius: 10, padding: 12,
+            fontSize: 12, fontFamily: 'monospace',
+          }}>
+            {[
+              { p: 'page', t: 'number', d: '页码，默认 1' },
+              { p: 'limit', t: 'number', d: '每页数量，默认 20' },
+              { p: 'keyword', t: 'string', d: '搜索关键词（中英文名）' },
+              { p: 'family', t: 'string', d: '科属筛选' },
+              { p: 'status', t: 'string', d: '保护级别：LC/NT/VU/EN' },
+            ].map(row => (
+              <div key={row.p} style={{
+                display: 'flex', gap: 12, padding: '4px 0',
+                borderBottom: `1px solid ${C.featherPale}30`,
+              }}>
+                <span style={{ color: C.accentDeep, minWidth: 70 }}>{row.p}</span>
+                <span style={{ color: C.feather, minWidth: 60 }}>{row.t}</span>
+                <span style={{ color: C.textSoft, flex: 1 }}>{row.d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Response */}
+        <div style={{
+          background: '#0F1A17', borderRadius: 16, padding: 16, marginBottom: 16,
+          color: '#E8DFCE', fontSize: 12, fontFamily: 'monospace',
+          lineHeight: 1.7, overflowX: 'auto',
+        }}>
+          <div style={{ fontSize: 11, color: '#6B8277', marginBottom: 8, fontFamily: 'inherit' }}>// 200 OK Response</div>
+          <pre style={{ margin: 0, fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+{`{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "id": "b1",
+        "name": "红嘴相思鸟",
+        "latin": "Leiothrix lutea",
+        "family": "噪鹛科",
+        "size": "13-15cm",
+        "status": "LC",
+        "image_url": "...",
+        "description": "羽色艳丽，叫声婉转动听..."
+      }
+    ],
+    "total": 42,
+    "page": 1,
+    "limit": 20
+  }
+}`}
+          </pre>
+        </div>
+
+        {/* Endpoint 2 */}
+        <div style={{
+          background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+              background: C.accent + '25', color: C.accentDeep, letterSpacing: '0.05em',
+            }}>POST</span>
+            <code style={{ fontSize: 12, color: C.text, fontFamily: 'monospace' }}>/api/v1/records</code>
+          </div>
+          <div style={{ fontSize: 13, color: C.textSoft, lineHeight: 1.6 }}>
+            创建一条新的观测记录，需上传鸟种 ID、数量、地点、照片等信息。
+          </div>
+
+          <div style={{ fontSize: 11, color: C.feather, margin: '12px 0 8px', fontWeight: 500 }}>请求体 (application/json)</div>
+          <div style={{
+            background: C.surface, borderRadius: 10, padding: 12,
+            fontSize: 12, fontFamily: 'monospace', lineHeight: 1.7,
+          }}>
+{`{
+  "bird_id": "b1",      // 鸟种 ID (必填)
+  "count": 3,           // 数量 (必填)
+  "location": {          // 地点 (必填)
+    "lat": 39.9042,
+    "lng": 116.4074,
+    "name": "西山国家森林公园"
+  },
+  "note": "清晨在林间见到", // 备注 (可选)
+  "photos": ["url1"]     // 照片 (可选)
+}`}
+          </div>
+        </div>
+
+        {/* Status codes */}
+        <div style={{
+          background: '#fff', borderRadius: 16, padding: 16,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>状态码</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { code: '200', text: 'OK', desc: '请求成功', color: C.success },
+              { code: '201', text: 'Created', desc: '资源创建成功', color: C.ink },
+              { code: '400', text: 'Bad Request', desc: '参数错误', color: C.warn },
+              { code: '401', text: 'Unauthorized', desc: '未授权', color: C.warn },
+              { code: '404', text: 'Not Found', desc: '资源不存在', color: '#6B7280' },
+              { code: '500', text: 'Server Error', desc: '服务器错误', color: '#B91C1C' },
+            ].map(s => (
+              <div key={s.code} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{
+                  padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: s.color + '15', color: s.color, fontFamily: 'monospace',
+                }}>{s.code}</span>
+                <span style={{ fontSize: 12, color: C.text, minWidth: 80, fontWeight: 500 }}>{s.text}</span>
+                <span style={{ fontSize: 12, color: C.feather }}>{s.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──
+function App() {
+  const [activeTab, setActiveTab] = useState('home');
+  const [stack, setStack] = useState([]); // navigation stack
+  const [currentPage, setCurrentPage] = useState('home');
+  const [pageData, setPageData] = useState(null);
+  const [showToast, setShowToast] = useState(null);
+  const [pageTransition, setPageTransition] = useState('fade');
+
+  const navigate = useCallback((page, data = null) => {
+    // Pages that push to stack (with back button)
+    const stackPages = ['bird-detail', 'add', 'spec', 'api'];
+    if (stackPages.includes(page)) {
+      setStack(prev => [...prev, { page: currentPage, data: pageData }]);
+      setPageTransition('slideRight');
+    } else {
+      setPageTransition('fade');
+    }
+    setCurrentPage(page);
+    setPageData(data);
+  }, [currentPage, pageData]);
+
+  const goBack = useCallback(() => {
+    if (stack.length > 0) {
+      const prev = stack[stack.length - 1];
+      setStack(s => s.slice(0, -1));
+      setCurrentPage(prev.page);
+      setPageData(prev.data);
+      setPageTransition('slideLeft');
+    }
+  }, [stack]);
+
+  const handleTabChange = useCallback((tab) => {
+    if (tab === 'add') {
+      navigate('add');
+    } else {
+      setStack([]);
+      setActiveTab(tab);
+      setCurrentPage(tab);
+      setPageData(null);
+      setPageTransition('fade');
+    }
+  }, [navigate]);
+
+  const showToastMsg = (msg) => {
+    setShowToast(msg);
+    setTimeout(() => setShowToast(null), 2000);
+  };
+
+  const handleAddComplete = () => {
+    showToastMsg('记录已保存 ✓');
+    setStack([]);
+    setActiveTab('home');
+    setCurrentPage('home');
+    setPageData(null);
+  };
+
+  // Determine which content to show
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'home':
+        return <HomePage key="home" onNavigate={navigate} />;
+      case 'guide':
+        return <GuidePage key="guide" onNavigate={navigate} />;
+      case 'map':
+        return <MapPage key="map" onNavigate={navigate} />;
+      case 'profile':
+        return <ProfilePage key="profile" onNavigate={navigate} />;
+      case 'bird-detail':
+        return <BirdDetailPage key="bird-detail" bird={pageData || BIRDS[0]} onBack={goBack} />;
+      case 'add':
+        return <AddRecordPage key="add" onBack={goBack} onComplete={handleAddComplete} />;
+      case 'spec':
+        return <SpecPage key="spec" onBack={goBack} />;
+      case 'api':
+        return <ApiPage key="api" onBack={goBack} />;
+      default:
+        return <HomePage onNavigate={navigate} />;
+    }
+  };
+
+  const showTabBar = ['home', 'guide', 'map', 'profile'].includes(currentPage);
+
+  return (
+    <div className="stage">
+      <FeatherParticles count={8} show={true} />
+
+      <div className="stage-title">羽踪</div>
+      <div className="stage-sub">观鸟记录 Native App · V2 手机 UI</div>
+
+      {/* Page nav */}
+      <div className="page-nav">
+        {[
+          { k: 'home', l: '首页' },
+          { k: 'guide', l: '图鉴' },
+          { k: 'bird-detail', l: '详情', data: BIRDS[0] },
+          { k: 'add', l: '新增记录' },
+          { k: 'map', l: '地点' },
+          { k: 'profile', l: '我的' },
+          { k: 'spec', l: '设计规范' },
+          { k: 'api', l: '接口文档' },
+        ].map(p => (
+          <button key={p.k}
+            className={`clickable ${currentPage === p.k ? 'active' : ''}`}
+            onClick={() => {
+              setStack([]);
+              if (['home','guide','map','profile'].includes(p.k)) setActiveTab(p.k);
+              setCurrentPage(p.k);
+              setPageData(p.data || null);
+            }}>
+            {p.l}
+          </button>
+        ))}
+      </div>
+
+      {/* Phone */}
+      <div style={{
+        position: 'relative',
+        filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.4))',
+      }}>
+        <div style={{
+          width: 390, height: 844, borderRadius: 48, overflow: 'hidden',
+          position: 'relative', background: C.surface,
+          border: '1px solid rgba(255,255,255,0.1)',
+          fontFamily: "'Noto Sans SC', -apple-system, system-ui, sans-serif",
+          WebkitFontSmoothing: 'antialiased',
+          '--ios-safe-top': '62px',
+          '--ios-safe-bottom': '34px',
+        }}>
+          {/* Dynamic Island */}
+          <div style={{
+            position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+            width: 120, height: 35, borderRadius: 22, background: '#000', zIndex: 200,
+          }} />
+
+          {/* Status bar */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, pointerEvents: 'none' }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '18px 28px 16px', fontSize: 15, fontWeight: 600,
+              color: currentPage === 'bird-detail' ? '#fff' : C.text,
+              fontFamily: '-apple-system, system-ui',
+            }}>
+              <span>9:41</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <svg width="17" height="11" viewBox="0 0 17 11">
+                  <rect x="0" y="7" width="3" height="4" rx="0.5" fill="currentColor"/>
+                  <rect x="4.7" y="5" width="3" height="6" rx="0.5" fill="currentColor"/>
+                  <rect x="9.4" y="2.5" width="3" height="8.5" rx="0.5" fill="currentColor"/>
+                  <rect x="14" y="0" width="3" height="11" rx="0.5" fill="currentColor"/>
+                </svg>
+                <svg width="25" height="12" viewBox="0 0 25 12">
+                  <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeOpacity="0.4" fill="none"/>
+                  <rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/>
+                  <path d="M23 4V8c0.8-0.3 1.5-1.2 1.5-2s-0.7-1.7-1.5-2z" fill="currentColor" opacity="0.4"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {/* Screen content */}
+          <div style={{
+            height: '100%', display: 'flex', flexDirection: 'column',
+            position: 'relative', isolation: 'isolate',
+            animation: pageTransition === 'slideRight' ? 'slideInRight 0.35s cubic-bezier(.3,.7,.4,1)' :
+                       pageTransition === 'slideLeft' ? 'slideOutLeft 0.35s cubic-bezier(.3,.7,.4,1)' :
+                       'fadeIn 0.3s',
+          }}>
+            <style>{`@keyframes slideOutLeft { from { transform: translateX(-30%); opacity: 0.3; } to { transform: translateX(0); opacity: 1; } }`}</style>
+            {renderPage()}
+            {showTabBar && (
+              <TabBar active={activeTab} onChange={handleTabChange} dark={false} />
+            )}
+          </div>
+
+          {/* Home indicator */}
+          <div style={{
+            position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+            width: 134, height: 5, borderRadius: 100,
+            background: currentPage === 'bird-detail' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.2)',
+            zIndex: 300, pointerEvents: 'none',
+          }} />
+
+          {/* Toast */}
+          {showToast && (
+            <div style={{
+              position: 'absolute', top: 100, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 500,
+              animation: 'bounceIn 0.4s cubic-bezier(.3,.7,.4,1)',
+            }}>
+              <div style={{
+                background: 'rgba(15,25,20,0.9)', backdropFilter: 'blur(12px)',
+                color: '#fff', padding: '10px 20px', borderRadius: 999,
+                fontSize: 14, fontWeight: 500,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                {Icon.Check(16, C.accentSoft)} {showToast}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <CustomCursor />
+    </div>
+  );
+}
+
+// ── Render ──
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+// Announce upgrade capability
+function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) { /* ignore */ }
+}
+announceUpgrade();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', announceUpgrade, { once: true });
+}
+</script>
+</body>
+</html>
