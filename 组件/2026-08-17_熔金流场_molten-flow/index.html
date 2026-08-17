@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>熔金流场 · Molten Flow Lab V3</title>
+<style>
+  /* ========== RESET & BASE ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --obsidian: #0c0a08;
+    --obsidian-2: #15110d;
+    --obsidian-3: #1f1913;
+    --gold: #ffb627;
+    --copper: #c44510;
+    --ember: #ff6b1a;
+    --bone: #e8e2d8;
+    --bone-dim: #a79e91;
+    --glow-gold: rgba(255, 182, 39, 0.55);
+    --glow-ember: rgba(255, 107, 26, 0.45);
+    --glow-copper: rgba(196, 69, 16, 0.4);
+  }
+
+  html, body {
+    width: 100%;
+    background: var(--obsidian);
+    color: var(--bone);
+    font-family: "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(255, 107, 26, 0.08) 0%, transparent 45%),
+      radial-gradient(ellipse at 80% 100%, rgba(255, 182, 39, 0.05) 0%, transparent 50%),
+      var(--obsidian);
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  #cursor {
+    position: fixed;
+    top: 0; left: 0;
+    width: 34px; height: 34px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: screen;
+    transition: width 0.2s cubic-bezier(.2,.9,.3,1), height 0.2s cubic-bezier(.2,.9,.3,1);
+  }
+  #cursor .ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--bone);
+    border-radius: 50%;
+    box-shadow:
+      0 0 8px var(--glow-gold),
+      0 0 20px var(--glow-ember),
+      inset 0 0 6px var(--glow-gold);
+  }
+  #cursor .dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 8px; height: 8px;
+    margin: -4px 0 0 -4px;
+    background: var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--gold), 0 0 22px var(--ember);
+  }
+  #cursor.hover {
+    width: 54px; height: 54px;
+  }
+  #cursor.hover .ring {
+    border-color: var(--gold);
+  }
+  #cursor.hover .dot {
+    width: 10px; height: 10px;
+    margin: -5px 0 0 -5px;
+    background: var(--ember);
+  }
+  #cursor .ripple {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 10px; height: 10px;
+    margin: -5px 0 0 -5px;
+    border: 2px solid var(--gold);
+    border-radius: 50%;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  /* ========== HEADER ========== */
+  header.hero {
+    position: relative;
+    padding: 64px 48px 40px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 182, 39, 0.1);
+    overflow: hidden;
+  }
+  header.hero::before {
+    content: "";
+    position: absolute;
+    top: -60%; left: 50%;
+    width: 800px; height: 800px;
+    margin-left: -400px;
+    background: radial-gradient(circle, rgba(255, 107, 26, 0.18) 0%, rgba(196, 69, 16, 0.08) 30%, transparent 65%);
+    pointer-events: none;
+  }
+  .hero-label {
+    display: inline-block;
+    padding: 6px 14px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    border: 1px solid rgba(255, 182, 39, 0.3);
+    border-radius: 100px;
+    margin-bottom: 20px;
+    background: rgba(255, 182, 39, 0.06);
+  }
+  .hero-title {
+    font-size: clamp(42px, 6vw, 78px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    background: linear-gradient(135deg, var(--bone) 0%, var(--gold) 40%, var(--ember) 75%, var(--copper) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 16px;
+  }
+  .hero-sub {
+    font-size: 15px;
+    color: var(--bone-dim);
+    max-width: 620px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 28px;
+    font-size: 12px;
+    color: var(--bone-dim);
+    letter-spacing: 1px;
+  }
+  .hero-meta b {
+    color: var(--gold);
+    font-weight: 600;
+  }
+
+  /* ========== ZONES GRID ========== */
+  main.lab {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 20px;
+    padding: 32px 24px 64px;
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+
+  .zone {
+    position: relative;
+    background: linear-gradient(155deg, var(--obsidian-2) 0%, var(--obsidian) 100%);
+    border: 1px solid rgba(255, 182, 39, 0.12);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: none;
+  }
+  .zone::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at var(--mx, 50%) var(--my, 50%),
+      rgba(255, 182, 39, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .zone:hover::before { opacity: 1; }
+
+  .zone canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .zone-head {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .zone-num {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    font-weight: 600;
+    opacity: 0.7;
+  }
+  .zone-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--bone);
+    margin-top: 4px;
+    letter-spacing: 0.01em;
+  }
+  .zone-desc {
+    font-size: 11px;
+    color: var(--bone-dim);
+    margin-top: 6px;
+    line-height: 1.5;
+    max-width: 240px;
+  }
+  .zone-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--ember);
+    border: 1px solid rgba(255, 107, 26, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 107, 26, 0.08);
+    text-transform: uppercase;
+  }
+
+  .zone-controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 14px 20px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 2;
+    background: linear-gradient(to top, rgba(12, 10, 8, 0.85), transparent);
+  }
+  .zone-controls label {
+    font-size: 10px;
+    color: var(--bone-dim);
+    letter-spacing: 1px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+  }
+  .zone-controls input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 182, 39, 0.2);
+    border-radius: 3px;
+    outline: none;
+    cursor: none;
+  }
+  .zone-controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px; height: 14px;
+    background: var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--glow-gold);
+    cursor: none;
+  }
+  .zone-controls input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    background: var(--gold);
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--glow-gold);
+    cursor: none;
+  }
+
+  /* zone layout spans */
+  .zone-1 { grid-column: span 8; grid-row: span 1; height: 360px; }
+  .zone-2 { grid-column: span 4; grid-row: span 1; height: 360px; }
+  .zone-3 { grid-column: span 5; grid-row: span 1; height: 340px; }
+  .zone-4 { grid-column: span 7; grid-row: span 1; height: 340px; }
+  .zone-5 { grid-column: span 4; grid-row: span 1; height: 320px; }
+  .zone-6 { grid-column: span 4; grid-row: span 1; height: 320px; }
+  .zone-7 { grid-column: span 4; grid-row: span 1; height: 320px; }
+
+  /* ========== FOOTER ========== */
+  footer {
+    padding: 24px 48px 40px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--bone-dim);
+    letter-spacing: 1px;
+    border-top: 1px solid rgba(255, 182, 39, 0.08);
+  }
+  footer b { color: var(--gold); font-weight: 500; }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 960px) {
+    main.lab { grid-template-columns: repeat(6, 1fr); padding: 20px 12px 40px; gap: 14px; }
+    .zone-1, .zone-2, .zone-3, .zone-4, .zone-5, .zone-6, .zone-7 {
+      grid-column: span 6; height: 300px;
+    }
+    header.hero { padding: 40px 20px 28px; }
+  }
+
+  /* ========== REDUCED MOTION ========== */
+  @media (prefers-reduced-motion: reduce) {
+    #cursor { display: none; }
+    html, body { cursor: auto; }
+    .zone { cursor: auto; }
+    .zone canvas { display: none; }
+    .zone::after {
+      content: "◇";
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      color: var(--gold);
+      opacity: 0.3;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- CUSTOM CURSOR -->
+<div id="cursor">
+  <div class="ring"></div>
+  <div class="dot"></div>
+</div>
+
+<!-- HERO HEADER -->
+<header class="hero">
+  <span class="hero-label">MOLTEN FLOW LAB · V3</span>
+  <h1 class="hero-title">熔金流场特效实验室</h1>
+  <p class="hero-sub">以熔融金属、岩浆与火焰为视觉语言的组件级特效装置集群。<br/>每个展区独立运行，鼠标移动、点击、拖拽即可驱动真实物理与流场运算。</p>
+  <div class="hero-meta">
+    <span>展区 <b>07</b></span>
+    <span>特效 <b>14</b></span>
+    <span>交互 <b>05</b></span>
+    <span>材质 <b>熔金 / 铜红 / 余烬</b></span>
+  </div>
+</header>
+
+<!-- LAB ZONES -->
+<main class="lab" id="lab">
+
+  <!-- ZONE 1: MOLTEN FLOW FIELD -->
+  <section class="zone zone-1" data-zone="flow">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">01 / FLOW FIELD</div>
+        <div class="zone-title">熔金流场</div>
+        <div class="zone-desc">噪波驱动的粒子流场，鼠标为热源，粒子沿向量场流淌并形成熔融轨迹。</div>
+      </div>
+      <span class="zone-tag">Perlin · 热力扭曲</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>粒子密度<input type="range" data-param="density" min="200" max="1200" value="600" /></label>
+      <label>流场强度<input type="range" data-param="force" min="0.2" max="3" step="0.1" value="1.2" /></label>
+      <label>热力影响<input type="range" data-param="heat" min="50" max="300" value="150" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 2: EMBER BURST -->
+  <section class="zone zone-2" data-zone="ember">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">02 / EMBER</div>
+        <div class="zone-title">余烬迸溅</div>
+        <div class="zone-desc">点击任意处引爆熔金粒子，余烬受浮力与阻尼上升消散。</div>
+      </div>
+      <span class="zone-tag">Burst · 点击</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>粒子数<input type="range" data-param="count" min="30" max="150" value="80" /></label>
+      <label>初速度<input type="range" data-param="speed" min="2" max="9" value="5" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 3: MOLTEN TEXT DECAY -->
+  <section class="zone zone-3" data-zone="text">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">03 / TEXT DECAY</div>
+        <div class="zone-title">熔金文字解构</div>
+        <div class="zone-desc">悬停文字区域触发粒子化解构，熔滴受重力下坠，余烬升腾。</div>
+      </div>
+      <span class="zone-tag">Deconstruct · Hover</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>解构速度<input type="range" data-param="decay" min="0.5" max="4" step="0.1" value="1.5" /></label>
+      <label>重力<input type="range" data-param="gravity" min="0.02" max="0.3" step="0.01" value="0.08" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 4: MAGNETIC MOLTEN DROP -->
+  <section class="zone zone-4" data-zone="magnet">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">04 / MAGNETIC DROP</div>
+        <div class="zone-title">磁力熔滴</div>
+        <div class="zone-desc">金属熔滴群受鼠标反平方引力牵引，弹簧阻尼回归原位，熔合时类 metaball 发光。</div>
+      </div>
+      <span class="zone-tag">Metaball · 弹簧</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>磁力强度<input type="range" data-param="magnet" min="20" max="200" value="90" /></label>
+      <label>熔滴数<input type="range" data-param="drops" min="10" max="50" value="25" /></label>
+      <label>弹性<input type="range" data-param="spring" min="0.02" max="0.2" step="0.01" value="0.06" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 5: SCANLINE FORGE -->
+  <section class="zone zone-5" data-zone="scan">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">05 / SCANLINE</div>
+        <div class="zone-title">扫描锻造</div>
+        <div class="zone-desc">CRT 扫描线滤镜下的熔金光球，鼠标驱动热扰动偏移与色差。</div>
+      </div>
+      <span class="zone-tag">Filter · 扭曲</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>扫描强度<input type="range" data-param="intensity" min="0.2" max="1.5" step="0.1" value="0.7" /></label>
+      <label>色差<input type="range" data-param="chroma" min="0" max="8" value="3" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 6: CURSOR TRAIL -->
+  <section class="zone zone-6" data-zone="trail">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">06 / TRAIL</div>
+        <div class="zone-title">熔金拖尾</div>
+        <div class="zone-desc">鼠标移过留下熔融金属尾迹，液滴缓慢滴落并凝固消散。</div>
+      </div>
+      <span class="zone-tag">Trail · 惯性</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>拖尾长度<input type="range" data-param="length" min="10" max="60" value="30" /></label>
+      <label>滴落速度<input type="range" data-param="drip" min="0.1" max="1.5" step="0.1" value="0.5" /></label>
+    </div>
+  </section>
+
+  <!-- ZONE 7: SPECTRUM FORGE -->
+  <section class="zone zone-7" data-zone="spectrum">
+    <div class="zone-head">
+      <div>
+        <div class="zone-num">07 / SPECTRUM</div>
+        <div class="zone-title">熔金频谱</div>
+        <div class="zone-desc">鼠标水平位置驱动频谱频段，柱状光柱如熔炉中腾起的火焰，点击触发冲击波纹。</div>
+      </div>
+      <span class="zone-tag">Bars · 波纹</span>
+    </div>
+    <canvas></canvas>
+    <div class="zone-controls">
+      <label>频段数<input type="range" data-param="bands" min="8" max="48" value="24" /></label>
+      <label>增益<input type="range" data-param="gain" min="0.3" max="2" step="0.1" value="1" /></label>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  MOLTEN FLOW LAB V3 · 纯 Vanilla 单文件实现 · 共 <b>7</b> 展区 · <b>14</b> 组件级特效 · <b>5</b> 种交互方式
+</footer>
+
+<script>
+(function() {
+  "use strict";
+
+  // ========== GLOBAL STATE ==========
+  const COLORS = {
+    obsidian: "#0c0a08",
+    gold: "#ffb627",
+    copper: "#c44510",
+    ember: "#ff6b1a",
+    bone: "#e8e2d8",
+  };
+
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reducedMotion) return; // bail out gracefully
+
+  // ========== CUSTOM CURSOR ==========
+  const cursorEl = document.getElementById("cursor");
+  const cursor = {
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2,
+    tx: window.innerWidth / 2,
+    ty: window.innerHeight / 2,
+    vx: 0,
+    vy: 0,
+  };
+
+  function setCursorPos(x, y) {
+    cursor.tx = x;
+    cursor.ty = y;
+  }
+
+  window.addEventListener("mousemove", (e) => {
+    setCursorPos(e.clientX, e.clientY);
+  }, { passive: true });
+
+  // Ripple on click
+  window.addEventListener("mousedown", (e) => {
+    const ripple = document.createElement("div");
+    ripple.className = "ripple";
+    ripple.style.left = "50%";
+    ripple.style.top = "50%";
+    cursorEl.appendChild(ripple);
+    let r = 5;
+    let op = 1;
+    function anim() {
+      r += 4;
+      op -= 0.04;
+      ripple.style.width = r * 2 + "px";
+      ripple.style.height = r * 2 + "px";
+      ripple.style.marginLeft = -r + "px";
+      ripple.style.marginTop = -r + "px";
+      ripple.style.opacity = op;
+      if (op > 0) requestAnimationFrame(anim);
+      else ripple.remove();
+    }
+    requestAnimationFrame(anim);
+  });
+
+  // Hover state for interactive elements
+  document.querySelectorAll("input, .zone, canvas, button, a").forEach((el) => {
+    el.addEventListener("mouseenter", () => cursorEl.classList.add("hover"));
+    el.addEventListener("mouseleave", () => cursorEl.classList.remove("hover"));
+  });
+
+  function updateCursor() {
+    // Spring-based smooth follow
+    const dx = cursor.tx - cursor.x;
+    const dy = cursor.ty - cursor.y;
+    cursor.vx += dx * 0.18;
+    cursor.vy += dy * 0.18;
+    cursor.vx *= 0.72;
+    cursor.vy *= 0.72;
+    cursor.x += cursor.vx;
+    cursor.y += cursor.vy;
+
+    cursorEl.style.transform = `translate(${cursor.x}px, ${cursor.y}px) translate(-50%, -50%)`;
+  }
+
+  // ========== UTILITIES ==========
+  function rand(min, max) { return min + Math.random() * (max - min); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // Simple pseudo-Perlin (value noise with smoothstep)
+  const noiseSeed = Math.random() * 1000;
+  function noise2(x, y) {
+    // cheap smooth noise using sin products
+    return (
+      Math.sin(x * 0.01 + noiseSeed) * Math.cos(y * 0.011 + noiseSeed * 1.3) +
+      Math.sin(x * 0.023 + noiseSeed * 0.7) * Math.cos(y * 0.019 + noiseSeed * 1.1) * 0.5 +
+      Math.sin(x * 0.047 + noiseSeed * 0.3) * Math.cos(y * 0.053 + noiseSeed * 0.9) * 0.25
+    ) * 0.4 + 0.5; // normalize roughly to [0,1]
+  }
+
+  // ========== ZONE ENGINE ==========
+  const zones = [];
+  let rafId = null;
+  let lastTime = 0;
+
+  function setupZone(el) {
+    const canvas = el.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const type = el.dataset.zone;
+    const params = {};
+
+    // Read initial params
+    el.querySelectorAll('input[type="range"]').forEach((inp) => {
+      const key = inp.dataset.param;
+      params[key] = parseFloat(inp.value);
+      inp.addEventListener("input", () => {
+        params[key] = parseFloat(inp.value);
+        if (zoneState.onParamChange) zoneState.onParamChange(key, params[key]);
+      });
+    });
+
+    // Mouse tracking inside zone
+    const mouse = { x: 0, y: 0, px: 0, py: 0, inside: false, down: false };
+    let rect = { left: 0, top: 0, width: 0, height: 0 };
+
+    function updateRect() {
+      rect = el.getBoundingClientRect();
+    }
+    updateRect();
+    window.addEventListener("resize", updateRect);
+
+    el.addEventListener("mouseenter", () => { mouse.inside = true; });
+    el.addEventListener("mouseleave", () => { mouse.inside = false; });
+    el.addEventListener("mousemove", (e) => {
+      mouse.px = mouse.x;
+      mouse.py = mouse.y;
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+      // update CSS glow position
+      el.style.setProperty("--mx", (mouse.x / rect.width * 100) + "%");
+      el.style.setProperty("--my", (mouse.y / rect.height * 100) + "%");
+    }, { passive: true });
+    el.addEventListener("mousedown", (e) => {
+      mouse.down = true;
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+    el.addEventListener("mouseup", () => { mouse.down = false; });
+
+    // Resize canvas for DPR
+    function resize() {
+      updateRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + "px";
+      canvas.style.height = rect.height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (zoneState.onResize) zoneState.onResize(rect.width, rect.height);
+    }
+
+    // Zone-specific state
+    const zoneState = {
+      el, canvas, ctx, type, params, mouse, rect,
+      particles: [],
+      onResize: null,
+      onParamChange: null,
+      init: null,
+      draw: null,
+    };
+
+    // Initialize zone based on type
+    initZone(zoneState);
+    resize();
+    window.addEventListener("resize", resize);
+
+    zones.push(zoneState);
+  }
+
+  // ========== ZONE INITIALIZERS ==========
+  function initZone(z) {
+    switch (z.type) {
+      case "flow": initFlowZone(z); break;
+      case "ember": initEmberZone(z); break;
+      case "text": initTextZone(z); break;
+      case "magnet": initMagnetZone(z); break;
+      case "scan": initScanZone(z); break;
+      case "trail": initTrailZone(z); break;
+      case "spectrum": initSpectrumZone(z); break;
+    }
+  }
+
+  // --- ZONE 1: MOLTEN FLOW FIELD ---
+  function initFlowZone(z) {
+    const particles = [];
+    z.particles = particles;
+    let w = 0, h = 0;
+    let t = 0;
+
+    function spawn(n) {
+      particles.length = 0;
+      for (let i = 0; i < n; i++) {
+        particles.push({
+          x: rand(0, w),
+          y: rand(0, h),
+          vx: 0,
+          vy: 0,
+          life: rand(40, 180),
+          maxLife: 180,
+          size: rand(1, 3),
+          hue: rand(20, 50), // gold-orange range
+        });
+      }
+    }
+
+    z.onResize = (nw, nh) => {
+      w = nw; h = nh;
+      spawn(z.params.density);
+    };
+
+    z.onParamChange = (key, val) => {
+      if (key === "density") spawn(val);
+    };
+
+    z.draw = () => {
+      t += 0.003;
+      const force = z.params.force;
+      const heat = z.params.heat;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+
+      // Fade trail effect
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.08)";
+      z.ctx.fillRect(0, 0, w, h);
+
+      z.ctx.globalCompositeOperation = "lighter";
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // Flow field angle from noise
+        const nx = Math.floor(p.x / 20);
+        const ny = Math.floor(p.y / 20);
+        const n = noise2(nx + t * 80, ny + t * 60);
+        const angle = n * Math.PI * 3;
+
+        p.vx += Math.cos(angle) * force * 0.15;
+        p.vy += Math.sin(angle) * force * 0.15;
+
+        // Mouse heat repulsion + attraction ring
+        if (mInside) {
+          const dx = p.x - mx;
+          const dy = p.y - my;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < heat && dist > 1) {
+            const strength = (1 - dist / heat) * force * 0.8;
+            // Repel near center, attract at ring
+            if (dist < heat * 0.4) {
+              p.vx += (dx / dist) * strength;
+              p.vy += (dy / dist) * strength;
+            } else {
+              p.vx -= (dx / dist) * strength * 0.5;
+              p.vy -= (dy / dist) * strength * 0.5;
+            }
+          }
+        }
+
+        // Damping
+        p.vx *= 0.93;
+        p.vy *= 0.93;
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wrap edges
+        if (p.x < 0) p.x = w;
+        if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h;
+        if (p.y > h) p.y = 0;
+
+        p.life--;
+        if (p.life <= 0) {
+          p.x = rand(0, w);
+          p.y = rand(0, h);
+          p.vx = 0; p.vy = 0;
+          p.life = rand(60, 180);
+        }
+
+        const alpha = Math.min(1, p.life / 60) * 0.7;
+        const grad = z.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 3);
+        grad.addColorStop(0, `rgba(255, 182, 39, ${alpha})`);
+        grad.addColorStop(0.4, `rgba(255, 107, 26, ${alpha * 0.7})`);
+        grad.addColorStop(1, "rgba(196, 69, 16, 0)");
+        z.ctx.fillStyle = grad;
+        z.ctx.beginPath();
+        z.ctx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      // Heat source glow
+      if (mInside) {
+        const rg = z.ctx.createRadialGradient(mx, my, 0, mx, my, heat);
+        rg.addColorStop(0, "rgba(255, 182, 39, 0.15)");
+        rg.addColorStop(0.4, "rgba(255, 107, 26, 0.08)");
+        rg.addColorStop(1, "rgba(196, 69, 16, 0)");
+        z.ctx.fillStyle = rg;
+        z.ctx.fillRect(0, 0, w, h);
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // --- ZONE 2: EMBER BURST ---
+  function initEmberZone(z) {
+    const embers = [];
+    z.particles = embers;
+    let w = 0, h = 0;
+
+    // auto ambient embers
+    let ambientTimer = 0;
+
+    function burst(x, y, count, speed) {
+      for (let i = 0; i < count; i++) {
+        const angle = rand(0, Math.PI * 2);
+        const s = rand(speed * 0.3, speed);
+        embers.push({
+          x, y,
+          vx: Math.cos(angle) * s,
+          vy: Math.sin(angle) * s - rand(0.5, 2),
+          life: rand(40, 120),
+          maxLife: 120,
+          size: rand(1.5, 4),
+          type: Math.random() < 0.3 ? "spark" : "ember",
+          hue: rand(20, 45),
+        });
+      }
+    }
+
+    z.onResize = (nw, nh) => { w = nw; h = nh; };
+
+    // Click to burst
+    z.el.addEventListener("mousedown", (e) => {
+      const rect = z.el.getBoundingClientRect();
+      burst(e.clientX - rect.left, e.clientY - rect.top, z.params.count, z.params.speed);
+    });
+
+    z.draw = () => {
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.12)";
+      z.ctx.fillRect(0, 0, w, h);
+      z.ctx.globalCompositeOperation = "lighter";
+
+      // Ambient bursts from bottom
+      ambientTimer++;
+      if (ambientTimer > 30) {
+        ambientTimer = 0;
+        burst(rand(0, w), h + 5, 3, z.params.speed * 0.6);
+      }
+
+      for (let i = embers.length - 1; i >= 0; i--) {
+        const e = embers[i];
+        // Buoyancy (upward force)
+        e.vy -= 0.04;
+        // Light horizontal drift
+        e.vx += (noise2(e.x * 0.05, e.y * 0.05 + e.life * 0.01) - 0.5) * 0.05;
+        // Drag
+        e.vx *= 0.98;
+        e.vy *= 0.97;
+
+        e.x += e.vx;
+        e.y += e.vy;
+
+        e.life--;
+        if (e.life <= 0 || e.y < -10 || e.x < -20 || e.x > w + 20) {
+          embers.splice(i, 1);
+          continue;
+        }
+
+        const lifeRatio = e.life / e.maxLife;
+        const alpha = clamp(lifeRatio * 1.5, 0, 1);
+
+        if (e.type === "spark") {
+          // bright gold spark
+          z.ctx.fillStyle = `rgba(255, 220, 120, ${alpha})`;
+          z.ctx.beginPath();
+          z.ctx.arc(e.x, e.y, e.size * 0.6, 0, Math.PI * 2);
+          z.ctx.fill();
+          // streak
+          z.ctx.strokeStyle = `rgba(255, 182, 39, ${alpha * 0.6})`;
+          z.ctx.lineWidth = e.size * 0.5;
+          z.ctx.beginPath();
+          z.ctx.moveTo(e.x, e.y);
+          z.ctx.lineTo(e.x - e.vx * 3, e.y - e.vy * 3);
+          z.ctx.stroke();
+        } else {
+          // ember with glow
+          const grad = z.ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.size * 3);
+          grad.addColorStop(0, `rgba(255, 182, 39, ${alpha})`);
+          grad.addColorStop(0.5, `rgba(255, 107, 26, ${alpha * 0.6})`);
+          grad.addColorStop(1, "rgba(196, 69, 16, 0)");
+          z.ctx.fillStyle = grad;
+          z.ctx.beginPath();
+          z.ctx.arc(e.x, e.y, e.size * 3, 0, Math.PI * 2);
+          z.ctx.fill();
+        }
+      }
+
+      // Bottom glow
+      const bg = z.ctx.createLinearGradient(0, h, 0, h - 80);
+      bg.addColorStop(0, "rgba(255, 107, 26, 0.25)");
+      bg.addColorStop(1, "rgba(255, 107, 26, 0)");
+      z.ctx.fillStyle = bg;
+      z.ctx.fillRect(0, h - 80, w, 80);
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // --- ZONE 3: MOLTEN TEXT DECAY ---
+  function initTextZone(z) {
+    const drops = [];
+    z.particles = drops;
+    let w = 0, h = 0;
+    let textPixels = [];
+    const TEXT = "MOLTEN";
+    let textReady = false;
+
+    function rebuildText() {
+      textPixels = [];
+      textReady = false;
+      if (w < 50 || h < 50) return;
+
+      // Sample text pixels using offscreen canvas
+      const off = document.createElement("canvas");
+      off.width = w; off.height = h;
+      const octx = off.getContext("2d");
+      octx.fillStyle = "#fff";
+      octx.textAlign = "center";
+      octx.textBaseline = "middle";
+      const fontSize = Math.min(w / 6.5, h / 2.2);
+      octx.font = `900 ${fontSize}px "SF Pro Display", system-ui, sans-serif`;
+      octx.fillText(TEXT, w / 2, h / 2);
+
+      const data = octx.getImageData(0, 0, w, h).data;
+      // Sample every 3rd pixel
+      for (let y = 0; y < h; y += 3) {
+        for (let x = 0; x < w; x += 3) {
+          const idx = (y * w + x) * 4;
+          if (data[idx + 3] > 128) {
+            textPixels.push({ x, y, ox: x, oy: y, active: false, vy: 0, vx: 0, life: 100 });
+          }
+        }
+      }
+      textReady = true;
+    }
+
+    z.onResize = (nw, nh) => {
+      w = nw; h = nh;
+      rebuildText();
+    };
+
+    z.draw = () => {
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.15)";
+      z.ctx.fillRect(0, 0, w, h);
+      z.ctx.globalCompositeOperation = "lighter";
+
+      const decay = z.params.decay;
+      const gravity = z.params.gravity;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+      const hoverRadius = 60;
+
+      if (!textReady) return;
+
+      // Update and draw text pixels
+      for (let i = 0; i < textPixels.length; i++) {
+        const p = textPixels[i];
+
+        // Hover triggers melt
+        if (mInside && !p.active) {
+          const dx = p.x - mx;
+          const dy = p.y - my;
+          if (dx * dx + dy * dy < hoverRadius * hoverRadius) {
+            p.active = true;
+            p.vx = rand(-0.5, 0.5);
+            p.vy = rand(0, 0.5);
+          }
+        }
+
+        if (p.active) {
+          p.vy += gravity;
+          p.vx += (noise2(p.x * 0.02, p.y * 0.02) - 0.5) * 0.05;
+          p.vx *= 0.99;
+          p.vy *= 0.995;
+          p.x += p.vx * decay;
+          p.y += p.vy * decay;
+          p.life -= 0.3 * decay;
+
+          // Occasionally spawn a drip below
+          if (Math.random() < 0.005 && p.life > 30) {
+            drops.push({
+              x: p.x + rand(-1, 1),
+              y: p.y,
+              vy: rand(0.5, 1.5),
+              vx: rand(-0.2, 0.2),
+              life: rand(60, 120),
+              size: rand(0.8, 2),
+            });
+          }
+        }
+
+        if (p.life <= 0) {
+          // Respawn at original position after delay
+          p.x = p.ox;
+          p.y = p.oy;
+          p.vx = 0; p.vy = 0;
+          p.active = false;
+          p.life = 100;
+        }
+
+        const alpha = clamp(p.life / 100, 0, 1);
+        const size = p.active ? 1.5 : 1.2;
+        z.ctx.fillStyle = `rgba(255, ${p.active ? 150 + Math.random() * 30 : 182}, 39, ${alpha * (p.active ? 0.9 : 0.7)})`;
+        z.ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+      }
+
+      // Update drips
+      for (let i = drops.length - 1; i >= 0; i--) {
+        const d = drops[i];
+        d.vy += gravity * 0.5;
+        d.x += d.vx;
+        d.y += d.vy;
+        d.life--;
+        if (d.life <= 0 || d.y > h + 10) {
+          drops.splice(i, 1);
+          continue;
+        }
+        const alpha = clamp(d.life / 80, 0, 1);
+        const grad = z.ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.size * 2.5);
+        grad.addColorStop(0, `rgba(255, 200, 80, ${alpha})`);
+        grad.addColorStop(1, `rgba(255, 107, 26, 0)`);
+        z.ctx.fillStyle = grad;
+        z.ctx.beginPath();
+        z.ctx.arc(d.x, d.y, d.size * 2.5, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // --- ZONE 4: MAGNETIC MOLTEN DROP ---
+  function initMagnetZone(z) {
+    const drops = [];
+    z.particles = drops;
+    let w = 0, h = 0;
+
+    function rebuild(n) {
+      drops.length = 0;
+      for (let i = 0; i < n; i++) {
+        drops.push({
+          ox: rand(40, w - 40),
+          oy: rand(40, h - 40),
+          x: rand(40, w - 40),
+          y: rand(40, h - 40),
+          vx: 0, vy: 0,
+          r: rand(8, 22),
+        });
+      }
+    }
+
+    z.onResize = (nw, nh) => {
+      w = nw; h = nh;
+      rebuild(z.params.drops);
+    };
+
+    z.onParamChange = (key, val) => {
+      if (key === "drops") rebuild(val);
+    };
+
+    z.draw = () => {
+      z.ctx.clearRect(0, 0, w, h);
+      z.ctx.globalCompositeOperation = "lighter";
+
+      const magnet = z.params.magnet;
+      const spring = z.params.spring;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+
+      // First pass: draw glow halos (metaball-like)
+      z.ctx.fillStyle = "rgba(255, 107, 26, 0.12)";
+      for (let i = 0; i < drops.length; i++) {
+        const d = drops[i];
+        const grad = z.ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r * 2.5);
+        grad.addColorStop(0, "rgba(255, 182, 39, 0.5)");
+        grad.addColorStop(0.4, "rgba(255, 107, 26, 0.2)");
+        grad.addColorStop(1, "rgba(196, 69, 16, 0)");
+        z.ctx.fillStyle = grad;
+        z.ctx.beginPath();
+        z.ctx.arc(d.x, d.y, d.r * 2.5, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      // Update physics
+      for (let i = 0; i < drops.length; i++) {
+        const d = drops[i];
+
+        // Spring back to origin
+        const sx = d.ox - d.x;
+        const sy = d.oy - d.y;
+        d.vx += sx * spring;
+        d.vy += sy * spring;
+
+        // Magnetic attraction (inverse square)
+        if (mInside) {
+          const dx = mx - d.x;
+          const dy = my - d.y;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq);
+          if (dist > 2 && dist < 300) {
+            const force = magnet / distSq;
+            d.vx += (dx / dist) * force;
+            d.vy += (dy / dist) * force;
+          }
+        }
+
+        // Damping
+        d.vx *= 0.92;
+        d.vy *= 0.92;
+
+        d.x += d.vx;
+        d.y += d.vy;
+
+        // Draw core molten drop
+        const coreGrad = z.ctx.createRadialGradient(d.x - d.r * 0.3, d.y - d.r * 0.3, 0, d.x, d.y, d.r);
+        coreGrad.addColorStop(0, "#ffd875");
+        coreGrad.addColorStop(0.3, "#ffb627");
+        coreGrad.addColorStop(0.7, "#ff6b1a");
+        coreGrad.addColorStop(1, "#c44510");
+        z.ctx.fillStyle = coreGrad;
+        z.ctx.beginPath();
+        z.ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        z.ctx.fill();
+
+        // Inner highlight
+        z.ctx.fillStyle = "rgba(255, 240, 200, 0.5)";
+        z.ctx.beginPath();
+        z.ctx.arc(d.x - d.r * 0.35, d.y - d.r * 0.35, d.r * 0.3, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      // Draw connecting bridges between close drops (metaball effect)
+      z.ctx.strokeStyle = "rgba(255, 140, 40, 0.3)";
+      z.ctx.lineWidth = 2;
+      for (let i = 0; i < drops.length; i++) {
+        for (let j = i + 1; j < drops.length; j++) {
+          const a = drops[i], b = drops[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const minDist = a.r + b.r;
+          if (dist < minDist * 2) {
+            const alpha = (1 - dist / (minDist * 2)) * 0.6;
+            z.ctx.strokeStyle = `rgba(255, 140, 40, ${alpha})`;
+            z.ctx.lineWidth = Math.min(a.r, b.r) * (1 - dist / (minDist * 2)) * 0.8;
+            z.ctx.beginPath();
+            z.ctx.moveTo(a.x, a.y);
+            z.ctx.lineTo(b.x, b.y);
+            z.ctx.stroke();
+          }
+        }
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // --- ZONE 5: SCANLINE FORGE ---
+  function initScanZone(z) {
+    let w = 0, h = 0;
+    let t = 0;
+    const orbs = [];
+
+    z.onResize = (nw, nh) => {
+      w = nw; h = nh;
+      orbs.length = 0;
+      for (let i = 0; i < 3; i++) {
+        orbs.push({
+          x: rand(30, w - 30),
+          y: rand(30, h - 30),
+          vx: rand(-0.5, 0.5),
+          vy: rand(-0.3, 0.3),
+          r: rand(30, 60),
+          phase: rand(0, Math.PI * 2),
+        });
+      }
+    };
+
+    z.draw = () => {
+      t += 0.02;
+      const intensity = z.params.intensity;
+      const chroma = z.params.chroma;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.2)";
+      z.ctx.fillRect(0, 0, w, h);
+
+      // Mouse-driven heat distortion offset
+      const dx = mInside ? (mx - w / 2) * 0.05 : 0;
+      const dy = mInside ? (my - h / 2) * 0.03 : 0;
+
+      // Update orbs
+      for (let i = 0; i < orbs.length; i++) {
+        const o = orbs[i];
+        o.x += o.vx + Math.sin(t + o.phase) * 0.3;
+        o.y += o.vy + Math.cos(t * 0.7 + o.phase) * 0.2;
+        if (o.x < o.r || o.x > w - o.r) o.vx *= -1;
+        if (o.y < o.r || o.y > h - o.r) o.vy *= -1;
+        o.x = clamp(o.x, o.r, w - o.r);
+        o.y = clamp(o.y, o.r, h - o.r);
+
+        const pulse = 1 + Math.sin(t * 2 + o.phase) * 0.1;
+        const radius = o.r * pulse;
+
+        // Chromatic aberration layers
+        z.ctx.globalCompositeOperation = "lighter";
+
+        // Red (copper) channel
+        const gradR = z.ctx.createRadialGradient(o.x + dx - chroma, o.y + dy, 0, o.x + dx - chroma, o.y + dy, radius);
+        gradR.addColorStop(0, "rgba(255, 107, 26, 0.7)");
+        gradR.addColorStop(0.5, "rgba(196, 69, 16, 0.3)");
+        gradR.addColorStop(1, "rgba(196, 69, 16, 0)");
+        z.ctx.fillStyle = gradR;
+        z.ctx.beginPath();
+        z.ctx.arc(o.x + dx - chroma, o.y + dy, radius, 0, Math.PI * 2);
+        z.ctx.fill();
+
+        // Gold channel
+        const gradG = z.ctx.createRadialGradient(o.x + dx, o.y + dy, 0, o.x + dx, o.y + dy, radius);
+        gradG.addColorStop(0, "rgba(255, 182, 39, 0.9)");
+        gradG.addColorStop(0.4, "rgba(255, 140, 30, 0.5)");
+        gradG.addColorStop(1, "rgba(255, 107, 26, 0)");
+        z.ctx.fillStyle = gradG;
+        z.ctx.beginPath();
+        z.ctx.arc(o.x + dx, o.y + dy, radius, 0, Math.PI * 2);
+        z.ctx.fill();
+
+        // Bright core
+        z.ctx.fillStyle = "rgba(255, 230, 150, 0.4)";
+        z.ctx.beginPath();
+        z.ctx.arc(o.x + dx, o.y + dy, radius * 0.3, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+
+      // Scanlines
+      const scanCount = Math.floor(h / 3);
+      z.ctx.fillStyle = `rgba(0, 0, 0, ${0.15 * intensity})`;
+      for (let i = 0; i < scanCount; i += 2) {
+        const y = i * 3 + ((t * 30) % 3);
+        z.ctx.fillRect(0, y, w, 1.5);
+      }
+
+      // Horizontal heat distortion lines
+      if (mInside) {
+        z.ctx.strokeStyle = `rgba(255, 182, 39, ${0.15 * intensity})`;
+        z.ctx.lineWidth = 1;
+        for (let i = 0; i < 8; i++) {
+          const y = my + (i - 4) * 6 + Math.sin(t * 3 + i) * 2;
+          const wav = Math.sin(t * 5 + i) * 15;
+          z.ctx.beginPath();
+          z.ctx.moveTo(mx - 60 + wav, y);
+          z.ctx.lineTo(mx + 60 - wav, y);
+          z.ctx.stroke();
+        }
+      }
+
+      // Vignette
+      const vg = z.ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+      vg.addColorStop(0, "rgba(0, 0, 0, 0)");
+      vg.addColorStop(1, "rgba(0, 0, 0, 0.4)");
+      z.ctx.fillStyle = vg;
+      z.ctx.fillRect(0, 0, w, h);
+    };
+  }
+
+  // --- ZONE 6: CURSOR TRAIL (MOLTEN DRIP) ---
+  function initTrailZone(z) {
+    const trail = []; // trail points
+    const drips = []; // falling drops
+    z.particles = drips;
+    let w = 0, h = 0;
+    let lastX = 0, lastY = 0;
+
+    z.onResize = (nw, nh) => { w = nw; h = nh; };
+
+    z.draw = () => {
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.1)";
+      z.ctx.fillRect(0, 0, w, h);
+      z.ctx.globalCompositeOperation = "lighter";
+
+      const length = z.params.length;
+      const dripSpeed = z.params.drip;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+
+      // Add trail point
+      if (mInside) {
+        trail.push({ x: mx, y: my, life: length, size: 8 });
+        // Spawn drips randomly based on speed
+        const dx = mx - lastX, dy = my - lastY;
+        const speed = Math.sqrt(dx * dx + dy * dy);
+        if (Math.random() < 0.1 + speed * 0.01) {
+          drips.push({
+            x: mx + rand(-3, 3),
+            y: my + rand(0, 5),
+            vy: rand(0.5, 2),
+            vx: rand(-0.3, 0.3),
+            life: rand(60, 120),
+            size: rand(1.5, 4),
+          });
+        }
+        lastX = mx; lastY = my;
+      }
+
+      // Update and draw trail
+      for (let i = trail.length - 1; i >= 0; i--) {
+        const p = trail[i];
+        p.life--;
+        p.size *= 0.96;
+        if (p.life <= 0 || p.size < 0.5) {
+          trail.splice(i, 1);
+          continue;
+        }
+        const alpha = p.life / length;
+        const grad = z.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+        grad.addColorStop(0, `rgba(255, 210, 100, ${alpha})`);
+        grad.addColorStop(0.4, `rgba(255, 160, 40, ${alpha * 0.7})`);
+        grad.addColorStop(1, "rgba(255, 107, 26, 0)");
+        z.ctx.fillStyle = grad;
+        z.ctx.beginPath();
+        z.ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      // Draw connecting lines between trail points
+      if (trail.length > 1) {
+        z.ctx.strokeStyle = "rgba(255, 182, 39, 0.4)";
+        z.ctx.lineWidth = 3;
+        z.ctx.lineCap = "round";
+        z.ctx.beginPath();
+        z.ctx.moveTo(trail[0].x, trail[0].y);
+        for (let i = 1; i < trail.length; i++) {
+          z.ctx.lineTo(trail[i].x, trail[i].y);
+        }
+        z.ctx.stroke();
+      }
+
+      // Update and draw drips
+      for (let i = drips.length - 1; i >= 0; i--) {
+        const d = drips[i];
+        d.vy += 0.05 * dripSpeed;
+        d.vx += (noise2(d.x * 0.05, d.y * 0.03 + d.life * 0.01) - 0.5) * 0.03;
+        d.vx *= 0.99;
+        d.x += d.vx;
+        d.y += d.vy;
+        d.life--;
+        if (d.life <= 0 || d.y > h + 10) {
+          drips.splice(i, 1);
+          continue;
+        }
+        const alpha = clamp(d.life / 100, 0, 1);
+        const grad = z.ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.size * 2.5);
+        grad.addColorStop(0, `rgba(255, 200, 80, ${alpha})`);
+        grad.addColorStop(0.5, `rgba(255, 120, 30, ${alpha * 0.6})`);
+        grad.addColorStop(1, "rgba(196, 69, 16, 0)");
+        z.ctx.fillStyle = grad;
+        z.ctx.beginPath();
+        z.ctx.arc(d.x, d.y, d.size * 2.5, 0, Math.PI * 2);
+        z.ctx.fill();
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // --- ZONE 7: SPECTRUM FORGE ---
+  function initSpectrumZone(z) {
+    let w = 0, h = 0;
+    let t = 0;
+    const ripples = [];
+    let bandCount = 24;
+    let bandHeights = [];
+    let bandTargets = [];
+
+    function rebuildBands(n) {
+      bandCount = n;
+      bandHeights = new Array(n).fill(0);
+      bandTargets = new Array(n).fill(0);
+    }
+
+    z.onResize = (nw, nh) => { w = nw; h = nh; };
+    z.onParamChange = (key, val) => {
+      if (key === "bands") rebuildBands(Math.floor(val));
+    };
+    rebuildBands(24);
+
+    z.el.addEventListener("mousedown", (e) => {
+      const rect = z.el.getBoundingClientRect();
+      ripples.push({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        r: 5,
+        life: 1,
+      });
+    });
+
+    z.draw = () => {
+      t += 0.05;
+      const gain = z.params.gain;
+      const mx = z.mouse.x, my = z.mouse.y;
+      const mInside = z.mouse.inside;
+
+      z.ctx.fillStyle = "rgba(12, 10, 8, 0.2)";
+      z.ctx.fillRect(0, 0, w, h);
+      z.ctx.globalCompositeOperation = "lighter";
+
+      // Generate target heights based on mouse X position + noise
+      for (let i = 0; i < bandCount; i++) {
+        const freqNorm = i / bandCount;
+        // Mouse X controls "energy" center
+        const center = mInside ? mx / w : 0.5;
+        const distFromCenter = Math.abs(freqNorm - center);
+        const envelope = Math.exp(-distFromCenter * 4) * 0.8 + 0.2;
+
+        // Noise-based variation
+        const n = noise2(i * 0.5 + t * 5, t * 2);
+        bandTargets[i] = n * envelope * (h * 0.7) * gain;
+
+        // Add bass boost (left side)
+        if (i < bandCount * 0.2) {
+          bandTargets[i] += (1 - i / (bandCount * 0.2)) * h * 0.15 * gain * (0.5 + 0.5 * Math.sin(t * 2));
+        }
+
+        // Spring toward target
+        const diff = bandTargets[i] - bandHeights[i];
+        bandHeights[i] += diff * 0.15;
+      }
+
+      // Draw bars
+      const barW = w / bandCount;
+      const barGap = 2;
+
+      for (let i = 0; i < bandCount; i++) {
+        const bh = bandHeights[i];
+        const bx = i * barW + barGap / 2;
+        const bw = barW - barGap;
+        const by = h - bh;
+
+        // Bar gradient (gold at bottom, ember at top)
+        const grad = z.ctx.createLinearGradient(0, by, 0, h);
+        grad.addColorStop(0, "#ffd875");
+        grad.addColorStop(0.3, "#ffb627");
+        grad.addColorStop(0.7, "#ff6b1a");
+        grad.addColorStop(1, "#c44510");
+
+        z.ctx.fillStyle = grad;
+        // Rounded top
+        const radius = Math.min(bw / 2, 4);
+        z.ctx.beginPath();
+        z.ctx.moveTo(bx, h);
+        z.ctx.lineTo(bx, by + radius);
+        z.ctx.quadraticCurveTo(bx, by, bx + radius, by);
+        z.ctx.lineTo(bx + bw - radius, by);
+        z.ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + radius);
+        z.ctx.lineTo(bx + bw, h);
+        z.ctx.closePath();
+        z.ctx.fill();
+
+        // Glow on top
+        z.ctx.fillStyle = "rgba(255, 230, 150, 0.5)";
+        z.ctx.fillRect(bx + 1, by, bw - 2, 2);
+      }
+
+      // Reflection
+      z.ctx.save();
+      z.ctx.globalAlpha = 0.2;
+      z.ctx.scale(1, -0.4);
+      z.ctx.translate(0, -h * 2.5);
+      for (let i = 0; i < bandCount; i++) {
+        const bh = bandHeights[i];
+        const bx = i * barW + barGap / 2;
+        const bw = barW - barGap;
+        const by = h - bh;
+        const grad = z.ctx.createLinearGradient(0, by, 0, h);
+        grad.addColorStop(0, "#ff6b1a");
+        grad.addColorStop(1, "#ffb627");
+        z.ctx.fillStyle = grad;
+        z.ctx.fillRect(bx, by, bw, bh);
+      }
+      z.ctx.restore();
+
+      // Bottom glow line
+      const lineG = z.ctx.createLinearGradient(0, h - 2, 0, h);
+      lineG.addColorStop(0, "rgba(255, 182, 39, 0.5)");
+      lineG.addColorStop(1, "rgba(255, 107, 26, 0)");
+      z.ctx.fillStyle = lineG;
+      z.ctx.fillRect(0, h - 2, w, 10);
+
+      // Ripples from click
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.r += 4;
+        r.life -= 0.02;
+        if (r.life <= 0) {
+          ripples.splice(i, 1);
+          continue;
+        }
+        z.ctx.strokeStyle = `rgba(255, 182, 39, ${r.life * 0.6})`;
+        z.ctx.lineWidth = 2;
+        z.ctx.beginPath();
+        z.ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        z.ctx.stroke();
+      }
+
+      z.ctx.globalCompositeOperation = "source-over";
+    };
+  }
+
+  // ========== MAIN LOOP ==========
+  function tick(time) {
+    rafId = requestAnimationFrame(tick);
+    if (!lastTime) lastTime = time;
+    const dt = Math.min(32, time - lastTime);
+    lastTime = time;
+
+    updateCursor();
+
+    for (let i = 0; i < zones.length; i++) {
+      const z = zones[i];
+      if (z.draw) {
+        // Only draw if zone is in viewport (simple check)
+        if (z.rect && z.rect.bottom < 0) continue;
+        if (z.rect && z.rect.top > window.innerHeight + 200) continue;
+        z.draw(dt);
+      }
+    }
+  }
+
+  // Visibility change - pause/resume
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    } else {
+      if (!rafId) {
+        lastTime = 0;
+        rafId = requestAnimationFrame(tick);
+      }
+    }
+  });
+
+  // Cleanup on unload
+  window.addEventListener("beforeunload", () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ========== INIT ==========
+  function init() {
+    document.querySelectorAll(".zone").forEach(setupZone);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Wait for DOM
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>
