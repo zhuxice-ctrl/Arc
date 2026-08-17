@@ -1,0 +1,2191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>光影暗房 · 拟物化交互实验室</title>
+<style>
+  /* ============ RESET & BASE ============ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #1a120b;
+    color: #d9c4a3;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  :root {
+    --safelight-on: 1;
+    --safelight-intensity: 0.75;
+    --room-tint: rgba(217, 119, 6, 0.15);
+  }
+
+  /* ============ CUSTOM CURSOR ============ */
+  .cursor {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 32px; height: 32px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                height 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.2s ease;
+    will-change: transform;
+  }
+  .cursor-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid #fff8e7;
+    border-radius: 50%;
+    box-shadow:
+      0 0 8px rgba(255, 248, 231, 0.6),
+      0 0 20px rgba(245, 158, 11, 0.4),
+      inset 0 0 4px rgba(245, 158, 11, 0.3);
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cursor-dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: #f59e0b;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow:
+      0 0 6px #f59e0b,
+      0 0 14px rgba(245, 158, 11, 0.7);
+    transition: all 0.15s ease;
+  }
+  .cursor-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.12) 0%, transparent 70%);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .cursor.hover .cursor-ring {
+    border-color: #fbbf24;
+    box-shadow:
+      0 0 12px rgba(251, 191, 36, 0.8),
+      0 0 30px rgba(245, 158, 11, 0.5),
+      inset 0 0 6px rgba(251, 191, 36, 0.4);
+  }
+  .cursor.hover .cursor-dot {
+    background: #fde68a;
+    box-shadow: 0 0 10px #fbbf24, 0 0 20px #f59e0b;
+  }
+  .cursor.hover {
+    width: 48px; height: 48px;
+  }
+  .cursor.click .cursor-ring {
+    transform: scale(0.85);
+    border-color: #fff8e7;
+  }
+  .cursor.click .cursor-dot {
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 10px; height: 10px;
+    border: 2px solid #fbbf24;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+    animation: cursorRipple 0.6s ease-out forwards;
+  }
+  @keyframes cursorRipple {
+    0% { width: 10px; height: 10px; opacity: 0.8; }
+    100% { width: 80px; height: 80px; opacity: 0; }
+  }
+
+  /* ============ PAGE STRUCTURE ============ */
+  .page {
+    position: relative;
+    width: 100vw; height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(217, 119, 6, 0.08) 0%, transparent 60%),
+      linear-gradient(180deg, #1a120b 0%, #0f0a05 100%);
+    overflow: hidden;
+  }
+
+  /* Film grain overlay */
+  .grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.06;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ HEADER ============ */
+  .header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 40px;
+    position: relative;
+    z-index: 20;
+    border-bottom: 1px solid rgba(217, 119, 6, 0.2);
+    background: linear-gradient(180deg, rgba(15, 10, 5, 0.8) 0%, transparent 100%);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .brand-icon {
+    width: 36px; height: 36px;
+    position: relative;
+  }
+  .brand-icon svg { width: 100%; height: 100%; }
+  .brand-text h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f5ecd7;
+    letter-spacing: 2px;
+  }
+  .brand-text p {
+    font-size: 11px;
+    color: #8b7355;
+    letter-spacing: 3px;
+    margin-top: 2px;
+  }
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    font-size: 12px;
+    color: #8b7355;
+    letter-spacing: 1px;
+  }
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .meta-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #d97706;
+    box-shadow: 0 0 8px #d97706;
+    animation: pulseDot 2s ease-in-out infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ============ WORKSHOP AREA ============ */
+  .workshop {
+    flex: 1;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    padding: 2px;
+    overflow: hidden;
+  }
+
+  /* ============ EXHIBIT ZONE ============ */
+  .zone {
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(60, 40, 20, 0.6) 0%, rgba(20, 13, 7, 0.9) 70%),
+      linear-gradient(180deg, #2d1f14 0%, #1a120b 100%);
+    border: 1px solid rgba(217, 119, 6, 0.12);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: border-color 0.3s ease;
+  }
+  .zone:hover {
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .zone-header {
+    flex-shrink: 0;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(217, 119, 6, 0.08);
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .zone-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .zone-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(217, 119, 6, 0.15);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #d97706;
+    font-weight: 600;
+  }
+  .zone-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #f5ecd7;
+    letter-spacing: 1px;
+  }
+  .zone-hint {
+    font-size: 10px;
+    color: #6b5a44;
+    letter-spacing: 1px;
+  }
+  .zone-body {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Light pool on workbench from safelight */
+  .zone::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    width: 140%;
+    height: 60%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at 50% 0%, rgba(245, 158, 11, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+  }
+
+  /* ============ ZONE 1: SAFELIGHT PULL CORD ============ */
+  .safelight-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .safelight-fixture {
+    position: absolute;
+    top: 10px;
+    width: 80px; height: 50px;
+    background: linear-gradient(180deg, #5a4a35 0%, #3d3020 100%);
+    border-radius: 4px 4px 20px 20px;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.5),
+      inset 0 2px 4px rgba(255, 255, 255, 0.05);
+    z-index: 5;
+  }
+  .safelight-glass {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px; height: 30px;
+    background: linear-gradient(180deg, #7f1d1d 0%, #991b1b 100%);
+    border-radius: 0 0 30px 30px;
+    transition: all 0.6s ease;
+  }
+  .safelight-on .safelight-glass {
+    background: linear-gradient(180deg, #ea580c 0%, #f59e0b 100%);
+    box-shadow:
+      0 0 20px #f59e0b,
+      0 0 40px rgba(245, 158, 11, 0.6),
+      0 0 80px rgba(245, 158, 11, 0.3);
+  }
+  .safelight-beam {
+    position: absolute;
+    top: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    height: 200px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(245, 158, 11, 0.18) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.8s ease;
+    pointer-events: none;
+  }
+  .safelight-on .safelight-beam { opacity: 1; }
+  .pull-cord {
+    position: absolute;
+    top: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    cursor: none;
+  }
+  .cord-string {
+    position: absolute;
+    top: 0; left: 50%;
+    width: 2px;
+    background: linear-gradient(180deg, #8b7355 0%, #6b5a44 100%);
+    transform-origin: top center;
+    transform: translateX(-50%);
+    border-radius: 1px;
+  }
+  .cord-knob {
+    position: absolute;
+    left: 50%;
+    width: 18px; height: 24px;
+    background: linear-gradient(180deg, #d4a574 0%, #a67c52 50%, #8b6914 100%);
+    border-radius: 3px 3px 9px 9px;
+    transform: translateX(-50%);
+    box-shadow:
+      0 3px 8px rgba(0, 0, 0, 0.5),
+      inset 0 1px 2px rgba(255, 255, 255, 0.3);
+    cursor: grab;
+  }
+  .cord-knob:active { cursor: grabbing; }
+  .safelight-label {
+    position: absolute;
+    bottom: 16px;
+    font-size: 11px;
+    color: #8b7355;
+    letter-spacing: 2px;
+  }
+  .safelight-status {
+    position: absolute;
+    bottom: 40px;
+    font-size: 12px;
+    color: #d97706;
+    letter-spacing: 4px;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .safelight-on .safelight-status { opacity: 1; }
+
+  /* ============ ZONE 2: ENLARGER FOCUS KNOB ============ */
+  .enlarger-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+  }
+  .focus-knob-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .focus-knob {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #d4a574 0%, #b8860b 40%, #8b6914 70%, #5c4a1a 100%);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.6),
+      inset 0 2px 6px rgba(255, 240, 200, 0.3),
+      inset 0 -4px 8px rgba(0, 0, 0, 0.4);
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+  }
+  .focus-knob:active { cursor: grabbing; }
+  .focus-knob::before {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #e8c896 0%, #b8860b 50%, #8b6914 100%);
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  }
+  .knob-indicator {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 3px; height: 18px;
+    background: #2d1f14;
+    border-radius: 2px;
+    transform: translateX(-50%);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  }
+  .knob-ticks {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+  }
+  .knob-tick {
+    position: absolute;
+    top: 0; left: 50%;
+    width: 2px; height: 6px;
+    background: #6b5a44;
+    transform-origin: 1px 46px;
+    border-radius: 1px;
+  }
+  .focus-label {
+    font-size: 10px;
+    color: #8b7355;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  .easel {
+    width: 140px; height: 140px;
+    position: relative;
+    background:
+      linear-gradient(135deg, #2d1f14 0%, #1a120b 100%);
+    border: 4px solid #5c4a35;
+    border-radius: 4px;
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.8),
+      0 4px 12px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .easel-paper {
+    width: 110px; height: 110px;
+    background: #f5ecd7;
+    position: relative;
+    overflow: hidden;
+    filter: blur(4px);
+    transition: filter 0.1s linear;
+  }
+  .easel-image {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(139, 69, 19, 0.3) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 60%, rgba(101, 67, 33, 0.4) 0%, transparent 55%),
+      linear-gradient(180deg, #d4c4a8 0%, #a89070 60%, #7a6248 100%);
+    opacity: 0.7;
+  }
+  .focus-peak {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .focus-peak.on {
+    opacity: 1;
+    box-shadow:
+      inset 0 0 20px rgba(245, 158, 11, 0.4),
+      inset 2px 2px 0 #fbbf24,
+      inset -2px -2px 0 #fbbf24;
+  }
+  .easel-label {
+    position: absolute;
+    bottom: -22px;
+    font-size: 10px;
+    color: #8b7355;
+    letter-spacing: 2px;
+    text-align: center;
+    width: 100%;
+  }
+
+  /* ============ ZONE 3: DEVELOPING TIMER DIAL ============ */
+  .timer-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  .timer-dial {
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #3d3020 0%, #2d1f14 60%, #1a120b 100%);
+    box-shadow:
+      0 6px 24px rgba(0, 0, 0, 0.6),
+      inset 0 2px 4px rgba(255, 220, 150, 0.1),
+      inset 0 -4px 8px rgba(0, 0, 0, 0.5);
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    border: 3px solid #5c4a35;
+  }
+  .timer-dial:active { cursor: grabbing; }
+  .timer-face {
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%, #2d1f14 0%, #1a120b 100%);
+    border: 1px solid rgba(217, 119, 6, 0.2);
+  }
+  .timer-numbers {
+    position: absolute;
+    inset: 20px;
+  }
+  .timer-num {
+    position: absolute;
+    font-size: 10px;
+    color: #d97706;
+    font-weight: 600;
+    left: 50%; top: 50%;
+    transform-origin: 0 0;
+    font-family: "Courier New", monospace;
+  }
+  .timer-tick-mark {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    width: 2px;
+    background: #8b7355;
+    transform-origin: 1px 54px;
+  }
+  .timer-tick-mark.major {
+    height: 8px;
+    background: #d97706;
+  }
+  .timer-tick-mark.minor {
+    height: 4px;
+  }
+  .timer-pointer {
+    position: absolute;
+    bottom: 50%;
+    left: 50%;
+    width: 3px;
+    height: 55px;
+    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+    border-radius: 2px;
+    transform-origin: 50% 100%;
+    transform: translateX(-50%) rotate(0deg);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+    z-index: 5;
+    transition: transform 0.1s linear;
+  }
+  .timer-center-cap {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #d4a574 0%, #8b6914 100%);
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+  .timer-display {
+    position: absolute;
+    top: 62%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+    font-family: "Courier New", monospace;
+    color: #f59e0b;
+    text-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+    letter-spacing: 2px;
+  }
+  .timer-tray {
+    width: 120px; height: 40px;
+    position: relative;
+  }
+  .tray-container {
+    width: 100%; height: 100%;
+    background:
+      linear-gradient(180deg, #4a3c2e 0%, #2d1f14 100%);
+    border-radius: 4px 4px 8px 8px;
+    border: 2px solid #5c4a35;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  }
+  .tray-liquid {
+    position: absolute;
+    bottom: 2px;
+    left: 2px; right: 2px;
+    height: 22px;
+    background: linear-gradient(180deg,
+      rgba(107, 74, 52, 0.9) 0%,
+      rgba(70, 50, 35, 0.95) 100%);
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+  }
+  .tray-wave {
+    position: absolute;
+    top: 0;
+    left: -50%;
+    width: 200%; height: 6px;
+    background: radial-gradient(ellipse at center, rgba(180, 140, 100, 0.4) 0%, transparent 70%);
+  }
+  .timer-label {
+    font-size: 10px;
+    color: #8b7355;
+    letter-spacing: 2px;
+  }
+
+  /* ============ ZONE 4: FILM WINDING CRANK ============ */
+  .film-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+  }
+  .film-reel {
+    width: 100px; height: 100px;
+    position: relative;
+  }
+  .reel-body {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #d4a574 0%, #b8860b 30%, #8b6914 60%, #5c4a1a 100%);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.5),
+      inset 0 2px 4px rgba(255, 240, 200, 0.3),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.4);
+    position: relative;
+  }
+  .reel-spokes {
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    border: 2px solid #3d2817;
+  }
+  .reel-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 16px; height: 16px;
+    background: radial-gradient(circle at 35% 30%, #f5ecd7 0%, #8b7355 100%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+  .crank-handle {
+    position: absolute;
+    top: -8px;
+    right: 5px;
+    width: 16px; height: 30px;
+    background: linear-gradient(180deg, #2d1f14 0%, #1a120b 100%);
+    border: 2px solid #8b7355;
+    border-radius: 8px;
+    cursor: grab;
+    z-index: 10;
+    transform-origin: 8px 58px;
+    touch-action: none;
+  }
+  .crank-handle:active { cursor: grabbing; }
+  .crank-knob {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #d4a574 0%, #8b6914 100%);
+  }
+  .film-strip-wrap {
+    width: 50px;
+    height: 120px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #0a0805;
+    border: 1px solid #3d2817;
+  }
+  .film-strip {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 300%;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        #1a120b 0px,
+        #1a120b 28px,
+        #0a0805 28px,
+        #0a0805 30px
+      );
+  }
+  .film-sprockets {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .sprocket-row {
+    position: absolute;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    background-image: radial-gradient(circle, #2d1f14 1px, transparent 1.5px);
+    background-size: 100% 6px;
+  }
+  .sprocket-row.left { left: 3px; }
+  .sprocket-row.right { right: 3px; }
+  .film-frames {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 100%;
+  }
+  .film-frame {
+    width: 100%;
+    height: 28px;
+    margin-bottom: 2px;
+    background: linear-gradient(135deg,
+      rgba(60, 40, 20, 0.6) 0%,
+      rgba(40, 25, 10, 0.8) 100%);
+    border: 1px solid rgba(100, 70, 40, 0.3);
+    opacity: 0.7;
+  }
+  .film-label {
+    position: absolute;
+    bottom: -18px;
+    font-size: 10px;
+    color: #8b7355;
+    letter-spacing: 2px;
+    width: 100%;
+    text-align: center;
+  }
+
+  /* ============ ZONE 5: PRINT DEVELOPING TRAY ============ */
+  .tray-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .developing-tray {
+    width: 220px;
+    height: 130px;
+    position: relative;
+    background:
+      linear-gradient(180deg, #5c4a3a 0%, #3d3025 50%, #2d1f14 100%);
+    border-radius: 6px 6px 10px 10px;
+    border: 3px solid #6b5a44;
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.6),
+      inset 0 2px 4px rgba(255, 220, 180, 0.1);
+    overflow: hidden;
+  }
+  .developing-liquid {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 85%;
+    background: linear-gradient(180deg,
+      rgba(90, 65, 45, 0.85) 0%,
+      rgba(70, 50, 35, 0.9) 40%,
+      rgba(50, 35, 25, 0.95) 100%);
+    overflow: hidden;
+  }
+  .liquid-surface {
+    position: absolute;
+    top: 0;
+    left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(180deg,
+      rgba(180, 140, 100, 0.5) 0%,
+      transparent 100%);
+  }
+  .liquid-ripple {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    width: 40px; height: 10px;
+    border: 1px solid rgba(200, 160, 120, 0.3);
+    border-radius: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .print-paper {
+    position: absolute;
+    width: 120px; height: 90px;
+    background: #f5ecd7;
+    border: 1px solid #d4c4a8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    cursor: grab;
+    z-index: 10;
+    touch-action: none;
+    transition: transform 0.1s ease;
+  }
+  .print-paper.dragging { cursor: grabbing; }
+  .print-paper.submerged {
+    filter: sepia(0.3) brightness(0.85);
+  }
+  .print-image {
+    position: absolute;
+    inset: 5px;
+    opacity: 0;
+    background:
+      radial-gradient(ellipse at 30% 25%, rgba(139, 90, 43, 0.6) 0%, transparent 45%),
+      radial-gradient(circle at 70% 70%, rgba(101, 67, 33, 0.5) 0%, transparent 40%),
+      linear-gradient(135deg, #a08060 0%, #6b4f35 50%, #4a3525 100%);
+    transition: opacity 0.3s ease;
+  }
+  .print-paper.developed .print-image { opacity: 1; }
+  .tray-label {
+    position: absolute;
+    bottom: -22px;
+    font-size: 10px;
+    color: #8b7355;
+    letter-spacing: 2px;
+    width: 100%;
+    text-align: center;
+  }
+  .development-pct {
+    position: absolute;
+    top: -24px;
+    right: 0;
+    font-size: 11px;
+    color: #d97706;
+    font-family: "Courier New", monospace;
+    letter-spacing: 1px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .development-pct.active { opacity: 1; }
+
+  /* ============ ZONE 6: ENLARGEMENT LEVER ============ */
+  .lever-scene {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+  }
+  .lever-assembly {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+  .lever-track {
+    width: 20px;
+    height: 120px;
+    background: linear-gradient(90deg,
+      #3d3020 0%, #2d1f14 50%, #3d3020 100%);
+    border-radius: 10px;
+    position: relative;
+    box-shadow:
+      inset 0 2px 4px rgba(0, 0, 0, 0.6),
+      0 1px 2px rgba(255, 220, 150, 0.1);
+    border: 1px solid #5c4a35;
+  }
+  .lever-notches {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #1a120b;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+  .lever-handle {
+    position: absolute;
+    left: 50%;
+    top: 10px;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #d4a574 0%, #b8860b 40%, #8b6914 70%, #5c4a1a 100%);
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    z-index: 10;
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.6),
+      inset 0 1px 3px rgba(255, 240, 200, 0.4);
+    touch-action: none;
+  }
+  .lever-handle:active { cursor: grabbing; }
+  .lever-handle::after {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    border: 2px solid #3d2817;
+  }
+  .magnification-scale {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+  .scale-light {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #2d1f14;
+    border: 1px solid #3d3020;
+    transition: all 0.3s ease;
+  }
+  .scale-light.active {
+    background: #f59e0b;
+    border-color: #fbbf24;
+    box-shadow:
+      0 0 6px #f59e0b,
+      0 0 12px rgba(245, 158, 11, 0.6);
+  }
+  .scale-label {
+    font-size: 9px;
+    color: #6b5a44;
+    margin-top: 2px;
+    letter-spacing: 1px;
+  }
+  .preview-easel {
+    width: 100px; height: 100px;
+    position: relative;
+    background:
+      linear-gradient(135deg, #2d1f14 0%, #1a120b 100%);
+    border: 3px solid #5c4a35;
+    border-radius: 3px;
+    box-shadow:
+      inset 0 2px 6px rgba(0, 0, 0, 0.7),
+      0 4px 10px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preview-paper {
+    background: #f5ecd7;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .preview-paper .preview-img {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 40% 30%, rgba(139, 90, 43, 0.5) 0%, transparent 50%),
+      linear-gradient(135deg, #b09070 0%, #7a5a3a 100%);
+  }
+  .lever-info {
+    position: absolute;
+    bottom: -28px;
+    font-size: 10px;
+    color: #d97706;
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+
+  /* ============ DUST PARTICLES ============ */
+  .dust-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 5;
+  }
+  .dust-particle {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(245, 236, 215, 0.4);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    .workshop { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 1fr); }
+    .header { padding: 14px 20px; }
+  }
+  @media (max-width: 600px) {
+    .workshop { grid-template-columns: 1fr; grid-template-rows: repeat(6, 1fr); }
+    .header-meta { display: none; }
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .dust-container { display: none; }
+    .cursor-glow { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page" id="page">
+
+  <!-- Film grain overlay -->
+  <div class="grain"></div>
+
+  <!-- Dust particles container -->
+  <div class="dust-container" id="dustContainer"></div>
+
+  <!-- Custom cursor -->
+  <div class="cursor" id="cursor">
+    <div class="cursor-glow"></div>
+    <div class="cursor-ring"></div>
+    <div class="cursor-dot"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 36 36" fill="none">
+          <rect x="6" y="4" width="24" height="28" rx="2" stroke="#d97706" stroke-width="2" fill="none"/>
+          <circle cx="18" cy="16" r="6" stroke="#d97706" stroke-width="1.5" fill="none"/>
+          <circle cx="18" cy="16" r="2" fill="#d97706"/>
+          <line x1="6" y1="22" x2="30" y2="22" stroke="#d97706" stroke-width="1" stroke-dasharray="2 2"/>
+          <rect x="10" y="26" width="4" height="3" rx="0.5" fill="#d97706" opacity="0.6"/>
+          <rect x="22" y="26" width="4" height="3" rx="0.5" fill="#d97706" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>光影暗房</h1>
+        <p>DARKROOM LAB</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="meta-item">
+        <span class="meta-dot"></span>
+        <span>安全灯 · 琥珀色</span>
+      </div>
+      <div class="meta-item">
+        <span>恒温 20°C</span>
+      </div>
+      <div class="meta-item">
+        <span>6 件装置</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Workshop with 6 zones -->
+  <main class="workshop">
+
+    <!-- ZONE 1: Safelight Pull Cord -->
+    <section class="zone" id="zone1" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">01</span>
+          <span class="zone-name">安全灯拉绳</span>
+        </div>
+        <span class="zone-hint">下拉开关</span>
+      </div>
+      <div class="zone-body">
+        <div class="safelight-scene safelight-on" id="safelightScene">
+          <div class="safelight-fixture">
+            <div class="safelight-glass"></div>
+          </div>
+          <div class="safelight-beam"></div>
+          <div class="pull-cord" id="pullCord">
+            <div class="cord-string" id="cordString"></div>
+            <div class="cord-knob" id="cordKnob"></div>
+          </div>
+          <div class="safelight-status" id="safelightStatus">ON</div>
+          <div class="safelight-label">SAFELIGHT</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 2: Enlarger Focus Knob -->
+    <section class="zone" id="zone2" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">02</span>
+          <span class="zone-name">放大机调焦</span>
+        </div>
+        <span class="zone-hint">旋转旋钮</span>
+      </div>
+      <div class="zone-body">
+        <div class="enlarger-scene">
+          <div class="focus-knob-wrap">
+            <div class="focus-knob" id="focusKnob">
+              <div class="knob-ticks" id="knobTicks"></div>
+              <div class="knob-indicator" id="knobIndicator"></div>
+            </div>
+            <div class="focus-label">调焦旋钮</div>
+          </div>
+          <div class="easel" style="position: relative;">
+            <div class="easel-paper" id="easelPaper">
+              <div class="easel-image"></div>
+              <div class="focus-peak" id="focusPeak"></div>
+            </div>
+            <div class="easel-label">相纸投影</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 3: Developing Timer Dial -->
+    <section class="zone" id="zone3" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">03</span>
+          <span class="zone-name">显影计时器</span>
+        </div>
+        <span class="zone-hint">拨动指针</span>
+      </div>
+      <div class="zone-body">
+        <div class="timer-scene">
+          <div class="timer-dial" id="timerDial">
+            <div class="timer-face">
+              <div class="timer-numbers" id="timerNumbers"></div>
+            </div>
+            <div class="timer-pointer" id="timerPointer"></div>
+            <div class="timer-center-cap"></div>
+            <div class="timer-display" id="timerDisplay">00:00</div>
+          </div>
+          <div class="timer-tray">
+            <div class="tray-container">
+              <div class="tray-liquid">
+                <div class="tray-wave" id="trayWave"></div>
+              </div>
+            </div>
+          </div>
+          <div class="timer-label">显影液 · 滴答计时</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 4: Film Winding Crank -->
+    <section class="zone" id="zone4" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">04</span>
+          <span class="zone-name">卷片摇杆</span>
+        </div>
+        <span class="zone-hint">拖拽摇柄</span>
+      </div>
+      <div class="zone-body">
+        <div class="film-scene">
+          <div class="film-reel" style="position: relative;">
+            <div class="reel-body" id="reelBody">
+              <div class="reel-spokes">
+                <svg style="position:absolute; inset:0;" viewBox="0 0 76 76">
+                  <line x1="38" y1="12" x2="38" y2="64" stroke="#3d2817" stroke-width="3"/>
+                  <line x1="12" y1="38" x2="64" y2="38" stroke="#3d2817" stroke-width="3"/>
+                  <line x1="19" y1="19" x2="57" y2="57" stroke="#3d2817" stroke-width="2.5"/>
+                  <line x1="57" y1="19" x2="19" y2="57" stroke="#3d2817" stroke-width="2.5"/>
+                </svg>
+              </div>
+              <div class="reel-center"></div>
+            </div>
+            <div class="crank-handle" id="crankHandle">
+              <div class="crank-knob"></div>
+            </div>
+          </div>
+          <div class="film-strip-wrap" style="position: relative;">
+            <div class="film-strip" id="filmStrip">
+              <div class="film-sprockets">
+                <div class="sprocket-row left"></div>
+                <div class="sprocket-row right"></div>
+              </div>
+              <div class="film-frames" id="filmFrames"></div>
+            </div>
+            <div class="film-label">胶片</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 5: Print Developing Tray -->
+    <section class="zone" id="zone5" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">05</span>
+          <span class="zone-name">相纸显影</span>
+        </div>
+        <span class="zone-hint">拖入显影液</span>
+      </div>
+      <div class="zone-body">
+        <div class="tray-scene">
+          <div class="developing-tray" id="devTray">
+            <div class="developing-liquid">
+              <div class="liquid-surface"></div>
+              <div class="liquid-ripple" id="liquidRipple"></div>
+            </div>
+            <div class="print-paper" id="printPaper" style="top: -40px; left: 50%; transform: translateX(-50%) rotate(-3deg);">
+              <div class="print-image"></div>
+            </div>
+            <div class="development-pct" id="devPct">0%</div>
+            <div class="tray-label">显影盘</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 6: Enlargement Magnification Lever -->
+    <section class="zone" id="zone6" data-interactive="true">
+      <div class="zone-header">
+        <div class="zone-title">
+          <span class="zone-num">06</span>
+          <span class="zone-name">倍率拨杆</span>
+        </div>
+        <span class="zone-hint">上下推拉</span>
+      </div>
+      <div class="zone-body">
+        <div class="lever-scene">
+          <div class="lever-assembly">
+            <div class="lever-track" id="leverTrack">
+              <div class="lever-notches" style="top: 10px;"></div>
+              <div class="lever-notches" style="top: 38px;"></div>
+              <div class="lever-notches" style="top: 66px;"></div>
+              <div class="lever-notches" style="top: 94px;"></div>
+              <div class="lever-handle" id="leverHandle"></div>
+            </div>
+            <div class="lever-info" id="leverInfo">1×</div>
+          </div>
+          <div class="magnification-scale" id="magScale">
+            <div class="scale-light active" data-level="3"></div>
+            <div class="scale-light" data-level="2"></div>
+            <div class="scale-light" data-level="1"></div>
+            <div class="scale-light" data-level="0"></div>
+            <div class="scale-label">倍率指示</div>
+          </div>
+          <div class="preview-easel" style="position: relative;">
+            <div class="preview-paper" id="previewPaper" style="width: 40px; height: 40px;">
+              <div class="preview-img"></div>
+            </div>
+            <div class="easel-label">投影预览</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============ REDUCED MOTION CHECK ============
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ============ GLOBAL ANIMATION FRAME MANAGEMENT ============
+  const rafRegistry = new Set();
+  let pageVisible = true;
+
+  function safeRAF(callback) {
+    const id = requestAnimationFrame(function tick(t) {
+      rafRegistry.delete(id);
+      if (!pageVisible || prefersReducedMotion) return;
+      callback(t);
+      const newId = requestAnimationFrame(tick);
+      rafRegistry.add(newId);
+    });
+    rafRegistry.add(id);
+    return id;
+  }
+
+  function cancelAllRAF() {
+    rafRegistry.forEach(id => cancelAnimationFrame(id));
+    rafRegistry.clear();
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    pageVisible = !document.hidden;
+    if (pageVisible && !prefersReducedMotion) {
+      restartAnimations();
+    } else {
+      cancelAllRAF();
+    }
+  });
+
+  window.addEventListener('beforeunload', cancelAllRAF);
+
+  // ============ CUSTOM CURSOR ============
+  const cursor = document.getElementById('cursor');
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let targetX = cursorX;
+  let targetY = cursorY;
+
+  // Initialize at center
+  cursor.style.left = cursorX + 'px';
+  cursor.style.top = cursorY + 'px';
+
+  function updateCursorPos() {
+    // Smooth follow with spring-like easing
+    cursorX += (targetX - cursorX) * 0.2;
+    cursorY += (targetY - cursorY) * 0.2;
+    cursor.style.left = cursorX + 'px';
+    cursor.style.top = cursorY + 'px';
+    if (pageVisible && !prefersReducedMotion) {
+      requestAnimationFrame(updateCursorPos);
+    }
+  }
+
+  if (!prefersReducedMotion) {
+    updateCursorPos();
+  } else {
+    cursor.style.display = 'none';
+    document.body.style.cursor = 'auto';
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    targetX = e.clientX;
+    targetY = e.clientY;
+  });
+
+  // Hover detection
+  const interactiveSelector = '[data-interactive], .cord-knob, .focus-knob, .timer-dial, .crank-handle, .print-paper, .lever-handle';
+  let hovered = false;
+
+  document.addEventListener('mouseover', function(e) {
+    if (e.target.closest(interactiveSelector)) {
+      if (!hovered) {
+        hovered = true;
+        cursor.classList.add('hover');
+      }
+    }
+  });
+
+  document.addEventListener('mouseout', function(e) {
+    if (e.target.closest(interactiveSelector)) {
+      if (!e.relatedTarget || !e.relatedTarget.closest(interactiveSelector)) {
+        hovered = false;
+        cursor.classList.remove('hover');
+      }
+    }
+  });
+
+  // Click ripple
+  document.addEventListener('mousedown', function(e) {
+    cursor.classList.add('click');
+    if (prefersReducedMotion) return;
+    const ripple = document.createElement('div');
+    ripple.className = 'cursor-ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(function() { ripple.remove(); }, 600);
+  });
+
+  document.addEventListener('mouseup', function() {
+    cursor.classList.remove('click');
+  });
+
+  // ============ DUST PARTICLES ============
+  const dustContainer = document.getElementById('dustContainer');
+  const dustParticles = [];
+  const DUST_COUNT = 25;
+
+  function initDust() {
+    if (prefersReducedMotion) return;
+    for (let i = 0; i < DUST_COUNT; i++) {
+      const p = document.createElement('div');
+      p.className = 'dust-particle';
+      const size = Math.random() * 2 + 1;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      dustContainer.appendChild(p);
+      dustParticles.push({
+        el: p,
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: Math.random() * 0.2 + 0.05,
+        phase: Math.random() * Math.PI * 2,
+        speed: Math.random() * 0.01 + 0.005
+      });
+    }
+    animateDust();
+  }
+
+  function animateDust() {
+    if (!pageVisible || prefersReducedMotion) return;
+    dustParticles.forEach(function(p) {
+      p.phase += p.speed;
+      p.x += p.vx + Math.sin(p.phase) * 0.1;
+      p.y += p.vy;
+      if (p.y > window.innerHeight + 10) {
+        p.y = -10;
+        p.x = Math.random() * window.innerWidth;
+      }
+      if (p.x < -10) p.x = window.innerWidth + 10;
+      if (p.x > window.innerWidth + 10) p.x = -10;
+      p.el.style.transform = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+      p.el.style.opacity = (0.2 + Math.sin(p.phase * 2) * 0.15).toFixed(2);
+    });
+    safeRAF(animateDust);
+  }
+
+  // ============ ZONE 1: SAFELIGHT PULL CORD ============
+  (function() {
+    const scene = document.getElementById('safelightScene');
+    const cordString = document.getElementById('cordString');
+    const cordKnob = document.getElementById('cordKnob');
+    const statusEl = document.getElementById('safelightStatus');
+    const pullCord = document.getElementById('pullCord');
+
+    const CORD_REST_LEN = 80;
+    const CORD_PULL_THRESHOLD = 30;
+    let cordLen = CORD_REST_LEN;
+    let isDragging = false;
+    let isOn = true;
+    let dragStartY = 0;
+    let dragStartLen = 0;
+    let cordVelocity = 0;
+    let pendulumAngle = 0;
+    let pendulumVel = 0;
+
+    function updateCord() {
+      cordString.style.height = cordLen + 'px';
+      cordKnob.style.top = cordLen + 'px';
+      cordString.style.transform = 'translateX(-50%) rotate(' + pendulumAngle + 'deg)';
+      cordKnob.style.transform = 'translateX(-50%) rotate(' + pendulumAngle + 'deg)';
+    }
+
+    updateCord();
+
+    // Pendulum swing when not dragging
+    function animatePendulum() {
+      if (!pageVisible || prefersReducedMotion) return;
+      if (!isDragging) {
+        // Spring back to rest length
+        const lenDiff = CORD_REST_LEN - cordLen;
+        cordVelocity += lenDiff * 0.02;
+        cordVelocity *= 0.9;
+        cordLen += cordVelocity;
+
+        // Pendulum physics
+        const gravity = 0.05;
+        pendulumVel += -gravity * Math.sin(pendulumAngle * Math.PI / 180) * (cordLen / 50);
+        pendulumVel *= 0.98;
+        pendulumAngle += pendulumVel;
+      }
+      updateCord();
+      safeRAF(animatePendulum);
+    }
+
+    if (!prefersReducedMotion) {
+      animatePendulum();
+    }
+
+    cordKnob.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      dragStartY = e.clientY;
+      dragStartLen = cordLen;
+      pendulumVel = 0;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dy = e.clientY - dragStartY;
+      cordLen = Math.max(30, dragStartLen + dy);
+
+      // Slight pendulum based on horizontal movement
+      const rect = pullCord.getBoundingClientRect();
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      pendulumAngle = Math.max(-15, Math.min(15, dx * 0.2));
+    });
+
+    document.addEventListener('mouseup', function(e) {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Check if pulled enough to toggle
+      if (cordLen - CORD_REST_LEN > CORD_PULL_THRESHOLD) {
+        isOn = !isOn;
+        if (isOn) {
+          scene.classList.add('safelight-on');
+          statusEl.textContent = 'ON';
+        } else {
+          scene.classList.remove('safelight-on');
+          statusEl.textContent = 'OFF';
+        }
+        // Spring recoil
+        cordVelocity = -8;
+      } else {
+        cordVelocity = (cordLen - CORD_REST_LEN) * 0.3;
+      }
+
+      // Pendulum impulse
+      pendulumVel = pendulumAngle * 0.3;
+    });
+
+    // Initial pendulum nudge
+    pendulumAngle = 3;
+    pendulumVel = 0.5;
+  })();
+
+  // ============ ZONE 2: ENLARGER FOCUS KNOB ============
+  (function() {
+    const knob = document.getElementById('focusKnob');
+    const indicator = document.getElementById('knobIndicator');
+    const ticks = document.getElementById('knobTicks');
+    const easelPaper = document.getElementById('easelPaper');
+    const focusPeak = document.getElementById('focusPeak');
+
+    // Build knob ticks
+    for (let i = 0; i < 20; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'knob-tick';
+      tick.style.transform = 'translateX(-50%) rotate(' + (i * 18) + 'deg)';
+      ticks.appendChild(tick);
+    }
+
+    let rotation = 30; // current rotation in degrees
+    let isDragging = false;
+    let startAngle = 0;
+    let startRotation = 0;
+    let knobVelocity = 0;
+    let lastRotation = 30;
+    let lastTime = performance.now();
+    let focusValue = 0.5; // 0 = blurry, 1 = in focus
+
+    function updateKnob() {
+      knob.style.transform = 'rotate(' + rotation + 'deg)';
+      // Map rotation 0-120deg to focus 0-1
+      const normalized = Math.max(0, Math.min(1, rotation / 120));
+      focusValue = normalized;
+      const blur = 6 - focusValue * 6;
+      easelPaper.style.filter = 'blur(' + blur.toFixed(2) + 'px)';
+
+      // Focus peaking at near-perfect focus
+      if (focusValue > 0.85) {
+        const peakIntensity = (focusValue - 0.85) / 0.15;
+        focusPeak.classList.add('on');
+        focusPeak.style.opacity = peakIntensity.toFixed(2);
+      } else {
+        focusPeak.classList.remove('on');
+      }
+    }
+
+    function getAngle(e, rect) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+    }
+
+    knob.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      const rect = knob.getBoundingClientRect();
+      startAngle = getAngle(e, rect);
+      startRotation = rotation;
+      knobVelocity = 0;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const rect = knob.getBoundingClientRect();
+      const angle = getAngle(e, rect);
+      let delta = angle - startAngle;
+      // Handle wrap-around
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+
+      const newRotation = Math.max(0, Math.min(120, startRotation + delta));
+      const now = performance.now();
+      const dt = now - lastTime;
+      if (dt > 0) {
+        knobVelocity = (newRotation - lastRotation) / dt * 16;
+      }
+      lastTime = now;
+      lastRotation = newRotation;
+      rotation = newRotation;
+      updateKnob();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      // Detent snap to closest of 12 positions
+      const detents = 12;
+      const step = 120 / detents;
+      const snapped = Math.round(rotation / step) * step;
+      animateToRotation(snapped);
+    });
+
+    function animateToRotation(target) {
+      if (prefersReducedMotion) {
+        rotation = target;
+        updateKnob();
+        return;
+      }
+      let vel = knobVelocity;
+      const spring = 0.1;
+      const damping = 0.8;
+      function step() {
+        if (isDragging) return;
+        const diff = target - rotation;
+        vel += diff * spring;
+        vel *= damping;
+        rotation += vel;
+        updateKnob();
+        if (Math.abs(diff) > 0.1 || Math.abs(vel) > 0.05) {
+          safeRAF(step);
+        } else {
+          rotation = target;
+          updateKnob();
+        }
+      }
+      step();
+    }
+
+    updateKnob();
+  })();
+
+  // ============ ZONE 3: DEVELOPING TIMER DIAL ============
+  (function() {
+    const dial = document.getElementById('timerDial');
+    const pointer = document.getElementById('timerPointer');
+    const display = document.getElementById('timerDisplay');
+    const numbers = document.getElementById('timerNumbers');
+    const trayWave = document.getElementById('trayWave');
+
+    // Build timer numbers and tick marks
+    const faceRadius = 44;
+    for (let i = 0; i < 60; i++) {
+      const angle = (i * 6 - 90) * Math.PI / 180;
+      const tick = document.createElement('div');
+      tick.className = 'timer-tick-mark ' + (i % 5 === 0 ? 'major' : 'minor');
+      const r = i % 5 === 0 ? 0 : 4;
+      tick.style.transform = 'translateX(-50%) rotate(' + (i * 6) + 'deg)';
+      tick.style.top = (r) + 'px';
+      dial.appendChild(tick);
+    }
+    // Numbers
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * 30 - 90) * Math.PI / 180;
+      const num = document.createElement('div');
+      num.className = 'timer-num';
+      num.textContent = i === 0 ? '60' : (i * 5).toString();
+      const r = 38;
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      num.style.transform = 'translate(' + x + 'px, ' + y + 'px) translate(-50%, -50%)';
+      num.style.top = '50%';
+      num.style.left = '50%';
+      numbers.appendChild(num);
+    }
+
+    let setSeconds = 0;
+    let remainingSeconds = 0;
+    let isRunning = false;
+    let isDragging = false;
+    let startAngle = 0;
+    let startSeconds = 0;
+    let timerInterval = null;
+    let wavePhase = 0;
+    let waveOffset = 0;
+
+    function getAngle(e, rect) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+    }
+
+    function updatePointer() {
+      const angle = (remainingSeconds / 60) * 360;
+      pointer.style.transform = 'translateX(-50%) rotate(' + angle + 'deg)';
+      const mins = Math.floor(remainingSeconds / 60);
+      const secs = Math.floor(remainingSeconds % 60);
+      display.textContent =
+        String(mins).padStart(2, '0') + ':' +
+        String(secs).padStart(2, '0');
+    }
+
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      if (setSeconds <= 0) return;
+      isRunning = true;
+      timerInterval = setInterval(function() {
+        if (!pageVisible) return;
+        remainingSeconds -= 1;
+        // Slight wave on each tick
+        waveOffset = 3;
+        if (remainingSeconds <= 0) {
+          remainingSeconds = 0;
+          isRunning = false;
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        updatePointer();
+      }, 1000);
+    }
+
+    // Animate tray waves
+    function animateWaves() {
+      if (!pageVisible || prefersReducedMotion) return;
+      wavePhase += 0.03;
+      waveOffset *= 0.95;
+      const wave1 = Math.sin(wavePhase) * 2 + waveOffset;
+      const wave2 = Math.sin(wavePhase * 1.3 + 1) * 1.5;
+      trayWave.style.transform = 'translateX(' + wave1 + 'px) translateY(' + wave2 + 'px)';
+      trayWave.style.opacity = (0.5 + Math.sin(wavePhase) * 0.2).toFixed(2);
+      safeRAF(animateWaves);
+    }
+
+    if (!prefersReducedMotion) {
+      animateWaves();
+    }
+
+    dial.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      if (isRunning) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        isRunning = false;
+      }
+      isDragging = true;
+      const rect = dial.getBoundingClientRect();
+      startAngle = getAngle(e, rect);
+      startSeconds = setSeconds;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const rect = dial.getBoundingClientRect();
+      let angle = getAngle(e, rect) - startAngle;
+      if (angle < -180) angle += 360;
+      if (angle > 180) angle -= 360;
+      const delta = angle / 360 * 60;
+      setSeconds = Math.max(0, Math.min(60, startSeconds + delta));
+      remainingSeconds = setSeconds;
+      updatePointer();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      if (setSeconds > 0) {
+        startTimer();
+      }
+    });
+
+    // Set initial
+    remainingSeconds = 15;
+    setSeconds = 15;
+    updatePointer();
+    setTimeout(startTimer, 500);
+  })();
+
+  // ============ ZONE 4: FILM WINDING CRANK ============
+  (function() {
+    const crank = document.getElementById('crankHandle');
+    const reel = document.getElementById('reelBody');
+    const filmStrip = document.getElementById('filmStrip');
+    const filmFrames = document.getElementById('filmFrames');
+
+    // Build film frames
+    for (let i = 0; i < 20; i++) {
+      const frame = document.createElement('div');
+      frame.className = 'film-frame';
+      filmFrames.appendChild(frame);
+    }
+
+    let crankAngle = 0;
+    let filmOffset = 0;
+    let isDragging = false;
+    let startAngle = 0;
+    let startCrankAngle = 0;
+    let angularVelocity = 0;
+    let lastAngle = 0;
+    let lastTime = performance.now();
+
+    function getAngle(e, centerX, centerY) {
+      return Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+    }
+
+    function getReelCenter() {
+      const rect = reel.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }
+
+    function updateCrank() {
+      reel.style.transform = 'rotate(' + crankAngle + 'deg)';
+      crank.style.transform = 'rotate(' + crankAngle + 'deg)';
+      // Film moves: each full rotation = 30px of film (sprocket pitch)
+      filmOffset = (crankAngle / 360) * 30 % 30;
+      filmStrip.style.transform = 'translateY(' + (-filmOffset) + 'px)';
+    }
+
+    crank.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      const c = getReelCenter();
+      startAngle = getAngle(e, c.x, c.y);
+      startCrankAngle = crankAngle;
+      angularVelocity = 0;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const c = getReelCenter();
+      let angle = getAngle(e, c.x, c.y) - startAngle;
+      if (angle < -180) angle += 360;
+      if (angle > 180) angle -= 360;
+
+      const newAngle = startCrankAngle + angle;
+      const now = performance.now();
+      const dt = now - lastTime;
+      if (dt > 0) {
+        angularVelocity = (newAngle - lastAngle) / dt * 16;
+      }
+      lastTime = now;
+      lastAngle = newAngle;
+      crankAngle = newAngle;
+      updateCrank();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Inertia with damping + spring-back from nearest frame
+      function inertiaStep() {
+        if (isDragging || prefersReducedMotion) return;
+        angularVelocity *= 0.97; // friction
+        crankAngle += angularVelocity;
+
+        // Snap to nearest frame (detent every 30deg)
+        const targetSnap = Math.round(crankAngle / 30) * 30;
+        const diff = targetSnap - crankAngle;
+        angularVelocity += diff * 0.02;
+
+        updateCrank();
+
+        if (Math.abs(angularVelocity) > 0.05 || Math.abs(diff) > 0.5) {
+          safeRAF(inertiaStep);
+        } else {
+          crankAngle = targetSnap;
+          updateCrank();
+        }
+      }
+      inertiaStep();
+    });
+
+    updateCrank();
+  })();
+
+  // ============ ZONE 5: PRINT DEVELOPING TRAY ============
+  (function() {
+    const paper = document.getElementById('printPaper');
+    const tray = document.getElementById('devTray');
+    const devPct = document.getElementById('devPct');
+    const ripple = document.getElementById('liquidRipple');
+
+    let isDragging = false;
+    let offsetX = 0, offsetY = 0;
+    let paperX = 0, paperY = -40;
+    let submerged = false;
+    let development = 0; // 0-100
+    let devRAF = null;
+    let lastDragX = 0, lastDragY = 0;
+    let rippleTimeout = null;
+
+    function getTrayLiquidRect() {
+      const rect = tray.getBoundingClientRect();
+      // Liquid is bottom 85% of tray
+      return {
+        left: rect.left + 5,
+        top: rect.top + rect.height * 0.15,
+        right: rect.right - 5,
+        bottom: rect.bottom - 5
+      };
+    }
+
+    function updatePaperPos() {
+      paper.style.left = paperX + 'px';
+      paper.style.top = paperY + 'px';
+      paper.style.transform = 'translateX(-50%) rotate(' + (submerged ? 0 : -3) + 'deg)';
+    }
+
+    function isInLiquid() {
+      const paperRect = paper.getBoundingClientRect();
+      const liquidRect = getTrayLiquidRect();
+      const paperCenterY = paperRect.top + paperRect.height / 2;
+      return paperCenterY > liquidRect.top &&
+             paperRect.left + 20 < liquidRect.right &&
+             paperRect.right - 20 > liquidRect.left;
+    }
+
+    function triggerRipple() {
+      if (rippleTimeout) clearTimeout(rippleTimeout);
+      ripple.style.opacity = '0.8';
+      ripple.style.animation = 'none';
+      ripple.offsetHeight; // reflow
+      ripple.style.animation = 'rippleAnim 1.5s ease-out forwards';
+      rippleTimeout = setTimeout(function() {
+        ripple.style.opacity = '0';
+      }, 1500);
+    }
+
+    function startDevelopment() {
+      if (devRAF) return;
+      devPct.classList.add('active');
+      paper.classList.add('submerged');
+
+      function step() {
+        if (!submerged || !pageVisible) {
+          devRAF = null;
+          return;
+        }
+        if (development < 100) {
+          development += 0.15;
+          if (development > 100) development = 100;
+          devPct.textContent = Math.floor(development) + '%';
+          paper.style.setProperty('--dev', development);
+          const img = paper.querySelector('.print-image');
+          img.style.opacity = (development / 100).toFixed(2);
+
+          if (development >= 100) {
+            paper.classList.add('developed');
+          }
+        }
+        devRAF = requestAnimationFrame(step);
+        rafRegistry.add(devRAF);
+      }
+      step();
+    }
+
+    function stopDevelopment() {
+      if (devRAF) {
+        cancelAnimationFrame(devRAF);
+        rafRegistry.delete(devRAF);
+        devRAF = null;
+      }
+      devPct.classList.remove('active');
+      paper.classList.remove('submerged');
+    }
+
+    paper.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      paper.classList.add('dragging');
+      const rect = paper.getBoundingClientRect();
+      offsetX = e.clientX - rect.left - rect.width / 2;
+      offsetY = e.clientY - rect.top;
+
+      // Switch to absolute positioning relative to tray
+      const trayRect = tray.getBoundingClientRect();
+      paper.style.position = 'absolute';
+      paperX = e.clientX - trayRect.left - offsetX;
+      paperY = e.clientY - trayRect.top - offsetY;
+      paper.style.left = paperX + 'px';
+      paper.style.top = paperY + 'px';
+      paper.style.transform = 'translateX(-50%) rotate(-3deg)';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const trayRect = tray.getBoundingClientRect();
+      paperX = e.clientX - trayRect.left - offsetX;
+      paperY = e.clientY - trayRect.top - offsetY;
+
+      // Clamp to tray area
+      paperX = Math.max(10, Math.min(trayRect.width - 10, paperX));
+      paperY = Math.max(-20, Math.min(trayRect.height - 30, paperY));
+
+      lastDragX = e.clientX;
+      lastDragY = e.clientY;
+
+      updatePaperPos();
+
+      const wasSubmerged = submerged;
+      submerged = isInLiquid();
+      if (submerged && !wasSubmerged) {
+        triggerRipple();
+        startDevelopment();
+      } else if (!submerged && wasSubmerged) {
+        stopDevelopment();
+      }
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      paper.classList.remove('dragging');
+
+      // If submerged, settle into liquid with slight bob
+      if (submerged) {
+        let bob = 0;
+        function bobStep() {
+          if (!submerged || prefersReducedMotion) return;
+          bob += 0.05;
+          const yOffset = Math.sin(bob) * 2;
+          paper.style.top = (paperY + yOffset) + 'px';
+          safeRAF(bobStep);
+        }
+        bobStep();
+      }
+    });
+
+    // Initial position setup
+    const trayRect = tray.getBoundingClientRect();
+    paperX = trayRect.width / 2;
+    paperY = -40;
+    updatePaperPos();
+  })();
+
+  // ============ ZONE 6: ENLARGEMENT MAGNIFICATION LEVER ============
+  (function() {
+    const handle = document.getElementById('leverHandle');
+    const track = document.getElementById('leverTrack');
+    const previewPaper = document.getElementById('previewPaper');
+    const infoText = document.getElementById('leverInfo');
+    const scaleLights = document.querySelectorAll('.scale-light');
+
+    const MAG_LEVELS = [1, 2, 4, 8];
+    const NOTCH_POSITIONS = [10, 38, 66, 94]; // px from top of track
+    let currentLevel = 0; // index
+    let handleY = NOTCH_POSITIONS[0];
+    let isDragging = false;
+    let dragStartY = 0;
+    let startHandleY = 0;
+    let leverVelocity = 0;
+
+    function updateLever() {
+      handle.style.top = handleY + 'px';
+      const level = currentLevel;
+      const mag = MAG_LEVELS[level];
+      infoText.textContent = mag + '×';
+
+      // Update scale lights
+      scaleLights.forEach(function(light, i) {
+        if (i >= 3 - level) {
+          light.classList.add('active');
+        } else {
+          light.classList.remove('active');
+        }
+      });
+
+      // Update preview paper size
+      const baseSize = 30;
+      const size = baseSize + level * 15;
+      previewPaper.style.width = size + 'px';
+      previewPaper.style.height = size + 'px';
+    }
+
+    function findClosestNotch(y) {
+      let closest = 0;
+      let minDist = Infinity;
+      NOTCH_POSITIONS.forEach(function(pos, i) {
+        const dist = Math.abs(y - pos);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = i;
+        }
+      });
+      return closest;
+    }
+
+    handle.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      dragStartY = e.clientY;
+      startHandleY = handleY;
+      leverVelocity = 0;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dy = e.clientY - dragStartY;
+      let newY = startHandleY + dy;
+
+      // Clamp to track
+      const trackHeight = track.offsetHeight;
+      newY = Math.max(10, Math.min(trackHeight - 10, newY));
+      handleY = newY;
+
+      // Find current level based on position
+      currentLevel = findClosestNotch(handleY);
+      updateLever();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Snap to nearest notch with spring physics
+      const target = NOTCH_POSITIONS[currentLevel];
+      let vel = leverVelocity;
+
+      function snapStep() {
+        if (isDragging || prefersReducedMotion) return;
+        const diff = target - handleY;
+        vel += diff * 0.15;
+        vel *= 0.75;
+        handleY += vel;
+        updateLever();
+
+        if (Math.abs(diff) > 0.2 || Math.abs(vel) > 0.1) {
+          safeRAF(snapStep);
+        } else {
+          handleY = target;
+          updateLever();
+        }
+      }
+      snapStep();
+    });
+
+    updateLever();
+  })();
+
+  // ============ AMBIENT LIGHT EFFECT ============
+  (function() {
+    // Subtle flicker of safelight across zones
+    let flickerPhase = 0;
+    function flickerLoop() {
+      if (!pageVisible || prefersReducedMotion) return;
+      flickerPhase += 0.02 + Math.random() * 0.01;
+      const intensity = 0.8 + Math.sin(flickerPhase) * 0.05 + (Math.random() - 0.5) * 0.03;
+      document.documentElement.style.setProperty('--safelight-intensity', intensity.toFixed(3));
+      safeRAF(flickerLoop);
+    }
+    // Very subtle, start after delay
+    setTimeout(function() {
+      if (!prefersReducedMotion) flickerLoop();
+    }, 1000);
+  })();
+
+  // ============ RESTART ANIMATIONS ============
+  function restartAnimations() {
+    if (prefersReducedMotion) return;
+    // Restart all per-zone animations that depend on RAF
+    // Each zone manages its own state; we just need to kick things off again
+    // by dispatching a custom event each zone can listen to
+    // For simplicity, zones already check pageVisible in their loops
+  }
+
+  // ============ INIT DUST ============
+  initDust();
+
+  // ============ ANNOUNCE UPGRADE ============
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch(e) {}
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // Add ripple keyframes dynamically
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes rippleAnim {
+      0% { width: 40px; height: 10px; opacity: 0.8; }
+      100% { width: 160px; height: 30px; opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+
+})();
+</script>
+</body>
+</html>
