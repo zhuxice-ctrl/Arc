@@ -1,0 +1,3174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>潮间带 · 赶海潮汐图鉴</title>
+<style>
+  /* === 全局重置与画布 === */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #ede6d6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* 砂质地纹背景 */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(217, 119, 87, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 70%, rgba(196, 143, 80, 0.1) 0%, transparent 50%),
+      #ede6d6;
+    z-index: 0;
+  }
+
+  /* === 自定义光标 === */
+  .custom-cursor {
+    position: fixed;
+    width: 14px; height: 14px;
+    border: 2px solid #6b4226;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99999;
+    transform: translate(-50%, -50%);
+    transition: width 0.18s ease, height 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    mix-blend-mode: difference;
+  }
+  .custom-cursor.cursor-hover {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.15);
+    border-color: #d97757;
+  }
+  .cursor-ripple {
+    position: fixed;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(217, 119, 87, 0.4);
+    pointer-events: none;
+    z-index: 99998;
+    transform: translate(-50%, -50%) scale(1);
+    animation: cursor-ripple-anim 0.6s ease-out forwards;
+  }
+  @keyframes cursor-ripple-anim {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    100% { transform: translate(-50%, -50%) scale(5); opacity: 0; }
+  }
+
+  /* === 舞台容器 === */
+  .stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 48px;
+  }
+  .stage-info {
+    width: 240px;
+    color: #6b4226;
+  }
+  .stage-info h1 {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    color: #4a2c18;
+  }
+  .stage-info .subtitle {
+    font-size: 13px;
+    color: #8b6242;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+  }
+  .stage-info .spec-line {
+    font-size: 12px;
+    color: #9a7558;
+    line-height: 1.9;
+    padding-left: 12px;
+    border-left: 2px solid #d97757;
+    margin-bottom: 12px;
+  }
+  .stage-info .spec-line strong { color: #6b4226; }
+  .page-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  .page-nav button {
+    text-align: left;
+    padding: 8px 12px;
+    border: none;
+    background: rgba(255,255,255,0.5);
+    border-radius: 8px;
+    color: #6b4226;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+  }
+  .page-nav button:hover {
+    background: rgba(255,255,255,0.8);
+  }
+  .page-nav button.active {
+    background: #d97757;
+    color: #fff;
+    border-left-color: #a8553a;
+  }
+
+  /* === 手机壳 === */
+  .phone-wrapper {
+    position: relative;
+  }
+  .phone-frame {
+    width: 390px;
+    height: 820px;
+    border-radius: 54px;
+    background: #1a1814;
+    padding: 12px;
+    box-shadow:
+      0 50px 100px -20px rgba(107, 66, 38, 0.3),
+      0 30px 60px -30px rgba(107, 66, 38, 0.4),
+      inset 0 0 0 1px rgba(255,255,255,0.08);
+    position: relative;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 42px;
+    overflow: hidden;
+    background: #f8f3ea;
+    position: relative;
+  }
+  /* 刘海 */
+  .notch {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 30px;
+    background: #0a0907;
+    border-radius: 20px;
+    z-index: 100;
+  }
+  /* 状态栏 */
+  .status-bar {
+    height: 48px;
+    padding: 14px 28px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2a1f15;
+    position: relative;
+    z-index: 90;
+  }
+  .status-bar .time { font-variant-numeric: tabular-nums; }
+  .status-bar .icons {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+  .status-icon {
+    width: 16px; height: 10px;
+    display: inline-block;
+  }
+
+  /* === 小程序导航栏（胶囊） === */
+  .mp-navbar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    position: relative;
+    z-index: 80;
+    transition: background 0.3s ease;
+  }
+  .mp-navbar .title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #2a1f15;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .mp-capsule {
+    position: absolute;
+    right: 12px;
+    top: 8px;
+    width: 88px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    border: 0.5px solid rgba(0,0,0,0.08);
+    z-index: 90;
+  }
+  .mp-capsule .cap-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 43px;
+    height: 20px;
+    color: #2a1f15;
+  }
+  .mp-capsule .cap-divider {
+    width: 0.5px;
+    height: 16px;
+    background: rgba(0,0,0,0.15);
+  }
+
+  /* === 页面内容区 === */
+  .page-container {
+    position: absolute;
+    inset: 0;
+    top: 44px; /* 导航栏下方 */
+    bottom: 0;
+    overflow: hidden;
+  }
+  .page {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: #f8f3ea;
+    -webkit-overflow-scrolling: touch;
+    will-change: transform, opacity;
+  }
+  .page::-webkit-scrollbar { display: none; }
+  .page.pushing { animation: page-push 0.35s cubic-bezier(0.32, 0.72, 0, 1) both; }
+  .page.popping { animation: page-pop 0.3s cubic-bezier(0.32, 0.72, 0, 1) both; }
+  @keyframes page-push {
+    from { transform: translateX(30%); opacity: 0.6; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes page-pop {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(30%); opacity: 0; }
+  }
+
+  /* === Tab Bar === */
+  .tab-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    padding-bottom: 8px;
+    background: rgba(255, 252, 247, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 0.5px solid rgba(107, 66, 38, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 70;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    padding: 6px 0;
+    color: #9a7558;
+    font-size: 10px;
+    transition: color 0.2s ease;
+    position: relative;
+  }
+  .tab-item.active { color: #d97757; }
+  .tab-item .tab-icon {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tab-item.active .tab-icon {
+    animation: tab-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes tab-bounce {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    60% { transform: scale(0.92); }
+    80% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  .tab-item .tab-dot {
+    position: absolute;
+    bottom: 2px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: #d97757;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .tab-item.active .tab-dot { opacity: 1; }
+
+  /* === 首页 === */
+  .home-hero {
+    position: relative;
+    padding: 12px 20px 28px;
+    background: linear-gradient(180deg, #f5e6d0 0%, #f8f3ea 100%);
+    overflow: hidden;
+  }
+  /* 签名动效：海浪层 */
+  .wave-layer {
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 60px;
+    overflow: hidden;
+  }
+  .wave-svg {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 200%;
+    height: 100%;
+    animation: wave-move 8s linear infinite;
+  }
+  .wave-svg.wave2 {
+    animation-duration: 12s;
+    animation-direction: reverse;
+    opacity: 0.5;
+    bottom: -4px;
+  }
+  @keyframes wave-move {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .home-greeting {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .home-greeting .hi {
+    font-size: 22px;
+    font-weight: 700;
+    color: #4a2c18;
+    line-height: 1.3;
+  }
+  .home-greeting .hi small {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+    color: #9a7558;
+    margin-top: 2px;
+  }
+  .home-tide-card {
+    background: linear-gradient(135deg, #d97757 0%, #e8956a 100%);
+    border-radius: 20px;
+    padding: 18px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 12px 28px -8px rgba(217, 119, 87, 0.5);
+  }
+  .tide-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .tide-card-header .label {
+    font-size: 12px;
+    opacity: 0.85;
+    letter-spacing: 1px;
+  }
+  .tide-card-header .location {
+    font-size: 11px;
+    background: rgba(255,255,255,0.2);
+    padding: 3px 8px;
+    border-radius: 10px;
+  }
+  .tide-value {
+    font-size: 42px;
+    font-weight: 300;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+  }
+  .tide-value .unit { font-size: 16px; margin-left: 4px; opacity: 0.8; }
+  .tide-desc {
+    font-size: 12px;
+    opacity: 0.9;
+    margin-bottom: 14px;
+  }
+  .tide-timeline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 4px;
+    height: 40px;
+  }
+  .tide-bar {
+    flex: 1;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    transition: height 0.3s ease;
+  }
+  .tide-bar.now {
+    background: #fff;
+    position: relative;
+  }
+  .tide-bar.now::after {
+    content: '现在';
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    white-space: nowrap;
+    color: rgba(255,255,255,0.9);
+  }
+
+  /* 首页功能宫格 */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 20px 16px;
+  }
+  .grid-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .grid-icon {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px -4px rgba(107, 66, 38, 0.15);
+    transition: transform 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .grid-item:hover .grid-icon {
+    transform: translateY(-2px);
+  }
+  .grid-item .grid-label {
+    font-size: 11px;
+    color: #6b4226;
+  }
+  .grid-icon .shine {
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+    animation: shine-sweep 3s ease-in-out infinite;
+  }
+  @keyframes shine-sweep {
+    0%, 70% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  /* 首页发现卡片区 */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 16px 12px;
+  }
+  .section-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #4a2c18;
+  }
+  .section-title::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 14px;
+    background: #d97757;
+    border-radius: 2px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .section-more {
+    font-size: 12px;
+    color: #9a7558;
+    cursor: pointer;
+  }
+  .section-more::after {
+    content: ' ›';
+  }
+
+  .discover-list {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 80px;
+  }
+  .discover-card {
+    background: #fff;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px -4px rgba(107, 66, 38, 0.1);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+  }
+  .discover-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -6px rgba(107, 66, 38, 0.18);
+  }
+  .discover-card .card-img {
+    width: 100px;
+    height: 100px;
+    border-radius: 12px;
+    margin: 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .discover-card .card-body {
+    flex: 1;
+    padding: 12px 12px 12px 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .discover-card .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2a1f15;
+    line-height: 1.4;
+  }
+  .discover-card .card-meta {
+    font-size: 11px;
+    color: #9a7558;
+    display: flex;
+    gap: 10px;
+  }
+  .discover-card .card-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #f5e6d0;
+    color: #b8744a;
+    border-radius: 8px;
+    align-self: flex-start;
+  }
+  .discover-card .card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* === 图鉴页（左滑列表操作） === */
+  .guide-top {
+    padding: 8px 16px 12px;
+    background: #f8f3ea;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .guide-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px -2px rgba(107, 66, 38, 0.08);
+  }
+  .guide-search input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: #2a1f15;
+    font-family: inherit;
+  }
+  .guide-search input::placeholder { color: #b8a58d; }
+
+  .filter-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tab {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: 16px;
+    background: #fff;
+    color: #6b4226;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .filter-tab.active {
+    background: #d97757;
+    color: #fff;
+    border-color: #d97757;
+  }
+
+  .guide-waterfall {
+    columns: 2;
+    column-gap: 10px;
+    padding: 8px 12px;
+    padding-bottom: 80px;
+  }
+  .guide-item {
+    break-inside: avoid;
+    margin-bottom: 10px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.25s ease;
+  }
+  .guide-item:hover { transform: translateY(-2px); }
+  .guide-item .g-img {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .guide-item .g-img .pulse-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 20px; height: 20px;
+    border: 2px solid rgba(255,255,255,0.8);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse-ring 2s ease-out infinite;
+  }
+  @keyframes pulse-ring {
+    0% { width: 20px; height: 20px; opacity: 0.8; }
+    100% { width: 80px; height: 80px; opacity: 0; }
+  }
+  .guide-item .g-info {
+    padding: 10px 12px 12px;
+  }
+  .guide-item .g-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2a1f15;
+    margin-bottom: 4px;
+  }
+  .guide-item .g-sub {
+    font-size: 11px;
+    color: #9a7558;
+    margin-bottom: 8px;
+  }
+  .guide-item .g-tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .guide-item .g-tag {
+    font-size: 9px;
+    padding: 2px 6px;
+    background: #f5e6d0;
+    color: #b8744a;
+    border-radius: 6px;
+  }
+  .guide-item .g-rarity {
+    position: absolute;
+    top: 8px; right: 8px;
+    font-size: 10px;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(8px);
+    border-radius: 10px;
+    color: #d97757;
+    font-weight: 600;
+  }
+
+  /* === 潮汐页 === */
+  .tide-page {
+    padding-bottom: 80px;
+  }
+  .tide-week-banner {
+    background: linear-gradient(160deg, #c48f50 0%, #d97757 100%);
+    color: #fff;
+    padding: 20px 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .tide-week-banner::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+  }
+  .tide-week-banner::after {
+    content: '';
+    position: absolute;
+    bottom: -30px; left: 20px;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+  }
+  .tide-date {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: 10px;
+  }
+  .tide-big {
+    font-size: 36px;
+    font-weight: 300;
+    line-height: 1;
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tide-big span { font-size: 16px; opacity: 0.8; }
+  .tide-week-days {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 12px 0;
+    position: relative;
+    z-index: 1;
+  }
+  .week-day {
+    text-align: center;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 6px 6px;
+    border-radius: 10px;
+    color: rgba(255,255,255,0.8);
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  .week-day .d-num {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 2px 0;
+  }
+  .week-day.active {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+  }
+  .week-day.active .d-dot {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  .tide-detail-section {
+    padding: 16px;
+  }
+  .tide-info-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 12px -4px rgba(107, 66, 38, 0.08);
+    margin-bottom: 12px;
+  }
+  .tide-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 0.5px solid #f0e6d5;
+  }
+  .tide-info-row:last-child { border-bottom: none; }
+  .tide-info-row .label {
+    font-size: 13px;
+    color: #8b6242;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tide-info-row .value {
+    font-size: 14px;
+    color: #2a1f15;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .tide-info-row .value.up { color: #c48f50; }
+  .tide-info-row .value.down { color: #5a7a6e; }
+
+  /* 潮汐波浪大图表 */
+  .tide-chart {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 12px -4px rgba(107, 66, 38, 0.08);
+    position: relative;
+  }
+  .tide-chart h3 {
+    font-size: 15px;
+    color: #4a2c18;
+    margin-bottom: 12px;
+  }
+  .tide-chart svg {
+    width: 100%;
+    height: 140px;
+  }
+
+  .tide-tip {
+    background: linear-gradient(135deg, #fff5e8 0%, #ffefe0 100%);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .tide-tip .tip-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: #d97757;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 18px;
+  }
+  .tide-tip .tip-text {
+    font-size: 12px;
+    color: #6b4226;
+    line-height: 1.6;
+  }
+  .tide-tip .tip-text strong {
+    display: block;
+    color: #4a2c18;
+    margin-bottom: 2px;
+  }
+
+  /* === 详情页（视差滚动 + 吸底操作栏） === */
+  .detail-page {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    background: #f8f3ea;
+    z-index: 50;
+    padding-bottom: 80px;
+  }
+  .detail-page::-webkit-scrollbar { display: none; }
+  .detail-hero {
+    position: relative;
+    height: 320px;
+    overflow: hidden;
+  }
+  .detail-hero-bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 120px;
+    will-change: transform;
+  }
+  .detail-hero-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 120px;
+    background: linear-gradient(to top, #f8f3ea, transparent);
+  }
+  .detail-hero-tag {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    font-size: 11px;
+    color: #d97757;
+    font-weight: 600;
+  }
+  .detail-back-btn {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    color: #4a2c18;
+    font-size: 18px;
+  }
+
+  .detail-content {
+    padding: 0 20px;
+  }
+  .detail-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #2a1f15;
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .detail-latin {
+    font-size: 13px;
+    color: #9a7558;
+    font-style: italic;
+    margin-bottom: 14px;
+  }
+  .detail-stats {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .detail-stat {
+    flex: 1;
+    min-width: 80px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+  }
+  .detail-stat .s-val {
+    font-size: 18px;
+    font-weight: 700;
+    color: #d97757;
+    font-variant-numeric: tabular-nums;
+  }
+  .detail-stat .s-lab {
+    font-size: 10px;
+    color: #9a7558;
+    margin-top: 2px;
+  }
+
+  .detail-section {
+    margin-bottom: 24px;
+  }
+  .detail-section h3 {
+    font-size: 16px;
+    color: #4a2c18;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .detail-section h3::before {
+    content: '';
+    width: 4px; height: 16px;
+    background: #d97757;
+    border-radius: 2px;
+  }
+  .detail-section p {
+    font-size: 13px;
+    color: #6b4226;
+    line-height: 1.8;
+  }
+
+  .detail-gallery {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .detail-gallery::-webkit-scrollbar { display: none; }
+  .gallery-item {
+    flex-shrink: 0;
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* 吸底操作栏 */
+  .detail-bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 68px;
+    background: rgba(255, 252, 247, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 0.5px solid rgba(107, 66, 38, 0.1);
+    display: flex;
+    align-items: center;
+    padding: 0 16px 8px;
+    gap: 12px;
+    z-index: 60;
+  }
+  .bottom-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .bottom-action-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #f5e6d0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d97757;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  .bottom-action-btn:hover {
+    background: #edd6b8;
+    transform: scale(1.05);
+  }
+  .bottom-action-btn.active {
+    background: #d97757;
+    color: #fff;
+  }
+  .bottom-main-btn {
+    flex: 1;
+    height: 44px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, #d97757, #c48f50);
+    color: #fff;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 6px 16px -4px rgba(217, 119, 87, 0.5);
+    transition: transform 0.15s ease;
+  }
+  .bottom-main-btn:active { transform: scale(0.97); }
+
+  /* === 个人中心（环形进度 + 宫格） === */
+  .profile-hero {
+    background: linear-gradient(160deg, #5a7a6e 0%, #4a655a 100%);
+    padding: 24px 20px 40px;
+    position: relative;
+    color: #fff;
+    overflow: hidden;
+  }
+  .profile-hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -40px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+  }
+  .profile-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; left: -30px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .profile-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f5e6d0, #e8d4b8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    border: 3px solid rgba(255,255,255,0.3);
+    position: relative;
+  }
+  .profile-avatar::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    animation: avatar-pulse 3s ease-in-out infinite;
+  }
+  @keyframes avatar-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.15); opacity: 0; }
+  }
+  .profile-info .name {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .profile-info .level {
+    font-size: 11px;
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 10px;
+  }
+
+  .profile-stats-row {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 20px;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-stat {
+    text-align: center;
+  }
+  .profile-stat .num {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .profile-stat .lab {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+
+  /* 成就环形进度 */
+  .achievement-section {
+    margin: -20px 16px 0;
+    background: #fff;
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 8px 24px -8px rgba(107, 66, 38, 0.15);
+    position: relative;
+    z-index: 2;
+  }
+  .achievement-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #4a2c18;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .achievement-title .more { font-size: 11px; color: #9a7558; font-weight: 400; cursor: pointer; }
+  .achievement-rings {
+    display: flex;
+    justify-content: space-around;
+  }
+  .ring-item {
+    text-align: center;
+    position: relative;
+  }
+  .ring-svg {
+    width: 60px; height: 60px;
+    transform: rotate(-90deg);
+  }
+  .ring-bg { stroke: #f0e6d5; fill: none; stroke-width: 5; }
+  .ring-fill {
+    stroke: #d97757;
+    fill: none;
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 157;
+    stroke-dashoffset: 157;
+    transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .ring-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: 700;
+    color: #d97757;
+    font-variant-numeric: tabular-nums;
+  }
+  .ring-label {
+    font-size: 11px;
+    color: #6b4226;
+    margin-top: 6px;
+  }
+
+  /* 宫格菜单 */
+  .profile-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px 8px;
+    padding: 20px 12px;
+  }
+  .profile-menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .profile-menu-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 2px 8px -2px rgba(107, 66, 38, 0.1);
+  }
+  .profile-menu-label {
+    font-size: 11px;
+    color: #6b4226;
+  }
+
+  /* === 发布页（表单 + 底部安全区主按钮） === */
+  .publish-page {
+    padding-bottom: 100px;
+  }
+  .publish-upload {
+    margin: 12px 16px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .upload-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .upload-slot {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    background: #f5e6d0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-slot.add {
+    border: 2px dashed #d9bd94;
+    background: transparent;
+    color: #b8744a;
+    cursor: pointer;
+    font-size: 24px;
+  }
+  .upload-label {
+    font-size: 13px;
+    color: #6b4226;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  .publish-form {
+    margin: 12px 16px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .form-row {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 0.5px solid #f0e6d5;
+    gap: 12px;
+  }
+  .form-row:last-child { border-bottom: none; }
+  .form-row .label {
+    font-size: 14px;
+    color: #4a2c18;
+    width: 80px;
+    flex-shrink: 0;
+    font-weight: 500;
+  }
+  .form-row .input-wrap {
+    flex: 1;
+    position: relative;
+  }
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: #2a1f15;
+    font-family: inherit;
+    resize: none;
+  }
+  .form-row input::placeholder,
+  .form-row textarea::placeholder { color: #c4b59c; }
+  .form-row .arrow { color: #c4b59c; font-size: 14px; }
+  .form-row.tag-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .form-row.tag-row .label { width: 100%; margin-bottom: 4px; }
+  .tag-chip {
+    padding: 5px 12px;
+    background: #f5e6d0;
+    color: #8b6242;
+    border-radius: 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .tag-chip.selected {
+    background: #d97757;
+    color: #fff;
+  }
+
+  .publish-location {
+    margin: 12px 16px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .publish-location .loc-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: #f5e6d0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d97757;
+  }
+  .publish-location .loc-text {
+    flex: 1;
+    font-size: 13px;
+    color: #4a2c18;
+  }
+  .publish-location .loc-sub {
+    font-size: 11px;
+    color: #9a7558;
+    margin-top: 2px;
+  }
+
+  /* === 骨架屏 === */
+  .skeleton {
+    background: linear-gradient(90deg, #f0e6d5 25%, #f5ede0 50%, #f0e6d5 75%);
+    background-size: 200% 100%;
+    animation: skeleton-sweep 1.5s ease-in-out infinite;
+    border-radius: 8px;
+  }
+  @keyframes skeleton-sweep {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* === 半屏弹层（ActionSheet） === */
+  .sheet-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(42, 31, 21, 0.4);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .sheet-mask.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .action-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    background: #f8f3ea;
+    border-radius: 20px 20px 0 0;
+    padding: 8px 12px 20px;
+    z-index: 201;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .action-sheet.open {
+    transform: translateY(0);
+  }
+  .sheet-handle {
+    width: 36px; height: 4px;
+    background: #d4c5a8;
+    border-radius: 2px;
+    margin: 8px auto 12px;
+  }
+  .sheet-title {
+    text-align: center;
+    font-size: 13px;
+    color: #9a7558;
+    margin-bottom: 12px;
+  }
+  .sheet-item {
+    padding: 14px;
+    text-align: center;
+    font-size: 15px;
+    color: #2a1f15;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    background: #fff;
+    margin-bottom: 6px;
+  }
+  .sheet-item:hover { background: #f5e6d0; }
+  .sheet-item.danger { color: #d97757; }
+  .sheet-item.cancel {
+    margin-top: 6px;
+    font-weight: 500;
+  }
+
+  /* === 下拉刷新 === */
+  .pull-refresh {
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #9a7558;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .pull-icon {
+    width: 18px; height: 18px;
+    border: 2px solid #d9bd94;
+    border-top-color: #d97757;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* === 设计规范页 === */
+  .spec-page {
+    padding-bottom: 80px;
+  }
+  .spec-hero {
+    padding: 20px;
+    background: linear-gradient(135deg, #4a2c18, #6b4226);
+    color: #fff;
+  }
+  .spec-hero h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .spec-hero p {
+    font-size: 12px;
+    opacity: 0.7;
+    line-height: 1.6;
+  }
+  .spec-section {
+    padding: 20px;
+    border-bottom: 8px solid #ede4d4;
+  }
+  .spec-section h3 {
+    font-size: 15px;
+    color: #4a2c18;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .spec-section h3::before {
+    content: '';
+    width: 4px; height: 16px;
+    background: #d97757;
+    border-radius: 2px;
+  }
+  .color-palette {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .color-swatch {
+    flex: 1;
+    min-width: 70px;
+    text-align: center;
+  }
+  .swatch-circle {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    margin: 0 auto 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    position: relative;
+  }
+  .swatch-circle::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.4);
+  }
+  .swatch-name {
+    font-size: 10px;
+    color: #6b4226;
+    font-weight: 500;
+  }
+  .swatch-hex {
+    font-size: 9px;
+    color: #9a7558;
+    margin-top: 1px;
+    font-family: monospace;
+  }
+
+  .type-sample {
+    padding: 10px 0;
+    border-bottom: 0.5px solid #f0e6d5;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .type-sample:last-child { border-bottom: none; }
+  .type-sample .ts-text { color: #2a1f15; }
+  .type-sample .ts-info { font-size: 10px; color: #9a7558; }
+
+  .icon-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .icon-item {
+    text-align: center;
+    background: #fff;
+    border-radius: 10px;
+    padding: 12px 4px;
+  }
+  .icon-item .ic {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  .icon-item .ic-name {
+    font-size: 9px;
+    color: #9a7558;
+  }
+
+  .spacing-show {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .spacing-bar {
+    height: 28px;
+    background: linear-gradient(90deg, #d97757, #e8956a);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #fff;
+    font-weight: 500;
+  }
+  .spacing-label {
+    font-size: 11px;
+    color: #6b4226;
+    width: 40px;
+    flex-shrink: 0;
+  }
+
+  /* === 接口文档页 === */
+  .api-page {
+    padding-bottom: 80px;
+  }
+  .api-hero {
+    padding: 20px;
+    background: linear-gradient(135deg, #5a7a6e, #3d554d);
+    color: #fff;
+  }
+  .api-hero h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .api-hero p {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+  .api-section {
+    background: #fff;
+    margin: 10px 12px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .api-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    border-bottom: 0.5px solid #f0e6d5;
+  }
+  .api-method {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: monospace;
+  }
+  .api-method.get { background: #e6f4ea; color: #1e7e34; }
+  .api-method.post { background: #fff0e6; color: #d97757; }
+  .api-method.put { background: #e8f0fe; color: #1967d2; }
+  .api-method.del { background: #fce8e6; color: #d93025; }
+  .api-path {
+    flex: 1;
+    font-size: 13px;
+    font-family: monospace;
+    color: #2a1f15;
+  }
+  .api-arrow {
+    color: #c4b59c;
+    font-size: 12px;
+    transition: transform 0.2s ease;
+  }
+  .api-arrow.open { transform: rotate(180deg); }
+  .api-body {
+    padding: 12px 14px;
+    font-size: 11px;
+    font-family: "SF Mono", "Menlo", monospace;
+    background: #faf6ef;
+    display: none;
+    color: #4a2c18;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .api-body.open { display: block; }
+  .api-body .k { color: #b8744a; }
+  .api-body .s { color: #5a7a6e; }
+  .api-body .n { color: #c48f50; }
+  .api-body .c { color: #9a7558; font-style: italic; }
+
+  .api-status {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px;
+    margin-bottom: 10px;
+  }
+  .status-pill {
+    flex: 1;
+    background: #fff;
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+  }
+  .status-pill .s-num {
+    font-size: 18px;
+    font-weight: 700;
+    color: #d97757;
+    font-variant-numeric: tabular-nums;
+  }
+  .status-pill .s-lab {
+    font-size: 10px;
+    color: #9a7558;
+    margin-top: 2px;
+  }
+
+  /* === 入场动画 === */
+  .fade-up {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fade-up-anim 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes fade-up-anim {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .delay-1 { animation-delay: 0.1s; }
+  .delay-2 { animation-delay: 0.2s; }
+  .delay-3 { animation-delay: 0.3s; }
+  .delay-4 { animation-delay: 0.4s; }
+  .delay-5 { animation-delay: 0.5s; }
+
+  /* === 3D 倾斜卡片 === */
+  .tilt-card {
+    transition: transform 0.1s ease;
+    transform-style: preserve-3d;
+  }
+
+  /* === 数字计数动效 === */
+  .count-num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* === 打字机效果 === */
+  .typewriter {
+    overflow: hidden;
+    border-right: 2px solid #d97757;
+    animation: typing-cursor 0.7s step-end infinite;
+  }
+  @keyframes typing-cursor {
+    50% { border-color: transparent; }
+  }
+
+  /* === 悬浮操作球（FAB） === */
+  .fab-btn {
+    position: absolute;
+    right: 16px;
+    bottom: 80px;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d97757, #c48f50);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px -4px rgba(217, 119, 87, 0.5);
+    z-index: 50;
+    transition: transform 0.2s ease;
+  }
+  .fab-btn:hover { transform: scale(1.08); }
+  .fab-btn.floating {
+    animation: fab-float 3s ease-in-out infinite;
+  }
+  @keyframes fab-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  /* === reduced-motion 降级 === */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="custom-cursor" id="customCursor"></div>
+
+<div class="stage">
+  <div class="stage-info">
+    <h1>潮间带</h1>
+    <div class="subtitle">赶海潮汐图鉴 · 微信小程序</div>
+    <div class="spec-line">
+      <strong>主题</strong>：赶海 / 潮间带生物图鉴<br>
+      <strong>配色</strong>：砂陶土 · 海沫绿<br>
+      <strong>字体</strong>：苹方 SC<br>
+      <strong>页数</strong>：8 页
+    </div>
+    <div class="page-nav" id="pageNav">
+      <button data-page="home" class="active">首页</button>
+      <button data-page="guide">图鉴</button>
+      <button data-page="tide">潮汐</button>
+      <button data-page="profile">我的</button>
+      <button data-page="publish">发布</button>
+      <button data-page="detail">详情</button>
+      <button data-page="spec">设计规范</button>
+      <button data-page="api">接口文档</button>
+    </div>
+  </div>
+
+  <div class="phone-wrapper">
+    <div class="phone-frame">
+      <div class="phone-screen" id="phoneScreen">
+        <div class="notch"></div>
+        <!-- 状态栏 -->
+        <div class="status-bar">
+          <span class="time" id="statusTime">9:41</span>
+          <span class="icons">
+            <svg class="status-icon" viewBox="0 0 18 12" fill="currentColor">
+              <path d="M1 4h2v8H1zM5 2h2v10H5zM9 0h2v12H9zM13 3h2v9h-2zM17 5h1v7h-1z"/>
+            </svg>
+            <svg class="status-icon" viewBox="0 0 16 12" fill="currentColor">
+              <path d="M8 2.5c2 0 3.8.7 5.3 2l1.2-1.2C12.7 1.6 10.4.5 8 .5S3.3 1.6 1.5 3.3l1.2 1.2C4.2 3.2 6 2.5 8 2.5zM8 6c1.2 0 2.3.4 3.2 1.2l1.2-1.2C11.2 4.7 9.7 4 8 4s-3.2.7-4.4 2l1.2 1.2C5.7 6.4 6.8 6 8 6zM8 9.5c.6 0 1.1.2 1.5.6L8 11.6 6.5 10.1c.4-.4.9-.6 1.5-.6z"/>
+            </svg>
+            <svg class="status-icon" viewBox="0 0 25 12" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="2.5"/>
+              <rect x="2" y="2" width="15" height="8" rx="1" fill="currentColor"/>
+              <rect x="22.5" y="3.5" width="1.5" height="5" rx="0.75" fill="currentColor"/>
+            </svg>
+          </span>
+        </div>
+        <!-- 小程序胶囊 -->
+        <div class="mp-capsule">
+          <div class="cap-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="19" cy="12" r="1"/>
+              <circle cx="5" cy="12" r="1"/>
+            </svg>
+          </div>
+          <div class="cap-divider"></div>
+          <div class="cap-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 导航栏 -->
+        <div class="mp-navbar">
+          <div class="title" id="navTitle">潮间带</div>
+        </div>
+
+        <!-- 页面容器 -->
+        <div class="page-container" id="pageContainer">
+          <!-- 所有页面通过 React 渲染 -->
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="tab-bar" id="tabBar">
+          <div class="tab-item active" data-tab="home">
+            <div class="tab-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9.5L12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z"/>
+              </svg>
+            </div>
+            <span>首页</span>
+            <div class="tab-dot"></div>
+          </div>
+          <div class="tab-item" data-tab="guide">
+            <div class="tab-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+              </svg>
+            </div>
+            <span>图鉴</span>
+            <div class="tab-dot"></div>
+          </div>
+          <div class="tab-item" data-tab="tide">
+            <div class="tab-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>
+                <path d="M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>
+                <path d="M2 7c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>
+              </svg>
+            </div>
+            <span>潮汐</span>
+            <div class="tab-dot"></div>
+          </div>
+          <div class="tab-item" data-tab="profile">
+            <div class="tab-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <span>我的</span>
+            <div class="tab-dot"></div>
+          </div>
+        </div>
+
+        <!-- 半屏弹层 -->
+        <div class="sheet-mask" id="sheetMask"></div>
+        <div class="action-sheet" id="actionSheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">选择操作</div>
+          <div class="sheet-item" id="sheetShare">分享给好友</div>
+          <div class="sheet-item" id="sheetFav">加入收藏</div>
+          <div class="sheet-item" id="sheetReport">举报</div>
+          <div class="sheet-item cancel" id="sheetCancel">取消</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+  const { useState, useEffect, useRef, useCallback } = React;
+
+  // ==================== 数据 ====================
+  const DISCOVER_DATA = [
+    { id: 1, emoji: '🦀', title: '青岛金沙滩退潮发现罕见黎明蟹', tag: '今日热门', user: '赶海老张', time: '2小时前', likes: 328, color: '#f5d5b8' },
+    { id: 2, emoji: '🐚', title: '威海半月湾贝壳收集指南·全27种', tag: '精选攻略', user: '贝壳猎人', time: '昨天', likes: 1204, color: '#e8d4b8' },
+    { id: 3, emoji: '🪸', title: '浙江象山渔山列岛潮池探秘', tag: '活动招募', user: '潮间带观察', time: '3天前', likes: 856, color: '#f0e0c8' },
+    { id: 4, emoji: '🐙', title: '深圳东西冲夜间赶海·偶遇蓝环章鱼', tag: '安全提醒', user: '海洋科普君', time: '5天前', likes: 2103, color: '#e8c9a8' },
+  ];
+
+  const GUIDE_DATA = [
+    { id: 1, emoji: '🦀', name: '黎明蟹', sub: 'Matuta planipes', rarity: '稀有', tags: ['食用', '昼伏夜出'], height: 140, color: '#f0c9a0' },
+    { id: 2, emoji: '🐚', name: '扁玉螺', sub: 'Neverita didyma', rarity: '常见', tags: ['食用', '肉食性'], height: 110, color: '#e8d0b0' },
+    { id: 3, emoji: '🪸', name: '海葵', sub: 'Actiniaria', rarity: '常见', tags: ['有毒', '附着'], height: 160, color: '#f5dcc0' },
+    { id: 4, emoji: '🐙', name: '蓝环章鱼', sub: 'Hapalochlaena', rarity: '极危', tags: ['剧毒', '夜间活动'], height: 130, color: '#e0d4b8' },
+    { id: 5, emoji: '🦐', name: '鼓虾', sub: 'Alpheidae', rarity: '常见', tags: ['穴居', '可食'], height: 120, color: '#f0c898' },
+    { id: 6, emoji: '🐠', name: '弹涂鱼', sub: 'Periophthalmus', rarity: '常见', tags: ['两栖', '滩涂'], height: 100, color: '#e5d0a8' },
+  ];
+
+  const TIDE_HOURS = Array.from({length: 12}, (_, i) => ({
+    hour: i * 2,
+    height: 1.2 + Math.sin((i - 3) * 0.8) * 0.8
+  }));
+
+  const WEEK_DAYS = ['周一','周二','周三','周四','周五','周六','周日'];
+  const WEEK_DATES = [11,12,13,14,15,16,17];
+
+  const ACHIEVEMENTS = [
+    { label: '图鉴进度', value: 37, total: 100, color: '#d97757' },
+    { label: '赶海次数', value: 12, total: 30, color: '#c48f50' },
+    { label: '连续打卡', value: 7, total: 30, color: '#5a7a6e' },
+  ];
+
+  // ==================== 工具函数 ====================
+  function useCountUp(target, duration = 1500, trigger = true) {
+    const [val, setVal] = useState(0);
+    useEffect(() => {
+      if (!trigger) return;
+      let start = null;
+      let raf;
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setVal(Math.round(target * eased));
+        if (p < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(raf);
+    }, [target, duration, trigger]);
+    return val;
+  }
+
+  // ==================== 首页 ====================
+  function HomePage({ onNavigate }) {
+    const tideHeight = useCountUp(2.4, 1200);
+
+    return (
+      <div className="page" style={{paddingBottom: 0}}>
+        <div className="home-hero fade-up">
+          <div className="home-greeting">
+            <div className="hi">
+              早安，赶海人
+              <small>今日退潮窗口 · 最佳时机 15:30</small>
+            </div>
+            <div style={{width:40,height:40,borderRadius:'50%',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,boxShadow:'0 2px 8px rgba(107,66,38,0.1)'}}>
+              🔔
+            </div>
+          </div>
+
+          {/* 潮汐卡片 - 签名动效 1：数字计数 */}
+          <div className="home-tide-card tilt-card">
+            <div className="tide-card-header">
+              <span className="label">当前潮高</span>
+              <span className="location">📍 青岛 · 金沙滩</span>
+            </div>
+            <div className="tide-value">
+              <span className="count-num">{tideHeight.toFixed(1)}</span>
+              <span className="unit">米</span>
+            </div>
+            <div className="tide-desc">正在退潮 · 还需 3 小时到达最低位</div>
+            <div className="tide-timeline">
+              {TIDE_HOURS.map((h, i) => (
+                <div key={i} className={`tide-bar ${i === 4 ? 'now' : ''}`}
+                     style={{height: `${(h.height / 2.5) * 100}%`}}></div>
+              ))}
+            </div>
+          </div>
+
+          {/* 海浪层 - 签名动效 2：波浪滚动 */}
+          <div className="wave-layer">
+            <svg className="wave-svg wave2" viewBox="0 0 1200 60" preserveAspectRatio="none">
+              <path d="M0,30 C150,60 300,0 600,30 C900,60 1050,0 1200,30 L1200,60 L0,60 Z" fill="#d9bd94" opacity="0.3"/>
+            </svg>
+            <svg className="wave-svg" viewBox="0 0 1200 60" preserveAspectRatio="none">
+              <path d="M0,35 C200,10 400,55 600,35 C800,15 1000,55 1200,35 L1200,60 L0,60 Z" fill="#f8f3ea"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* 功能宫格 - 光泽扫过动效 */}
+        <div className="home-grid fade-up delay-1">
+          {[
+            {icon:'🐚',label:'生物图鉴'},
+            {icon:'🌊',label:'潮汐预报'},
+            {icon:'🗺️',label:'赶海地图'},
+            {icon:'📷',label:'AI识别'},
+            {icon:'📅',label:'活动日历'},
+            {icon:'🛒',label:'装备市集'},
+            {icon:'📖',label:'科普专栏'},
+            {icon:'⋯',label:'更多工具'},
+          ].map((item, i) => (
+            <div key={i} className="grid-item" onClick={() => item.label === '生物图鉴' && onNavigate('guide')}>
+              <div className="grid-icon">
+                <span style={{fontSize:22}}>{item.icon}</span>
+                <div className="shine" style={{animationDelay: `${i * 0.3}s`}}></div>
+              </div>
+              <span className="grid-label">{item.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="section-header fade-up delay-2">
+          <span className="section-title">今日发现</span>
+          <span className="section-more">全部</span>
+        </div>
+
+        <div className="discover-list">
+          {DISCOVER_DATA.map((item, i) => (
+            <div key={item.id} className="discover-card fade-up" style={{animationDelay: `${0.2 + i * 0.1}s`}}
+                 onClick={() => onNavigate('detail')}>
+              <div className="card-img" style={{background: item.color}}>
+                {item.emoji}
+              </div>
+              <div className="card-body">
+                <div>
+                  <div className="card-tag">{item.tag}</div>
+                  <div className="card-title" style={{marginTop:6}}>{item.title}</div>
+                </div>
+                <div className="card-bottom">
+                  <div className="card-meta">
+                    <span>{item.user}</span>
+                    <span>·</span>
+                    <span>{item.time}</span>
+                  </div>
+                  <div style={{fontSize:11,color:'#9a7558'}}>❤️ {item.likes}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 图鉴页 ====================
+  function GuidePage({ onNavigate }) {
+    const [activeTab, setActiveTab] = useState('all');
+    const tabs = [
+      { key:'all', label:'全部' },
+      { key:'crab', label:'蟹类' },
+      { key:'shell', label:'贝类' },
+      { key:'fish', label:'鱼类' },
+      { key:'mollusk', label:'软体' },
+      { key:'other', label:'其他' },
+    ];
+
+    return (
+      <div className="page">
+        <div className="guide-top">
+          <div className="guide-search">
+            <span style={{color:'#c4b59c'}}>🔍</span>
+            <input placeholder="搜索生物名称、特征..." />
+          </div>
+          <div className="filter-tabs">
+            {tabs.map(t => (
+              <div key={t.key}
+                   className={`filter-tab ${activeTab === t.key ? 'active' : ''}`}
+                   onClick={() => setActiveTab(t.key)}>
+                {t.label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="guide-waterfall">
+          {GUIDE_DATA.map((item, i) => (
+            <div key={item.id} className="guide-item fade-up"
+                 style={{animationDelay: `${i * 0.08}s`}}
+                 onClick={() => onNavigate('detail')}>
+              <div className="g-img" style={{height: item.height, background: item.color}}>
+                {item.emoji}
+                {item.rarity === '稀有' && <div className="pulse-ring"></div>}
+              </div>
+              <div className="g-rarity">{item.rarity}</div>
+              <div className="g-info">
+                <div className="g-name">{item.name}</div>
+                <div className="g-sub">{item.sub}</div>
+                <div className="g-tags">
+                  {item.tags.map((t, ti) => (
+                    <span key={ti} className="g-tag">{t}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 悬浮发布球 */}
+        <div className="fab-btn floating" onClick={() => onNavigate('publish')}>＋</div>
+      </div>
+    );
+  }
+
+  // ==================== 潮汐页 ====================
+  function TidePage() {
+    const [activeDay, setActiveDay] = useState(5);
+    const highVal = useCountUp(28, 1500, true);
+    const lowVal = useCountUp(0.4, 1500, true);
+
+    return (
+      <div className="page tide-page">
+        <div className="tide-week-banner">
+          <div className="tide-date">2026年8月 · 第33周</div>
+          <div className="tide-big">
+            <span className="count-num">{highVal.toFixed(1)}</span>
+            <span> 米</span>
+          </div>
+          <div style={{fontSize:12,opacity:0.85}}>今日最高潮位 · 03:28 到达</div>
+          <div className="tide-week-days">
+            {WEEK_DAYS.map((d, i) => (
+              <div key={i} className={`week-day ${i === activeDay ? 'active' : ''}`}
+                   onClick={() => setActiveDay(i)}>
+                <div>{d.slice(1)}</div>
+                <div className="d-num">{WEEK_DATES[i]}</div>
+                <div className="d-dot"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="tide-detail-section">
+          {/* 潮汐曲线图表 */}
+          <div className="tide-chart">
+            <h3>24小时潮汐曲线</h3>
+            <svg viewBox="0 0 320 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="tideGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#d97757" stopOpacity="0.3"/>
+                  <stop offset="100%" stopColor="#d97757" stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,100 C40,40 80,20 120,50 C160,80 200,120 240,90 C280,60 300,30 320,60 L320,140 L0,140 Z" fill="url(#tideGrad)"/>
+              <path d="M0,100 C40,40 80,20 120,50 C160,80 200,120 240,90 C280,60 300,30 320,60"
+                    fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round"/>
+              {/* 当前时间指示 */}
+              <line x1="160" y1="0" x2="160" y2="140" stroke="#d97757" strokeWidth="1" strokeDasharray="3,3" opacity="0.5"/>
+              <circle cx="160" cy="80" r="5" fill="#fff" stroke="#d97757" strokeWidth="2">
+                <animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/>
+              </circle>
+            </svg>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'#9a7558',marginTop:4}}>
+              <span>00:00</span>
+              <span>06:00</span>
+              <span>12:00</span>
+              <span>18:00</span>
+              <span>24:00</span>
+            </div>
+          </div>
+
+          {/* 详细信息卡 */}
+          <div className="tide-info-card">
+            <div className="tide-info-row">
+              <span className="label">🌅 日出 / 日落</span>
+              <span className="value">05:28 / 18:47</span>
+            </div>
+            <div className="tide-info-row">
+              <span className="label">🌊 最高潮位</span>
+              <span className="value up">2.8 米 · 03:28</span>
+            </div>
+            <div className="tide-info-row">
+              <span className="label">📉 最低潮位</span>
+              <span className="value down">0.4 米 · 15:32</span>
+            </div>
+            <div className="tide-info-row">
+              <span className="label">💨 风力风向</span>
+              <span className="value">东南风 3 级</span>
+            </div>
+            <div className="tide-info-row">
+              <span className="label">🌡️ 水温</span>
+              <span className="value">24.6 ℃</span>
+            </div>
+          </div>
+
+          {/* 赶海建议 */}
+          <div className="tide-tip">
+            <div className="tip-icon">💡</div>
+            <div className="tip-text">
+              <strong>今日赶海建议</strong>
+              下午 14:00 — 17:00 为最佳赶海窗口，潮差达 2.4 米，适合挖花蛤、捡海螺。记得穿防滑鞋、带盐瓶。
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 详情页 ====================
+  function DetailPage({ onBack }) {
+    const [scrollY, setScrollY] = useState(0);
+    const [liked, setLiked] = useState(false);
+    const [collected, setCollected] = useState(false);
+    const pageRef = useRef(null);
+
+    useEffect(() => {
+      const el = pageRef.current;
+      if (!el) return;
+      let ticking = false;
+      const onScroll = () => {
+        if (!ticking) {
+          requestAnimationFrame(() => {
+            setScrollY(el.scrollTop);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+      el.addEventListener('scroll', onScroll, { passive: true });
+      return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    const parallaxY = scrollY * 0.4;
+    const scale = 1 + scrollY * 0.001;
+    const opacity = Math.max(0, 1 - scrollY / 200);
+
+    return (
+      <div className="detail-page" ref={pageRef}>
+        <div className="detail-hero">
+          <div className="detail-hero-bg" style={{
+            background: 'linear-gradient(135deg, #f5d5b8 0%, #e8956a 100%)',
+            transform: `translateY(${parallaxY}px) scale(${scale})`,
+          }}>
+            🦀
+          </div>
+          <div className="detail-hero-overlay"></div>
+          <div className="detail-back-btn" onClick={onBack}>‹</div>
+          <div className="detail-hero-tag" style={{opacity}}>黎明蟹科</div>
+        </div>
+
+        <div className="detail-content">
+          <div className="detail-title">黎明蟹</div>
+          <div className="detail-latin">Matuta planipes (Fabricius, 1798)</div>
+
+          <div className="detail-stats">
+            <div className="detail-stat">
+              <div className="s-val">3-5</div>
+              <div className="s-lab">壳宽（厘米）</div>
+            </div>
+            <div className="detail-stat">
+              <div className="s-val">浅海</div>
+              <div className="s-lab">栖息深度</div>
+            </div>
+            <div className="detail-stat">
+              <div className="s-val">夜出</div>
+              <div className="s-lab">活动习性</div>
+            </div>
+            <div className="detail-stat">
+              <div className="s-val">⭐⭐</div>
+              <div className="s-lab">稀有程度</div>
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <h3>形态特征</h3>
+            <p>头胸甲呈圆形，宽度稍大于长度，表面密布颗粒。额缘突出，前缘中部内凹。螯足粗壮，两指内缘有钝齿。步足扁平呈桨状，适于游泳和掘沙。体色多为黄褐色或红褐色，壳面有不规则的紫红色斑点。</p>
+          </div>
+
+          <div className="detail-section">
+            <h3>生态习性</h3>
+            <p>栖息于潮间带至水深 50 米的砂质或泥沙质海底。昼伏夜出，白天潜入沙中，仅露出眼睛和触角，夜间外出觅食。主要以小型贝类、多毛类和有机碎屑为食。</p>
+          </div>
+
+          <div className="detail-section">
+            <h3>图鉴画廊</h3>
+            <div className="detail-gallery">
+              {[
+                {emoji:'🦀',color:'#f5d5b8'},
+                {emoji:'🌊',color:'#e8d4b8'},
+                {emoji:'🏖️',color:'#f0e0c8'},
+                {emoji:'🔬',color:'#e8c9a8'},
+              ].map((g, i) => (
+                <div key={i} className="gallery-item" style={{background: g.color}}>
+                  {g.emoji}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <h3>分布范围</h3>
+            <p>中国沿海均有分布，以黄渤海、东海较为常见。此外分布于日本、韩国、东南亚及澳大利亚北部沿海。</p>
+          </div>
+
+          <div className="detail-section">
+            <h3>经济价值</h3>
+            <p>可食用，肉质细嫩鲜美。退潮后在沙滩上较容易发现和捕捉，是赶海活动中常见的收获物之一。</p>
+          </div>
+        </div>
+
+        {/* 吸底操作栏 */}
+        <div className="detail-bottom-bar">
+          <div className="bottom-actions">
+            <div className={`bottom-action-btn ${liked ? 'active' : ''}`}
+                 onClick={() => setLiked(!liked)}>
+              {liked ? '❤️' : '🤍'}
+            </div>
+            <div className={`bottom-action-btn ${collected ? 'active' : ''}`}
+                 onClick={() => setCollected(!collected)}>
+              {collected ? '⭐' : '☆'}
+            </div>
+          </div>
+          <button className="bottom-main-btn" onClick={onBack}>记录到我的图鉴</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 个人中心 ====================
+  function ProfilePage() {
+    const [ringAnimated, setRingAnimated] = useState(false);
+    const ringsRef = useRef(null);
+
+    useEffect(() => {
+      const t = setTimeout(() => setRingAnimated(true), 300);
+      return () => clearTimeout(t);
+    }, []);
+
+    const CIRC = 2 * Math.PI * 25; // r=25 => ~157
+    const counts = [useCountUp(37, 1500, ringAnimated), useCountUp(12, 1500, ringAnimated), useCountUp(7, 1500, ringAnimated)];
+
+    return (
+      <div className="page">
+        <div className="profile-hero">
+          <div className="profile-top">
+            <div className="profile-avatar">🐚</div>
+            <div className="profile-info">
+              <div className="name">潮间带漫步者</div>
+              <div className="level">Lv.5 · 潮汐守望者</div>
+            </div>
+          </div>
+          <div className="profile-stats-row">
+            <div className="profile-stat">
+              <div className="num">37</div>
+              <div className="lab">图鉴物种</div>
+            </div>
+            <div className="profile-stat">
+              <div className="num">12</div>
+              <div className="lab">赶海次数</div>
+            </div>
+            <div className="profile-stat">
+              <div className="num">128</div>
+              <div className="lab">获赞总数</div>
+            </div>
+            <div className="profile-stat">
+              <div className="num">24</div>
+              <div className="lab">关注数</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 成就环形进度 - 签名动效 */}
+        <div className="achievement-section" ref={ringsRef}>
+          <div className="achievement-title">
+            成长进度
+            <span className="more">查看全部 ›</span>
+          </div>
+          <div className="achievement-rings">
+            {ACHIEVEMENTS.map((a, i) => (
+              <div key={i} className="ring-item">
+                <svg className="ring-svg" viewBox="0 0 60 60">
+                  <circle className="ring-bg" cx="30" cy="30" r="25"/>
+                  <circle className="ring-fill" cx="30" cy="30" r="25"
+                          style={{
+                            strokeDashoffset: ringAnimated ? CIRC * (1 - a.value / a.total) : CIRC,
+                            stroke: a.color
+                          }}/>
+                </svg>
+                <div className="ring-center" style={{color: a.color}}>{counts[i]}%</div>
+                <div className="ring-label">{a.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 宫格菜单 */}
+        <div className="profile-menu-grid">
+          {[
+            {icon:'📔',label:'我的图鉴'},
+            {icon:'📸',label:'识别记录'},
+            {icon:'🗺️',label:'足迹地图'},
+            {icon:'⭐',label:'我的收藏'},
+            {icon:'📝',label:'发布管理'},
+            {icon:'👥',label:'我的好友'},
+            {icon:'🔔',label:'消息通知'},
+            {icon:'⚙️',label:'设置'},
+          ].map((item, i) => (
+            <div key={i} className="profile-menu-item">
+              <div className="profile-menu-icon">{item.icon}</div>
+              <div className="profile-menu-label">{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 最近记录 */}
+        <div style={{padding:'0 16px 24px'}}>
+          <div style={{fontSize:15,fontWeight:700,color:'#4a2c18',marginBottom:12}}>最近赶海</div>
+          {[
+            {date:'8月15日',loc:'青岛金沙滩',finds:8,duration:'3.5小时'},
+            {date:'8月10日',loc:'威海半月湾',finds:12,duration:'4小时'},
+            {date:'8月5日',loc:'日照灯塔景区',finds:5,duration:'2.5小时'},
+          ].map((item, i) => (
+            <div key={i} style={{
+              background:'#fff',borderRadius:12,padding:14,marginBottom:8,
+              display:'flex',justifyContent:'space-between',alignItems:'center'
+            }}>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:'#2a1f15'}}>{item.loc}</div>
+                <div style={{fontSize:11,color:'#9a7558',marginTop:3}}>{item.date} · {item.duration}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:18,fontWeight:700,color:'#d97757'}}>{item.finds}</div>
+                <div style={{fontSize:10,color:'#9a7558'}}>种发现</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 发布页 ====================
+  function PublishPage({ onNavigate }) {
+    const [species, setSpecies] = useState('');
+    const [location, setLocation] = useState('青岛 · 金沙滩');
+    const [selectedTags, setSelectedTags] = useState(['新发现']);
+    const tags = ['新发现', '稀有', '食用', '有毒', '求助鉴定', '夜间赶海'];
+
+    const toggleTag = (tag) => {
+      setSelectedTags(prev =>
+        prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+      );
+    };
+
+    return (
+      <div className="page publish-page">
+        <div className="publish-upload">
+          <div className="upload-label">上传照片（最多9张）</div>
+          <div className="upload-grid">
+            {['🦀','🐚','🪸'].map((e, i) => (
+              <div key={i} className="upload-slot" style={{background:'#f5e6d0',fontSize:32}}>{e}</div>
+            ))}
+            <div className="upload-slot add">＋</div>
+          </div>
+        </div>
+
+        <div className="publish-form">
+          <div className="form-row">
+            <span className="label">物种名称</span>
+            <div className="input-wrap">
+              <input placeholder="输入或选择物种名称" value={species} onChange={e => setSpecies(e.target.value)} />
+            </div>
+            <span className="arrow">›</span>
+          </div>
+          <div className="form-row">
+            <span className="label">发现时间</span>
+            <div className="input-wrap">
+              <input defaultValue="2026-08-17 15:42" />
+            </div>
+            <span className="arrow">›</span>
+          </div>
+          <div className="form-row">
+            <span className="label">生境类型</span>
+            <div className="input-wrap">
+              <input defaultValue="潮间带 · 砂质滩涂" />
+            </div>
+            <span className="arrow">›</span>
+          </div>
+          <div className="form-row tag-row">
+            <span className="label">添加标签</span>
+            {tags.map(tag => (
+              <div key={tag}
+                   className={`tag-chip ${selectedTags.includes(tag) ? 'selected' : ''}`}
+                   onClick={() => toggleTag(tag)}>
+                {tag}
+              </div>
+            ))}
+          </div>
+          <div className="form-row" style={{alignItems:'flex-start'}}>
+            <span className="label">备注描述</span>
+            <div className="input-wrap">
+              <textarea rows={3} placeholder="记录发现时的环境、行为、数量等信息..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div className="publish-location">
+          <div className="loc-icon">📍</div>
+          <div>
+            <div className="loc-text">{location}</div>
+            <div className="loc-sub">山东省青岛市黄岛区金沙滩路 · 精度 5m</div>
+          </div>
+          <span style={{color:'#c4b59c',fontSize:14}}>›</span>
+        </div>
+
+        {/* 底部固定提交按钮 */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          padding: '10px 16px 14px',
+          background: 'linear-gradient(to top, #f8f3ea 60%, transparent)',
+        }}>
+          <button className="bottom-main-btn" style={{width:'100%'}} onClick={onNavigate && (() => onNavigate('home'))}>
+            发布记录
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 设计规范页 ====================
+  function SpecPage() {
+    const colors = [
+      { name: '主色', hex: '#D97757', bg: '#d97757' },
+      { name: '辅助色', hex: '#C48F50', bg: '#c48f50' },
+      { name: '点缀色', hex: '#5A7A6E', bg: '#5a7a6e' },
+      { name: '表面色', hex: '#F8F3EA', bg: '#f8f3ea' },
+      { name: '砂米色', hex: '#F5E6D0', bg: '#f5e6d0' },
+    ];
+
+    const types = [
+      { size: 28, weight: 700, label: '大标题 H1', info: '28px / Bold' },
+      { size: 22, weight: 700, label: '页面标题 H2', info: '22px / Bold' },
+      { size: 17, weight: 600, label: '区块标题 H3', info: '17px / Semibold' },
+      { size: 15, weight: 500, label: '正文 Body', info: '15px / Medium' },
+      { size: 13, weight: 400, label: '辅助文字', info: '13px / Regular' },
+      { size: 11, weight: 400, label: '说明文字', info: '11px / Regular' },
+    ];
+
+    const spacings = [
+      { label: 'xs', size: 24, val: '4px' },
+      { label: 'sm', size: 48, val: '8px' },
+      { label: 'md', size: 72, val: '16px' },
+      { label: 'lg', size: 100, val: '24px' },
+      { label: 'xl', size: 140, val: '32px' },
+    ];
+
+    const icons = [
+      { ic: '🐚', name: '贝壳' },
+      { ic: '🦀', name: '蟹类' },
+      { ic: '🌊', name: '潮汐' },
+      { ic: '📷', name: '相机' },
+      { ic: '📍', name: '定位' },
+      { ic: '🔍', name: '搜索' },
+      { ic: '⭐', name: '收藏' },
+      { ic: '💬', name: '评论' },
+    ];
+
+    return (
+      <div className="page spec-page">
+        <div className="spec-hero">
+          <h2>设计规范</h2>
+          <p>潮间带 Design System v1.0<br/>基于砂陶土与海沫绿的海岸美学体系</p>
+        </div>
+
+        <div className="spec-section">
+          <h3>色彩系统</h3>
+          <div className="color-palette">
+            {colors.map((c, i) => (
+              <div key={i} className="color-swatch">
+                <div className="swatch-circle" style={{background: c.bg}}></div>
+                <div className="swatch-name">{c.name}</div>
+                <div className="swatch-hex">{c.hex}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="spec-section">
+          <h3>字体排印</h3>
+          {types.map((t, i) => (
+            <div key={i} className="type-sample">
+              <span className="ts-text" style={{fontSize: t.size, fontWeight: t.weight}}>{t.label}</span>
+              <span className="ts-info">{t.info}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="spec-section">
+          <h3>间距系统</h3>
+          {spacings.map((s, i) => (
+            <div key={i} className="spacing-show">
+              <span className="spacing-label">{s.label}</span>
+              <div className="spacing-bar" style={{width: s.size}}>{s.val}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="spec-section">
+          <h3>图标系统</h3>
+          <div className="icon-grid">
+            {icons.map((ic, i) => (
+              <div key={i} className="icon-item">
+                <div className="ic">{ic.ic}</div>
+                <div className="ic-name">{ic.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="spec-section">
+          <h3>组件规范</h3>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div>
+              <div style={{fontSize:12,color:'#9a7558',marginBottom:6}}>主按钮</div>
+              <button className="bottom-main-btn" style={{width:'100%',height:44}}>主要操作</button>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,color:'#9a7558',marginBottom:6}}>标签选中</div>
+                <div style={{padding:'6px 14px',background:'#d97757',color:'#fff',borderRadius:16,fontSize:12,display:'inline-block'}}>已选中</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,color:'#9a7558',marginBottom:6}}>标签默认</div>
+                <div style={{padding:'6px 14px',background:'#fff',color:'#6b4226',borderRadius:16,fontSize:12,display:'inline-block',border:'1px solid #f0e6d5'}}>未选中</div>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:12,color:'#9a7558',marginBottom:6}}>卡片样式</div>
+              <div style={{background:'#fff',borderRadius:12,padding:14,boxShadow:'0 2px 12px -4px rgba(107,66,38,0.1)',fontSize:13,color:'#4a2c18'}}>
+                标准卡片 · 12px 圆角 · 柔和投影
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 接口文档页 ====================
+  function ApiPage() {
+    const [openIndex, setOpenIndex] = useState(0);
+
+    const apis = [
+      {
+        method: 'GET', path: '/api/tide/current',
+        desc: '获取当前潮位数据',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"location"</span>: <span class="s">"青岛金沙滩"</span>,
+    <span class="k">"height"</span>: <span class="n">2.4</span>,
+    <span class="k">"trend"</span>: <span class="s">"falling"</span>,
+    <span class="k">"nextLow"</span>: <span class="s">"15:32"</span>,
+    <span class="k">"nextHigh"</span>: <span class="s">"03:28"</span>,
+    <span class="k">"hourly"</span>: [...]
+  }
+}`
+      },
+      {
+        method: 'GET', path: '/api/species/list',
+        desc: '获取物种图鉴列表',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"total"</span>: <span class="n">128</span>,
+    <span class="k">"list"</span>: [
+      {
+        <span class="k">"id"</span>: <span class="n">1</span>,
+        <span class="k">"name"</span>: <span class="s">"黎明蟹"</span>,
+        <span class="k">"latin"</span>: <span class="s">"Matuta planipes"</span>,
+        <span class="k">"rarity"</span>: <span class="s">"rare"</span>,
+        <span class="k">"tags"</span>: [...]
+      }
+    ]
+  }
+}`
+      },
+      {
+        method: 'POST', path: '/api/record/create',
+        desc: '发布赶海记录',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"recordId"</span>: <span class="s">"rec_20240817_001"</span>,
+    <span class="k">"status"</span>: <span class="s">"published"</span>,
+    <span class="k">"createdAt"</span>: <span class="s">"2026-08-17T15:42:00Z"</span>
+  }
+}`
+      },
+      {
+        method: 'GET', path: '/api/user/profile',
+        desc: '获取用户个人信息',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"userId"</span>: <span class="s">"u_82734"</span>,
+    <span class="k">"nickname"</span>: <span class="s">"潮间带漫步者"</span>,
+    <span class="k">"level"</span>: <span class="n">5</span>,
+    <span class="k">"speciesCount"</span>: <span class="n">37</span>,
+    <span class="k">"trips"</span>: <span class="n">12</span>
+  }
+}`
+      },
+      {
+        method: 'PUT', path: '/api/record/:id',
+        desc: '更新赶海记录',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"message"</span>: <span class="s">"更新成功"</span>
+}`
+      },
+      {
+        method: 'DEL', path: '/api/record/:id',
+        desc: '删除赶海记录',
+        response: `{
+  <span class="k">"code"</span>: <span class="n">200</span>,
+  <span class="k">"message"</span>: <span class="s">"删除成功"</span>
+}`
+      },
+    ];
+
+    const methodClass = { GET:'get', POST:'post', PUT:'put', DEL:'del' };
+
+    return (
+      <div className="page api-page">
+        <div className="api-hero">
+          <h2>接口文档</h2>
+          <p>潮间带 Open API v1.0 · 共 6 个接口</p>
+        </div>
+
+        <div className="api-status" style={{paddingTop:12}}>
+          <div className="status-pill">
+            <div className="s-num">6</div>
+            <div className="s-lab">接口总数</div>
+          </div>
+          <div className="status-pill">
+            <div className="s-num">99.9%</div>
+            <div className="s-lab">可用性</div>
+          </div>
+          <div className="status-pill">
+            <div className="s-num">2ms</div>
+            <div className="s-lab">平均响应</div>
+          </div>
+        </div>
+
+        {apis.map((api, i) => (
+          <div key={i} className="api-section">
+            <div className="api-header" onClick={() => setOpenIndex(openIndex === i ? -1 : i)}>
+              <span className={`api-method ${methodClass[api.method]}`}>{api.method}</span>
+              <span className="api-path">{api.path}</span>
+              <span className={`api-arrow ${openIndex === i ? 'open' : ''}`}>▼</span>
+            </div>
+            {openIndex === i && (
+              <div className="api-body open">
+                <div style={{color:'#8b6242',marginBottom:6}}>// {api.desc}</div>
+                <div>Response:</div>
+                <pre style={{margin:0,fontFamily:'inherit',whiteSpace:'pre-wrap'}} dangerouslySetInnerHTML={{__html: api.response}}></pre>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div style={{padding:'12px 12px 20px',fontSize:11,color:'#9a7558',textAlign:'center'}}>
+          Base URL: api.tide-zone.example.com<br/>
+          所有接口需携带 token 鉴权
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 主应用 ====================
+  function App() {
+    const [currentPage, setCurrentPage] = useState('home');
+    const [navTitle, setNavTitle] = useState('潮间带');
+    const [pageStack, setPageStack] = useState(['home']);
+    const [transition, setTransition] = useState('push');
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [isTabBar, setIsTabBar] = useState(true);
+    const [pullDistance, setPullDistance] = useState(0);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const pageContainerRef = useRef(null);
+    const touchStartY = useRef(0);
+    const rafRef = useRef(null);
+
+    const NAV_TITLES = {
+      home: '潮间带',
+      guide: '生物图鉴',
+      tide: '潮汐预报',
+      profile: '我的',
+      publish: '发布记录',
+      detail: '物种详情',
+      spec: '设计规范',
+      api: '接口文档',
+    };
+
+    const TAB_PAGES = ['home', 'guide', 'tide', 'profile'];
+    const MODAL_PAGES = ['detail', 'publish'];
+
+    const navigate = useCallback((page) => {
+      if (page === currentPage) return;
+      setTransition('push');
+      setCurrentPage(page);
+      setNavTitle(NAV_TITLES[page] || '');
+      setPageStack(prev => [...prev, page]);
+      setIsTabBar(TAB_PAGES.includes(page));
+
+      // 更新侧导航
+      document.querySelectorAll('.page-nav button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.page === page);
+      });
+    }, [currentPage]);
+
+    const goBack = useCallback(() => {
+      if (pageStack.length <= 1) return;
+      setTransition('pop');
+      const newStack = pageStack.slice(0, -1);
+      const prevPage = newStack[newStack.length - 1];
+      setCurrentPage(prevPage);
+      setNavTitle(NAV_TITLES[prevPage] || '');
+      setPageStack(newStack);
+      setIsTabBar(TAB_PAGES.includes(prevPage));
+
+      document.querySelectorAll('.page-nav button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.page === prevPage);
+      });
+    }, [pageStack]);
+
+    // Tab 切换
+    useEffect(() => {
+      const tabs = document.querySelectorAll('.tab-item');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const page = tab.dataset.tab;
+          if (TAB_PAGES.includes(page)) {
+            setTransition('tab');
+            setCurrentPage(page);
+            setNavTitle(NAV_TITLES[page]);
+            setPageStack([page]);
+            setIsTabBar(true);
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.querySelectorAll('.page-nav button').forEach(btn => {
+              btn.classList.toggle('active', btn.dataset.page === page);
+            });
+          }
+        });
+      });
+    }, []);
+
+    // 侧导航点击
+    useEffect(() => {
+      const navBtns = document.querySelectorAll('.page-nav button');
+      navBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const page = btn.dataset.page;
+          setTransition('push');
+          setCurrentPage(page);
+          setNavTitle(NAV_TITLES[page] || '');
+          setPageStack([page]);
+          setIsTabBar(TAB_PAGES.includes(page));
+
+          // 同步 tab-bar
+          document.querySelectorAll('.tab-item').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === page);
+          });
+          navBtns.forEach(b => b.classList.toggle('active', b.dataset.page === page));
+        });
+      });
+    }, []);
+
+    // Action Sheet 逻辑
+    useEffect(() => {
+      const mask = document.getElementById('sheetMask');
+      const sheet = document.getElementById('actionSheet');
+      const cancel = document.getElementById('sheetCancel');
+      mask?.addEventListener('click', () => {
+        mask.classList.remove('open');
+        sheet.classList.remove('open');
+        setSheetOpen(false);
+      });
+      cancel?.addEventListener('click', () => {
+        mask.classList.remove('open');
+        sheet.classList.remove('open');
+        setSheetOpen(false);
+      });
+    }, []);
+
+    // 长按列表项弹 ActionSheet
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        const cards = document.querySelectorAll('.discover-card');
+        cards.forEach((card, i) => {
+          let pressTimer;
+          card.addEventListener('touchstart', () => {
+            pressTimer = setTimeout(() => {
+              document.getElementById('sheetMask').classList.add('open');
+              document.getElementById('actionSheet').classList.add('open');
+              setSheetOpen(true);
+            }, 600);
+          });
+          card.addEventListener('touchend', () => clearTimeout(pressTimer));
+          card.addEventListener('touchmove', () => clearTimeout(pressTimer));
+        });
+      }, 500);
+      return () => clearTimeout(timer);
+    }, [currentPage]);
+
+    // 下拉刷新
+    useEffect(() => {
+      const container = document.querySelector('.page');
+      if (!container) return;
+
+      const onTouchStart = (e) => {
+        if (container.scrollTop <= 0) {
+          touchStartY.current = e.touches ? e.touches[0].clientY : e.clientY;
+        }
+      };
+      const onTouchMove = (e) => {
+        if (container.scrollTop <= 0) {
+          const y = e.touches ? e.touches[0].clientY : e.clientY;
+          const diff = y - touchStartY.current;
+          if (diff > 0 && diff < 80) {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            rafRef.current = requestAnimationFrame(() => {
+              setPullDistance(diff);
+            });
+          }
+        }
+      };
+      const onTouchEnd = () => {
+        if (pullDistance > 50) {
+          setIsRefreshing(true);
+          setTimeout(() => {
+            setIsRefreshing(false);
+            setPullDistance(0);
+          }, 1500);
+        } else {
+          setPullDistance(0);
+        }
+      };
+
+      container.addEventListener('touchstart', onTouchStart, { passive: true });
+      container.addEventListener('touchmove', onTouchMove, { passive: true });
+      container.addEventListener('touchend', onTouchEnd, { passive: true });
+      // 鼠标模拟
+      let isDown = false;
+      const onMouseDown = (e) => {
+        if (container.scrollTop <= 0) { isDown = true; touchStartY.current = e.clientY; }
+      };
+      const onMouseMove = (e) => {
+        if (!isDown) return;
+        const diff = e.clientY - touchStartY.current;
+        if (diff > 0 && diff < 80) {
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          rafRef.current = requestAnimationFrame(() => setPullDistance(diff));
+        }
+      };
+      const onMouseUp = () => {
+        if (!isDown) return;
+        isDown = false;
+        if (pullDistance > 50) {
+          setIsRefreshing(true);
+          setTimeout(() => { setIsRefreshing(false); setPullDistance(0); }, 1500);
+        } else {
+          setPullDistance(0);
+        }
+      };
+      container.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+
+      return () => {
+        container.removeEventListener('touchstart', onTouchStart);
+        container.removeEventListener('touchmove', onTouchMove);
+        container.removeEventListener('touchend', onTouchEnd);
+        container.removeEventListener('mousedown', onMouseDown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      };
+    }, [currentPage, pullDistance]);
+
+    // visibilitychange 暂停动画
+    useEffect(() => {
+      const onVisibility = () => {
+        if (document.hidden) {
+          document.querySelectorAll('.wave-svg, .shine, .pulse-ring, .fab-btn, .profile-avatar::after').forEach(el => {
+            el.style.animationPlayState = 'paused';
+          });
+        } else {
+          document.querySelectorAll('.wave-svg, .shine, .pulse-ring, .fab-btn, .profile-avatar::after').forEach(el => {
+            el.style.animationPlayState = 'running';
+          });
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, []);
+
+    // 3D 倾斜卡片
+    useEffect(() => {
+      const card = document.querySelector('.home-tide-card');
+      if (!card) return;
+      let rafId;
+      const onMove = (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          card.style.transform = `perspective(800px) rotateY(${x * 8}deg) rotateX(${-y * 6}deg)`;
+        });
+      };
+      const onLeave = () => {
+        if (rafId) cancelAnimationFrame(rafId);
+        card.style.transform = '';
+      };
+      card.addEventListener('mousemove', onMove);
+      card.addEventListener('mouseleave', onLeave);
+      return () => {
+        card.removeEventListener('mousemove', onMove);
+        card.removeEventListener('mouseleave', onLeave);
+        if (rafId) cancelAnimationFrame(rafId);
+      };
+    }, [currentPage]);
+
+    // 渲染页面
+    const renderPage = () => {
+      switch (currentPage) {
+        case 'home': return <HomePage onNavigate={navigate} />;
+        case 'guide': return <GuidePage onNavigate={navigate} />;
+        case 'tide': return <TidePage />;
+        case 'profile': return <ProfilePage />;
+        case 'publish': return <PublishPage onNavigate={navigate} />;
+        case 'detail': return <DetailPage onBack={goBack} />;
+        case 'spec': return <SpecPage />;
+        case 'api': return <ApiPage />;
+        default: return <HomePage onNavigate={navigate} />;
+      }
+    };
+
+    return (
+      <>
+        <div className="page-container" ref={pageContainerRef} style={{
+          transform: `translateY(${pullDistance * 0.5}px)`,
+          transition: isRefreshing ? 'none' : 'transform 0.3s ease'
+        }}>
+          {(pullDistance > 0 || isRefreshing) && (
+            <div className="pull-refresh">
+              {isRefreshing ? (
+                <>
+                  <div className="pull-icon"></div>
+                  <span>刷新中...</span>
+                </>
+              ) : (
+                <span>{pullDistance > 50 ? '松开刷新' : '下拉刷新'}</span>
+              )}
+            </div>
+          )}
+          {renderPage()}
+        </div>
+        <style>{`
+          .tab-bar { display: ${isTabBar ? 'flex' : 'none'}; }
+        `}</style>
+      </>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('pageContainer').parentNode.appendChild(document.createElement('div'))).render(<App />);
+
+  // ==================== 自定义光标 ====================
+  (function() {
+    const cursor = document.getElementById('customCursor');
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let cursorX = mouseX;
+    let cursorY = mouseY;
+    let rafId;
+    let isVisible = false;
+
+    // 初始位置
+    cursor.style.left = mouseX + 'px';
+    cursor.style.top = mouseY + 'px';
+
+    function onMouseMove(e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (!isVisible) {
+        isVisible = true;
+        cursor.style.opacity = '1';
+      }
+    }
+
+    function animate() {
+      cursorX += (mouseX - cursorX) * 0.2;
+      cursorY += (mouseY - cursorY) * 0.2;
+      cursor.style.left = cursorX + 'px';
+      cursor.style.top = cursorY + 'px';
+      rafId = requestAnimationFrame(animate);
+    }
+    animate();
+
+    document.addEventListener('mousemove', onMouseMove);
+
+    // 悬停检测
+    let hoverRaf;
+    function checkHover() {
+      const el = document.elementFromPoint(mouseX, mouseY);
+      if (el && el.closest('button, .tab-item, .grid-item, .discover-card, .guide-item, .filter-tab, .fab-btn, .bottom-action-btn, .bottom-main-btn, .sheet-item, .week-day, .profile-menu-item, .upload-slot.add, .tag-chip, .api-header, .section-more, .tide-tip')) {
+        cursor.classList.add('cursor-hover');
+      } else {
+        cursor.classList.remove('cursor-hover');
+      }
+    }
+    document.addEventListener('mousemove', () => {
+      if (hoverRaf) cancelAnimationFrame(hoverRaf);
+      hoverRaf = requestAnimationFrame(checkHover);
+    });
+
+    // 点击涟漪
+    document.addEventListener('click', (e) => {
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+
+    // visibilitychange
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        cancelAnimationFrame(rafId);
+      } else {
+        animate();
+      }
+    });
+
+    // reduced-motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cursor.style.transition = 'none';
+    }
+  })();
+
+  // 升级为全栈应用宣告
+  function announceUpgrade() {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete')
+    window.addEventListener('load', announceUpgrade, { once: true });
+</script>
+</body>
+</html>
