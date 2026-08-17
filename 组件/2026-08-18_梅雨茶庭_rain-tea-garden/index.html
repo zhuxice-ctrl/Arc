@@ -1,0 +1,1843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>梅雨茶庭 · 拟物交互实验室</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+/* ===== 基础重置与变量 ===== */
+:root{
+  --moss: #5A6B4F;          /* 苔绿 */
+  --rain-gray: #B8C0BB;     /* 雨灰 */
+  --bamboo: #8FA98F;        /* 竹青 */
+  --rice: #F2F0E9;          /* 宣纸白 */
+  --wet-stone: #3E4742;     /* 湿石灰 */
+  --moss-dark: #3D4A35;
+  --moss-light: #7A8C6E;
+  --rain-dark: #8A9290;
+  --wet-moss: #2E3829;
+  --warm-glow: #F2C688;     /* 灯笼暖光 */
+  --ink: #2A2E2A;
+  --paper: #E8E5D9;
+
+  --cursor-color: #F2F0E9;
+  --cursor-dot: #8FA98F;
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+html,body{
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background: var(--rain-gray);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  color: var(--ink);
+  cursor: none;
+}
+
+body{
+  position: relative;
+}
+
+/* ===== 自定义光标 ===== */
+.cursor-outer{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  margin-top: -16px;
+  border: 2.5px solid var(--cursor-color);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: width .25s cubic-bezier(.25,.46,.45,.94),
+              height .25s cubic-bezier(.25,.46,.45,.94),
+              margin-left .25s cubic-bezier(.25,.46,.45,.94),
+              margin-top .25s cubic-bezier(.25,.46,.45,.94),
+              border-color .25s ease,
+              opacity .2s ease;
+  box-shadow: 0 0 8px rgba(242,240,233,.4),
+              0 0 16px rgba(143,169,143,.2),
+              inset 0 0 6px rgba(242,240,233,.3);
+  mix-blend-mode: difference;
+}
+.cursor-outer.hover{
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  margin-top: -26px;
+  border-color: var(--warm-glow);
+  box-shadow: 0 0 14px rgba(242,198,136,.6),
+              0 0 28px rgba(242,198,136,.3),
+              inset 0 0 8px rgba(242,198,136,.4);
+}
+.cursor-outer.drag{
+  width: 60px;
+  height: 60px;
+  margin-left: -30px;
+  margin-top: -30px;
+  border-color: var(--rice);
+  box-shadow: 0 0 20px rgba(242,240,233,.7),
+              0 0 40px rgba(143,169,143,.3);
+}
+
+.cursor-dot{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  margin-top: -3px;
+  background: var(--cursor-dot);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform .12s ease-out, background .2s ease;
+  box-shadow: 0 0 6px var(--cursor-dot);
+}
+.cursor-dot.hover{
+  background: var(--warm-glow);
+  box-shadow: 0 0 8px var(--warm-glow);
+  transform: scale(1.4);
+}
+
+/* 涟漪 */
+.cursor-ripple{
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border: 2px solid var(--rice);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+  transform: scale(1);
+  animation: cursorRipple .6s cubic-bezier(.16,.84,.32,1) forwards;
+}
+@keyframes cursorRipple{
+  0% { opacity: .7; transform: scale(1); }
+  100% { opacity: 0; transform: scale(6); }
+}
+
+/* ===== 背景与环境层 ===== */
+.scene-bg{
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(242,240,233,.15) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 80%, rgba(90,107,79,.12) 0%, transparent 50%),
+    linear-gradient(180deg, #A8B5AE 0%, #94A199 40%, #809089 100%);
+}
+
+/* 雨幕 */
+.rain-canvas{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  opacity: .6;
+}
+
+/* 雾层 */
+.fog-layer{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  background:
+    radial-gradient(ellipse 60% 30% at 20% 70%, rgba(242,240,233,.12), transparent 70%),
+    radial-gradient(ellipse 50% 25% at 80% 60%, rgba(184,192,187,.1), transparent 65%);
+}
+
+/* ===== 页头 ===== */
+.header{
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 36px;
+  z-index: 100;
+  pointer-events: none;
+}
+.header .title-block{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.header h1{
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--wet-stone);
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+}
+.header .subtitle{
+  font-size: 12px;
+  color: var(--moss);
+  letter-spacing: 2px;
+}
+
+.nav-dots{
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+}
+.nav-dot{
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(242,240,233,.3);
+  border: 1.5px solid rgba(62,71,66,.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--wet-stone);
+  cursor: none;
+  transition: all .3s cubic-bezier(.25,.46,.45,.94);
+  backdrop-filter: blur(4px);
+}
+.nav-dot:hover{
+  background: rgba(242,240,233,.7);
+  border-color: var(--moss);
+  transform: scale(1.15);
+}
+.nav-dot.active{
+  background: var(--moss);
+  color: var(--rice);
+  border-color: var(--moss-dark);
+}
+
+/* ===== 展区标题 ===== */
+.exhibit-label{
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  opacity: .85;
+}
+.exhibit-label .name{
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 16px;
+  color: var(--wet-stone);
+  letter-spacing: 3px;
+  font-weight: 500;
+}
+.exhibit-label .hint{
+  font-size: 10px;
+  color: var(--moss);
+  letter-spacing: 1px;
+}
+
+/* ===== 展区 1：雨滴涟漪池 ===== */
+.pond-section{
+  position: absolute;
+  left: 60px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+}
+.pond-wrapper{
+  position: relative;
+  width: 340px;
+  height: 280px;
+}
+.pond-canvas{
+  position: absolute;
+  inset: 0;
+  border-radius: 40% 60% 55% 45% / 50% 45% 55% 50%;
+  cursor: none;
+  box-shadow:
+    inset 0 10px 30px rgba(62,71,66,.3),
+    inset 0 -5px 15px rgba(184,192,187,.4),
+    0 8px 24px rgba(0,0,0,.15);
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, #7A8C84 0%, #5A6B64 40%, #3E4742 100%);
+}
+.pond-edge{
+  position: absolute;
+  inset: -8px;
+  border-radius: 42% 58% 57% 43% / 52% 47% 53% 48%;
+  background:
+    linear-gradient(135deg, var(--moss) 0%, var(--moss-dark) 50%, var(--wet-moss) 100%);
+  z-index: -1;
+  box-shadow:
+    inset 0 2px 6px rgba(255,255,255,.2),
+    inset 0 -2px 6px rgba(0,0,0,.3),
+    0 10px 30px rgba(0,0,0,.2);
+}
+.pond-label{
+  bottom: -40px;
+  left: 0;
+}
+
+/* ===== 展区 2：竹帘 ===== */
+.blind-section{
+  position: absolute;
+  right: 80px;
+  top: 100px;
+  z-index: 30;
+}
+.blind-wrapper{
+  position: relative;
+  width: 200px;
+  height: 360px;
+  background:
+    linear-gradient(180deg, rgba(232,229,217,.3) 0%, rgba(232,229,217,.1) 100%);
+  border: 1px solid rgba(62,71,66,.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.blind-rail{
+  position: absolute;
+  top: 0;
+  left: -10px;
+  right: -10px;
+  height: 16px;
+  background: linear-gradient(180deg, #6B5B4A 0%, #4A3E32 100%);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  z-index: 5;
+}
+.blind-bamboo{
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  transform-origin: top center;
+}
+.bamboo-slats{
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.bamboo-slat{
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 8px;
+  background:
+    linear-gradient(180deg, #9DBA8C 0%, #7FA06E 40%, #5A7B4F 100%);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 2px rgba(255,255,255,.3),
+    0 2px 4px rgba(0,0,0,.15);
+}
+.bamboo-thread{
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(139,119,90,.5);
+  z-index: 2;
+}
+.bamboo-thread.t1{ left: 25%; }
+.bamboo-thread.t2{ left: 50%; }
+.bamboo-thread.t3{ left: 75%; }
+
+.blind-bottom-bar{
+  position: absolute;
+  bottom: 0;
+  left: -6px;
+  right: -6px;
+  height: 20px;
+  background: linear-gradient(180deg, #8B7355 0%, #5C4A36 100%);
+  border-radius: 3px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.3);
+  cursor: grab;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.blind-bottom-bar:active{ cursor: grabbing; }
+.blind-bottom-bar .handle-icon{
+  width: 12px;
+  height: 3px;
+  background: rgba(242,240,233,.5);
+  border-radius: 2px;
+}
+
+.blind-label{
+  bottom: -36px;
+  left: 0;
+}
+
+/* ===== 展区 3：惊鹿竹筒 ===== */
+.shishi-section{
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+.shishi-wrapper{
+  position: relative;
+  width: 280px;
+  height: 200px;
+}
+.shishi-base{
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 60px;
+  background:
+    linear-gradient(180deg, #6A7065 0%, #4A5048 50%, #3A4038 100%);
+  border-radius: 8px 8px 12px 12px;
+  box-shadow:
+    inset 0 2px 4px rgba(255,255,255,.2),
+    0 6px 16px rgba(0,0,0,.3);
+}
+.shishi-base::before{
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 30%, #5A6258 0%, #3A4038 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.4);
+}
+
+.shishi-bamboo{
+  position: absolute;
+  bottom: 58px;
+  left: 50%;
+  width: 160px;
+  height: 28px;
+  transform-origin: 85% 50%;
+  transform: translateX(-85%) rotate(-12deg);
+  transition: none;
+}
+.bamboo-tube{
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, #A8C088 0%, #7A9860 45%, #5A7840 100%);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 2px 4px rgba(255,255,255,.4),
+    inset 0 -2px 3px rgba(0,0,0,.2),
+    0 4px 8px rgba(0,0,0,.25);
+}
+.bamboo-tube::before,
+.bamboo-tube::after{
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  background: #4A6830;
+  border-radius: 1px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+.bamboo-tube::before{ left: 30%; }
+.bamboo-tube::after{ left: 60%; }
+
+.bamboo-water-level{
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  right: 40px;
+  bottom: 4px;
+  background: linear-gradient(180deg, rgba(184,192,187,.6) 0%, rgba(138,146,144,.7) 100%);
+  border-radius: 3px;
+  transform-origin: right center;
+  transform: scaleX(0);
+  transition: none;
+}
+
+.bamboo-pivot{
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #5A4A38 0%, #3A2E24 100%);
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  z-index: 3;
+}
+
+.shishi-stone{
+  position: absolute;
+  bottom: 0;
+  right: 10px;
+  width: 50px;
+  height: 30px;
+  background:
+    linear-gradient(180deg, #7A8078 0%, #5A6058 100%);
+  border-radius: 40% 60% 50% 50%;
+  box-shadow: 0 3px 8px rgba(0,0,0,.25);
+}
+
+/* 水滴 */
+.shishi-drip{
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  width: 4px;
+  height: 8px;
+  background: linear-gradient(180deg, rgba(184,192,187,.8), rgba(138,146,144,.9));
+  border-radius: 50% 50% 40% 40%;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.shishi-label{
+  bottom: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* ===== 展区 4：石灯笼 ===== */
+.lantern-section{
+  position: absolute;
+  right: 180px;
+  bottom: 100px;
+  z-index: 30;
+}
+.lantern-wrapper{
+  position: relative;
+  width: 120px;
+  height: 320px;
+}
+.lantern-pole{
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 180px;
+  background:
+    linear-gradient(90deg, #4A5045 0%, #6A7065 30%, #6A7065 70%, #4A5045 100%);
+  border-radius: 2px;
+  box-shadow: 2px 2px 6px rgba(0,0,0,.2);
+}
+.lantern-base{
+  position: absolute;
+  bottom: 178px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 12px;
+  background:
+    linear-gradient(180deg, #7A8075 0%, #5A6055 100%);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+.lantern-body{
+  position: absolute;
+  bottom: 190px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 100px;
+  background:
+    linear-gradient(180deg, #6A7065 0%, #5A6055 100%);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+}
+.lantern-paper{
+  width: 60px;
+  height: 80px;
+  background: var(--paper);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow .8s ease, background .8s ease;
+  box-shadow: inset 0 0 10px rgba(0,0,0,.15);
+}
+.lantern-body.lit .lantern-paper{
+  background:
+    radial-gradient(circle at 50% 50%, #FFE0A8 0%, #F2C688 40%, #E0A860 100%);
+  box-shadow:
+    0 0 40px rgba(242,198,136,.8),
+    0 0 80px rgba(242,198,136,.4),
+    0 0 120px rgba(242,198,136,.2),
+    inset 0 0 20px rgba(255,224,168,.6);
+}
+/* 纸纹 */
+.lantern-paper::before{
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 8px,
+      rgba(0,0,0,.04) 8px,
+      rgba(0,0,0,.04) 9px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 12px,
+      rgba(0,0,0,.03) 12px,
+      rgba(0,0,0,.03) 13px
+    );
+  pointer-events: none;
+}
+
+.lantern-roof{
+  position: absolute;
+  bottom: 288px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 20px;
+  background:
+    linear-gradient(180deg, #7A8075 0%, #5A6055 100%);
+  clip-path: polygon(5% 100%, 0% 40%, 10% 0%, 90% 0%, 100% 40%, 95% 100%);
+  box-shadow: 0 -2px 4px rgba(0,0,0,.1);
+}
+.lantern-top{
+  position: absolute;
+  bottom: 306px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 18px;
+  background:
+    linear-gradient(180deg, #6A7065 0%, #5A6055 100%);
+  border-radius: 4px 4px 2px 2px;
+}
+
+/* 拉绳 */
+.lantern-rope{
+  position: absolute;
+  top: 312px;
+  left: 50%;
+  transform-origin: top center;
+  cursor: none;
+  z-index: 20;
+}
+.rope-string{
+  width: 2px;
+  height: 80px;
+  background: linear-gradient(180deg, #8B7355, #6B5540);
+  margin: 0 auto;
+  border-radius: 1px;
+}
+.rope-tassel{
+  width: 14px;
+  height: 20px;
+  margin: 0 auto;
+  background:
+    linear-gradient(180deg, #C0A080 0%, #8B6F50 100%);
+  border-radius: 0 0 4px 4px;
+  position: relative;
+  cursor: grab;
+}
+.rope-tassel:active{ cursor: grabbing; }
+.rope-tassel::before{
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  background: #6B5540;
+  border-radius: 1px;
+}
+
+/* 地面光晕 */
+.lantern-glow-ground{
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 40px;
+  background: radial-gradient(ellipse at center, rgba(242,198,136,.3) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+  filter: blur(4px);
+}
+.lantern-wrapper.lit .lantern-glow-ground{
+  opacity: 1;
+}
+
+.lantern-label{
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* ===== 展区 5：青苔石 ===== */
+.moss-section{
+  position: absolute;
+  left: 120px;
+  bottom: 80px;
+  z-index: 30;
+}
+.moss-wrapper{
+  position: relative;
+  width: 220px;
+  height: 150px;
+}
+.moss-stone{
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 120px;
+  background:
+    radial-gradient(ellipse 60% 80% at 40% 30%, #8A8F88 0%, #6A7068 50%, #4A5048 100%);
+  border-radius: 50% 50% 45% 55% / 55% 55% 45% 45%;
+  box-shadow:
+    inset 0 8px 16px rgba(255,255,255,.15),
+    inset 0 -6px 12px rgba(0,0,0,.3),
+    0 8px 20px rgba(0,0,0,.25);
+  overflow: hidden;
+}
+.moss-canvas{
+  position: absolute;
+  inset: 0;
+  cursor: none;
+  border-radius: inherit;
+}
+
+/* 水滴在石上 */
+.stone-drops{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.stone-drop{
+  position: absolute;
+  width: 6px;
+  height: 4px;
+  background: radial-gradient(ellipse at 30% 30%, rgba(242,240,233,.6), rgba(184,192,187,.3));
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+
+.moss-label{
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* ===== 展区 6：雨链 ===== */
+.chain-section{
+  position: absolute;
+  left: 420px;
+  top: 60px;
+  z-index: 25;
+}
+.chain-wrapper{
+  position: relative;
+  width: 60px;
+  height: 400px;
+  cursor: none;
+}
+.chain-hook{
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 14px;
+  border: 3px solid #6A7068;
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+}
+.chain-link{
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 22px;
+  border: 2px solid #5A6058;
+  border-radius: 50%;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.2);
+}
+.chain-droplet{
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 18px;
+  background:
+    radial-gradient(ellipse at 30% 30%, rgba(242,240,233,.8) 0%, rgba(184,192,187,.9) 50%, rgba(138,146,144,.95) 100%);
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+  box-shadow:
+    inset -2px -2px 4px rgba(0,0,0,.15),
+    0 2px 6px rgba(0,0,0,.2);
+  cursor: grab;
+  z-index: 5;
+  top: 40px;
+}
+.chain-droplet:active{ cursor: grabbing; }
+.chain-droplet::after{
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 4px;
+  height: 4px;
+  background: rgba(255,255,255,.7);
+  border-radius: 50%;
+}
+
+.chain-splash{
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 8px;
+  background: radial-gradient(ellipse at center, rgba(184,192,187,.5) 0%, transparent 70%);
+  opacity: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.chain-label{
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* ===== 底部说明条 ===== */
+.footer-bar{
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  z-index: 100;
+  background: linear-gradient(180deg, transparent, rgba(62,71,66,.3));
+  pointer-events: none;
+}
+.footer-bar .item{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--wet-stone);
+  letter-spacing: 1px;
+  opacity: .8;
+}
+.footer-bar .dot{
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--moss);
+}
+
+/* ===== 减少动效降级 ===== */
+@media (prefers-reduced-motion: reduce) {
+  .rain-canvas, .fog-layer { display: none; }
+  .cursor-outer, .cursor-dot { display: none; }
+  html, body { cursor: auto; }
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* ===== 响应式降级（小屏） ===== */
+@media (max-width: 1100px) {
+  .pond-wrapper{ width: 260px; height: 220px; }
+  .blind-wrapper{ width: 160px; height: 280px; }
+  .chain-wrapper{ height: 320px; }
+  .moss-wrapper{ width: 180px; height: 120px; }
+  .moss-stone{ width: 160px; height: 100px; }
+  .lantern-wrapper{ height: 280px; }
+  .chain-section{ left: 340px; }
+}
+</style>
+</head>
+<body>
+<div class="scene-bg"></div>
+
+<!-- 雨幕 -->
+<canvas class="rain-canvas" id="rainCanvas"></canvas>
+<div class="fog-layer"></div>
+
+<!-- 页头 -->
+<div class="header">
+  <div class="title-block">
+    <h1>梅雨茶庭</h1>
+    <div class="subtitle">拟 物 交 互 实 验 室 · V3</div>
+  </div>
+  <div class="nav-dots" id="navDots">
+    <div class="nav-dot active" data-exhibit="0">池</div>
+    <div class="nav-dot" data-exhibit="1">帘</div>
+    <div class="nav-dot" data-exhibit="2">鹿</div>
+    <div class="nav-dot" data-exhibit="3">灯</div>
+    <div class="nav-dot" data-exhibit="4">苔</div>
+    <div class="nav-dot" data-exhibit="5">链</div>
+  </div>
+</div>
+
+<!-- 展区 1：涟漪池 -->
+<div class="pond-section" id="pondSection">
+  <div class="pond-wrapper">
+    <div class="pond-edge"></div>
+    <canvas class="pond-canvas" id="pondCanvas"></canvas>
+  </div>
+  <div class="exhibit-label pond-label">
+    <span class="name">雨滴涟漪池</span>
+    <span class="hint">悬停或点击水面 · 激起涟漪</span>
+  </div>
+</div>
+
+<!-- 展区 2：竹帘 -->
+<div class="blind-section" id="blindSection">
+  <div class="blind-wrapper">
+    <div class="blind-rail"></div>
+    <div class="blind-bamboo" id="blindBamboo">
+      <div class="bamboo-thread t1"></div>
+      <div class="bamboo-thread t2"></div>
+      <div class="bamboo-thread t3"></div>
+      <div class="bamboo-slats" id="bambooSlats"></div>
+    </div>
+    <div class="blind-bottom-bar" id="blindHandle">
+      <div class="handle-icon"></div>
+    </div>
+  </div>
+  <div class="exhibit-label blind-label">
+    <span class="name">竹帘卷放</span>
+    <span class="hint">拖拽底杆 · 卷起或放下</span>
+  </div>
+</div>
+
+<!-- 展区 3：惊鹿 -->
+<div class="shishi-section" id="shishiSection">
+  <div class="shishi-wrapper">
+    <div class="shishi-drip" id="shishiDrip"></div>
+    <div class="shishi-base"></div>
+    <div class="shishi-stone"></div>
+    <div class="shishi-bamboo" id="shishiBamboo">
+      <div class="bamboo-tube"></div>
+      <div class="bamboo-water-level" id="bambooWater"></div>
+      <div class="bamboo-pivot"></div>
+    </div>
+  </div>
+  <div class="exhibit-label shishi-label">
+    <span class="name">惊鹿竹筒</span>
+    <span class="hint">点击注水 · 等待"咚"的一声</span>
+  </div>
+</div>
+
+<!-- 展区 4：石灯笼 -->
+<div class="lantern-section" id="lanternSection">
+  <div class="lantern-wrapper" id="lanternWrapper">
+    <div class="lantern-glow-ground"></div>
+    <div class="lantern-top"></div>
+    <div class="lantern-roof"></div>
+    <div class="lantern-body" id="lanternBody">
+      <div class="lantern-paper"></div>
+    </div>
+    <div class="lantern-base"></div>
+    <div class="lantern-pole"></div>
+    <div class="lantern-rope" id="lanternRope">
+      <div class="rope-string"></div>
+      <div class="rope-tassel" id="ropeTassel"></div>
+    </div>
+  </div>
+  <div class="exhibit-label lantern-label">
+    <span class="name">石灯笼</span>
+    <span class="hint">下拉流苏 · 点亮暖光</span>
+  </div>
+</div>
+
+<!-- 展区 5：青苔石 -->
+<div class="moss-section" id="mossSection">
+  <div class="moss-wrapper">
+    <div class="moss-stone">
+      <canvas class="moss-canvas" id="mossCanvas"></canvas>
+    </div>
+  </div>
+  <div class="exhibit-label moss-label">
+    <span class="name">青苔拭石</span>
+    <span class="hint">抚过石面 · 拭去青苔</span>
+  </div>
+</div>
+
+<!-- 展区 6：雨链 -->
+<div class="chain-section" id="chainSection">
+  <div class="chain-wrapper" id="chainWrapper">
+    <div class="chain-hook"></div>
+    <div id="chainLinks"></div>
+    <div class="chain-droplet" id="chainDroplet"></div>
+    <div class="chain-splash" id="chainSplash"></div>
+  </div>
+  <div class="exhibit-label chain-label">
+    <span class="name">雨链滴水</span>
+    <span class="hint">拖拽水珠 · 顺链滑落</span>
+  </div>
+</div>
+
+<!-- 底部说明 -->
+<div class="footer-bar">
+  <div class="item"><span class="dot"></span><span>光标悬停感受细节</span></div>
+  <div class="item"><span class="dot"></span><span>拖拽交互探索体验</span></div>
+  <div class="item"><span class="dot"></span><span>点击触发场景变化</span></div>
+</div>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-dot" id="cursorDot"></div>
+
+<script>
+(function(){
+'use strict';
+
+// ===== 减少动效检测 =====
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ===== 页面可见性管理 =====
+let pageVisible = true;
+document.addEventListener('visibilitychange', () => {
+  pageVisible = !document.hidden;
+});
+
+// 安全的 RAF 封装
+let animFrames = [];
+function safeRAF(cb){
+  const id = { frame: 0, active: true };
+  function loop(t){
+    if(!id.active) return;
+    if(pageVisible && !prefersReducedMotion){
+      cb(t);
+    }
+    id.frame = requestAnimationFrame(loop);
+  }
+  id.frame = requestAnimationFrame(loop);
+  animFrames.push(id);
+  return id;
+}
+function cancelSafeRAF(id){
+  id.active = false;
+  cancelAnimationFrame(id.frame);
+}
+
+// 安全的 setTimeout 封装
+let timers = [];
+function safeTimeout(cb, ms){
+  const id = { timer: 0, active: true };
+  id.timer = setTimeout(() => {
+    if(id.active) cb();
+  }, ms);
+  timers.push(id);
+  return id;
+}
+function clearSafeTimeout(id){
+  id.active = false;
+  clearTimeout(id.timer);
+}
+
+// 清理所有动画/定时器（卸载时）
+window.addEventListener('beforeunload', () => {
+  animFrames.forEach(id => { id.active = false; cancelAnimationFrame(id.frame); });
+  timers.forEach(id => { id.active = false; clearTimeout(id.timer); });
+});
+
+// ===== 自定义光标 =====
+const cursorOuter = document.getElementById('cursorOuter');
+const cursorDot = document.getElementById('cursorDot');
+
+let mouseX = window.innerWidth / 2;
+let mouseY = window.innerHeight / 2;
+let cursorX = mouseX;
+let cursorY = mouseY;
+let dotX = mouseX;
+let dotY = mouseY;
+
+function updateCursor(){
+  if(prefersReducedMotion) return;
+  // 外环带阻尼跟随
+  cursorX += (mouseX - cursorX) * 0.18;
+  cursorY += (mouseY - cursorY) * 0.18;
+  // 内点更跟手
+  dotX += (mouseX - dotX) * 0.35;
+  dotY += (mouseY - dotY) * 0.35;
+
+  cursorOuter.style.left = cursorX + 'px';
+  cursorOuter.style.top = cursorY + 'px';
+  cursorDot.style.left = dotX + 'px';
+  cursorDot.style.top = dotY + 'px';
+}
+safeRAF(updateCursor);
+
+// 鼠标移动
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+// 点击涟漪
+document.addEventListener('mousedown', (e) => {
+  if(prefersReducedMotion) return;
+  const ripple = document.createElement('div');
+  ripple.className = 'cursor-ripple';
+  ripple.style.left = e.clientX + 'px';
+  ripple.style.top = e.clientY + 'px';
+  document.body.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+});
+
+// 可交互元素悬停态
+const interactiveSelectors = [
+  '#pondCanvas', '#blindHandle', '#shishiBamboo',
+  '#ropeTassel', '#mossCanvas', '#chainDroplet',
+  '.nav-dot', '.bamboo-slats'
+];
+interactiveSelectors.forEach(sel => {
+  const el = document.querySelector(sel);
+  if(!el) return;
+  el.addEventListener('mouseenter', () => {
+    cursorOuter.classList.add('hover');
+    cursorDot.classList.add('hover');
+  });
+  el.addEventListener('mouseleave', () => {
+    cursorOuter.classList.remove('hover');
+    cursorOuter.classList.remove('drag');
+    cursorDot.classList.remove('hover');
+  });
+  el.addEventListener('mousedown', () => {
+    cursorOuter.classList.add('drag');
+  });
+  el.addEventListener('mouseup', () => {
+    cursorOuter.classList.remove('drag');
+  });
+});
+
+// ===== 环境雨幕 =====
+const rainCanvas = document.getElementById('rainCanvas');
+const rainCtx = rainCanvas.getContext('2d');
+
+function resizeRain(){
+  rainCanvas.width = window.innerWidth;
+  rainCanvas.height = window.innerHeight;
+}
+resizeRain();
+window.addEventListener('resize', resizeRain);
+
+let rainDrops = [];
+const RAIN_COUNT = 120;
+for(let i = 0; i < RAIN_COUNT; i++){
+  rainDrops.push({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    len: 8 + Math.random() * 14,
+    speed: 4 + Math.random() * 6,
+    opacity: 0.2 + Math.random() * 0.4
+  });
+}
+
+function drawRain(){
+  rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+  rainCtx.strokeStyle = 'rgba(242, 240, 233, 0.5)';
+  rainCtx.lineWidth = 1;
+
+  for(let i = 0; i < rainDrops.length; i++){
+    const d = rainDrops[i];
+    rainCtx.globalAlpha = d.opacity;
+    rainCtx.beginPath();
+    rainCtx.moveTo(d.x, d.y);
+    rainCtx.lineTo(d.x - 1, d.y + d.len);
+    rainCtx.stroke();
+
+    d.y += d.speed;
+    d.x -= 0.3;
+    if(d.y > rainCanvas.height){
+      d.y = -d.len;
+      d.x = Math.random() * rainCanvas.width;
+    }
+    if(d.x < -10){
+      d.x = rainCanvas.width + 10;
+    }
+  }
+  rainCtx.globalAlpha = 1;
+}
+safeRAF(drawRain);
+
+// ===== 展区 1：涟漪池 =====
+const pondCanvas = document.getElementById('pondCanvas');
+const pondCtx = pondCanvas.getContext('2d');
+
+function resizePond(){
+  const rect = pondCanvas.getBoundingClientRect();
+  pondCanvas.width = rect.width * window.devicePixelRatio;
+  pondCanvas.height = rect.height * window.devicePixelRatio;
+  pondCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+resizePond();
+window.addEventListener('resize', resizePond);
+
+let ripples = [];
+
+function addRipple(x, y, strength = 1){
+  ripples.push({
+    x: x,
+    y: y,
+    radius: 2,
+    maxRadius: 80 + Math.random() * 60,
+    speed: 1.2 + Math.random() * 0.8,
+    opacity: 0.6 * strength,
+    width: 2 + strength
+  });
+}
+
+function drawPond(){
+  const w = pondCanvas.width / window.devicePixelRatio;
+  const h = pondCanvas.height / window.devicePixelRatio;
+  pondCtx.clearRect(0, 0, w, h);
+
+  // 画涟漪
+  for(let i = ripples.length - 1; i >= 0; i--){
+    const r = ripples[i];
+    pondCtx.strokeStyle = `rgba(242, 240, 233, ${r.opacity})`;
+    pondCtx.lineWidth = r.width;
+    pondCtx.beginPath();
+    pondCtx.ellipse(r.x, r.y, r.radius, r.radius * 0.6, 0, 0, Math.PI * 2);
+    pondCtx.stroke();
+
+    r.radius += r.speed;
+    r.opacity *= 0.975;
+    r.speed *= 0.99;
+
+    if(r.opacity < 0.02 || r.radius > r.maxRadius){
+      ripples.splice(i, 1);
+    }
+  }
+}
+safeRAF(drawPond);
+
+// 悬停产生涟漪
+let lastRippleTime = 0;
+pondCanvas.addEventListener('mousemove', (e) => {
+  const now = Date.now();
+  if(now - lastRippleTime < 80) return;
+  lastRippleTime = now;
+  const rect = pondCanvas.getBoundingClientRect();
+  addRipple(e.clientX - rect.left, e.clientY - rect.top, 0.5);
+});
+
+// 点击产生强涟漪
+pondCanvas.addEventListener('mousedown', (e) => {
+  const rect = pondCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  // 多层涟漪
+  addRipple(x, y, 1.2);
+  setTimeout(() => addRipple(x, y, 0.8), 100);
+  setTimeout(() => addRipple(x, y, 0.5), 200);
+});
+
+// 环境雨滴落入池中
+function ambientPondRain(){
+  if(!pageVisible || prefersReducedMotion) return;
+  const w = pondCanvas.width / window.devicePixelRatio;
+  const h = pondCanvas.height / window.devicePixelRatio;
+  const x = 20 + Math.random() * (w - 40);
+  const y = 20 + Math.random() * (h - 40);
+  addRipple(x, y, 0.3);
+  safeTimeout(ambientPondRain, 800 + Math.random() * 1500);
+}
+safeTimeout(ambientPondRain, 1000);
+
+// ===== 展区 2：竹帘 =====
+const slatsContainer = document.getElementById('bambooSlats');
+const blindBamboo = document.getElementById('blindBamboo');
+const blindHandle = document.getElementById('blindHandle');
+
+// 生成竹片
+const SLAT_COUNT = 36;
+const SLAT_SPACING = 9;
+for(let i = 0; i < SLAT_COUNT; i++){
+  const slat = document.createElement('div');
+  slat.className = 'bamboo-slat';
+  slat.style.top = (i * SLAT_SPACING) + 'px';
+  // 随机微小偏差增加真实感
+  const hueShift = Math.random() * 10 - 5;
+  slat.style.filter = `hue-rotate(${hueShift}deg)`;
+  slatsContainer.appendChild(slat);
+}
+
+// 竹帘拖拽 —— 弹簧物理
+let blindRoll = 0; // 0 = 完全放下, 1 = 完全卷起
+let blindVel = 0;
+let blindDragging = false;
+let blindDragStartY = 0;
+let blindDragStartRoll = 0;
+let blindSpringAnim = null;
+
+const BLIND_K = 0.06;  // 弹簧劲度系数
+const BLIND_DAMP = 0.85; // 阻尼
+
+function updateBlind(){
+  const wrapper = document.querySelector('.blind-wrapper');
+  const h = wrapper.offsetHeight - 16; // 减去 top rail
+  const rollPx = blindRoll * h;
+
+  blindBamboo.style.height = (h - rollPx) + 'px';
+  blindHandle.style.bottom = rollPx + 'px';
+
+  // 竹片逐渐被卷起 —— 上面的先不可见
+  const slats = slatsContainer.children;
+  const visibleCount = Math.floor((h - rollPx) / SLAT_SPACING);
+  for(let i = 0; i < slats.length; i++){
+    if(i < visibleCount){
+      slats[i].style.display = 'block';
+      slats[i].style.top = (i * SLAT_SPACING) + 'px';
+    } else {
+      slats[i].style.display = 'none';
+    }
+  }
+}
+
+function blindSpringStep(){
+  if(!blindDragging){
+    const force = -BLIND_K * (blindRoll - 0) * (blindRoll < 0.5 ? 1 : 0.5);
+    blindVel += force;
+    blindVel *= BLIND_DAMP;
+    blindRoll += blindVel;
+
+    if(blindRoll < 0) { blindRoll = 0; blindVel *= -0.3; }
+    if(blindRoll > 0.95) { blindRoll = 0.95; blindVel *= -0.3; }
+
+    updateBlind();
+
+    if(Math.abs(blindVel) < 0.001 && Math.abs(blindRoll) < 0.01){
+      // 静止
+      return;
+    }
+  }
+  blindSpringAnim = requestAnimationFrame(blindSpringStep);
+}
+
+blindHandle.addEventListener('mousedown', (e) => {
+  blindDragging = true;
+  blindDragStartY = e.clientY;
+  blindDragStartRoll = blindRoll;
+  if(blindSpringAnim) cancelAnimationFrame(blindSpringAnim);
+  cursorOuter.classList.add('drag');
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if(!blindDragging) return;
+  const wrapper = document.querySelector('.blind-wrapper');
+  const h = wrapper.offsetHeight - 16;
+  const dy = blindDragStartY - e.clientY;
+  blindRoll = blindDragStartRoll + dy / h;
+  blindRoll = Math.max(0, Math.min(1, blindRoll));
+  updateBlind();
+});
+
+document.addEventListener('mouseup', () => {
+  if(blindDragging){
+    blindDragging = false;
+    cursorOuter.classList.remove('drag');
+    blindVel = 0;
+    // 松手释放 —— 弹簧下落
+    if(!blindSpringAnim) blindSpringStep();
+  }
+});
+
+updateBlind();
+
+// ===== 展区 3：惊鹿竹筒 =====
+const shishiBamboo = document.getElementById('shishiBamboo');
+const bambooWater = document.getElementById('bambooWater');
+const shishiDrip = document.getElementById('shishiDrip');
+
+let shishiAngle = -12; // 当前角度（度），负值=左端抬起蓄水
+let shishiWater = 0;   // 水量 0-1
+let shishiVel = 0;     // 角速度
+let shishiFilling = false;
+let shishiDropping = false;
+
+// 物理参数
+const SHISHI_K = 0.15;      // 弹簧恢复（重心回正）
+const SHISHI_DAMP = 0.82;   // 阻尼
+const SHISHI_TIP_ANGLE = 25; // 翻倒角度
+
+function updateShishi(){
+  // 水量影响重心 —— 水越多越容易翻倒
+  const waterBias = shishiWater * SHISHI_TIP_ANGLE;
+  const target = -12 + waterBias * 1.5;
+
+  const force = SHISHI_K * (target - shishiAngle);
+  shishiVel += force;
+  shishiVel *= SHISHI_DAMP;
+  shishiAngle += shishiVel;
+
+  // 应用旋转
+  shishiBamboo.style.transform = `translateX(-85%) rotate(${shishiAngle}deg)`;
+
+  // 水位显示
+  bambooWater.style.transform = `scaleX(${shishiWater})`;
+}
+
+function shishiLoop(){
+  if(shishiFilling && shishiWater < 1){
+    shishiWater += 0.003;
+    if(shishiWater > 1) shishiWater = 1;
+  }
+
+  updateShishi();
+
+  // 检查翻倒
+  if(shishiAngle > 20 && shishiWater > 0.5){
+    // 水倒出
+    shishiFilling = false;
+    shishiWater = Math.max(0, shishiWater - 0.02);
+    if(shishiWater <= 0){
+      shishiWater = 0;
+      // 回弹"咚"一声的感觉
+      shishiVel = -8;
+    }
+  }
+
+  requestAnimationFrame(shishiLoop);
+}
+shishiLoop();
+
+// 水滴动画
+function drip(){
+  if(!pageVisible || prefersReducedMotion) return;
+  if(!shishiFilling) {
+    safeTimeout(drip, 500);
+    return;
+  }
+  shishiDrip.style.opacity = '1';
+  shishiDrip.style.top = '40px';
+  let y = 40;
+  const dripAnim = setInterval(() => {
+    y += 3;
+    shishiDrip.style.top = y + 'px';
+    if(y > 120){
+      clearInterval(dripAnim);
+      shishiDrip.style.opacity = '0';
+    }
+  }, 16);
+  safeTimeout(drip, 600 + Math.random() * 400);
+}
+safeTimeout(drip, 1000);
+
+// 点击注水
+shishiBamboo.style.cursor = 'none';
+shishiBamboo.addEventListener('click', () => {
+  if(shishiWater < 0.1){
+    shishiFilling = true;
+  } else if(shishiWater < 0.8){
+    // 快速加水
+    shishiWater = Math.min(1, shishiWater + 0.15);
+  }
+});
+
+// 环境自动注水（偶尔自动演示）
+function autoShishi(){
+  if(!pageVisible) { safeTimeout(autoShishi, 5000); return; }
+  if(shishiWater < 0.1 && !shishiFilling){
+    shishiFilling = true;
+  }
+  safeTimeout(autoShishi, 8000 + Math.random() * 6000);
+}
+safeTimeout(autoShishi, 5000);
+
+// ===== 展区 4：石灯笼 =====
+const lanternWrapper = document.getElementById('lanternWrapper');
+const lanternBody = document.getElementById('lanternBody');
+const lanternRope = document.getElementById('lanternRope');
+const ropeTassel = document.getElementById('ropeTassel');
+
+let lanternLit = false;
+let ropeDragY = 0;
+let ropeDragging = false;
+let ropeStartY = 0;
+let ropeSwing = 0;  // 左右摆动
+let ropeSwingVel = 0;
+
+// 绳子摆动物理（单摆简化）
+function ropeSwingStep(){
+  if(!ropeDragging){
+    const K = 0.02;
+    const DAMP = 0.95;
+    ropeSwingVel += -K * ropeSwing;
+    ropeSwingVel *= DAMP;
+    ropeSwing += ropeSwingVel;
+  }
+  lanternRope.style.transform = `rotate(${ropeSwing}deg)`;
+  requestAnimationFrame(ropeSwingStep);
+}
+ropeSwingStep();
+
+// 轻微的环境风导致摆动
+function ambientWind(){
+  if(!pageVisible || prefersReducedMotion) { safeTimeout(ambientWind, 3000); return; }
+  ropeSwingVel += (Math.random() - 0.5) * 0.3;
+  safeTimeout(ambientWind, 2000 + Math.random() * 3000);
+}
+safeTimeout(ambientWind, 1500);
+
+// 拉绳拖拽
+ropeTassel.addEventListener('mousedown', (e) => {
+  ropeDragging = true;
+  ropeStartY = e.clientY;
+  ropeDragY = 0;
+  cursorOuter.classList.add('drag');
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if(!ropeDragging) return;
+  const dy = e.clientY - ropeStartY;
+  ropeDragY = Math.max(0, Math.min(40, dy));
+  ropeTassel.style.transform = `translateY(${ropeDragY}px)`;
+
+  // 绳子长度变化
+  const ropeString = lanternRope.querySelector('.rope-string');
+  ropeString.style.height = (80 + ropeDragY) + 'px';
+});
+
+document.addEventListener('mouseup', () => {
+  if(ropeDragging){
+    ropeDragging = false;
+    cursorOuter.classList.remove('drag');
+
+    // 超过阈值触发开关
+    if(ropeDragY > 20){
+      lanternLit = !lanternLit;
+      lanternWrapper.classList.toggle('lit', lanternLit);
+      lanternBody.classList.toggle('lit', lanternLit);
+    }
+
+    // 弹簧回弹
+    let vel = -ropeDragY * 0.3;
+    let pos = ropeDragY;
+    function springBack(){
+      const K = 0.15;
+      const DAMP = 0.75;
+      vel += -K * pos;
+      vel *= DAMP;
+      pos += vel;
+      if(pos < 0) { pos = 0; vel *= -0.3; }
+      ropeTassel.style.transform = `translateY(${pos}px)`;
+      const ropeString = lanternRope.querySelector('.rope-string');
+      ropeString.style.height = (80 + pos) + 'px';
+      if(Math.abs(vel) > 0.01 || Math.abs(pos) > 0.01){
+        requestAnimationFrame(springBack);
+      }
+    }
+    springBack();
+  }
+});
+
+// 灯笼微光摇曳
+let lanternFlicker = 0;
+function lanternFlickerStep(){
+  if(lanternLit){
+    lanternFlicker += (Math.random() - 0.5) * 0.02;
+    lanternFlicker *= 0.9;
+    const brightness = 1 + lanternFlicker;
+    const paper = lanternBody.querySelector('.lantern-paper');
+    paper.style.filter = `brightness(${brightness})`;
+  }
+  requestAnimationFrame(lanternFlickerStep);
+}
+lanternFlickerStep();
+
+// ===== 展区 5：青苔石 =====
+const mossCanvas = document.getElementById('mossCanvas');
+const mossCtx = mossCanvas.getContext('2d');
+
+function resizeMoss(){
+  const rect = mossCanvas.getBoundingClientRect();
+  mossCanvas.width = rect.width * window.devicePixelRatio;
+  mossCanvas.height = rect.height * window.devicePixelRatio;
+  mossCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  drawMossBase();
+}
+
+function drawMossBase(){
+  const w = mossCanvas.width / window.devicePixelRatio;
+  const h = mossCanvas.height / window.devicePixelRatio;
+
+  // 生成苔藓纹理 —— 使用多个随机圆形斑块
+  mossCtx.clearRect(0, 0, w, h);
+
+  // 底层苔藓
+  mossCtx.fillStyle = 'rgba(90, 107, 79, 0.85)';
+  mossCtx.beginPath();
+  // 椭圆形状贴合石头
+  mossCtx.ellipse(w/2, h/2, w*0.45, h*0.4, 0, 0, Math.PI * 2);
+  mossCtx.fill();
+
+  // 苔藓绒毛感 —— 大量小点
+  for(let i = 0; i < 300; i++){
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random();
+    const rx = w * 0.45 * Math.sqrt(dist);
+    const ry = h * 0.4 * Math.sqrt(dist);
+    const x = w/2 + rx * Math.cos(angle);
+    const y = h/2 + ry * Math.sin(angle);
+    const size = 1 + Math.random() * 3;
+
+    const g = Math.floor(120 + Math.random() * 40);
+    const greenShift = Math.random() > 0.5 ? 0 : -20;
+    mossCtx.fillStyle = `rgba(${60 + greenShift}, ${g + greenShift}, ${50 + greenShift}, ${0.5 + Math.random() * 0.4})`;
+    mossCtx.beginPath();
+    mossCtx.arc(x, y, size, 0, Math.PI * 2);
+    mossCtx.fill();
+  }
+
+  // 更亮的高光苔点
+  for(let i = 0; i < 80; i++){
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 0.8;
+    const rx = w * 0.4 * Math.sqrt(dist);
+    const ry = h * 0.35 * Math.sqrt(dist);
+    const x = w/2 + rx * Math.cos(angle);
+    const y = h/2 + ry * Math.sin(angle);
+    const size = 1 + Math.random() * 2;
+
+    mossCtx.fillStyle = `rgba(143, 169, 143, ${0.3 + Math.random() * 0.3})`;
+    mossCtx.beginPath();
+    mossCtx.arc(x, y, size, 0, Math.PI * 2);
+    mossCtx.fill();
+  }
+}
+
+// 用 destination-out 擦除
+let mossWiping = false;
+
+function wipeMoss(x, y){
+  mossCtx.globalCompositeOperation = 'destination-out';
+  // 柔和的笔刷
+  const gradient = mossCtx.createRadialGradient(x, y, 0, x, y, 18);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.8)');
+  gradient.addColorStop(0.5, 'rgba(0,0,0,0.4)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  mossCtx.fillStyle = gradient;
+  mossCtx.beginPath();
+  mossCtx.arc(x, y, 18, 0, Math.PI * 2);
+  mossCtx.fill();
+  mossCtx.globalCompositeOperation = 'source-over';
+}
+
+mossCanvas.addEventListener('mousedown', () => { mossWiping = true; });
+document.addEventListener('mouseup', () => { mossWiping = false; });
+
+mossCanvas.addEventListener('mousemove', (e) => {
+  if(!mossWiping) return;
+  const rect = mossCanvas.getBoundingClientRect();
+  wipeMoss(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+// 悬停也轻微擦除（抚过）
+let lastMossHover = 0;
+mossCanvas.addEventListener('mousemove', (e) => {
+  const now = Date.now();
+  if(now - lastMossHover < 40) return;
+  lastMossHover = now;
+  if(mossWiping) return;
+  const rect = mossCanvas.getBoundingClientRect();
+  // 轻微抚过 —— 小笔刷
+  mossCtx.globalCompositeOperation = 'destination-out';
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const gradient = mossCtx.createRadialGradient(x, y, 0, x, y, 8);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.3)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  mossCtx.fillStyle = gradient;
+  mossCtx.beginPath();
+  mossCtx.arc(x, y, 8, 0, Math.PI * 2);
+  mossCtx.fill();
+  mossCtx.globalCompositeOperation = 'source-over';
+});
+
+// 双指/右键 重置青苔（这里用双击）
+mossCanvas.addEventListener('dblclick', () => {
+  drawMossBase();
+});
+
+resizeMoss();
+window.addEventListener('resize', resizeMoss);
+
+// ===== 展区 6：雨链 =====
+const chainLinksContainer = document.getElementById('chainLinks');
+const chainDroplet = document.getElementById('chainDroplet');
+const chainSplash = document.getElementById('chainSplash');
+const chainWrapper = document.getElementById('chainWrapper');
+
+// 生成链环
+const LINK_COUNT = 14;
+const LINK_SPACING = 26;
+for(let i = 0; i < LINK_COUNT; i++){
+  const link = document.createElement('div');
+  link.className = 'chain-link';
+  link.style.top = (20 + i * LINK_SPACING) + 'px';
+  chainLinksContainer.appendChild(link);
+}
+
+// 水珠物理 —— 拖拽 + 重力 + 链条约束
+let dropletY = 40;
+let dropletVel = 0;
+let dropletDragging = false;
+let dropletDragStartY = 0;
+let dropletStartY = 40;
+
+const chainHeight = 380;
+
+function updateDroplet(){
+  chainDroplet.style.top = dropletY + 'px';
+}
+
+function dropletPhysics(){
+  if(!dropletDragging){
+    // 重力
+    dropletVel += 0.15;
+    dropletVel *= 0.98; // 空气阻力
+    dropletY += dropletVel;
+
+    // 碰到底部
+    if(dropletY > chainHeight - 18){
+      dropletY = chainHeight - 18;
+      dropletVel *= -0.3;
+      // 溅水
+      showSplash();
+    }
+
+    // 链条上的轻微摆动
+    const swing = Math.sin(Date.now() * 0.003 + dropletY * 0.05) * 2;
+    chainDroplet.style.marginLeft = (-7 + swing) + 'px';
+  }
+  updateDroplet();
+  requestAnimationFrame(dropletPhysics);
+}
+dropletPhysics();
+
+function showSplash(){
+  chainSplash.style.opacity = '0.8';
+  chainSplash.style.transform = 'translateX(-50%) scale(1)';
+  setTimeout(() => {
+    chainSplash.style.transition = 'all .5s ease-out';
+    chainSplash.style.opacity = '0';
+    chainSplash.style.transform = 'translateX(-50%) scale(2)';
+  }, 50);
+  setTimeout(() => {
+    chainSplash.style.transition = '';
+  }, 550);
+}
+
+// 拖拽水珠
+chainDroplet.addEventListener('mousedown', (e) => {
+  dropletDragging = true;
+  dropletDragStartY = e.clientY;
+  dropletStartY = dropletY;
+  dropletVel = 0;
+  cursorOuter.classList.add('drag');
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if(!dropletDragging) return;
+  const dy = e.clientY - dropletDragStartY;
+  dropletY = Math.max(20, Math.min(chainHeight - 18, dropletStartY + dy));
+  updateDroplet();
+});
+
+document.addEventListener('mouseup', () => {
+  if(dropletDragging){
+    dropletDragging = false;
+    cursorOuter.classList.remove('drag');
+    // 松手后给初速度
+    dropletVel = 1;
+  }
+});
+
+// 环境：偶尔自动生成新水珠
+function autoDroplet(){
+  if(!pageVisible || prefersReducedMotion) { safeTimeout(autoDroplet, 5000); return; }
+  if(dropletY > chainHeight - 30 && !dropletDragging){
+    // 重置到顶部
+    dropletY = 30;
+    dropletVel = 0;
+  }
+  safeTimeout(autoDroplet, 6000 + Math.random() * 4000);
+}
+safeTimeout(autoDroplet, 3000);
+
+// ===== 导航点 =====
+const navDots = document.querySelectorAll('.nav-dot');
+const exhibits = [
+  document.getElementById('pondSection'),
+  document.getElementById('blindSection'),
+  document.getElementById('shishiSection'),
+  document.getElementById('lanternSection'),
+  document.getElementById('mossSection'),
+  document.getElementById('chainSection')
+];
+
+navDots.forEach(dot => {
+  dot.addEventListener('click', () => {
+    navDots.forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    const idx = parseInt(dot.dataset.exhibit);
+
+    // 高亮对应展区 —— 微妙的视觉强调
+    exhibits.forEach((ex, i) => {
+      if(i === idx){
+        ex.style.filter = 'brightness(1.1)';
+        ex.style.transition = 'filter .4s ease';
+        setTimeout(() => { ex.style.filter = ''; }, 800);
+      }
+    });
+  });
+});
+
+// ===== 升级应用宣告 =====
+function announceUpgrade(){
+  try{
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch(e){}
+}
+announceUpgrade();
+if(document.readyState !== 'complete'){
+  window.addEventListener('load', announceUpgrade, { once: true });
+}
+
+})();
+</script>
+</body>
+</html>

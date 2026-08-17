@@ -1,0 +1,2438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>星野 · 星空观测</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #070B0A; font-family: "Noto Sans SC", -apple-system, system-ui, sans-serif; color: #E8EDEA; }
+  #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+  /* ── Device stage ── */
+  .stage { position: relative; display: flex; align-items: center; justify-content: center; gap: 48px; padding: 40px; }
+  .stage-hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(201,209,200,0.5); letter-spacing: 0.08em; }
+
+  /* ── Scroll ── */
+  .scroll { overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* ── Star field (canvas) ── */
+  .star-canvas { position: absolute; inset: 0; pointer-events: none; }
+
+  /* ── Typography ── */
+  .serif { font-family: "Noto Serif SC", serif; font-weight: 600; }
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  /* ── Animations ── */
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes pulse-ring {
+    0% { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes shoot {
+    0% { transform: translateX(0) translateY(0); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translateX(-200px) translateY(120px); opacity: 0; }
+  }
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes glow {
+    0%, 100% { filter: drop-shadow(0 0 4px rgba(242,201,76,0.4)); }
+    50% { filter: drop-shadow(0 0 12px rgba(242,201,76,0.8)); }
+  }
+  @keyframes bounce-in {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.05); }
+    70% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .anim-fade-up { animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .anim-float { animation: float-y 4s ease-in-out infinite; }
+  .anim-glow { animation: glow 3s ease-in-out infinite; }
+  .anim-spin-slow { animation: spin-slow 60s linear infinite; }
+  .anim-bounce-in { animation: bounce-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ── Tab bar ── */
+  .tabbar {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 40;
+    height: 83px; padding-bottom: calc(var(--ios-safe-bottom) + 4px);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(14, 21, 19, 0.72);
+    border-top: 0.5px solid rgba(201, 209, 200, 0.12);
+    display: flex; align-items: flex-start; justify-content: space-around;
+    padding-top: 8px;
+  }
+  .tab-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; cursor: pointer; padding: 4px 0;
+    color: rgba(201, 209, 200, 0.5);
+    transition: color 0.2s;
+  }
+  .tab-item.active { color: #F2C94C; }
+  .tab-item svg { width: 24px; height: 24px; }
+  .tab-item span { font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
+
+  /* ── Nav bar (large title) ── */
+  .nav-large {
+    padding: 8px 20px 12px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .nav-large h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+  .nav-large .sub { font-size: 13px; color: rgba(201,209,200,0.6); margin-top: 2px; }
+
+  /* ── Card base ── */
+  .card {
+    border-radius: 20px; overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.5px solid rgba(201, 209, 200, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  /* ── FAB ── */
+  .fab {
+    position: absolute; right: 20px; bottom: 100px; z-index: 35;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, #F2C94C 0%, #E0A82E 100%);
+    box-shadow: 0 4px 20px rgba(242,201,76,0.4), 0 2px 6px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .fab:active { transform: scale(0.92); }
+
+  /* ── Modal / bottom sheet ── */
+  .sheet-mask {
+    position: absolute; inset: 0; z-index: 80;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 81;
+    background: #0E1513; border-top-left-radius: 24px; border-top-right-radius: 24px;
+    border-top: 0.5px solid rgba(201,209,200,0.12);
+    padding: 12px 20px 30px;
+    animation: slideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .sheet-grabber {
+    width: 36px; height: 5px; border-radius: 3px;
+    background: rgba(201,209,200,0.25); margin: 0 auto 16px;
+  }
+
+  /* ── Page transition ── */
+  .page-enter { animation: slideInRight 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .page-back { animation: slideInLeft 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ── Pull to refresh indicator ── */
+  .pull-indicator {
+    position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: #F2C94C; font-size: 12px; opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .pull-indicator.visible { opacity: 1; }
+
+  /* ── Constellation grid ── */
+  .constel-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 16px 20px;
+  }
+  .constel-card {
+    aspect-ratio: 1; border-radius: 18px; position: relative; overflow: hidden;
+    cursor: pointer; transition: transform 0.2s;
+  }
+  .constel-card:active { transform: scale(0.96); }
+
+  /* ── Community feed ── */
+  .feed-item {
+    margin: 0 16px 16px; border-radius: 20px; overflow: hidden;
+    background: rgba(255,255,255,0.03);
+    border: 0.5px solid rgba(201,209,200,0.08);
+  }
+  .feed-img { width: 100%; aspect-ratio: 4/3; position: relative; }
+  .feed-body { padding: 12px 14px 14px; }
+
+  /* ── List rows ── */
+  .list-row {
+    display: flex; align-items: center; min-height: 52px;
+    padding: 0 16px; position: relative;
+    border-bottom: 0.5px solid rgba(201,209,200,0.08);
+  }
+  .list-row:last-child { border-bottom: none; }
+  .chevron {
+    width: 8px; height: 14px; flex-shrink: 0; opacity: 0.3;
+  }
+
+  /* ── Calendar ── */
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    padding: 0 16px;
+  }
+  .cal-day {
+    aspect-ratio: 1; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 14px; position: relative; cursor: pointer;
+  }
+  .cal-day.selected {
+    background: #F2C94C; color: #0E1513; font-weight: 700;
+  }
+  .cal-day .dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    position: absolute; bottom: 6px;
+  }
+
+  /* ── Code block (API docs) ── */
+  .code-block {
+    font-family: "SF Mono", Menlo, monospace; font-size: 11px;
+    background: #070B0A; border-radius: 12px; padding: 12px 14px;
+    line-height: 1.7; color: #C9D1C8; overflow-x: auto;
+    border: 0.5px solid rgba(201,209,200,0.1);
+  }
+  .code-k { color: #F2C94C; }
+  .code-s { color: #7DBE9B; }
+  .code-n { color: #D9534F; }
+  .code-c { color: rgba(201,209,200,0.4); font-style: italic; }
+
+  /* ── Design token swatch ── */
+  .swatch {
+    width: 48px; height: 48px; border-radius: 12px;
+    border: 0.5px solid rgba(201,209,200,0.15);
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+/* ─────────────────────────────────────────────────────────────
+   TWEAK DEFAULTS
+   ───────────────────────────────────────────────────────────── */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#F2C94C",
+  "nightMode": true,
+  "redVision": false,
+  "animationIntensity": 1
+}/*EDITMODE-END*/;
+
+/* ─────────────────────────────────────────────────────────────
+   DATA
+   ───────────────────────────────────────────────────────────── */
+const CONSTELLATIONS = [
+  { id: 'orion', name: '猎户座', en: 'Orion', stars: 7, season: '冬', mag: 0.58,
+    desc: '冬季夜空最壮丽的星座，腰带三星位于天赤道上。',
+    color1: '#1a2a3a', color2: '#2a4a6a' },
+  { id: 'ursa', name: '大熊座', en: 'Ursa Major', stars: 7, season: '春', mag: 1.8,
+    desc: '北斗七星所在，北半球全年可见。',
+    color1: '#2a1f1a', color2: '#4a3528' },
+  { id: 'scorpius', name: '天蝎座', en: 'Scorpius', stars: 18, season: '夏', mag: 0.96,
+    desc: '心宿二是红色超巨星，夏季南天最醒目的星座。',
+    color1: '#2a1a1a', color2: '#5a2020' },
+  { id: 'andromeda', name: '仙女座', en: 'Andromeda', stars: 16, season: '秋', mag: 2.06,
+    desc: '仙女座大星系是离银河系最近的大型星系。',
+    color1: '#1a1a2a', color2: '#2a2a5a' },
+  { id: 'cygnus', name: '天鹅座', en: 'Cygnus', stars: 9, season: '夏', mag: 1.25,
+    desc: '北十字，天津四为夏季大三角顶点之一。',
+    color1: '#1a2a2a', color2: '#2a4a4a' },
+  { id: 'leo', name: '狮子座', en: 'Leo', stars: 9, season: '春', mag: 1.35,
+    desc: '黄道十二星座之一，轩辕十四是蓝白色主序星。',
+    color1: '#2a251a', color2: '#5a4520' },
+  { id: 'gemini', name: '双子座', en: 'Gemini', stars: 8, season: '冬', mag: 1.58,
+    desc: '北河二与北河三是两颗明亮的头星。',
+    color1: '#1a202a', color2: '#2a3a5a' },
+  { id: 'sagittarius', name: '射手座', en: 'Sagittarius', stars: 12, season: '夏', mag: 1.55,
+    desc: '银河中心方向，茶壶造型闻名。',
+    color1: '#1a1f1a', color2: '#2a4a3a' },
+];
+
+const SPOTS = [
+  { id: 1, name: '阿里暗夜公园', loc: '西藏 · 阿里', rating: 4.9, dark: 'Bortle 1', dist: '3,240 km',
+    x: 28, y: 65, desc: '中国首个暗夜公园，海拔 4,200 米，全年晴夜 260 天以上。' },
+  { id: 2, name: '敦煌鸣沙山', loc: '甘肃 · 敦煌', rating: 4.7, dark: 'Bortle 2', dist: '1,820 km',
+    x: 40, y: 52, desc: '沙漠腹地零光污染，月牙泉畔仰望银河。' },
+  { id: 3, name: '呼伦贝尔草原', loc: '内蒙古 · 呼伦贝尔', rating: 4.6, dark: 'Bortle 2', dist: '1,560 km',
+    x: 72, y: 32, desc: '广袤草原无遮挡，夏季银河拱桥横跨天际。' },
+  { id: 4, name: '稻城亚丁', loc: '四川 · 甘孜', rating: 4.8, dark: 'Bortle 1-2', dist: '1,240 km',
+    x: 52, y: 68, desc: '三雪山与星空同框，海拔 4,000 米级观测点。' },
+  { id: 5, name: '纳木错', loc: '西藏 · 当雄', rating: 4.9, dark: 'Bortle 1', dist: '2,980 km',
+    x: 35, y: 66, desc: '圣湖之上星落湖面，海拔 4,718 米。' },
+];
+
+const POSTS = [
+  { id: 1, user: '星河漫步者', avatar: '猎户', time: '2 小时前',
+    title: '冬夜猎户座大星云 M42', likes: 286, comments: 34,
+    content: '用 8 寸镜在零下 15 度的草原上拍了 3 小时，终于捕捉到了星云内部的丝絮结构。',
+    color: '#1a2a3a' },
+  { id: 2, user: '观星老陈', avatar: '大熊', time: '5 小时前',
+    title: '阿里暗夜公园银河全景', likes: 512, comments: 78,
+    content: '第三次来阿里，这次运气特别好，连续三晚都是晴空。银河中心从地平线升起的那一刻，所有人都安静了。',
+    color: '#1a1f1a' },
+  { id: 3, user: '月之暗面', avatar: '仙女', time: '昨天',
+    title: '仙女座星系首次拍全', likes: 198, comments: 23,
+    content: '新手第一次成功拍到 M31 完整盘面，总曝光 2.5 小时。参数：ISO 1600，30s × 300 张。',
+    color: '#1a1a2a' },
+  { id: 4, user: '沙漠星河', avatar: '天蝎', time: '2 天前',
+    title: '敦煌沙漠里的心宿二', likes: 367, comments: 45,
+    content: '红超巨星心宿二在沙丘上方闪耀，沙漠的宁静让星空更加清澈。',
+    color: '#2a1a1a' },
+];
+
+const CAL_EVENTS = [
+  { day: 3, title: '象限仪座流星雨极大', type: '流星雨', level: '重要' },
+  { day: 8, title: '木星冲日', type: '行星', level: '推荐' },
+  { day: 14, title: '双子座流星雨极大', type: '流星雨', level: '重要' },
+  { day: 22, title: '冬至日', type: '节气', level: '普通' },
+  { day: 27, title: '小熊座流星雨', type: '流星雨', level: '普通' },
+];
+
+const API_ENDPOINTS = [
+  { method: 'GET', path: '/api/v2/sky/tonight', desc: '获取今夜天象概览',
+    params: [{k:'lat',t:'number',d:'纬度'},{k:'lon',t:'number',d:'经度'},{k:'date',t:'string',d:'日期 YYYY-MM-DD'}],
+    response: `{
+  "code": 0,
+  "data": {
+    "sunset": "17:32",
+    "sunrise": "06:48",
+    "moon_phase": 0.62,
+    "moon_illum": 78,
+    "seeing": 4.2,
+    "transparency": 75,
+    "darkness": "Bortle 3",
+    "highlights": [...]
+  }
+}` },
+  { method: 'GET', path: '/api/v2/constellations', desc: '星座图鉴列表',
+    params: [{k:'season',t:'string',d:'季节筛选'},{k:'page',t:'number',d:'页码'},{k:'limit',t:'number',d:'每页数量'}],
+    response: `{
+  "code": 0,
+  "data": {
+    "total": 88,
+    "items": [
+      {
+        "id": "orion",
+        "name": "猎户座",
+        "latin": "Orion",
+        "main_stars": 7,
+        "season": "冬",
+        "magnitude": 0.58
+      }
+    ]
+  }
+}` },
+  { method: 'POST', path: '/api/v2/observations', desc: '提交观测记录',
+    params: [{k:'spot_id',t:'string',d:'观测点ID'},{k:'target',t:'string',d:'观测目标'},{k:'equipment',t:'array',d:'使用器材'}],
+    response: `{
+  "code": 0,
+  "data": {
+    "id": "obs_20241215_001",
+    "created_at": "2024-12-15T22:30:00+08:00",
+    "points_earned": 50
+  }
+}` },
+  { method: 'GET', path: '/api/v2/community/feed', desc: '社区信息流',
+    params: [{k:'cursor',t:'string',d:'游标'},{k:'category',t:'string',d:'分类'}],
+    response: `{
+  "code": 0,
+  "data": {
+    "has_more": true,
+    "next_cursor": "c_12345",
+    "items": [...]
+  }
+}` },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   ICONS (SVG inline)
+   ───────────────────────────────────────────────────────────── */
+const Icon = {
+  Home: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>
+    </svg>),
+  Book: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h11a3 3 0 013 3v13H7a3 3 0 01-3-3V4z"/>
+      <path d="M4 17a3 3 0 013-3h11"/>
+    </svg>),
+  MapPin: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s-7-6.5-7-12a7 7 0 0114 0c0 5.5-7 12-7 12z"/>
+      <circle cx="12" cy="10" r="2.5"/>
+    </svg>),
+  Users: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="10" r="2.5"/>
+      <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 20c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
+    </svg>),
+  User: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+    </svg>),
+  Chevron: ({c='currentColor'}) => (
+    <svg viewBox="0 0 8 14" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 1l6 6-6 6"/>
+    </svg>),
+  Plus: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M5 12h14"/>
+    </svg>),
+  Camera: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="4"/>
+    </svg>),
+  Heart: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z"/>
+    </svg>),
+  Message: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5h16v11H8l-4 4z"/>
+    </svg>),
+  Calendar: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 3v4M16 3v4"/>
+    </svg>),
+  Settings: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3h.1a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8v.1a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>
+    </svg>),
+  Star: ({c='currentColor', f='none'}) => (
+    <svg viewBox="0 0 24 24" fill={f} stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.7 1-5.8L3.5 9.2 9.4 8.3z"/>
+    </svg>),
+  Eye: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>),
+  Moon: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>
+    </svg>),
+  Compass: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5 5-2z"/>
+    </svg>),
+  Back: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 6l-6 6 6 6"/>
+    </svg>),
+  Share: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+      <path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>
+    </svg>),
+  More: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+    </svg>),
+  Search: ({c='currentColor'}) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+    </svg>),
+};
+
+/* ─────────────────────────────────────────────────────────────
+   STAR FIELD (canvas background)
+   ───────────────────────────────────────────────────────────── */
+function StarField({ intensity = 1, redVision = false }) {
+  const canvasRef = React.useRef(null);
+  const rafRef = React.useRef(null);
+  const starsRef = React.useRef([]);
+  const reducedMotion = React.useRef(
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ).current;
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.offsetWidth * 2;
+    const h = canvas.height = canvas.offsetHeight * 2;
+
+    // Generate stars
+    const count = Math.floor(120 * intensity);
+    const stars = [];
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 1.8 + 0.4,
+        baseAlpha: Math.random() * 0.5 + 0.3,
+        phase: Math.random() * Math.PI * 2,
+        speed: Math.random() * 0.015 + 0.005,
+        twinkle: Math.random() > 0.6,
+      });
+    }
+    starsRef.current = stars;
+
+    if (reducedMotion) {
+      // Draw static stars once
+      drawFrame(ctx, w, h, stars, 0, redVision);
+      return;
+    }
+
+    let t = 0;
+    let visible = !document.hidden;
+
+    const animate = () => {
+      if (!visible) return;
+      t += 1;
+      drawFrame(ctx, w, h, stars, t, redVision);
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const onVis = () => {
+      visible = !document.hidden;
+      if (visible) rafRef.current = requestAnimationFrame(animate);
+      else if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [intensity, redVision, reducedMotion]);
+
+  return <canvas ref={canvasRef} className="star-canvas" style={{ width: '100%', height: '100%' }} />;
+}
+
+function drawFrame(ctx, w, h, stars, t, redVision) {
+  ctx.clearRect(0, 0, w, h);
+  const baseColor = redVision ? '217, 83, 79' : '242, 201, 76';
+  const dimColor = redVision ? '180, 60, 60' : '201, 209, 200';
+
+  stars.forEach(s => {
+    let alpha = s.baseAlpha;
+    if (s.twinkle) {
+      alpha = s.baseAlpha + Math.sin(t * s.speed + s.phase) * 0.3;
+      alpha = Math.max(0.15, Math.min(1, alpha));
+    }
+    const color = s.twinkle ? baseColor : dimColor;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${color},${alpha})`;
+    ctx.fill();
+
+    // Glow for brighter stars
+    if (s.r > 1.4 && s.twinkle) {
+      const grd = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3);
+      grd.addColorStop(0, `rgba(${color},${alpha * 0.3})`);
+      grd.addColorStop(1, `rgba(${color},0)`);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 3, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   IOS DEVICE FRAME (simplified, inline)
+   ───────────────────────────────────────────────────────────── */
+function IOSDevice({ children, width = 390, height = 844, dark = true }) {
+  return (
+    <div style={{
+      width, height, borderRadius: 48, overflow: 'hidden',
+      position: 'relative', background: dark ? '#000' : '#F2F2F7',
+      border: '1px solid rgba(201,209,200,0.15)',
+      fontFamily: '"Noto Sans SC", -apple-system, system-ui, sans-serif',
+      WebkitFontSmoothing: 'antialiased',
+      '--ios-safe-top': '54px',
+      '--ios-safe-bottom': '34px',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
+    }}>
+      {/* Dynamic Island */}
+      <div style={{
+        position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+        width: 120, height: 35, borderRadius: 22, background: '#000', zIndex: 50,
+      }} />
+      {/* Status bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 28px 16px', fontSize: 15, fontWeight: 600,
+          color: dark ? '#fff' : '#000', fontFamily: '-apple-system, system-ui',
+        }}>
+          <span>9:41</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width="17" height="11" viewBox="0 0 19 12"><rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill="currentColor"/><rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill="currentColor"/><rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill="currentColor"/><rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill="currentColor"/></svg>
+            <svg width="15" height="11" viewBox="0 0 17 12"><path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill="currentColor"/></svg>
+            <svg width="25" height="12" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="currentColor" strokeOpacity="0.35" fill="none"/><rect x="2" y="2" width="20" height="9" rx="2" fill="currentColor"/><path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill="currentColor" fillOpacity="0.4"/></svg>
+          </div>
+        </div>
+      </div>
+      {/* Content */}
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', isolation: 'isolate', position: 'relative' }}>
+        {children}
+      </div>
+      {/* Home indicator */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+        paddingBottom: 8, pointerEvents: 'none',
+      }}>
+        <div style={{ width: 134, height: 5, borderRadius: 100, background: dark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.25)' }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NAV BAR (large title + back button)
+   ───────────────────────────────────────────────────────────── */
+function NavBar({ title, subtitle, onBack, right, accent = '#F2C94C' }) {
+  return (
+    <div style={{
+      padding: '8px 16px 10px', display: 'flex', alignItems: 'flex-end',
+      justifyContent: 'space-between', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+        {onBack && (
+          <button onClick={onBack} style={{
+            width: 36, height: 36, borderRadius: 18,
+            background: 'rgba(255,255,255,0.06)', border: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: accent, cursor: 'pointer', flexShrink: 0,
+          }}>
+            <Icon.Back c={accent} />
+          </button>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <h1 className="serif" style={{
+            fontSize: 28, fontWeight: 700, letterSpacing: -0.5,
+            lineHeight: 1.2, color: '#E8EDEA',
+          }}>{title}</h1>
+          {subtitle && (
+            <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.55)', marginTop: 2 }}>
+              {subtitle}
+            </div>
+          )}
+        </div>
+      </div>
+      {right && <div style={{ flexShrink: 0 }}>{right}</div>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TAB BAR
+   ───────────────────────────────────────────────────────────── */
+function TabBar({ active, onChange, accent = '#F2C94C' }) {
+  const tabs = [
+    { id: 'home', label: '今夜', icon: Icon.Home },
+    { id: 'stars', label: '图鉴', icon: Icon.Star },
+    { id: 'spots', label: '观测点', icon: Icon.MapPin },
+    { id: 'community', label: '社区', icon: Icon.Users },
+    { id: 'me', label: '我的', icon: Icon.User },
+  ];
+  return (
+    <div className="tabbar" style={{ '--ios-safe-bottom': '34px' }}>
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        const Ic = t.icon;
+        return (
+          <div key={t.id} className={`tab-item ${isActive ? 'active' : ''}`}
+               style={{ color: isActive ? accent : undefined }}
+               onClick={() => onChange(t.id)}>
+            <Ic c="currentColor" />
+            <span>{t.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   HOME PAGE — 今夜天象 (Hero + parallax + stacked cards)
+   ───────────────────────────────────────────────────────────── */
+function HomePage({ onNav, accent, redVision }) {
+  const scrollRef = React.useRef(null);
+  const heroRef = React.useRef(null);
+  const [pullDist, setPullDist] = React.useState(0);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const touchStart = React.useRef(0);
+  const pullTimer = React.useRef(null);
+
+  // Parallax on scroll — direct DOM manipulation
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    const hero = heroRef.current;
+    if (!el || !hero) return;
+
+    const onScroll = () => {
+      const y = el.scrollTop;
+      const scale = Math.max(1, 1 + y * -0.003);
+      const translateY = Math.max(-30, y * 0.3);
+      hero.style.transform = `scale(${scale}) translateY(${translateY}px)`;
+      hero.style.opacity = Math.max(0.3, 1 - y / 250);
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Pull to refresh
+  const onTouchStart = (e) => {
+    if (scrollRef.current.scrollTop <= 0) {
+      touchStart.current = e.touches[0].clientY;
+    } else {
+      touchStart.current = 0;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (!touchStart.current) return;
+    const diff = e.touches[0].clientY - touchStart.current;
+    if (diff > 0 && scrollRef.current.scrollTop <= 0) {
+      setPullDist(Math.min(diff * 0.5, 80));
+    }
+  };
+  const onTouchEnd = () => {
+    if (pullDist > 50 && !refreshing) {
+      setRefreshing(true);
+      if (pullTimer.current) clearTimeout(pullTimer.current);
+      pullTimer.current = setTimeout(() => {
+        setRefreshing(false);
+        setPullDist(0);
+      }, 1500);
+    } else if (!refreshing) {
+      setPullDist(0);
+    }
+    touchStart.current = 0;
+  };
+
+  // Shooting stars
+  const [shooters, setShooters] = React.useState([]);
+  const shooterTimer = React.useRef(null);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const spawn = () => {
+      const id = Date.now() + Math.random();
+      setShooters(prev => [...prev, { id, top: 30 + Math.random() * 30, left: 50 + Math.random() * 40 }]);
+      setTimeout(() => setShooters(prev => prev.filter(s => s.id !== id)), 1500);
+      shooterTimer.current = setTimeout(spawn, 4000 + Math.random() * 4000);
+    };
+
+    shooterTimer.current = setTimeout(spawn, 2000);
+    const onVis = () => {
+      if (document.hidden) {
+        if (shooterTimer.current) clearTimeout(shooterTimer.current);
+      } else {
+        shooterTimer.current = setTimeout(spawn, 2000);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (shooterTimer.current) clearTimeout(shooterTimer.current);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  const mainColor = redVision ? '#D9534F' : accent;
+
+  return (
+    <div className="scroll" ref={scrollRef} style={{ flex: 1, position: 'relative' }}
+         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+
+      {/* Pull indicator */}
+      <div className={`pull-indicator ${pullDist > 10 ? 'visible' : ''}`}
+           style={{ top: 60 + pullDist * 0.5, opacity: pullDist / 80 }}>
+        <div style={{ transform: `rotate(${pullDist * 3}deg)`, transition: 'transform 0.1s' }}>
+          <Icon.Star c={mainColor} />
+        </div>
+        <span>{refreshing ? '更新中…' : pullDist > 50 ? '松开更新' : '下拉刷新'}</span>
+      </div>
+
+      {/* Hero area */}
+      <div style={{ position: 'relative', height: 380, overflow: 'hidden' }}>
+        <div ref={heroRef} style={{
+          position: 'absolute', inset: 0,
+          background: `radial-gradient(ellipse at 60% 30%, ${redVision ? 'rgba(217,83,79,0.15)' : 'rgba(242,201,76,0.12)'} 0%, transparent 60%),
+                       linear-gradient(180deg, ${redVision ? '#1a0a0a' : '#0a1510'} 0%, #0E1513 100%)`,
+          transformOrigin: 'center top',
+        }}>
+          <StarField intensity={0.8} redVision={redVision} />
+
+          {/* Shooting stars */}
+          {shooters.map(s => (
+            <div key={s.id} style={{
+              position: 'absolute', top: `${s.top}%`, left: `${s.left}%`,
+              width: 80, height: 1.5,
+              background: `linear-gradient(90deg, transparent, ${mainColor})`,
+              borderRadius: 2,
+              animation: 'shoot 1.5s ease-out forwards',
+              boxShadow: `0 0 6px ${mainColor}`,
+              transform: 'rotate(30deg)',
+            }} />
+          ))}
+        </div>
+
+        {/* Safe area top spacer */}
+        <div style={{ height: 'var(--ios-safe-top)' }} />
+
+        {/* Hero content */}
+        <div style={{ padding: '12px 20px 0', position: 'relative', zIndex: 2 }} className="anim-fade-up">
+          <div style={{
+            fontSize: 13, color: mainColor, fontWeight: 500,
+            letterSpacing: 0.1, display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Icon.Moon c={mainColor} />
+            <span>12月15日 · 农历廿三</span>
+          </div>
+          <h1 className="serif" style={{
+            fontSize: 42, fontWeight: 700, lineHeight: 1.1,
+            marginTop: 6, letterSpacing: -1,
+          }}>今夜星空</h1>
+          <p style={{ fontSize: 14, color: 'rgba(201,209,200,0.7)', marginTop: 4, maxWidth: 280 }}>
+            月相下弦 · 视宁度 4.2 · 透明度 75%
+          </p>
+
+          {/* Key metrics row */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            {[
+              { label: '视宁度', val: '4.2', unit: '/5' },
+              { label: '透明度', val: '75', unit: '%' },
+              { label: '暗度', val: 'B3', unit: '' },
+            ].map((m, i) => (
+              <div key={m.label} className="card anim-fade-up" style={{
+                flex: 1, padding: '12px 14px',
+                animationDelay: `${0.1 + i * 0.08}s`,
+              }}>
+                <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.55)' }}>{m.label}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginTop: 2 }}>
+                  <span className="tabular" style={{ fontSize: 22, fontWeight: 700, color: mainColor }}>{m.val}</span>
+                  <span style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)' }}>{m.unit}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div style={{ position: 'relative', zIndex: 2, marginTop: -30 }}>
+
+        {/* Tonight's highlights */}
+        <div style={{ padding: '0 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h2 className="serif" style={{ fontSize: 18, fontWeight: 600 }}>今夜看点</h2>
+            <span style={{ fontSize: 12, color: 'rgba(201,209,200,0.5)' }}>共 4 个</span>
+          </div>
+        </div>
+
+        <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            { t: '猎户座升上中天', time: '22:18', tag: '深空', desc: 'M42 大星云位于最佳观测位置', color: redVision ? '#D9534F' : '#F2C94C' },
+            { t: '双子座流星雨', time: '01:30', tag: '流星雨', desc: 'ZHR 约 120，月光影响较小', color: '#7DBE9B' },
+            { t: '木星合月', time: '20:45', tag: '行星', desc: '木星与月球相距 2.5 度', color: '#6B8E9F' },
+          ].map((item, i) => (
+            <div key={item.t} className="card anim-fade-up"
+                 style={{ padding: 14, display: 'flex', gap: 12, alignItems: 'center',
+                          animationDelay: `${0.15 + i * 0.08}s`, cursor: 'pointer' }}
+                 onClick={() => onNav('detail')}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                background: `${item.color}20`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: item.color,
+              }}>
+                <Icon.Star c={item.color} f={item.color + '30'} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{item.t}</div>
+                <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.55)', marginTop: 2 }}>{item.desc}</div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div className="tabular" style={{ fontSize: 14, fontWeight: 600, color: item.color }}>{item.time}</div>
+                <div style={{ fontSize: 10, color: 'rgba(201,209,200,0.4)', marginTop: 1 }}>{item.tag}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Moon phase card */}
+        <div style={{ padding: '20px 16px 0' }}>
+          <div className="card" style={{
+            padding: 18, display: 'flex', gap: 16, alignItems: 'center',
+            background: `linear-gradient(135deg, ${redVision ? 'rgba(217,83,79,0.08)' : 'rgba(242,201,76,0.06)'} 0%, rgba(255,255,255,0.02) 100%)`,
+          }}>
+            <div className="anim-float" style={{
+              width: 64, height: 64, borderRadius: 32, flexShrink: 0,
+              background: `radial-gradient(circle at 35% 35%, #E8EDEA 0%, ${redVision ? '#8B6565' : '#A8B0A8'} 60%, #3a3a3a 100%)`,
+              boxShadow: `0 0 20px ${redVision ? 'rgba(217,83,79,0.2)' : 'rgba(242,201,76,0.15)'}`,
+            }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>下弦月 · 照亮度 78%</div>
+              <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.55)', marginTop: 4, lineHeight: 1.5 }}>
+                月出 23:42 · 月落 11:18<br />
+                后半夜观测条件更佳
+              </div>
+            </div>
+            <Icon.Chevron c="rgba(201,209,200,0.4)" />
+          </div>
+        </div>
+
+        {/* Quick actions */}
+        <div style={{ padding: '20px 16px 100px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 className="serif" style={{ fontSize: 18, fontWeight: 600 }}>快捷入口</h2>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {[
+              { label: '天象日历', icon: Icon.Calendar, color: '#F2C94C', page: 'calendar' },
+              { label: '观测点', icon: Icon.MapPin, color: '#7DBE9B', page: 'spots' },
+              { label: '拍摄参数', icon: Icon.Camera, color: '#6B8E9F', page: 'params' },
+              { label: '设计规范', icon: Icon.Settings, color: '#C97D9D', page: 'design' },
+            ].map((a, i) => {
+              const Ic = a.icon;
+              return (
+                <div key={a.label} onClick={() => onNav(a.page)}
+                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                     className="anim-fade-up">
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 18,
+                    background: `${a.color}18`, color: a.color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animationDelay: `${0.2 + i * 0.05}s`,
+                  }}>
+                    <Ic c={a.color} />
+                  </div>
+                  <span style={{ fontSize: 11, color: 'rgba(201,209,200,0.7)' }}>{a.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   STARS PAGE — 星座图鉴 (grid collage)
+   ───────────────────────────────────────────────────────────── */
+function StarsPage({ onNav, accent, redVision }) {
+  const [filter, setFilter] = React.useState('all');
+  const seasons = [
+    { id: 'all', label: '全部' },
+    { id: '春', label: '春季' },
+    { id: '夏', label: '夏季' },
+    { id: '秋', label: '秋季' },
+    { id: '冬', label: '冬季' },
+  ];
+
+  const filtered = filter === 'all' ? CONSTELLATIONS : CONSTELLATIONS.filter(c => c.season === filter);
+  const mainColor = redVision ? '#D9534F' : accent;
+
+  return (
+    <div className="scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="星座图鉴" subtitle={`共 ${CONSTELLATIONS.length} 个星座`}
+              right={<div style={{ display: 'flex', gap: 8 }}>
+                <button style={{
+                  width: 36, height: 36, borderRadius: 18, border: 'none',
+                  background: 'rgba(255,255,255,0.06)', color: mainColor,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                }}><Icon.Search c={mainColor} /></button>
+              </div>}
+              accent={mainColor} />
+
+      {/* Season filter (scrollable) */}
+      <div style={{
+        display: 'flex', gap: 8, padding: '4px 16px 14px',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
+        {seasons.map(s => (
+          <button key={s.id} onClick={() => setFilter(s.id)} style={{
+            padding: '6px 16px', borderRadius: 999, border: 'none',
+            whiteSpace: 'nowrap', fontSize: 13, fontWeight: 500,
+            background: filter === s.id ? mainColor : 'rgba(255,255,255,0.06)',
+            color: filter === s.id ? '#0E1513' : 'rgba(201,209,200,0.7)',
+            cursor: 'pointer', transition: 'all 0.2s',
+          }}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* Constellation grid — masonry-like with varying sizes */}
+      <div style={{ padding: '0 16px 100px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {filtered.map((c, i) => (
+            <div key={c.id}
+                 className="anim-fade-up"
+                 style={{
+                   gridRow: i % 3 === 0 ? 'span 2' : 'span 1',
+                   animationDelay: `${i * 0.06}s`,
+                 }}>
+              <div onClick={() => onNav('constelDetail', c)} className="constel-card" style={{
+                height: '100%',
+                background: `linear-gradient(135deg, ${c.color1} 0%, ${c.color2} 100%)`,
+                position: 'relative', overflow: 'hidden',
+              }}>
+                {/* Mini star field */}
+                <div style={{ position: 'absolute', inset: 0 }}>
+                  {[...Array(8)].map((_, j) => (
+                    <div key={j} style={{
+                      position: 'absolute',
+                      top: `${Math.random() * 100}%`,
+                      left: `${Math.random() * 100}%`,
+                      width: j % 3 === 0 ? 3 : 2, height: j % 3 === 0 ? 3 : 2,
+                      borderRadius: '50%',
+                      background: j % 3 === 0 ? mainColor : 'rgba(255,255,255,0.6)',
+                      opacity: 0.6 + Math.random() * 0.4,
+                      animation: j % 2 === 0 ? 'twinkle 3s ease-in-out infinite' : 'none',
+                      animationDelay: `${j * 0.3}s`,
+                    }} />
+                  ))}
+                </div>
+                {/* Constellation line pattern */}
+                <svg viewBox="0 0 100 100" style={{
+                  position: 'absolute', top: '50%', left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '70%', height: '70%', opacity: 0.8,
+                }}>
+                  {c.id === 'orion' && (
+                    <>
+                      <line x1="30" y1="20" x2="50" y2="45" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="50" y1="45" x2="70" y2="25" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="50" y1="45" x2="50" y2="75" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="35" y1="50" x2="65" y2="50" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="50" y1="75" x2="30" y2="85" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="50" y1="75" x2="70" y2="80" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      {[[30,20],[70,25],[50,45],[40,50],[50,50],[60,50],[50,75],[30,85],[70,80]].map(([x,y],k) => (
+                        <circle key={k} cx={x} cy={y} r={k===2?2.5:1.5} fill={mainColor}/>
+                      ))}
+                    </>
+                  )}
+                  {c.id === 'ursa' && (
+                    <>
+                      <line x1="20" y1="35" x2="35" y2="25" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="35" y1="25" x2="55" y2="30" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="55" y1="30" x2="65" y2="45" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="65" y1="45" x2="75" y2="65" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="75" y1="65" x2="55" y2="70" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="55" y1="70" x2="40" y2="55" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      <line x1="40" y1="55" x2="20" y2="35" stroke={mainColor} strokeWidth="0.8" opacity="0.5"/>
+                      {[[20,35],[35,25],[55,30],[65,45],[75,65],[55,70],[40,55]].map(([x,y],k) => (
+                        <circle key={k} cx={x} cy={y} r={k===2?2:1.5} fill={mainColor}/>
+                      ))}
+                    </>
+                  )}
+                  {c.id !== 'orion' && c.id !== 'ursa' && (
+                    <>
+                      {[...Array(c.stars)].map((_,k) => {
+                        const angle = (k / c.stars) * Math.PI * 2 + 0.3;
+                        const r = 25 + (k % 3) * 8;
+                        const x = 50 + Math.cos(angle) * r;
+                        const y = 50 + Math.sin(angle) * r * 0.7;
+                        return (
+                          <React.Fragment key={k}>
+                            {k > 0 && (() => {
+                              const prevAngle = ((k-1) / c.stars) * Math.PI * 2 + 0.3;
+                              const prevR = 25 + ((k-1) % 3) * 8;
+                              const px = 50 + Math.cos(prevAngle) * prevR;
+                              const py = 50 + Math.sin(prevAngle) * prevR * 0.7;
+                              return <line x1={px} y1={py} x2={x} y2={y} stroke={mainColor} strokeWidth="0.6" opacity="0.4"/>;
+                            })()}
+                            <circle cx={x} cy={y} r={k===0?2.5:1.5} fill={mainColor}/>
+                          </React.Fragment>
+                        );
+                      })}
+                    </>
+                  )}
+                </svg>
+
+                {/* Labels */}
+                <div style={{
+                  position: 'absolute', bottom: 12, left: 12, right: 12,
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>{c.name}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>
+                    {c.en} · {c.stars} 颗主星
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SPOTS PAGE — 观测点地图 (map + bottom sheet)
+   ───────────────────────────────────────────────────────────── */
+function SpotsPage({ onNav, accent, redVision }) {
+  const [selected, setSelected] = React.useState(SPOTS[0]);
+  const mainColor = redVision ? '#D9534F' : accent;
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="观测点" subtitle="暗夜公园 · 山野秘境"
+              right={<button style={{
+                width: 36, height: 36, borderRadius: 18, border: 'none',
+                background: 'rgba(255,255,255,0.06)', color: mainColor,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}><Icon.Compass c={mainColor} /></button>}
+              accent={mainColor} />
+
+      {/* Map area */}
+      <div style={{ flex: 1, position: 'relative', margin: '8px 0 0' }}>
+        {/* Stylized map background */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: `
+            radial-gradient(ellipse at 30% 60%, rgba(26,42,58,0.8) 0%, transparent 50%),
+            radial-gradient(ellipse at 70% 40%, rgba(42,31,26,0.6) 0%, transparent 50%),
+            linear-gradient(180deg, #0a1410 0%, #0E1513 100%)
+          `,
+        }}>
+          <StarField intensity={0.3} redVision={redVision} />
+          {/* China map outline (simplified) */}
+          <svg viewBox="0 0 100 80" style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '85%', height: '85%', opacity: 0.35,
+          }}>
+            <path d="M20,35 Q25,20 40,18 Q55,15 65,20 Q78,22 82,32 Q88,42 80,52 Q78,62 70,65 Q55,70 45,68 Q32,70 25,62 Q18,55 20,35 Z"
+                  fill="none" stroke={mainColor} strokeWidth="0.3" strokeOpacity="0.5"/>
+            <path d="M35,30 Q50,28 60,35 Q65,45 55,52 Q40,55 35,45 Z"
+                  fill="none" stroke={mainColor} strokeWidth="0.2" strokeOpacity="0.3"/>
+          </svg>
+        </div>
+
+        {/* Spot markers */}
+        {SPOTS.map((spot, i) => (
+          <div key={spot.id}
+               onClick={() => setSelected(spot)}
+               style={{
+                 position: 'absolute', top: `${spot.y}%`, left: `${spot.x}%`,
+                 transform: 'translate(-50%, -50%)', cursor: 'pointer',
+                 zIndex: selected.id === spot.id ? 5 : 3,
+                 animation: `fadeInUp 0.5s ease both`,
+                 animationDelay: `${0.2 + i * 0.1}s`,
+               }}>
+            {/* Pulse ring */}
+            {selected.id === spot.id && (
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 36, height: 36, borderRadius: 18,
+                border: `2px solid ${mainColor}`,
+                animation: 'pulse-ring 2s ease-out infinite',
+              }} />
+            )}
+            <div style={{
+              width: selected.id === spot.id ? 18 : 12,
+              height: selected.id === spot.id ? 18 : 12,
+              borderRadius: '50%',
+              background: selected.id === spot.id ? mainColor : 'rgba(201,209,200,0.6)',
+              boxShadow: selected.id === spot.id ? `0 0 12px ${mainColor}` : 'none',
+              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              border: '2px solid #0E1513',
+            }} />
+            <div style={{
+              position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+              marginTop: 4, fontSize: 10, fontWeight: 600,
+              color: selected.id === spot.id ? mainColor : 'rgba(201,209,200,0.7)',
+              whiteSpace: 'nowrap',
+            }}>{spot.name}</div>
+          </div>
+        ))}
+
+        {/* Compass */}
+        <div style={{
+          position: 'absolute', top: 16, right: 16,
+          width: 40, height: 40, borderRadius: 20,
+          background: 'rgba(14,21,19,0.8)',
+          backdropFilter: 'blur(10px)',
+          border: '0.5px solid rgba(201,209,200,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: mainColor,
+        }} className="anim-spin-slow">
+          <Icon.Compass c={mainColor} />
+        </div>
+      </div>
+
+      {/* Bottom sheet */}
+      <div style={{
+        background: 'rgba(14,21,19,0.9)',
+        backdropFilter: 'blur(20px)',
+        '-webkit-backdrop-filter': 'blur(20px)',
+        borderTop: '0.5px solid rgba(201,209,200,0.1)',
+        borderTopLeftRadius: 24, borderTopRightRadius: 24,
+        padding: '8px 20px 20px',
+        position: 'relative', zIndex: 10,
+      }} className="anim-bounce-in">
+        <div style={{
+          width: 36, height: 5, borderRadius: 3, margin: '0 auto 12px',
+          background: 'rgba(201,209,200,0.2)',
+        }} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16, flexShrink: 0,
+            background: `linear-gradient(135deg, ${mainColor}30 0%, transparent 100%)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: mainColor, border: `0.5px solid ${mainColor}30`,
+          }}>
+            <Icon.MapPin c={mainColor} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>{selected.name}</div>
+            <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.55)', marginTop: 2 }}>
+              {selected.loc} · {selected.dark}
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon.Star c={mainColor} f={mainColor} />
+                <span style={{ fontSize: 12 }}>{selected.rating}</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.55)' }}>
+                {selected.dist}
+              </div>
+            </div>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: 'rgba(201,209,200,0.65)', marginTop: 12, lineHeight: 1.6 }}>
+          {selected.desc}
+        </p>
+        <button style={{
+          width: '100%', marginTop: 14, padding: '12px 0',
+          borderRadius: 14, border: 'none',
+          background: mainColor, color: '#0E1513',
+          fontSize: 15, fontWeight: 600, cursor: 'pointer',
+        }}>导航前往</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMMUNITY PAGE — 社区 (card feed + FAB)
+   ───────────────────────────────────────────────────────────── */
+function CommunityPage({ onNav, accent, redVision }) {
+  const [tab, setTab] = React.useState('recommend');
+  const [liked, setLiked] = React.useState({});
+  const mainColor = redVision ? '#D9534F' : accent;
+
+  const toggleLike = (id) => {
+    setLiked(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  return (
+    <div className="scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="星野社区" subtitle="同好者的星空分享"
+              right={<button style={{
+                width: 36, height: 36, borderRadius: 18, border: 'none',
+                background: 'rgba(255,255,255,0.06)', color: mainColor,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}><Icon.Message c={mainColor} /></button>}
+              accent={mainColor} />
+
+      {/* Tabs */}
+      <div style={{
+        display: 'flex', padding: '0 16px', marginBottom: 14,
+        borderBottom: '0.5px solid rgba(201,209,200,0.08)',
+      }}>
+        {[
+          { id: 'recommend', label: '推荐' },
+          { id: 'following', label: '关注' },
+          { id: 'nearby', label: '附近' },
+        ].map(t => (
+          <div key={t.id} onClick={() => setTab(t.id)}
+               style={{
+                 padding: '10px 16px', fontSize: 14, fontWeight: tab === t.id ? 600 : 400,
+                 color: tab === t.id ? '#E8EDEA' : 'rgba(201,209,200,0.5)',
+                 position: 'relative', cursor: 'pointer',
+                 transition: 'all 0.2s',
+               }}>
+            {t.label}
+            {tab === t.id && (
+              <div style={{
+                position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+                width: 20, height: 3, borderRadius: 2, background: mainColor,
+              }} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Feed */}
+      <div style={{ padding: '0 0 100px' }}>
+        {POSTS.map((post, i) => (
+          <div key={post.id} className="feed-item anim-fade-up"
+               style={{ animationDelay: `${i * 0.08}s` }}>
+            {/* User header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '12px 14px',
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 18,
+                background: `linear-gradient(135deg, ${post.color} 0%, #0E1513 100%)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 600, color: mainColor,
+                border: `0.5px solid ${mainColor}40`,
+              }}>
+                {post.avatar.charAt(0)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{post.user}</div>
+                <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.45)' }}>{post.time}</div>
+              </div>
+              <Icon.More c="rgba(201,209,200,0.5)" />
+            </div>
+
+            {/* Image area */}
+            <div className="feed-img" style={{
+              background: `linear-gradient(180deg, ${post.color}60 0%, ${post.color}20 100%)`,
+              position: 'relative',
+            }}>
+              <StarField intensity={0.6} redVision={redVision} />
+              {/* Silhouette */}
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, height: '30%',
+                background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.7))',
+              }} />
+              <div style={{
+                position: 'absolute', bottom: 14, left: 14,
+                fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500,
+              }}>{post.title}</div>
+            </div>
+
+            {/* Body */}
+            <div className="feed-body">
+              <p style={{ fontSize: 13, color: 'rgba(201,209,200,0.7)', lineHeight: 1.6 }}>
+                {post.content}
+              </p>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 20, marginTop: 12,
+                paddingTop: 12, borderTop: '0.5px solid rgba(201,209,200,0.06)',
+              }}>
+                <div onClick={() => toggleLike(post.id)}
+                     style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <Icon.Heart c={liked[post.id] ? '#D9534F' : 'rgba(201,209,200,0.5)'} f={liked[post.id] ? '#D9534F' : 'none'} />
+                  <span style={{ fontSize: 12, color: liked[post.id] ? '#D9534F' : 'rgba(201,209,200,0.5)' }}>
+                    {post.likes + (liked[post.id] ? 1 : 0)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon.Message c="rgba(201,209,200,0.5)" />
+                  <span style={{ fontSize: 12, color: 'rgba(201,209,200,0.5)' }}>{post.comments}</span>
+                </div>
+                <div style={{ flex: 1 }} />
+                <Icon.Share c="rgba(201,209,200,0.5)" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* FAB */}
+      <div className="fab anim-glow" onClick={() => onNav('capture')}>
+        <Icon.Camera c="#0E1513" />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ME PAGE — 我的 (profile + circular progress)
+   ───────────────────────────────────────────────────────────── */
+function MePage({ onNav, accent, redVision }) {
+  const mainColor = redVision ? '#D9534F' : accent;
+  const progress = 0.68;
+  const circumference = 2 * Math.PI * 55;
+  const dashOffset = circumference * (1 - progress);
+
+  const stats = [
+    { label: '观测次数', val: 47, unit: '次' },
+    { label: '已记录星座', val: 23, unit: '个' },
+    { label: '积分', val: 2860, unit: '' },
+  ];
+
+  const achievements = [
+    { name: '初窥门径', desc: '完成首次观测', done: true },
+    { name: '北斗指路', desc: '找到北斗七星', done: true },
+    { name: '银河猎手', desc: '拍摄银河', done: true },
+    { name: '追星达人', desc: '观测 50 次', done: false },
+  ];
+
+  return (
+    <div className="scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Hero header with circular progress */}
+      <div style={{
+        position: 'relative', paddingTop: 'var(--ios-safe-top)',
+        padding: 'calc(var(--ios-safe-top) + 20px) 20px 24px',
+        background: `linear-gradient(180deg, ${redVision ? 'rgba(217,83,79,0.12)' : 'rgba(242,201,76,0.08)'} 0%, transparent 100%)`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          {/* Circular progress avatar */}
+          <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }} className="anim-float">
+            <svg viewBox="0 0 120 120" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="60" cy="60" r="55" fill="none"
+                      stroke="rgba(201,209,200,0.1)" strokeWidth="6"/>
+              <circle cx="60" cy="60" r="55" fill="none"
+                      stroke={mainColor} strokeWidth="6" strokeLinecap="round"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={dashOffset}
+                      style={{ transition: 'stroke-dashoffset 1.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                               filter: `drop-shadow(0 0 6px ${mainColor}60)` }}/>
+            </svg>
+            <div style={{
+              position: 'absolute', top: 8, left: 8, right: 8, bottom: 8,
+              borderRadius: '50%',
+              background: `radial-gradient(circle at 30% 30%, #2a3a3a 0%, #0E1513 70%)`,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              border: `1px solid ${mainColor}20`,
+            }}>
+              <div className="serif" style={{ fontSize: 24, fontWeight: 700, color: mainColor }}>
+                Lv.6
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(201,209,200,0.5)', marginTop: 2 }}>
+                进阶观星者
+              </div>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }} className="anim-fade-up">
+            <div style={{ fontSize: 22, fontWeight: 700 }}>星河漫步者</div>
+            <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.5)', marginTop: 4 }}>
+              下次升级还需 140 积分
+            </div>
+            <div style={{
+              marginTop: 10, height: 6, borderRadius: 3,
+              background: 'rgba(201,209,200,0.1)', overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', width: '68%', borderRadius: 3,
+                background: `linear-gradient(90deg, ${mainColor}, ${mainColor}cc)`,
+                boxShadow: `0 0 8px ${mainColor}60`,
+              }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{ display: 'flex', marginTop: 20 }}>
+          {stats.map((s, i) => (
+            <div key={s.label} style={{ flex: 1, textAlign: 'center' }} className="anim-fade-up"
+                 >
+              <div className="tabular" style={{ fontSize: 22, fontWeight: 700, color: mainColor }}>
+                {s.val}<span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(201,209,200,0.5)', marginLeft: 2 }}>{s.unit}</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)', marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Achievements section */}
+      <div style={{ padding: '0 16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 className="serif" style={{ fontSize: 17, fontWeight: 600 }}>成就徽章</h2>
+          <span style={{ fontSize: 12, color: 'rgba(201,209,200,0.45)' }}>3 / 12</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          {achievements.map((a, i) => (
+            <div key={a.name} className="anim-fade-up" style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              animationDelay: `${0.1 + i * 0.08}s`,
+            }}>
+              <div style={{
+                width: 54, height: 54, borderRadius: 27,
+                background: a.done
+                  ? `linear-gradient(135deg, ${mainColor}30 0%, ${mainColor}10 100%)`
+                  : 'rgba(201,209,200,0.06)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: a.done ? mainColor : 'rgba(201,209,200,0.3)',
+                border: `0.5px solid ${a.done ? mainColor + '40' : 'rgba(201,209,200,0.1)'}`,
+              }}>
+                <Icon.Star c="currentColor" f={a.done ? mainColor + '40' : 'none'} />
+              </div>
+              <span style={{ fontSize: 10, color: a.done ? '#E8EDEA' : 'rgba(201,209,200,0.4)', textAlign: 'center' }}>
+                {a.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Settings list */}
+      <div style={{ padding: '0 16px 100px' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {[
+            { label: '我的观测记录', detail: '47 条', icon: Icon.Eye },
+            { label: '我的收藏', detail: '12 个', icon: Icon.Star },
+            { label: '设备档案', detail: '3 台', icon: Icon.Camera },
+            { label: '设计规范', detail: '', icon: Icon.Settings, action: () => onNav('design') },
+          ].map((item, i) => {
+            const Ic = item.icon;
+            return (
+              <div key={item.label} className="list-row"
+                   onClick={item.action}
+                   style={{ cursor: item.action ? 'pointer' : 'default' }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 8, marginRight: 12, flexShrink: 0,
+                  background: `${mainColor}18`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: mainColor,
+                }}>
+                  <Ic c={mainColor} />
+                </div>
+                <div style={{ flex: 1, fontSize: 15 }}>{item.label}</div>
+                {item.detail && <span style={{ fontSize: 13, color: 'rgba(201,209,200,0.5)', marginRight: 6 }}>{item.detail}</span>}
+                <Icon.Chevron c="rgba(201,209,200,0.3)" />
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="card" style={{ overflow: 'hidden', marginTop: 16 }}>
+          {[
+            { label: '红光夜视模式', toggle: true },
+            { label: '接口文档', detail: 'v2.0', action: () => onNav('api') },
+          ].map((item, i) => (
+            <div key={item.label} className="list-row"
+                 onClick={item.action}
+                 style={{ cursor: item.action ? 'pointer' : 'default' }}>
+              <div style={{ flex: 1, fontSize: 15 }}>{item.label}</div>
+              {item.toggle && (
+                <div onClick={(e) => { e.stopPropagation(); }} style={{
+                  width: 44, height: 26, borderRadius: 13,
+                  background: redVision ? mainColor : 'rgba(201,209,200,0.2)',
+                  position: 'relative', cursor: 'pointer',
+                  transition: 'background 0.2s',
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 3,
+                    left: redVision ? 21 : 3,
+                    width: 20, height: 20, borderRadius: 10,
+                    background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    transition: 'left 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  }} />
+                </div>
+              )}
+              {item.detail && <span style={{ fontSize: 13, color: 'rgba(201,209,200,0.5)', marginRight: 6 }}>{item.detail}</span>}
+              {!item.toggle && <Icon.Chevron c="rgba(201,209,200,0.3)" />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CALENDAR PAGE — 天象日历 (calendar + event list split)
+   ───────────────────────────────────────────────────────────── */
+function CalendarPage({ onBack, accent, redVision }) {
+  const mainColor = redVision ? '#D9534F' : accent;
+  const [selectedDay, setSelectedDay] = React.useState(15);
+
+  const daysInMonth = 31;
+  const firstDayWeekday = 6; // Saturday (Dec 1, 2024 is Sunday actually, let's use 0=Sun)
+  const weekdays = ['日','一','二','三','四','五','六'];
+
+  // Generate day cells
+  const cells = [];
+  for (let i = 0; i < firstDayWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const hasEvent = (day) => CAL_EVENTS.some(e => e.day === day);
+  const getEvents = (day) => CAL_EVENTS.filter(e => e.day === day);
+
+  const levelColor = (level) => {
+    if (level === '重要') return mainColor;
+    if (level === '推荐') return '#7DBE9B';
+    return '#6B8E9F';
+  };
+
+  const todayEvents = getEvents(selectedDay);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0E1513' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="天象日历" subtitle="2024年12月" onBack={onBack} accent={mainColor} />
+
+      {/* Weekday headers */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+        padding: '8px 16px 4px',
+      }}>
+        {weekdays.map(d => (
+          <div key={d} style={{
+            textAlign: 'center', fontSize: 11,
+            color: 'rgba(201,209,200,0.4)', paddingBottom: 4,
+          }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="cal-grid">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />;
+          const selected = day === selectedDay;
+          const event = hasEvent(day);
+          const ev = getEvents(day)[0];
+          return (
+            <div key={i} className={`cal-day ${selected ? 'selected' : ''}`}
+                 style={{
+                   background: selected ? mainColor : 'transparent',
+                   color: selected ? '#0E1513' : '#E8EDEA',
+                 }}
+                 onClick={() => setSelectedDay(day)}>
+              <span>{day}</span>
+              {event && (
+                <div className="dot" style={{
+                  background: selected ? '#0E1513' : levelColor(ev?.level),
+                }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Event list section */}
+      <div style={{ flex: 1, marginTop: 16, padding: '0 16px 30px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+          <span className="serif" style={{ fontSize: 18, fontWeight: 600 }}>
+            12月{selectedDay}日
+          </span>
+          <span style={{ fontSize: 12, color: 'rgba(201,209,200,0.5)' }}>
+            {todayEvents.length > 0 ? `${todayEvents.length} 个天象` : '暂无天象'}
+          </span>
+        </div>
+
+        <div className="scroll" style={{ flex: 1 }}>
+          {todayEvents.length > 0 ? todayEvents.map((ev, i) => (
+            <div key={i} className="card anim-fade-up"
+                 style={{ padding: 14, marginBottom: 10, animationDelay: `${i * 0.08}s` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 4, height: 40, borderRadius: 2, flexShrink: 0,
+                  background: levelColor(ev.level),
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>{ev.title}</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <span style={{
+                      fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                      background: `${levelColor(ev.level)}20`,
+                      color: levelColor(ev.level),
+                    }}>{ev.type}</span>
+                    <span style={{
+                      fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                      background: 'rgba(201,209,200,0.1)',
+                      color: 'rgba(201,209,200,0.6)',
+                    }}>{ev.level}</span>
+                  </div>
+                </div>
+                <Icon.Chevron c="rgba(201,209,200,0.3)" />
+              </div>
+            </div>
+          )) : (
+            <div style={{
+              textAlign: 'center', padding: '40px 20px',
+              color: 'rgba(201,209,200,0.4)',
+            }}>
+              <Icon.Star c="rgba(201,209,200,0.2)" />
+              <div style={{ marginTop: 10, fontSize: 13 }}>这天暂无特殊天象</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>适合日常观测练习</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DESIGN SPEC PAGE — 设计规范
+   ───────────────────────────────────────────────────────────── */
+function DesignSpecPage({ onBack, accent, redVision }) {
+  const mainColor = redVision ? '#D9534F' : accent;
+  const [tab, setTab] = React.useState('color');
+
+  const colors = [
+    { name: '星野主色', hex: '#F2C94C', role: '强调色 / 品牌色' },
+    { name: '观测红', hex: '#D9534F', role: '警示 / 红光夜视' },
+    { name: '银辉', hex: '#C9D1C8', role: '辅助文本 / 图标' },
+    { name: '夜空底', hex: '#0E1513', role: '页面背景' },
+    { name: '深空青', hex: '#1A2A2A', role: '卡片表面' },
+    { name: '微光绿', hex: '#7DBE9B', role: '成功 / 正向' },
+  ];
+
+  const fontSizes = [
+    { name: '大标题', size: 34, weight: 700, family: 'Noto Serif SC' },
+    { name: '一级标题', size: 22, weight: 600, family: 'Noto Serif SC' },
+    { name: '二级标题', size: 17, weight: 600, family: 'Noto Sans SC' },
+    { name: '正文', size: 15, weight: 400, family: 'Noto Sans SC' },
+    { name: '辅助文字', size: 13, weight: 400, family: 'Noto Sans SC' },
+    { name: '小字标签', size: 11, weight: 500, family: 'Noto Sans SC' },
+  ];
+
+  const spacings = [4, 8, 12, 16, 20, 24, 32];
+  const radii = [8, 12, 16, 20, 24, 999];
+
+  return (
+    <div className="scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="设计规范" subtitle="星野 Design System v2.0" onBack={onBack} accent={mainColor} />
+
+      {/* Tab */}
+      <div style={{
+        display: 'flex', gap: 4, padding: '0 16px 14px',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
+        {[
+          { id: 'color', label: '色板' },
+          { id: 'type', label: '字体' },
+          { id: 'space', label: '间距圆角' },
+          { id: 'component', label: '组件' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: '7px 14px', borderRadius: 999, border: 'none',
+            whiteSpace: 'nowrap', fontSize: 12, fontWeight: 500,
+            background: tab === t.id ? mainColor : 'rgba(255,255,255,0.06)',
+            color: tab === t.id ? '#0E1513' : 'rgba(201,209,200,0.7)',
+            cursor: 'pointer', transition: 'all 0.2s',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{ padding: '0 16px 100px' }}>
+        {tab === 'color' && (
+          <div className="anim-fade-up">
+            <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>配色原则</div>
+              <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.6)', lineHeight: 1.7 }}>
+                以深青黑夜空为底色，星黄为主要强调色，观测红用于红光夜视模式与警示状态，银辉为辅助文本色。整体遵循「暗底色 + 暖光感」的夜空氛围。
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {colors.map((c, i) => (
+                <div key={c.name} className="card anim-fade-up"
+                     style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 14,
+                              animationDelay: `${i * 0.05}s` }}>
+                  <div className="swatch" style={{
+                    background: c.hex,
+                    borderColor: c.hex === '#0E1513' ? 'rgba(201,209,200,0.15)' : undefined,
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)', marginTop: 2 }}>{c.role}</div>
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: '"SF Mono", monospace', color: 'rgba(201,209,200,0.6)' }}>
+                    {c.hex}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === 'type' && (
+          <div className="anim-fade-up">
+            <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>字体系统</div>
+              <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.6)', lineHeight: 1.7 }}>
+                标题采用 Noto Serif SC 衬线体，营造星空观测的古典与仪式感；正文采用 Noto Sans SC，确保小字号下的清晰度。
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {fontSizes.map((f, i) => (
+                <div key={f.name} className="card anim-fade-up"
+                     style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14,
+                              animationDelay: `${i * 0.05}s` }}>
+                  <span style={{
+                    fontFamily: f.family, fontWeight: f.weight, fontSize: f.size,
+                    minWidth: 80, textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                  }}>星野</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{f.name}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(201,209,200,0.45)', marginTop: 2, fontFamily: '"SF Mono", monospace' }}>
+                      {f.size}px / {f.weight} / {f.family}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === 'space' && (
+          <div className="anim-fade-up">
+            <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>间距系统（4px 基准）</div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+                {spacings.map(s => (
+                  <div key={s} style={{
+                    width: s * 3, height: s * 3,
+                    background: `${mainColor}40`,
+                    borderRadius: 4,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, color: mainColor,
+                  }}>
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>圆角系统</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {radii.map(r => (
+                  <div key={r} style={{
+                    width: 52, height: 52,
+                    borderRadius: r,
+                    background: 'rgba(255,255,255,0.06)',
+                    border: `0.5px solid ${mainColor}40`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, color: 'rgba(201,209,200,0.6)',
+                  }}>
+                    {r === 999 ? '∞' : r}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'component' && (
+          <div className="anim-fade-up">
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>按钮</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <button style={{
+                padding: '14px 20px', borderRadius: 14, border: 'none',
+                background: mainColor, color: '#0E1513',
+                fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}>主要按钮</button>
+              <button style={{
+                padding: '14px 20px', borderRadius: 14, border: `0.5px solid ${mainColor}60`,
+                background: 'transparent', color: mainColor,
+                fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}>次要按钮</button>
+              <button style={{
+                padding: '14px 20px', borderRadius: 14, border: 'none',
+                background: 'rgba(255,255,255,0.06)', color: 'rgba(201,209,200,0.7)',
+                fontSize: 15, fontWeight: 500, cursor: 'pointer',
+              }}>文字按钮</button>
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>卡片</div>
+            <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>标准卡片</div>
+              <div style={{ fontSize: 12, color: 'rgba(201,209,200,0.6)', marginTop: 4 }}>
+                毛玻璃背景 + 0.5px 描边 + 20px 圆角
+              </div>
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>标签</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { text: '默认', color: 'rgba(201,209,200,0.6)' },
+                { text: '强调', color: mainColor },
+                { text: '正向', color: '#7DBE9B' },
+                { text: '警示', color: '#D9534F' },
+              ].map(t => (
+                <span key={t.text} style={{
+                  fontSize: 11, padding: '4px 10px', borderRadius: 999,
+                  background: `${t.color}20`, color: t.color, fontWeight: 500,
+                }}>{t.text}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   API DOCS PAGE — 接口文档
+   ───────────────────────────────────────────────────────────── */
+function ApiDocPage({ onBack, accent, redVision }) {
+  const mainColor = redVision ? '#D9534F' : accent;
+  const [expanded, setExpanded] = React.useState(0);
+
+  const methodColor = (m) => {
+    if (m === 'GET') return '#7DBE9B';
+    if (m === 'POST') return mainColor;
+    if (m === 'PUT') return '#6B8E9F';
+    return '#D9534F';
+  };
+
+  return (
+    <div className="scroll" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ paddingTop: 'var(--ios-safe-top)' }} />
+      <NavBar title="接口文档" subtitle="星野 API v2.0" onBack={onBack} accent={mainColor} />
+
+      {/* Overview card */}
+      <div className="card anim-fade-up" style={{ margin: '0 16px 16px', padding: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>基础信息</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'rgba(201,209,200,0.55)' }}>Base URL</span>
+            <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 11 }}>api.xingye.app/v2</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'rgba(201,209,200,0.55)' }}>鉴权方式</span>
+            <span>Bearer Token</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'rgba(201,209,200,0.55)' }}>返回格式</span>
+            <span>JSON</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'rgba(201,209,200,0.55)' }}>频率限制</span>
+            <span>100 次 / 分钟</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Endpoint list */}
+      <div style={{ padding: '0 16px 100px' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>接口列表</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {API_ENDPOINTS.map((ep, i) => (
+            <div key={i} className="card anim-fade-up"
+                 style={{ animationDelay: `${i * 0.06}s`, overflow: 'hidden' }}>
+              <div onClick={() => setExpanded(expanded === i ? -1 : i)}
+                   style={{
+                     padding: '14px 14px', display: 'flex', alignItems: 'center', gap: 10,
+                     cursor: 'pointer',
+                   }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+                  background: `${methodColor(ep.method)}20`, color: methodColor(ep.method),
+                  fontFamily: '"SF Mono", monospace', letterSpacing: 0.5,
+                }}>{ep.method}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontFamily: '"SF Mono", monospace', color: '#E8EDEA' }}>
+                    {ep.path}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)', marginTop: 2 }}>{ep.desc}</div>
+                </div>
+                <Icon.Chevron c="rgba(201,209,200,0.4)" />
+              </div>
+
+              {expanded === i && (
+                <div style={{
+                  padding: '0 14px 14px',
+                  borderTop: '0.5px solid rgba(201,209,200,0.08)',
+                  paddingTop: 12,
+                }} className="anim-fade-up">
+                  <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)', marginBottom: 6, fontWeight: 500 }}>
+                    请求参数
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                    {ep.params.map(p => (
+                      <div key={p.k} style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        fontSize: 11, padding: '6px 8px',
+                        background: 'rgba(255,255,255,0.02)', borderRadius: 6,
+                      }}>
+                        <span style={{ fontFamily: '"SF Mono", monospace', color: mainColor, minWidth: 60 }}>{p.k}</span>
+                        <span style={{ color: '#6B8E9F', fontFamily: '"SF Mono", monospace', fontSize: 10 }}>{p.t}</span>
+                        <span style={{ color: 'rgba(201,209,200,0.5)', flex: 1, textAlign: 'right' }}>{p.d}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: 11, color: 'rgba(201,209,200,0.5)', marginBottom: 6, fontWeight: 500 }}>
+                    返回示例
+                  </div>
+                  <div className="code-block">
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {ep.response.split('\n').map((line, li) => {
+                        // Simple syntax highlighting
+                        const highlighted = line
+                          .replace(/"(\w+)":/g, `<span class="code-k">"$1"</span>:`)
+                          .replace(/: "([^"]+)"/g, `: <span class="code-s">"$1"</span>`)
+                          .replace(/: (\d+\.?\d*)/g, `: <span class="code-n">$1</span>`)
+                          .replace(/(\/\/.*)/g, `<span class="code-c">$1</span>`);
+                        return <div key={li} dangerouslySetInnerHTML={{ __html: highlighted || ' ' }} />;
+                      })}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Error codes */}
+        <div style={{ marginTop: 20, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>错误码</div>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {[
+            { code: 0, msg: '成功' },
+            { code: 40001, msg: '参数错误' },
+            { code: 40101, msg: '鉴权失败' },
+            { code: 40301, msg: '权限不足' },
+            { code: 40401, msg: '资源不存在' },
+            { code: 50001, msg: '服务器内部错误' },
+          ].map((e, i) => (
+            <div key={e.code} className="list-row">
+              <span style={{
+                fontFamily: '"SF Mono", monospace', fontSize: 12,
+                color: e.code === 0 ? '#7DBE9B' : '#D9534F',
+                minWidth: 60,
+              }}>{e.code}</span>
+              <span style={{ fontSize: 13 }}>{e.msg}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CONSTELLATION DETAIL PAGE (modal detail)
+   ───────────────────────────────────────────────────────────── */
+function ConstellationDetail({ data, onBack, accent, redVision }) {
+  const mainColor = redVision ? '#D9534F' : accent;
+  const scrollRef = React.useRef(null);
+  const headerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    const header = headerRef.current;
+    if (!el || !header) return;
+    const onScroll = () => {
+      const y = el.scrollTop;
+      if (y > 100) {
+        header.style.background = 'rgba(14,21,19,0.9)';
+        header.style.backdropFilter = 'blur(20px)';
+      } else {
+        header.style.background = 'transparent';
+        header.style.backdropFilter = 'none';
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  if (!data) return null;
+
+  return (
+    <div className="scroll" ref={scrollRef} style={{ flex: 1, position: 'relative' }}>
+      {/* Hero */}
+      <div style={{
+        height: 320, position: 'relative',
+        background: `linear-gradient(180deg, ${data.color1} 0%, ${data.color2} 50%, #0E1513 100%)`,
+      }}>
+        <StarField intensity={1} redVision={redVision} />
+        {/* Large constellation */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 200, height: 200,
+        }} className="anim-float">
+          <svg viewBox="0 0 100 100" className="anim-spin-slow" style={{ animationDuration: '120s' }}>
+            {[...Array(data.stars)].map((_, k) => {
+              const angle = (k / data.stars) * Math.PI * 2 + 0.3;
+              const r = 30 + (k % 3) * 10;
+              const x = 50 + Math.cos(angle) * r;
+              const y = 50 + Math.sin(angle) * r * 0.6;
+              const prevAngle = ((k - 1 + data.stars) % data.stars / data.stars) * Math.PI * 2 + 0.3;
+              const prevR = 30 + ((k - 1 + data.stars) % data.stars % 3) * 10;
+              const px = 50 + Math.cos(prevAngle) * prevR;
+              const py = 50 + Math.sin(prevAngle) * prevR * 0.6;
+              return (
+                <g key={k}>
+                  {k > 0 && <line x1={px} y1={py} x2={x} y2={y} stroke={mainColor} strokeWidth="0.5" opacity="0.4"/>}
+                  <circle cx={x} cy={y} r={k === 0 ? 3 : 2} fill={mainColor} className="anim-glow" style={{ animationDelay: `${k * 0.2}s` }}/>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+
+      {/* Floating header */}
+      <div ref={headerRef} style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+        paddingTop: 'var(--ios-safe-top)',
+        transition: 'all 0.3s',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', gap: 12 }}>
+          <button onClick={onBack} style={{
+            width: 36, height: 36, borderRadius: 18,
+            background: 'rgba(14,21,19,0.6)', backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(201,209,200,0.1)',
+            color: mainColor,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Icon.Back c={mainColor} />
+          </button>
+          <div style={{ flex: 1 }} />
+          <button style={{
+            width: 36, height: 36, borderRadius: 18,
+            background: 'rgba(14,21,19,0.6)', backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(201,209,200,0.1)',
+            color: mainColor,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Icon.Share c={mainColor} />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: '0 20px 80px', marginTop: -20, position: 'relative', zIndex: 3 }} className="anim-fade-up">
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+          marginBottom: 16,
+        }}>
+          <div>
+            <div style={{ fontSize: 12, color: mainColor, fontWeight: 500, letterSpacing: 0.1 }}>
+              {data.en} · {data.season}季星座
+            </div>
+            <h1 className="serif" style={{ fontSize: 36, fontWeight: 700, marginTop: 4 }}>{data.name}</h1>
+          </div>
+          <div style={{
+            padding: '6px 12px', borderRadius: 999,
+            background: `${mainColor}20`, color: mainColor,
+            fontSize: 12, fontWeight: 500,
+          }}>
+            视星等 {data.mag}
+          </div>
+        </div>
+
+        <p style={{ fontSize: 14, color: 'rgba(201,209,200,0.75)', lineHeight: 1.8 }}>
+          {data.desc}
+        </p>
+
+        {/* Stats grid */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+          marginTop: 20, marginBottom: 20,
+        }}>
+          {[
+            { label: '主星数', val: data.stars },
+            { label: '最佳季节', val: data.season },
+            { label: '最亮星等', val: data.mag },
+          ].map(s => (
+            <div key={s.label} className="card" style={{ padding: '14px 10px', textAlign: 'center' }}>
+              <div className="tabular" style={{ fontSize: 18, fontWeight: 700, color: mainColor }}>{s.val}</div>
+              <div style={{ fontSize: 10, color: 'rgba(201,209,200,0.5)', marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>观测指南</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            '每年' + data.season + '季为最佳观测时期',
+            '裸眼即可识别主要亮星',
+            '使用双筒望远镜可观测更多细节',
+            '推荐搭配星图 App 定位',
+          ].map((tip, i) => (
+            <div key={i} style={{
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+              fontSize: 13, color: 'rgba(201,209,200,0.7)',
+            }}>
+              <span style={{
+                width: 20, height: 20, borderRadius: 10, flexShrink: 0,
+                background: `${mainColor}20`, color: mainColor,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 600,
+              }}>{i + 1}</span>
+              <span style={{ lineHeight: '20px' }}>{tip}</span>
+            </div>
+          ))}
+        </div>
+
+        <button style={{
+          width: '100%', marginTop: 24, padding: '14px 0',
+          borderRadius: 14, border: 'none',
+          background: mainColor, color: '#0E1513',
+          fontSize: 15, fontWeight: 600, cursor: 'pointer',
+        }}>加入我的观测清单</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TWEAKS PANEL (simplified inline version)
+   ───────────────────────────────────────────────────────────── */
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues(prev => ({ ...prev, ...edits }));
+    try { window.parent?.postMessage({ type: 'miaoda:tweaks:set-keys', edits }, '*'); } catch(e) {}
+  }, []);
+  return [values, setTweak];
+}
+
+function TweaksPanel({ title = '风格', children, open, onClose }) {
+  if (!open) return null;
+  return (
+    <div style={{
+      position: 'fixed', right: 16, top: 16, zIndex: 2147483646,
+      width: 280, maxHeight: 'calc(100vh - 32px)',
+      display: 'flex', flexDirection: 'column',
+      background: '#fff', color: '#1F2329',
+      border: '0.5px solid #DEE0E3', borderRadius: 12,
+      boxShadow: '0 8px 24px 8px rgba(0,0,0,.08)',
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+      fontSize: 12, overflow: 'hidden',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 12px 12px 16px',
+        borderBottom: '0.5px solid #EBECEE',
+        cursor: 'move',
+      }}>
+        <b style={{ fontSize: 14, fontWeight: 600 }}>{title}</b>
+        <button onClick={onClose} style={{
+          appearance: 'none', border: 0, background: 'transparent',
+          color: '#86909C', width: 24, height: 24, borderRadius: 6,
+          cursor: 'pointer', fontSize: 13,
+        }}>✕</button>
+      </div>
+      <div style={{
+        padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 14,
+        overflowY: 'auto', flex: 1, minHeight: 0,
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TweakSection({ label }) {
+  return <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+    textTransform: 'uppercase', color: '#86909C', padding: '10px 0 0' }}>{label}</div>;
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontWeight: 500 }}>{label}</span>
+      <div onClick={() => onChange(!value)} style={{
+        width: 36, height: 20, borderRadius: 999,
+        background: value ? '#1F2329' : '#E4E6E8',
+        position: 'relative', cursor: 'pointer', transition: 'background 0.15s',
+      }}>
+        <div style={{
+          position: 'absolute', top: 2, left: value ? 18 : 2,
+          width: 16, height: 16, borderRadius: '50%', background: '#fff',
+          boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+          transition: 'left 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }} />
+      </div>
+    </div>
+  );
+}
+
+function TweakSlider({ label, value, min, max, unit, onChange }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span style={{ fontWeight: 500 }}>{label}</span>
+        <span style={{ color: '#646A73', fontVariantNumeric: 'tabular-nums' }}>{value}{unit}</span>
+      </div>
+      <input type="range" min={min} max={max} step={0.1} value={value}
+             onChange={(e) => onChange(parseFloat(e.target.value))}
+             style={{ width: '100%', accentColor: '#1F2329' }} />
+    </div>
+  );
+}
+
+function TweakColor({ label, value, options, onChange }) {
+  return (
+    <div>
+      <div style={{ marginBottom: 8, fontWeight: 500 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {options.map(opt => (
+          <button key={opt} onClick={() => onChange(opt)} style={{
+            width: 36, height: 24, borderRadius: 6, background: opt,
+            border: value === opt ? '2px solid #1F2329' : '0.5px solid #DEE0E3',
+            cursor: 'pointer', padding: 0,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MAIN APP
+   ───────────────────────────────────────────────────────────── */
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [tab, setTab] = React.useState('home');
+  const [stack, setStack] = React.useState([]); // secondary pages stack
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [transitionKey, setTransitionKey] = React.useState(0);
+
+  // Listen for host tweak activation
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (e?.data?.type === 'miaoda:tweaks:activate') setTweaksOpen(true);
+      else if (e?.data?.type === 'miaoda:tweaks:deactivate') setTweaksOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    try { window.parent?.postMessage({ type: 'miaoda:tweaks:available' }, '*'); } catch(e) {}
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const accent = t.redVision ? '#D9534F' : t.accentColor;
+
+  const handleTabChange = (newTab) => {
+    if (newTab === tab) return;
+    setStack([]);
+    setTab(newTab);
+    setTransitionKey(k => k + 1);
+  };
+
+  const handleNav = (page, data) => {
+    setStack(prev => [...prev, { page, data }]);
+    setTransitionKey(k => k + 1);
+  };
+
+  const handleBack = () => {
+    setStack(prev => prev.slice(0, -1));
+    setTransitionKey(k => k + 1);
+  };
+
+  const renderPage = () => {
+    // If stack has pages, show top of stack
+    if (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      switch (top.page) {
+        case 'calendar':
+          return <CalendarPage onBack={handleBack} accent={accent} redVision={t.redVision} />;
+        case 'design':
+          return <DesignSpecPage onBack={handleBack} accent={accent} redVision={t.redVision} />;
+        case 'api':
+          return <ApiDocPage onBack={handleBack} accent={accent} redVision={t.redVision} />;
+        case 'constelDetail':
+          return <ConstellationDetail data={top.data} onBack={handleBack} accent={accent} redVision={t.redVision} />;
+        case 'spots':
+          return <SpotsPage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+        case 'params':
+        default:
+          return <CalendarPage onBack={handleBack} accent={accent} redVision={t.redVision} />;
+      }
+    }
+
+    // Tab pages
+    switch (tab) {
+      case 'home': return <HomePage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+      case 'stars': return <StarsPage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+      case 'spots': return <SpotsPage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+      case 'community': return <CommunityPage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+      case 'me': return <MePage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+      default: return <HomePage onNav={handleNav} accent={accent} redVision={t.redVision} />;
+    }
+  };
+
+  const showTabBar = stack.length === 0;
+
+  return (
+    <div className="stage" style={{
+      width: '100%', height: '100%',
+      background: `radial-gradient(ellipse at 50% 30%, ${t.redVision ? 'rgba(217,83,79,0.08)' : 'rgba(242,201,76,0.06)'} 0%, #050708 100%)`,
+    }}>
+      <StarField intensity={0.5} redVision={t.redVision} />
+
+      <div style={{ position: 'relative', zIndex: 2 }} key={transitionKey} className="page-enter">
+        <IOSDevice dark width={390} height={844}>
+          {/* App background */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: t.redVision ? '#0D0808' : '#0E1513',
+          }} />
+          {renderPage()}
+          {showTabBar && (
+            <TabBar active={tab} onChange={handleTabChange} accent={accent} />
+          )}
+        </IOSDevice>
+      </div>
+
+      <span className="stage-hint">星野 · 星空观测原生 App · 滑动切换探索</span>
+
+      {/* Tweaks panel */}
+      <TweaksPanel open={tweaksOpen} onClose={() => {
+        setTweaksOpen(false);
+        try { window.parent?.postMessage({ type: 'miaoda:tweaks:dismissed' }, '*'); } catch(e) {}
+      }}>
+        <TweakSection label="主题" />
+        <TweakColor label="主色调" value={t.accentColor}
+                    options={['#F2C94C', '#7DBE9B', '#C97D9D', '#6B8E9F']}
+                    onChange={(v) => setTweak('accentColor', v)} />
+        <TweakToggle label="红光夜视模式" value={t.redVision}
+                     onChange={(v) => setTweak('redVision', v)} />
+        <TweakSection label="动效" />
+        <TweakSlider label="动画强度" value={t.animationIntensity}
+                     min={0} max={2} step={0.1} unit="x"
+                     onChange={(v) => setTweak('animationIntensity', v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
