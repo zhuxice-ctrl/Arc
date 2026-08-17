@@ -1,0 +1,3241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>山径 · 徒步与山野路线社区</title>
+
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" />
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="env,react">
+"use strict";
+
+const { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } = React;
+
+/* ============================================================
+   山径 — 徒步与山野路线社区 App
+   8 页原生 App 原型 · 单文件内联 · iOS 外壳
+   ============================================================ */
+
+// ---- 设计 token ----
+const T = {
+  moss:     "#3D5A45",  // 苔原绿（主色）
+  mossD:    "#2A4030",  // 苔原绿深
+  mossL:    "#5A7A62",  // 苔原绿浅
+  rock:     "#5A5A58",  // 岩壁灰
+  rockL:    "#8A8A87",  // 岩壁灰浅
+  sun:      "#E8963C",  // 暖曦橙
+  sunD:     "#C77A28",  // 暖曦橙深
+  sunL:     "#F2B060",  // 暖曦橙浅
+  mist:     "#F2EFE7",  // 雾米白
+  mistD:    "#E5E1D5",  // 雾米白深
+  char:     "#26261F",  // 深炭黑
+  charL:    "#3E3E35",  // 深炭黑浅
+  sand:     "#D9C9A8",  // 沙色（辅助）
+  clay:     "#A67C52",  // 黏土色
+  ice:      "#E8EFEA",  // 冰雾绿
+  burgundy: "#7A3E3E",  // 山赭红
+};
+
+// ---- 图片资源 ----
+const IMG = {
+  hero:       "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqmkyddqjs_ve_miaoda",
+  aerial:     "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqmlka4ycs_ve_miaoda",
+  gear:       "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqmhqlyals_ve_miaoda",
+  summit:     "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqmkujhgiu_ve_miaoda",
+  hikers:     "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqml5wds3s_ve_miaoda",
+  topo:       "/spark/app/app_17cacjcqd2s/runtime/api/v1/storage/object/bucket_aadkqmpfyaafg_static/static%2Faadkqmlgzmsaw_ve_miaoda",
+};
+
+// ---- 工具 ----
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const spring = (t) => 1 - Math.pow(1 - t, 3);
+
+// 减少动画偏好检测
+const prefersReducedMotion = () =>
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ============================================================
+   自定义光标
+   ============================================================ */
+function CustomCursor() {
+  const ringRef = useRef(null);
+  const dotRef = useRef(null);
+  const [hovering, setHovering] = useState(false);
+  const [clicking, setClicking] = useState(false);
+  const rippleRef = useRef(null);
+  const rafRef = useRef(0);
+  const targetRef = useRef({ x: 0, y: 0 });
+  const currentRef = useRef({ x: 0, y: 0 });
+  const visibleRef = useRef(false);
+
+  useEffect(() => {
+    let running = true;
+    let hidden = false;
+
+    const tick = () => {
+      if (!running) return;
+      if (hidden) { rafRef.current = requestAnimationFrame(tick); return; }
+      const t = targetRef.current;
+      const c = currentRef.current;
+      // 阻尼跟随
+      c.x += (t.x - c.x) * 0.18;
+      c.y += (t.y - c.y) * 0.18;
+      if (ringRef.current) {
+        ringRef.current.style.transform = `translate3d(${c.x}px, ${c.y}px, 0) translate(-50%,-50%) scale(${hovering ? 1.6 : 1})`;
+      }
+      if (dotRef.current) {
+        dotRef.current.style.transform = `translate3d(${t.x}px, ${t.y}px, 0) translate(-50%,-50%) scale(${clicking ? 0.6 : 1})`;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    const onMove = (e) => {
+      targetRef.current.x = e.clientX;
+      targetRef.current.y = e.clientY;
+      if (!visibleRef.current) {
+        visibleRef.current = true;
+        if (ringRef.current) ringRef.current.style.opacity = "1";
+        if (dotRef.current) dotRef.current.style.opacity = "1";
+      }
+    };
+
+    const onOver = (e) => {
+      const t = e.target.closest("button, a, .interactive, [role=button]");
+      setHovering(!!t);
+    };
+
+    const onDown = () => {
+      setClicking(true);
+      // 涟漪
+      const ripple = document.createElement("div");
+      ripple.style.cssText = `
+        position:fixed;z-index:9998;pointer-events:none;
+        left:${targetRef.current.x}px;top:${targetRef.current.y}px;
+        width:20px;height:20px;border-radius:50%;
+        border:2px solid ${T.sun};transform:translate(-50%,-50%) scale(1);
+        opacity:.9;
+      `;
+      document.body.appendChild(ripple);
+      requestAnimationFrame(() => {
+        ripple.style.transition = "all .6s cubic-bezier(.2,.8,.2,1)";
+        ripple.style.transform = "translate(-50%,-50%) scale(8)";
+        ripple.style.opacity = "0";
+      });
+      setTimeout(() => ripple.remove(), 650);
+    };
+
+    const onUp = () => setClicking(false);
+
+    const onVisibility = () => {
+      hidden = document.hidden;
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseover", onOver);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      running = false;
+      cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseover", onOver);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [hovering, clicking]);
+
+  return (
+    <>
+      <div
+        ref={ringRef}
+        style={{
+          position: "fixed", top: 0, left: 0,
+          width: 32, height: 32, borderRadius: "50%",
+          border: "2.5px solid #fff",
+          boxShadow: `0 0 12px ${T.sun}aa, 0 0 24px ${T.moss}66, inset 0 0 6px rgba(255,255,255,.4)`,
+          pointerEvents: "none", zIndex: 9999,
+          opacity: 0, transition: "opacity .3s ease",
+          mixBlendMode: "difference",
+        }}
+      />
+      <div
+        ref={dotRef}
+        style={{
+          position: "fixed", top: 0, left: 0,
+          width: 8, height: 8, borderRadius: "50%",
+          background: T.sun,
+          boxShadow: `0 0 8px ${T.sun}`,
+          pointerEvents: "none", zIndex: 9999,
+          opacity: 0, transition: "opacity .3s ease",
+        }}
+      />
+    </>
+  );
+}
+
+/* ============================================================
+   iOS 设备外壳（简化版，内联）
+   ============================================================ */
+function IOSDevice({ children, width = 390, height = 844, dark = false }) {
+  const safeTop = 54;
+  const safeBottom = 34;
+
+  return (
+    <div
+      style={{
+        width, height,
+        borderRadius: 50,
+        background: "#0a0a0a",
+        padding: 12,
+        boxShadow: "0 30px 80px rgba(0,0,0,.45), 0 8px 20px rgba(0,0,0,.25), inset 0 0 0 1.5px #2a2a2a",
+        position: "relative",
+        flexShrink: 0,
+      }}
+    >
+      {/* 侧键 */}
+      <div style={{ position:"absolute", left:-3, top:110, width:3, height:32, background:"#1a1a1a", borderRadius:"2px 0 0 2px" }} />
+      <div style={{ position:"absolute", left:-3, top:160, width:3, height:60, background:"#1a1a1a", borderRadius:"2px 0 0 2px" }} />
+      <div style={{ position:"absolute", left:-3, top:235, width:3, height:60, background:"#1a1a1a", borderRadius:"2px 0 0 2px" }} />
+      <div style={{ position:"absolute", right:-3, top:180, width:3, height:90, background:"#1a1a1a", borderRadius:"0 2px 2px 0" }} />
+
+      <div
+        style={{
+          width: "100%", height: "100%",
+          borderRadius: 40,
+          overflow: "hidden",
+          position: "relative",
+          background: dark ? T.char : T.mist,
+        }}
+      >
+        {/* 灵动岛 */}
+        <div style={{
+          position:"absolute", top: 11, left: "50%", transform:"translateX(-50%)",
+          width: 120, height: 34, borderRadius: 20,
+          background: "#000", zIndex: 100,
+        }} />
+
+        {/* 状态栏占位 */}
+        <div style={{
+          position:"absolute", top: 0, left: 0, right: 0,
+          height: safeTop, zIndex: 99,
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding: "16px 28px 0",
+          fontSize: 15, fontWeight: 600,
+          color: dark ? "#fff" : T.char,
+          fontFamily: "'Noto Sans SC', sans-serif",
+          pointerEvents: "none",
+        }}>
+          <span>9:41</span>
+          <span style={{ display:"flex", gap:5, alignItems:"center" }}>
+            <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><path d="M1 7.5a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v2a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5v-2zm4-3a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v5a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5v-5zm4-3a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v8a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5v-8zm4-1.5a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v9.5a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5V0z"/></svg>
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" strokeWidth="1"><rect x=".5" y="1.5" width="12" height="8" rx="2"/><rect x="1.5" y="2.5" width="9" height="6" rx="1" fill="currentColor"/><rect x="13" y="3.5" width="1.5" height="4" rx=".7" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        {/* 内容 */}
+        <div style={{ width:"100%", height:"100%", position:"relative" }}>
+          {children}
+        </div>
+
+        {/* Home indicator */}
+        <div style={{
+          position:"absolute", bottom: 8, left: "50%",
+          transform:"translateX(-50%)",
+          width: 134, height: 5, borderRadius: 3,
+          background: dark ? "rgba(255,255,255,.9)" : "rgba(0,0,0,.8)",
+          zIndex: 100,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   底部 TabBar
+   ============================================================ */
+const TABS = [
+  { key: "home",    label: "发现",  icon: "compass" },
+  { key: "record",  label: "记录",  icon: "route" },
+  { key: "community", label: "社区", icon: "users" },
+  { key: "gear",    label: "装备",  icon: "backpack" },
+  { key: "me",      label: "我的",  icon: "peak" },
+];
+
+function TabIcon({ name, active }) {
+  const c = active ? T.sun : "#8A8A87";
+  const s = { width: 24, height: 24, fill: "none", stroke: c, strokeWidth: active ? 2.2 : 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (name) {
+    case "compass":
+      return (<svg viewBox="0 0 24 24" style={s}><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5 5-2z" fill={c} stroke="none"/></svg>);
+    case "route":
+      return (<svg viewBox="0 0 24 24" style={s}><path d="M4 20C4 12 9 8 12 8s8 4 8 12"/><circle cx="12" cy="5" r="2.5"/><path d="M4 20l2-2M10 20l3-5M18 20l-2-4"/></svg>);
+    case "users":
+      return (<svg viewBox="0 0 24 24" style={s}><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="10" r="2.5"/><path d="M21 20c0-2.5-2-4.5-4.5-4.5"/></svg>);
+    case "backpack":
+      return (<svg viewBox="0 0 24 24" style={s}><path d="M6 10V8a6 6 0 0112 0v2"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M9 10V7a3 3 0 016 0v3M10 14h4"/></svg>);
+    case "peak":
+      return (<svg viewBox="0 0 24 24" style={s}><path d="M3 20L10 8l4 6 3-4 4 10H3z"/><circle cx="17" cy="6" r="2"/></svg>);
+    default:
+      return null;
+  }
+}
+
+function TabBar({ current, onChange }) {
+  return (
+    <div style={{
+      position: "absolute", bottom: 0, left: 0, right: 0,
+      height: 83,
+      background: "rgba(38,38,31,.92)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      borderTop: "0.5px solid rgba(255,255,255,.08)",
+      zIndex: 50,
+      display: "flex", alignItems: "flex-start",
+      paddingTop: 6,
+    }}>
+      {TABS.map((tab, i) => {
+        const active = current === tab.key;
+        return (
+          <button
+            key={tab.key}
+            onClick={() => onChange(tab.key)}
+            className="interactive"
+            style={{
+              flex: 1, border: "none", background: "transparent",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              gap: 3, padding: "8px 0 0",
+              cursor: "none",
+              position: "relative",
+            }}
+          >
+            <div style={{
+              transform: active ? "scale(1.1) translateY(-2px)" : "scale(1)",
+              transition: "transform .25s cubic-bezier(.2,.8,.2,1)",
+            }}>
+              <TabIcon name={tab.icon} active={active} />
+            </div>
+            <span style={{
+              fontSize: 10,
+              color: active ? T.sun : "#8A8A87",
+              fontWeight: active ? 600 : 400,
+              transition: "all .25s ease",
+              fontFamily: "'Noto Sans SC', sans-serif",
+            }}>{tab.label}</span>
+            {active && (
+              <div style={{
+                position:"absolute", top: 2,
+                width: 4, height: 4, borderRadius: "50%",
+                background: T.sun,
+                boxShadow: `0 0 8px ${T.sun}`,
+              }} />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 1: 首页（发现）—— Hero 大图 + 瀑布流卡片
+   签名动效：入场序列 · 下拉弹性
+   ============================================================ */
+function HomePage({ onOpenDetail }) {
+  const scrollRef = useRef(null);
+  const [scrollY, setScrollY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pullY, setPullY] = useState(0);
+  const touchStartRef = useRef(0);
+  const pullingRef = useRef(false);
+  const rafRef = useRef(0);
+  const heroRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const reduced = prefersReducedMotion();
+    if (!reduced) {
+      setTimeout(() => setMounted(true), 50);
+    } else {
+      setMounted(true);
+    }
+  }, []);
+
+  // 视差滚动（直接操作 DOM，不 setState）
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const reduced = prefersReducedMotion();
+    let ticking = false;
+
+    const onScroll = () => {
+      if (reduced) return;
+      const y = el.scrollTop;
+      // 直接 transform hero
+      const hero = heroRef.current;
+      if (hero) {
+        const parallax = y * 0.4;
+        const scale = Math.max(1, 1 + y * 0.0008);
+        hero.style.transform = `translate3d(0, ${parallax}px, 0) scale(${scale})`;
+      }
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          setScrollY(y);
+          ticking = false;
+        });
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // 下拉刷新
+  const onTouchStart = (e) => {
+    if (scrollRef.current?.scrollTop <= 0) {
+      pullingRef.current = true;
+      touchStartRef.current = e.touches[0].clientY;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (!pullingRef.current) return;
+    const dy = e.touches[0].clientY - touchStartRef.current;
+    if (dy > 0) {
+      // 阻尼感
+      const damped = dy * 0.5;
+      setPullY(Math.min(damped, 120));
+    }
+  };
+  const onTouchEnd = () => {
+    if (!pullingRef.current) return;
+    pullingRef.current = false;
+    if (pullY > 70) {
+      setRefreshing(true);
+      setPullY(60);
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullY(0);
+      }, 1500);
+    } else {
+      setPullY(0);
+    }
+  };
+
+  const featuredTrails = [
+    { id: 1, name: "雾灵山脊线",   height: 2150, distance: 12.8, hours: "7h 30m", level: "中级", img: IMG.hero,    color: T.moss },
+    { id: 2, name: "苍岭十八盘",   height: 1680, distance: 9.4,  hours: "5h 10m", level: "初级", img: IMG.aerial,  color: T.sun  },
+    { id: 3, name: "鹰嘴崖环线",   height: 2430, distance: 18.2, hours: "10h",    level: "高级", img: IMG.summit,  color: T.burgundy },
+    { id: 4, name: "云栖谷溯溪",   height: 980,  distance: 7.6,  hours: "4h",     level: "初级", img: IMG.hikers,  color: T.clay },
+  ];
+
+  const recommend = [
+    { id: 5, name: "北岭秋径",   height: 1320, distance: 10.5, tag: "赏秋" },
+    { id: 6, name: "冰川遗址线", height: 3200, distance: 22.0, tag: "挑战" },
+  ];
+
+  const headerOpacity = clamp(scrollY / 120, 0, 1);
+  const reduced = prefersReducedMotion();
+
+  return (
+    <div
+      ref={scrollRef}
+      style={{
+        position: "absolute", inset: 0,
+        overflowY: "auto", overflowX: "hidden",
+        background: T.mist,
+        WebkitOverflowScrolling: "touch",
+      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Hero */}
+      <div style={{ position: "relative", height: 340, overflow: "hidden" }}>
+        <div
+          ref={heroRef}
+          style={{
+            position: "absolute", inset: -40,
+            backgroundImage: `url(${IMG.hero})`,
+            backgroundSize: "cover", backgroundPosition: "center",
+            willChange: "transform",
+          }}
+        />
+        {/* 渐变遮罩 */}
+        <div style={{
+          position: "absolute", inset: 0,
+          background: `linear-gradient(180deg, rgba(38,38,31,.5) 0%, rgba(38,38,31,0) 40%, rgba(242,239,231,.0) 70%, ${T.mist} 100%)`,
+        }} />
+
+        {/* 下拉刷新指示器 */}
+        <div style={{
+          position: "absolute", top: 54 + 10, left: "50%",
+          transform: `translateX(-50%) translateY(${-40 + pullY * 0.7}px)`,
+          opacity: pullY > 10 ? 1 : 0,
+          transition: refreshing ? "none" : "opacity .3s",
+          zIndex: 5,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            border: `2.5px solid ${refreshing ? T.sun : "rgba(255,255,255,.8)"}`,
+            borderTopColor: "transparent",
+            animation: refreshing ? "spin 0.8s linear infinite" : "none",
+            transform: `rotate(${pullY * 2}deg)`,
+            transition: "border-color .3s",
+          }} />
+        </div>
+
+        {/* Hero 文字 */}
+        <div style={{
+          position: "absolute", top: 70, left: 20, right: 20,
+          color: "#fff",
+          transform: reduced ? "none" : `translateY(${mounted ? 0 : 20}px)`,
+          opacity: reduced ? 1 : (mounted ? 1 : 0),
+          transition: "all .8s cubic-bezier(.2,.8,.2,1)",
+        }}>
+          <div style={{
+            fontSize: 13, opacity: .85,
+            letterSpacing: 3, marginBottom: 6,
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>今 日 推 荐</div>
+          <div style={{
+            fontSize: 32, fontWeight: 900, lineHeight: 1.15,
+            fontFamily: "'Noto Serif SC', serif",
+            textShadow: "0 2px 12px rgba(0,0,0,.3)",
+          }}>雾灵山脊线</div>
+          <div style={{
+            fontSize: 14, opacity: .9, marginTop: 6,
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>云海翻涌 · 海拔 2150m · 全程 12.8 公里</div>
+        </div>
+
+        {/* 搜索栏 */}
+        <div style={{
+          position: "absolute", bottom: 20, left: 20, right: 20,
+          height: 44,
+          background: "rgba(255,255,255,.95)",
+          backdropFilter: "blur(10px)",
+          borderRadius: 14,
+          display: "flex", alignItems: "center",
+          padding: "0 14px", gap: 8,
+          boxShadow: "0 8px 24px rgba(38,38,31,.12)",
+          transform: reduced ? "none" : `translateY(${mounted ? 0 : 30}px)`,
+          opacity: reduced ? 1 : (mounted ? 1 : 0),
+          transition: "all .8s cubic-bezier(.2,.8,.2,1) .15s",
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.rock} strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span style={{ fontSize: 14, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            搜索路线、山名或山友
+          </span>
+        </div>
+      </div>
+
+      {/* 固定导航栏（滚动后显现） */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 10,
+        height: 44,
+        background: `rgba(242,239,231,${headerOpacity * 0.95})`,
+        backdropFilter: `blur(${headerOpacity * 20}px)`,
+        WebkitBackdropFilter: `blur(${headerOpacity * 20}px)`,
+        borderBottom: headerOpacity > 0.5 ? `0.5px solid ${T.mistD}` : "0.5px solid transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "all .2s ease",
+      }}>
+        <span style={{
+          fontSize: 17, fontWeight: 700, color: T.char,
+          opacity: headerOpacity,
+          fontFamily: "'Noto Serif SC', serif",
+        }}>发现路线</span>
+      </div>
+
+      {/* 分类 chips */}
+      <div style={{
+        display: "flex", gap: 8, padding: "14px 20px 8px",
+        overflowX: "auto",
+        scrollbarWidth: "none",
+      }}>
+        {["精选", "近郊", "高海拔", "徒步穿越", "赏秋", "亲子"].map((c, i) => (
+          <button key={c} className="interactive" style={{
+            flexShrink: 0, padding: "7px 14px",
+            borderRadius: 20,
+            border: "none",
+            background: i === 0 ? T.moss : "#fff",
+            color: i === 0 ? "#fff" : T.rock,
+            fontSize: 13, fontWeight: i === 0 ? 600 : 400,
+            boxShadow: i === 0 ? `0 4px 12px ${T.moss}44` : "0 2px 8px rgba(0,0,0,.04)",
+            fontFamily: "'Noto Sans SC', sans-serif",
+            cursor: "none",
+            transform: reduced ? "none" : `translateY(${mounted ? 0 : 10}px)`,
+            opacity: reduced ? 1 : (mounted ? 1 : 0),
+            transition: `all .5s cubic-bezier(.2,.8,.2,1) ${0.25 + i * 0.05}s`,
+          }}>{c}</button>
+        ))}
+      </div>
+
+      {/* 瀑布流路线卡片 */}
+      <div style={{
+        padding: "8px 16px 100px",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 12,
+      }}>
+        {featuredTrails.map((t, i) => {
+          const h = i % 2 === 0 ? 220 : 260;
+          return (
+            <button
+              key={t.id}
+              className="interactive"
+              onClick={() => onOpenDetail(t.id)}
+              style={{
+                position: "relative",
+                height: h,
+                borderRadius: 16,
+                overflow: "hidden",
+                border: "none",
+                padding: 0,
+                cursor: "none",
+                background: "#ddd",
+                transform: reduced ? "none" : `translateY(${mounted ? 0 : 24}px)`,
+                opacity: reduced ? 1 : (mounted ? 1 : 0),
+                transition: `transform .6s cubic-bezier(.2,.8,.2,1) ${0.3 + i * 0.08}s, opacity .6s ease ${0.3 + i * 0.08}s`,
+              }}
+            >
+              <div style={{
+                position:"absolute", inset: 0,
+                backgroundImage: `url(${t.img})`,
+                backgroundSize:"cover", backgroundPosition:"center",
+              }} />
+              <div style={{
+                position:"absolute", inset: 0,
+                background:`linear-gradient(180deg, transparent 40%, rgba(38,38,31,.85) 100%)`,
+              }} />
+              <div style={{
+                position:"absolute", top: 10, left: 10,
+                padding: "3px 8px", borderRadius: 20,
+                background: `rgba(255,255,255,.9)`,
+                fontSize: 10, fontWeight: 600,
+                color: t.color,
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>{t.level}</div>
+              <div style={{
+                position:"absolute", bottom: 12, left: 12, right: 12,
+                color: "#fff", textAlign: "left",
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Noto Serif SC', serif", lineHeight: 1.3 }}>{t.name}</div>
+                <div style={{
+                  display:"flex", gap: 8, marginTop: 4,
+                  fontSize: 10, opacity: .85,
+                  fontFamily: "'Noto Sans SC', sans-serif",
+                }}>
+                  <span>⬆ {t.height}m</span>
+                  <span>·</span>
+                  <span>{t.distance}km</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 本周热门横幅 */}
+      <div style={{
+        margin: "0 16px 24px", padding: 16,
+        borderRadius: 16,
+        background: `linear-gradient(135deg, ${T.moss} 0%, ${T.mossD} 100%)`,
+        color: "#fff",
+        position: "relative", overflow: "hidden",
+        transform: reduced ? "none" : `translateY(${mounted ? 0 : 20}px)`,
+        opacity: reduced ? 1 : (mounted ? 1 : 0),
+        transition: "all .6s cubic-bezier(.2,.8,.2,1) .7s",
+      }}>
+        <div style={{
+          position:"absolute", top:-20, right:-20,
+          width: 120, height: 120, borderRadius: "50%",
+          background: `${T.sun}22`,
+        }} />
+        <div style={{
+          position:"absolute", bottom:-30, right:30,
+          width: 80, height: 80, borderRadius: "50%",
+          background: `${T.sun}11`,
+        }} />
+        <div style={{ position:"relative" }}>
+          <div style={{ fontSize: 12, color: T.sunL, fontWeight: 600, marginBottom: 6, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            🔥 本周热门
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>
+            秋日徒步十佳路线
+          </div>
+          <div style={{ fontSize: 12, opacity: .8, marginTop: 4, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            累计 2,384 名山友参与打卡
+          </div>
+          <button className="interactive" style={{
+            marginTop: 10, padding: "6px 14px",
+            borderRadius: 20, border: "none",
+            background: T.sun, color: "#fff",
+            fontSize: 12, fontWeight: 600,
+            cursor: "none",
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>查看榜单</button>
+        </div>
+      </div>
+
+      {/* 为底部 Tab 留空间 */}
+      <div style={{ height: 30 }} />
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 2: 路线详情 —— Hero + 视差滚动 + 底部半屏抽屉
+   签名动效：视差滚动 · 环形进度
+   ============================================================ */
+function DetailPage({ onBack }) {
+  const scrollRef = useRef(null);
+  const heroRef = useRef(null);
+  const titleRef = useRef(null);
+  const [progress, setProgress] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const reduced = prefersReducedMotion();
+  const rafRef = useRef(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let ticking = false;
+    const onScroll = () => {
+      const y = el.scrollTop;
+      const hero = heroRef.current;
+      if (hero) {
+        const parallax = y * 0.35;
+        const opacity = 1 - Math.min(1, y / 200);
+        hero.style.transform = `translate3d(0, ${parallax}px, 0)`;
+        hero.style.opacity = opacity;
+      }
+      // 进度环
+      setProgress(clamp(y / 6, 0, 100));
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => { ticking = false; });
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // 环形进度
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+
+  return (
+    <div style={{ position: "absolute", inset: 0, background: T.mist, overflow: "hidden" }}>
+      {/* 滚动容器 */}
+      <div
+        ref={scrollRef}
+        style={{
+          position: "absolute", inset: 0,
+          overflowY: "auto", overflowX: "hidden",
+          paddingBottom: 100,
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {/* Hero */}
+        <div style={{ position: "relative", height: 380, overflow: "hidden" }}>
+          <div
+            ref={heroRef}
+            style={{
+              position: "absolute", inset: 0,
+              backgroundImage: `url(${IMG.hero})`,
+              backgroundSize: "cover", backgroundPosition: "center",
+              willChange: "transform, opacity",
+            }}
+          />
+          <div style={{
+            position:"absolute", inset:0,
+            background:`linear-gradient(180deg, rgba(38,38,31,.4) 0%, rgba(38,38,31,0) 30%, rgba(38,38,31,0) 60%, ${T.mist} 100%)`,
+          }} />
+
+          {/* 返回按钮 */}
+          <button
+            onClick={onBack}
+            className="interactive"
+            style={{
+              position:"absolute", top: 60, left: 16,
+              width: 38, height: 38, borderRadius: "50%",
+              background: "rgba(255,255,255,.85)",
+              backdropFilter: "blur(10px)",
+              border: "none",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "none",
+              zIndex: 5,
+              boxShadow: "0 4px 12px rgba(0,0,0,.1)",
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.char} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+
+          <button className="interactive" style={{
+            position:"absolute", top: 60, right: 16,
+            width: 38, height: 38, borderRadius: "50%",
+            background: "rgba(255,255,255,.85)",
+            backdropFilter: "blur(10px)",
+            border: "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "none",
+            zIndex: 5,
+            boxShadow: "0 4px 12px rgba(0,0,0,.1)",
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.char} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 10-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/></svg>
+          </button>
+
+          {/* 路线标题区 */}
+          <div style={{
+            position:"absolute", bottom: 24, left: 20, right: 20,
+            color: T.char,
+          }}>
+            <div style={{
+              display:"flex", alignItems:"center", gap: 8, marginBottom: 8,
+            }}>
+              <span style={{
+                padding: "3px 10px", borderRadius: 20,
+                background: T.sun, color: "#fff",
+                fontSize: 11, fontWeight: 600,
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>中级</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.9)", textShadow:"0 1px 4px rgba(0,0,0,.3)" }}>
+                ⭐ 4.9 · 2,384 人走过
+              </span>
+            </div>
+            <div ref={titleRef} style={{
+              fontSize: 30, fontWeight: 900,
+              fontFamily: "'Noto Serif SC', serif",
+              color: "#fff",
+              textShadow: "0 2px 12px rgba(0,0,0,.3)",
+              lineHeight: 1.2,
+            }}>雾灵山脊线</div>
+          </div>
+        </div>
+
+        {/* 数据统计卡（环形进度） */}
+        <div style={{
+          margin: "0 16px", marginTop: -30,
+          padding: 20,
+          borderRadius: 20,
+          background: "#fff",
+          boxShadow: "0 8px 30px rgba(38,38,31,.08)",
+          display: "flex", alignItems: "center", gap: 16,
+          position: "relative", zIndex: 3,
+        }}>
+          {/* 环形进度 */}
+          <div style={{ position:"relative", width: 80, height: 80, flexShrink: 0 }}>
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r={radius} fill="none" stroke={T.ice} strokeWidth="6" />
+              <circle
+                cx="40" cy="40" r={radius} fill="none"
+                stroke={T.moss} strokeWidth="6"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference - (progress / 100) * circumference}
+                transform="rotate(-90 40 40)"
+                style={{ transition: reduced ? "none" : "stroke-dashoffset .3s ease" }}
+              />
+            </svg>
+            <div style={{
+              position:"absolute", inset: 0,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              flexDirection: "column",
+            }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.moss, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                {Math.round(progress)}%
+              </div>
+              <div style={{ fontSize: 9, color: T.rock, fontFamily: "'Noto Sans SC', sans-serif" }}>完成度</div>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px" }}>
+            <div>
+              <div style={{ fontSize: 9, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>总里程</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>12.8 <span style={{fontSize:11,fontWeight:400,color:T.rock}}>km</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>累计爬升</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>1,280 <span style={{fontSize:11,fontWeight:400,color:T.rock}}>m</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>最高海拔</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>2,150 <span style={{fontSize:11,fontWeight:400,color:T.rock}}>m</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>预计时长</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>7.5 <span style={{fontSize:11,fontWeight:400,color:T.rock}}>小时</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* 高程剖面图 */}
+        <div style={{ margin: "20px 16px" }}>
+          <div style={{
+            display:"flex", justifyContent:"space-between", alignItems:"center",
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: T.char, fontFamily: "'Noto Serif SC', serif" }}>
+              高程剖面
+            </div>
+            <button className="interactive" style={{
+              fontSize: 12, color: T.moss, border: "none", background: "transparent",
+              cursor: "none", fontFamily: "'Noto Sans SC', sans-serif", fontWeight: 500,
+            }}>查看详情 →</button>
+          </div>
+
+          <div style={{
+            height: 100, borderRadius: 12,
+            background: "#fff",
+            padding: 12,
+            boxShadow: "0 4px 16px rgba(38,38,31,.05)",
+            position: "relative", overflow: "hidden",
+          }}>
+            <svg viewBox="0 0 300 80" style={{ width: "100%", height: "100%" }} preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="elev" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={T.moss} stopOpacity="0.35"/>
+                  <stop offset="100%" stopColor={T.moss} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <path
+                d="M0,65 C30,60 50,40 80,30 C110,20 140,45 170,25 C200,10 230,15 260,35 C280,50 300,45 300,45 L300,80 L0,80 Z"
+                fill="url(#elev)"
+              />
+              <path
+                d="M0,65 C30,60 50,40 80,30 C110,20 140,45 170,25 C200,10 230,15 260,35 C280,50 300,45 300,45"
+                fill="none" stroke={T.moss} strokeWidth="2"
+              />
+              {/* 当前点 */}
+              <circle cx={progress * 3} cy="30" r="5" fill={T.sun} style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,.2))" }} />
+            </svg>
+            <div style={{
+              position:"absolute", bottom: 6, left: 10, right: 10,
+              display:"flex", justifyContent:"space-between",
+              fontSize: 10, color: T.rockL,
+              fontFamily: "'Noto Sans SC', sans-serif",
+            }}>
+              <span>起点 870m</span>
+              <span>垭口 1,640m</span>
+              <span>顶峰 2,150m</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 路线描述 */}
+        <div style={{ margin: "0 16px 20px" }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: T.char, marginBottom: 10, fontFamily: "'Noto Serif SC', serif" }}>
+            路线简介
+          </div>
+          <p style={{
+            fontSize: 13, lineHeight: 1.7, color: T.rock,
+            fontFamily: "'Noto Sans SC', sans-serif",
+            margin: 0,
+          }}>
+            雾灵山脊线是京郊最经典的中级徒步路线之一。沿途穿行于高山草甸与云杉林之间，
+            秋季漫山金黄，冬季则是银装素裹。全程路况丰富，包含石阶、土路、岩石路段与山脊线，
+            适合有一定经验的徒步爱好者挑战。登顶后可远眺密云水库全景，天气晴好时甚至能望见北京 CBD。
+          </p>
+        </div>
+
+        {/* 装备建议 + 更多信息网格 */}
+        <div style={{
+          margin: "0 16px 24px",
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          gap: 12,
+        }}>
+          <div style={{
+            padding: 14, borderRadius: 14,
+            background: `linear-gradient(135deg, ${T.sun}22 0%, ${T.sun}08 100%)`,
+            border: `1px solid ${T.sun}33`,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.sunD, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              🎒 推荐装备
+            </div>
+            <div style={{ fontSize: 11, color: T.rock, marginTop: 6, lineHeight: 1.5, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              登山杖 · 冲锋衣 · 2L 水袋<br/>能量胶 × 3 · 头灯
+            </div>
+          </div>
+          <div style={{
+            padding: 14, borderRadius: 14,
+            background: `linear-gradient(135deg, ${T.moss}22 0%, ${T.moss}08 100%)`,
+            border: `1px solid ${T.moss}33`,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.mossD, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              🚌 交通方式
+            </div>
+            <div style={{ fontSize: 11, color: T.rock, marginTop: 6, lineHeight: 1.5, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              东直门乘 980 路<br/>至密云汽车站换乘
+            </div>
+          </div>
+        </div>
+
+        {/* 山友评价 */}
+        <div style={{ margin: "0 16px 24px" }}>
+          <div style={{
+            display:"flex", justifyContent:"space-between", alignItems:"center",
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: T.char, fontFamily: "'Noto Serif SC', serif" }}>
+              山友评价 <span style={{ fontSize:13, color:T.rockL, fontWeight:400 }}>(128)</span>
+            </div>
+          </div>
+          {[
+            { name: "山间客", avatar: "山", time: "3 天前", text: "秋日的雾灵山真的绝了，金色的落叶松一路铺到山顶，强烈推荐！" },
+            { name: "徒步松鼠", avatar: "松", time: "1 周前", text: "山脊线那段风很大，记得带件防风的衣服。景色值回票价。" },
+          ].map((c, i) => (
+            <div key={i} style={{
+              display:"flex", gap: 10, padding: "12px 0",
+              borderBottom: i < 1 ? `0.5px solid ${T.mistD}` : "none",
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: i === 0 ? T.moss : T.sun,
+                color: "#fff", display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize: 13, fontWeight: 600, flexShrink: 0,
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>{c.avatar}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>{c.name}</span>
+                  <span style={{ fontSize: 11, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>{c.time}</span>
+                </div>
+                <p style={{ fontSize: 12, color: T.rock, lineHeight: 1.6, margin: "4px 0 0", fontFamily: "'Noto Sans SC', sans-serif" }}>{c.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ height: 40 }} />
+      </div>
+
+      {/* 底部操作栏 */}
+      <div style={{
+        position:"absolute", bottom: 0, left: 0, right: 0,
+        padding: "12px 16px 30px",
+        background: "rgba(242,239,231,.95)",
+        backdropFilter: "blur(20px)",
+        borderTop: `0.5px solid ${T.mistD}`,
+        display: "flex", gap: 10,
+        zIndex: 20,
+      }}>
+        <button className="interactive" style={{
+          flex: 1, padding: "12px 0",
+          borderRadius: 24, border: "none",
+          background: T.moss, color: "#fff",
+          fontSize: 14, fontWeight: 600,
+          cursor: "none",
+          fontFamily: "'Noto Sans SC', sans-serif",
+          boxShadow: `0 4px 16px ${T.moss}44`,
+        }}>开始导航</button>
+        <button
+          className="interactive"
+          onClick={() => setDrawerOpen(true)}
+          style={{
+          width: 48, height: 48, borderRadius: 24,
+          background: "#fff", border: `0.5px solid ${T.mistD}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,.05)",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.rock} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      {/* 底部半屏抽屉 */}
+      {drawerOpen && (
+        <div style={{
+          position:"absolute", inset: 0,
+          background: "rgba(38,38,31,.4)",
+          zIndex: 60,
+          animation: "fadeIn .25s ease",
+        }}
+          onClick={() => setDrawerOpen(false)}
+        >
+          <div
+            className="interactive"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position:"absolute", bottom: 0, left: 0, right: 0,
+              background: "#fff",
+              borderRadius: "24px 24px 0 0",
+              padding: "10px 20px 30px",
+              animation: "slideUp .35s cubic-bezier(.2,.8,.2,1)",
+            }}
+          >
+            <div style={{
+              width: 40, height: 5, borderRadius: 3,
+              background: T.mistD,
+              margin: "0 auto 16px",
+            }} />
+            <div style={{ fontSize: 17, fontWeight: 700, color: T.char, marginBottom: 16, fontFamily: "'Noto Serif SC', serif" }}>
+              分享与收藏
+            </div>
+            {[
+              { icon: "📥", label: "下载轨迹", color: T.moss },
+              { icon: "📑", label: "收藏路线", color: T.sun },
+              { icon: "📤", label: "分享给山友", color: T.clay },
+              { icon: "🚩", label: "举报问题", color: T.burgundy },
+            ].map((it, i) => (
+              <button key={i} className="interactive" style={{
+                width: "100%", padding: "14px 0",
+                border: "none", borderBottom: i < 3 ? `0.5px solid ${T.mistD}` : "none",
+                background: "transparent",
+                display: "flex", alignItems: "center", gap: 14,
+                fontSize: 14, color: T.char,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                cursor: "none",
+              }}>
+                <span style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: `${it.color}18`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16,
+                }}>{it.icon}</span>
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 3: 轨迹记录 —— FAB 悬浮操作球 · 实时数据
+   签名动效：脉冲环 · 数据跳动
+   ============================================================ */
+function RecordPage() {
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [distance, setDistance] = useState(0);
+  const [elevation, setElevation] = useState(0);
+  const [pace, setPace] = useState(0);
+  const timerRef = useRef(0);
+  const rafRef = useRef(0);
+  const reduced = prefersReducedMotion();
+
+  useEffect(() => {
+    let hidden = false;
+    const onVis = () => { hidden = document.hidden; };
+    document.addEventListener("visibilitychange", onVis);
+
+    if (recording) {
+      const tick = () => {
+        if (hidden) { timerRef.current = setTimeout(tick, 1000); return; }
+        setElapsed(e => e + 1);
+        setDistance(d => +(d + 0.012).toFixed(2));
+        setElevation(el => +(el + 0.42).toFixed(1));
+        setPage(p => 4.5 + Math.random() * 1.5);
+        timerRef.current = setTimeout(tick, 1000);
+      };
+      timerRef.current = setTimeout(tick, 1000);
+    }
+    return () => {
+      clearTimeout(timerRef.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [recording]);
+
+  const fmtTime = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  };
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.char,
+      color: "#fff",
+      overflow: "hidden",
+    }}>
+      {/* 顶部大标题导航栏 */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0,
+        padding: "54px 20px 12px",
+        zIndex: 10,
+      }}>
+        <div style={{
+          fontSize: 34, fontWeight: 900,
+          fontFamily: "'Noto Serif SC', serif",
+          letterSpacing: 1,
+        }}>轨迹记录</div>
+        <div style={{ fontSize: 13, color: T.rockL, marginTop: 2, fontFamily: "'Noto Sans SC', sans-serif" }}>
+          {recording ? "正在记录你的徒步轨迹" : "准备出发前点击开始"}
+        </div>
+      </div>
+
+      {/* 等高线背景装饰 */}
+      <div style={{
+        position: "absolute", top: 100, left: -50, right: -50, bottom: 200,
+        opacity: .08,
+        backgroundImage: `url(${IMG.topo})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        mixBlendMode: "screen",
+      }} />
+
+      {/* 主数据区 */}
+      <div style={{
+        position: "absolute", top: 140, left: 0, right: 0,
+        padding: "0 20px",
+      }}>
+        {/* 大时间显示 */}
+        <div style={{
+          textAlign: "center",
+          marginBottom: 30,
+        }}>
+          <div style={{
+            fontSize: 13, color: T.rockL,
+            letterSpacing: 4,
+            fontFamily: "'Noto Sans SC', sans-serif",
+            marginBottom: 4,
+          }}>运 动 时 长</div>
+          <div style={{
+            fontSize: 54, fontWeight: 200,
+            letterSpacing: 2,
+            fontVariantNumeric: "tabular-nums",
+            fontFamily: "'Noto Sans SC', sans-serif",
+            color: "#fff",
+            textShadow: recording && !reduced ? `0 0 30px ${T.sun}66` : "none",
+            transition: "text-shadow .5s ease",
+          }}>{fmtTime(elapsed)}</div>
+        </div>
+
+        {/* 数据四宫格 */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 12,
+        }}>
+          {[
+            { label: "里程", value: distance.toFixed(2), unit: "km", color: T.sun },
+            { label: "累计爬升", value: Math.round(elevation), unit: "m", color: T.mossL },
+            { label: "当前配速", value: pace.toFixed(1), unit: "min/km", color: "#8BC34A" },
+            { label: "当前海拔", value: 1280 + Math.round(elevation), unit: "m", color: T.sunL },
+          ].map((d, i) => (
+            <div key={i} style={{
+              background: "rgba(255,255,255,.05)",
+              border: "0.5px solid rgba(255,255,255,.08)",
+              borderRadius: 16,
+              padding: "14px 16px",
+              backdropFilter: "blur(10px)",
+            }}>
+              <div style={{
+                fontSize: 11, color: T.rockL,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                marginBottom: 4,
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: d.color, boxShadow: `0 0 6px ${d.color}` }} />
+                {d.label}
+              </div>
+              <div style={{
+                fontSize: 26, fontWeight: 600,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                fontVariantNumeric: "tabular-nums",
+                lineHeight: 1.1,
+              }}>
+                {d.value}
+                <span style={{ fontSize: 12, fontWeight: 400, color: T.rockL, marginLeft: 3 }}>{d.unit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 实时轨迹迷你图 */}
+        <div style={{
+          marginTop: 16,
+          height: 100,
+          borderRadius: 16,
+          background: "rgba(255,255,255,.04)",
+          border: "0.5px solid rgba(255,255,255,.06)",
+          position: "relative", overflow: "hidden",
+          padding: 12,
+        }}>
+          <div style={{ fontSize: 11, color: T.rockL, position: "absolute", top: 10, left: 14, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            轨迹预览
+          </div>
+          <svg viewBox="0 0 300 80" style={{ width: "100%", height: "100%" }} preserveAspectRatio="none">
+            <path
+              d="M20,60 Q40,50 60,55 T100,40 T140,35 T180,20 T220,30 T260,25 T290,50"
+              fill="none"
+              stroke={T.sun}
+              strokeWidth="2"
+              strokeDasharray={recording ? "4 3" : "0"}
+              style={{ animation: recording && !reduced ? "dashMove 2s linear infinite" : "none" }}
+            />
+            {recording && (
+              <circle cx="290" cy="50" r="6" fill={T.sun} style={{
+                filter: `drop-shadow(0 0 8px ${T.sun})`,
+                animation: reduced ? "none" : "pulse 1.5s ease-in-out infinite",
+              }} />
+            )}
+          </svg>
+        </div>
+      </div>
+
+      {/* FAB 悬浮操作球 */}
+      <div style={{
+        position: "absolute", bottom: 110, left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", gap: 12,
+        zIndex: 20,
+      }}>
+        {recording && !reduced && (
+          <div style={{
+            position: "absolute", width: 120, height: 120,
+            bottom: -10, left: "50%", transform: "translateX(-50%)",
+          }}>
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              border: `2px solid ${T.sun}44`,
+              animation: "rippleOut 2s ease-out infinite",
+            }} />
+            <div style={{
+              position: "absolute", inset: 10, borderRadius: "50%",
+              border: `2px solid ${T.sun}33`,
+              animation: "rippleOut 2s ease-out infinite .7s",
+            }} />
+          </div>
+        )}
+
+        <button
+          className="interactive"
+          onClick={() => setRecording(r => !r)}
+          style={{
+            width: 80, height: 80, borderRadius: "50%",
+            background: recording ? T.burgundy : T.sun,
+            border: "none",
+            color: "#fff",
+            fontSize: 14, fontWeight: 700,
+            cursor: "none",
+            boxShadow: recording
+              ? `0 0 30px ${T.burgundy}88, 0 8px 20px rgba(0,0,0,.3)`
+              : `0 0 30px ${T.sun}66, 0 8px 20px rgba(0,0,0,.2)`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexDirection: "column",
+            transition: "all .3s cubic-bezier(.2,.8,.2,1)",
+            fontFamily: "'Noto Sans SC', sans-serif",
+            position: "relative", zIndex: 2,
+          }}
+        >
+          <span style={{ fontSize: 20, fontWeight: 800 }}>
+            {recording ? "⏸" : "▶"}
+          </span>
+          <span style={{ fontSize: 10, marginTop: 2 }}>
+            {recording ? "暂停" : "开始"}
+          </span>
+        </button>
+
+        {recording && (
+          <button className="interactive" style={{
+            padding: "8px 16px",
+            borderRadius: 20,
+            background: "rgba(255,255,255,.1)",
+            border: "0.5px solid rgba(255,255,255,.15)",
+            color: "#fff",
+            fontSize: 12, fontWeight: 500,
+            cursor: "none",
+            fontFamily: "'Noto Sans SC', sans-serif",
+            backdropFilter: "blur(10px)",
+          }}>标记打卡点</button>
+        )}
+      </div>
+
+      {/* 底部快速操作 */}
+      <div style={{
+        position: "absolute", bottom: 34, left: 0, right: 0,
+        padding: "0 30px",
+        display: "flex", justifyContent: "space-between",
+        alignItems: "center",
+      }}>
+        <button className="interactive" style={{
+          width: 48, height: 48, borderRadius: "50%",
+          background: "rgba(255,255,255,.08)",
+          border: "0.5px solid rgba(255,255,255,.1)",
+          color: "#fff",
+          cursor: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <button className="interactive" style={{
+          width: 48, height: 48, borderRadius: "50%",
+          background: "rgba(255,255,255,.08)",
+          border: "0.5px solid rgba(255,255,255,.1)",
+          color: "#fff",
+          cursor: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes rippleOut {
+          0% { transform: scale(.6); opacity: .8; }
+          100% { transform: scale(1.4); opacity: 0; }
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.3); }
+        }
+        @keyframes dashMove {
+          to { stroke-dashoffset: -14; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 4: 社区动态 —— 卡片式信息流 + 长按快捷菜单
+   ============================================================ */
+function CommunityPage() {
+  const [longPressId, setLongPressId] = useState(null);
+  const [pressPos, setPressPos] = useState({ x: 0, y: 0 });
+  const pressTimerRef = useRef(0);
+  const [liked, setLiked] = useState({});
+
+  const posts = [
+    {
+      id: 1, user: "山间客", avatar: "山", avatarColor: T.moss,
+      time: "2 小时前", location: "雾灵山脊线",
+      images: [IMG.summit],
+      text: "今天登顶雾灵山，云海翻涌，太美了！全程 7.5 小时，爬升 1280 米。推荐大家秋天来，落叶松金黄一片。",
+      likes: 128, comments: 24,
+    },
+    {
+      id: 2, user: "徒步松鼠", avatar: "松", avatarColor: T.sun,
+      time: "5 小时前", location: "北岭秋径",
+      images: [IMG.hikers, IMG.aerial],
+      text: "周末和小伙伴们一起走了北岭秋径，漫山红叶，拍照超出片！一路说说笑笑，完全不累。",
+      likes: 86, comments: 12,
+    },
+    {
+      id: 3, user: "岭上白云", avatar: "云", avatarColor: T.clay,
+      time: "昨天", location: "冰川遗址线",
+      images: [IMG.hero],
+      text: "冰川遗址线挑战成功！3200 米海拔，22 公里，走了整整 11 个小时。虽然累，但站在山顶那一刻，值了。",
+      likes: 256, comments: 48,
+    },
+  ];
+
+  const startPress = (id, e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPressPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    pressTimerRef.current = setTimeout(() => {
+      setLongPressId(id);
+    }, 550);
+  };
+  const endPress = () => {
+    clearTimeout(pressTimerRef.current);
+  };
+  const closeMenu = () => {
+    setLongPressId(null);
+  };
+
+  const toggleLike = (id) => {
+    setLiked(l => ({ ...l, [id]: !l[id] }));
+  };
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.mist,
+      overflowY: "auto",
+      paddingBottom: 100,
+      paddingTop: 54,
+      WebkitOverflowScrolling: "touch",
+    }}>
+      {/* 大标题导航栏 */}
+      <div style={{
+        padding: "4px 20px 12px",
+        display: "flex", justifyContent: "space-between", alignItems: "flex-end",
+      }}>
+        <div style={{ fontSize: 30, fontWeight: 900, color: T.char, fontFamily: "'Noto Serif SC', serif" }}>
+          社区动态
+        </div>
+        <button className="interactive" style={{
+          width: 36, height: 36, borderRadius: "50%",
+          background: "#fff", border: `0.5px solid ${T.mistD}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,.04)",
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.char} strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      {/* 分类 Tabs */}
+      <div style={{
+        display: "flex", gap: 20,
+        padding: "0 20px 14px",
+        borderBottom: `0.5px solid ${T.mistD}`,
+      }}>
+        {["关注", "推荐", "附近"].map((t, i) => (
+          <button key={t} className="interactive" style={{
+            fontSize: 16, fontWeight: i === 1 ? 700 : 400,
+            color: i === 1 ? T.char : T.rockL,
+            border: "none", background: "transparent",
+            padding: "0 0 6px",
+            position: "relative",
+            cursor: "none",
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>
+            {t}
+            {i === 1 && (
+              <span style={{
+                position:"absolute", bottom: 0, left: "50%",
+                transform:"translateX(-50%)",
+                width: 20, height: 3, borderRadius: 2,
+                background: T.sun,
+              }} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 动态流 */}
+      <div style={{ padding: "16px 0" }}>
+        {posts.map((p, idx) => (
+          <div
+            key={p.id}
+            className="interactive"
+            onTouchStart={(e) => startPress(p.id, e)}
+            onTouchEnd={endPress}
+            onTouchCancel={endPress}
+            onMouseDown={(e) => startPress(p.id, e)}
+            onMouseUp={endPress}
+            onMouseLeave={endPress}
+            style={{
+              background: "#fff",
+              marginBottom: 12,
+              padding: "14px 16px",
+              borderTop: `0.5px solid ${T.mistD}`,
+              borderBottom: `0.5px solid ${T.mistD}`,
+              cursor: "none",
+              userSelect: "none",
+              transition: "background .2s ease",
+            }}
+          >
+            {/* 用户头 */}
+            <div style={{ display:"flex", alignItems:"center", gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: p.avatarColor,
+                color: "#fff", display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize: 14, fontWeight: 600,
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>{p.avatar}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>{p.user}</div>
+                <div style={{ fontSize: 11, color: T.rockL, display:"flex", gap: 6, alignItems:"center", fontFamily: "'Noto Sans SC', sans-serif" }}>
+                  <span>📍 {p.location}</span>
+                  <span>·</span>
+                  <span>{p.time}</span>
+                </div>
+              </div>
+              <button className="interactive" style={{
+                border: "none", background: "transparent",
+                color: T.rockL, cursor: "none", padding: 4,
+              }}>⋯</button>
+            </div>
+
+            {/* 文字 */}
+            <p style={{
+              fontSize: 14, color: T.char, lineHeight: 1.6,
+              margin: "0 0 12px",
+              fontFamily: "'Noto Sans SC', sans-serif",
+            }}>{p.text}</p>
+
+            {/* 图片 */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: p.images.length === 1 ? "1fr" : "1fr 1fr",
+              gap: 4,
+              marginBottom: 12,
+              borderRadius: 10,
+              overflow: "hidden",
+            }}>
+              {p.images.map((img, i) => (
+                <div key={i} style={{
+                  aspectRatio: p.images.length === 1 ? "4/3" : "1/1",
+                  backgroundImage: `url(${img})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }} />
+              ))}
+            </div>
+
+            {/* 互动栏 */}
+            <div style={{
+              display: "flex", alignItems: "center",
+              gap: 20,
+              paddingTop: 10,
+              borderTop: `0.5px solid ${T.mistD}`,
+            }}>
+              <button
+                className="interactive"
+                onClick={() => toggleLike(p.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  border: "none", background: "transparent",
+                  color: liked[p.id] ? T.sun : T.rock,
+                  fontSize: 13,
+                  cursor: "none",
+                  fontFamily: "'Noto Sans SC', sans-serif",
+                  transition: "all .2s ease",
+                }}
+              >
+                <svg
+                  width="18" height="18" viewBox="0 0 24 24"
+                  fill={liked[p.id] ? T.sun : "none"}
+                  stroke={liked[p.id] ? T.sun : "currentColor"}
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transition: "all .3s cubic-bezier(.2,.8,.2,1)", transform: liked[p.id] ? "scale(1.15)" : "scale(1)" }}
+                >
+                  <path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 10-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/>
+                </svg>
+                {p.likes + (liked[p.id] ? 1 : 0)}
+              </button>
+              <button className="interactive" style={{
+                display: "flex", alignItems: "center", gap: 5,
+                border: "none", background: "transparent",
+                color: T.rock, fontSize: 13,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                {p.comments}
+              </button>
+              <button className="interactive" style={{
+                marginLeft: "auto",
+                border: "none", background: "transparent",
+                color: T.rock,
+                cursor: "none",
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 长按快捷菜单（模态） */}
+      {longPressId && (
+        <div
+          style={{
+            position:"absolute", inset: 0,
+            background: "rgba(38,38,31,.3)",
+            zIndex: 100,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            animation: "fadeIn .2s ease",
+          }}
+          onClick={closeMenu}
+        >
+          <div
+            className="interactive"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 16,
+              width: 260,
+              overflow: "hidden",
+              boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+              animation: "popIn .3s cubic-bezier(.2,.8,.2,1)",
+            }}
+          >
+            {[
+              { label: "点赞", icon: "♥️" },
+              { label: "收藏", icon: "⭐" },
+              { label: "分享", icon: "📤" },
+              { label: "举报", icon: "🚩", danger: true },
+            ].map((it, i) => (
+              <button key={i} className="interactive" onClick={closeMenu} style={{
+                width: "100%", padding: "14px 20px",
+                border: "none",
+                borderBottom: i < 3 ? `0.5px solid ${T.mistD}` : "none",
+                background: "transparent",
+                display: "flex", alignItems: "center", gap: 12,
+                fontSize: 15,
+                color: it.danger ? T.burgundy : T.char,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>
+                <span style={{ fontSize: 18 }}>{it.icon}</span>
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popIn {
+          from { opacity: 0; transform: scale(.85); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 5: 装备清单 —— 网格拼贴 + 分类切换
+   ============================================================ */
+function GearPage() {
+  const [activeCat, setActiveCat] = useState("core");
+  const [checks, setChecks] = useState({});
+
+  const cats = [
+    { key: "core", label: "核心装备", color: T.moss },
+    { key: "cloth", label: "服装", color: T.sun },
+    { key: "food", label: "补给", color: T.clay },
+    { key: "safety", label: "安全", color: T.burgundy },
+  ];
+
+  const items = {
+    core: [
+      { id: 1, name: "登山包 45L", brand: "Osprey", weight: "1.2 kg", checked: true, color: T.moss },
+      { id: 2, name: "登山杖", brand: "Black Diamond", weight: "480 g", checked: true, color: T.sun },
+      { id: 3, name: "头灯", brand: "Petzl", weight: "85 g", checked: false, color: T.clay },
+      { id: 4, name: "水袋 2L", brand: "Camelbak", weight: "160 g", checked: true, color: T.moss },
+      { id: 5, name: "登山鞋", brand: "La Sportiva", weight: "980 g", checked: true, color: T.burgundy },
+      { id: 6, name: "护膝", brand: "LP", weight: "220 g", checked: false, color: T.rock },
+    ],
+    cloth: [
+      { id: 7, name: "冲锋衣", brand: "Arc'teryx", weight: "420 g", checked: true, color: T.moss },
+      { id: 8, name: "抓绒衣", brand: "Patagonia", weight: "380 g", checked: true, color: T.sun },
+      { id: 9, name: "速干裤", brand: "Salomon", weight: "320 g", checked: false, color: T.clay },
+    ],
+    food: [
+      { id: 10, name: "能量胶 × 5", brand: "GU", weight: "150 g", checked: true, color: T.sun },
+      { id: 11, name: "运动饮料", brand: "宝矿力", weight: "500 g", checked: false, color: T.moss },
+      { id: 12, name: "巧克力", brand: "Ritter Sport", weight: "100 g", checked: true, color: T.burgundy },
+    ],
+    safety: [
+      { id: 13, name: "急救包", brand: "国产", weight: "200 g", checked: true, color: T.burgundy },
+      { id: 14, name: "保温毯", brand: "", weight: "50 g", checked: true, color: T.rock },
+      { id: 15, name: "指南针", brand: "Suunto", weight: "35 g", checked: false, color: T.moss },
+    ],
+  };
+
+  const list = items[activeCat] || [];
+  const total = list.length;
+  const done = list.filter(i => checks[i.id] !== undefined ? checks[i.id] : i.checked).length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+
+  const toggle = (id) => {
+    setChecks(c => ({ ...c, [id]: c[id] === undefined ? !(items[activeCat].find(i=>i.id===id)?.checked) : !c[id] }));
+  };
+
+  const isChecked = (item) => checks[item.id] !== undefined ? checks[item.id] : item.checked;
+
+  const activeColor = cats.find(c => c.key === activeCat)?.color || T.moss;
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.mist,
+      overflowY: "auto",
+      paddingBottom: 100,
+      paddingTop: 54,
+      WebkitOverflowScrolling: "touch",
+    }}>
+      {/* Hero 区域 —— 对角分割 */}
+      <div style={{
+        position: "relative",
+        height: 180,
+        marginBottom: -30,
+      }}>
+        <div style={{
+          position:"absolute", inset: 0,
+          background: `linear-gradient(135deg, ${T.moss} 0%, ${T.mossD} 100%)`,
+        }} />
+        {/* 对角分割装饰 */}
+        <div style={{
+          position:"absolute", right: 0, bottom: 0,
+          width: "55%", height: "100%",
+          clipPath: "polygon(30% 0, 100% 0, 100% 100%, 0 100%)",
+          background: `linear-gradient(135deg, ${T.sun}dd 0%, ${T.sunD} 100%)`,
+          opacity: .9,
+        }} />
+        {/* 装备图 */}
+        <div style={{
+          position:"absolute", right: -20, bottom: -10,
+          width: 160, height: 160,
+          backgroundImage: `url(${IMG.gear})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          borderRadius: 12,
+          transform: "rotate(-6deg)",
+          boxShadow: "-8px 8px 24px rgba(0,0,0,.2)",
+        }} />
+
+        <div style={{
+          position:"relative", padding: "12px 20px",
+          color: "#fff",
+        }}>
+          <div style={{ fontSize: 28, fontWeight: 900, fontFamily: "'Noto Serif SC', serif" }}>
+            装备清单
+          </div>
+          <div style={{ fontSize: 12, opacity: .85, marginTop: 4, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            雾灵山脊线 · 12.8 km · 中级
+          </div>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 100, height: 6, borderRadius: 3,
+              background: "rgba(255,255,255,.3)",
+              overflow: "hidden",
+            }}>
+              <div style={{
+                width: `${pct}%`, height: "100%",
+                background: "#fff",
+                borderRadius: 3,
+                transition: "width .4s cubic-bezier(.2,.8,.2,1)",
+              }} />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              {done}/{total}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 分类切换 */}
+      <div style={{
+        position: "relative", zIndex: 5,
+        display: "flex", gap: 8,
+        padding: "0 16px",
+        marginBottom: 14,
+      }}>
+        {cats.map((c) => (
+          <button
+            key={c.key}
+            className="interactive"
+            onClick={() => setActiveCat(c.key)}
+            style={{
+              flex: 1, padding: "10px 0",
+              borderRadius: 12,
+              border: "none",
+              background: activeCat === c.key ? c.color : "#fff",
+              color: activeCat === c.key ? "#fff" : T.rock,
+              fontSize: 12, fontWeight: activeCat === c.key ? 600 : 400,
+              cursor: "none",
+              fontFamily: "'Noto Sans SC', sans-serif",
+              boxShadow: activeCat === c.key ? `0 4px 12px ${c.color}44` : "0 2px 8px rgba(0,0,0,.04)",
+              transition: "all .25s cubic-bezier(.2,.8,.2,1)",
+            }}
+          >{c.label}</button>
+        ))}
+      </div>
+
+      {/* 装备网格 */}
+      <div style={{
+        padding: "0 16px",
+        display: "grid", gridTemplateColumns: "1fr 1fr",
+        gap: 12,
+      }}>
+        {list.map((item, i) => {
+          const checked = isChecked(item);
+          return (
+            <button
+              key={item.id}
+              className="interactive"
+              onClick={() => toggle(item.id)}
+              style={{
+                position: "relative",
+                background: "#fff",
+                borderRadius: 14,
+                padding: 12,
+                textAlign: "left",
+                border: `1.5px solid ${checked ? item.color : "transparent"}`,
+                boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+                cursor: "none",
+                transition: "all .25s cubic-bezier(.2,.8,.2,1)",
+                overflow: "hidden",
+              }}
+            >
+              {/* 颜色条 */}
+              <div style={{
+                position: "absolute", top: 0, left: 0, bottom: 0,
+                width: 4,
+                background: item.color,
+                opacity: checked ? 1 : .3,
+                transition: "opacity .3s ease",
+              }} />
+
+              {/* 图标占位 */}
+              <div style={{
+                width: 44, height: 44, borderRadius: 10,
+                background: `${item.color}18`,
+                marginBottom: 10,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 22,
+              }}>
+                {item.id === 1 && "🎒"}
+                {item.id === 2 && "🥢"}
+                {item.id === 3 && "🔦"}
+                {item.id === 4 && "💧"}
+                {item.id === 5 && "🥾"}
+                {item.id === 6 && "🦵"}
+                {item.id === 7 && "🧥"}
+                {item.id === 8 && "🧶"}
+                {item.id === 9 && "👖"}
+                {item.id === 10 && "🍫"}
+                {item.id === 11 && "🥤"}
+                {item.id === 12 && "🍪"}
+                {item.id === 13 && "🧰"}
+                {item.id === 14 && "🧣"}
+                {item.id === 15 && "🧭"}
+              </div>
+
+              <div style={{
+                fontSize: 14, fontWeight: 600, color: T.char,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                lineHeight: 1.3,
+                marginBottom: 2,
+                textDecoration: checked ? "line-through" : "none",
+                opacity: checked ? .5 : 1,
+                transition: "all .3s ease",
+              }}>{item.name}</div>
+
+              <div style={{
+                fontSize: 11, color: T.rockL,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                marginBottom: 8,
+              }}>{item.brand}</div>
+
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                alignItems: "center",
+              }}>
+                <span style={{ fontSize: 11, color: T.rock, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                  {item.weight}
+                </span>
+                <div style={{
+                  width: 20, height: 20, borderRadius: "50%",
+                  background: checked ? item.color : "#fff",
+                  border: `2px solid ${checked ? item.color : T.mistD}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all .25s cubic-bezier(.2,.8,.2,1)",
+                  transform: checked ? "scale(1)" : "scale(.9)",
+                }}>
+                  {checked && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 总重量卡片 */}
+      <div style={{
+        margin: "20px 16px 0", padding: 16,
+        borderRadius: 16,
+        background: `linear-gradient(135deg, ${activeColor} 0%, ${activeColor}dd 100%)`,
+        color: "#fff",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div>
+          <div style={{ fontSize: 11, opacity: .8, fontFamily: "'Noto Sans SC', sans-serif" }}>背包总重量</div>
+          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'Noto Sans SC', sans-serif", marginTop: 2 }}>
+            6.8 <span style={{ fontSize: 14, fontWeight: 400 }}>kg</span>
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11, opacity: .8, fontFamily: "'Noto Sans SC', sans-serif" }}>建议上限</div>
+          <div style={{ fontSize: 18, fontWeight: 600, fontFamily: "'Noto Sans SC', sans-serif", marginTop: 2 }}>
+            8.0 kg
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 6: 我的成就 —— 轮播画廊 + 数据
+   签名动效：环形进度填充
+   ============================================================ */
+function MePage({ onOpen }) {
+  const stats = {
+    totalKm: 248.6,
+    totalHm: 18420,
+    totalHours: 126,
+    peaks: 12,
+    trails: 34,
+    days: 28,
+  };
+
+  const badges = [
+    { id: 1, name: "初登山顶", desc: "完成首次登顶", icon: "🏔", color: T.sun, earned: true },
+    { id: 2, name: "百星徒步者", desc: "累计 100 公里", icon: "⭐", color: T.moss, earned: true },
+    { id: 3, name: "铁人", desc: "单日徒步 20km+", icon: "💪", color: T.burgundy, earned: true },
+    { id: 4, name: "四季山野", desc: "四季各登一次", icon: "🍂", color: T.clay, earned: false },
+    { id: 5, name: "三千海拔", desc: "登上 3000m+", icon: "🏔", color: T.rock, earned: false },
+    { id: 6, name: "百峰之主", desc: "登顶 100 座", icon: "👑", color: T.sun, earned: false },
+  ];
+
+  const recent = [
+    { name: "雾灵山脊线", date: "10月18日", km: 12.8, hm: 1280, img: IMG.hero },
+    { name: "北岭秋径", date: "10月12日", km: 10.5, hm: 640, img: IMG.aerial },
+    { name: "鹰嘴崖环线", date: "10月5日", km: 18.2, hm: 1560, img: IMG.summit },
+  ];
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.char,
+      overflowY: "auto",
+      paddingBottom: 100,
+      paddingTop: 54,
+      color: "#fff",
+      WebkitOverflowScrolling: "touch",
+    }}>
+      {/* 个人头部 - Hero 大图 */}
+      <div style={{
+        position: "relative",
+        height: 220,
+        marginBottom: 40,
+      }}>
+        <div style={{
+          position:"absolute", inset: 0,
+          backgroundImage: `url(${IMG.summit})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center 30%",
+        }} />
+        <div style={{
+          position:"absolute", inset: 0,
+          background: `linear-gradient(180deg, ${T.char}66 0%, ${T.char}dd 70%, ${T.char} 100%)`,
+        }} />
+
+        {/* 头像 */}
+        <div style={{
+          position: "absolute", bottom: -40, left: "50%",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+        }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: "50%",
+            background: `linear-gradient(135deg, ${T.sun}, ${T.sunD})`,
+            border: `3px solid ${T.char}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 28, fontWeight: 800,
+            fontFamily: "'Noto Serif SC', serif",
+            boxShadow: `0 8px 24px rgba(0,0,0,.3)`,
+          }}>岭</div>
+          <div style={{ marginTop: 8, fontSize: 18, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>
+            岭上白云
+          </div>
+          <div style={{ fontSize: 12, color: T.rockL, marginTop: 2, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            徒步 Lv.6 · 资深山友
+          </div>
+        </div>
+      </div>
+
+      {/* 数据概览卡片 */}
+      <div style={{
+        margin: "0 16px 24px",
+        display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+        gap: 10,
+      }}>
+        {[
+          { label: "总里程", value: stats.totalKm, unit: "km", color: T.sun },
+          { label: "累计爬升", value: (stats.totalHm/1000).toFixed(1), unit: "km", color: T.mossL },
+          { label: "徒步时长", value: stats.totalHours, unit: "h", color: T.clay },
+        ].map((d, i) => (
+          <div key={i} style={{
+            background: "rgba(255,255,255,.06)",
+            border: "0.5px solid rgba(255,255,255,.08)",
+            borderRadius: 14,
+            padding: "14px 10px",
+            textAlign: "center",
+            backdropFilter: "blur(10px)",
+          }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: d.color, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              {d.value}
+            </div>
+            <div style={{ fontSize: 10, color: T.rockL, marginTop: 2, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              {d.label} ({d.unit})
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 勋章成就区 */}
+      <div style={{ margin: "0 16px 24px" }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>
+            我的勋章
+          </div>
+          <button className="interactive" style={{
+            fontSize: 12, color: T.sun, border: "none", background: "transparent",
+            cursor: "none", fontFamily: "'Noto Sans SC', sans-serif",
+          }}>查看全部 →</button>
+        </div>
+
+        {/* 轮播画廊 */}
+        <div style={{
+          display: "flex", gap: 12,
+          overflowX: "auto",
+          paddingBottom: 8,
+          scrollbarWidth: "none",
+        }}>
+          {badges.map((b, i) => (
+            <div key={b.id} style={{
+              flexShrink: 0,
+              width: 110,
+              background: b.earned ? `linear-gradient(135deg, ${b.color}22 0%, ${b.color}08 100%)` : "rgba(255,255,255,.04)",
+              border: `1px solid ${b.earned ? `${b.color}44` : "rgba(255,255,255,.06)"}`,
+              borderRadius: 14,
+              padding: "14px 10px",
+              textAlign: "center",
+              opacity: b.earned ? 1 : .5,
+              position: "relative",
+            }}>
+              <div style={{
+                fontSize: 36,
+                marginBottom: 8,
+                filter: b.earned ? "none" : "grayscale(1)",
+              }}>{b.icon}</div>
+              <div style={{
+                fontSize: 12, fontWeight: 600,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                color: "#fff",
+                marginBottom: 3,
+              }}>{b.name}</div>
+              <div style={{
+                fontSize: 10, color: T.rockL,
+                fontFamily: "'Noto Sans SC', sans-serif",
+                lineHeight: 1.3,
+              }}>{b.desc}</div>
+              {b.earned && (
+                <div style={{
+                  position:"absolute", top: 8, right: 8,
+                  fontSize: 10, color: T.sun,
+                }}>✓</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 进度圆环 - 等级进度 */}
+      <div style={{
+        margin: "0 16px 24px",
+        padding: 20,
+        borderRadius: 18,
+        background: "rgba(255,255,255,.05)",
+        border: "0.5px solid rgba(255,255,255,.08)",
+        display: "flex", alignItems: "center", gap: 18,
+      }}>
+        <div style={{ position:"relative", width: 80, height: 80, flexShrink: 0 }}>
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="6" />
+            <circle
+              cx="40" cy="40" r="34" fill="none"
+              stroke={T.sun} strokeWidth="6"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 34}
+              strokeDashoffset={2 * Math.PI * 34 * 0.32}
+              transform="rotate(-90 40 40)"
+              style={{
+                filter: `drop-shadow(0 0 6px ${T.sun}66)`,
+              }}
+            />
+          </svg>
+          <div style={{
+            position:"absolute", inset: 0,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            flexDirection: "column",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.sun, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              Lv.6
+            </div>
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'Noto Sans SC', sans-serif" }}>距 Lv.7 还差 151.4 km</div>
+          <div style={{ fontSize: 11, color: T.rockL, marginTop: 4, fontFamily: "'Noto Sans SC', sans-serif" }}>
+            再走 5 次雾灵山脊线就能升级啦，加油！
+          </div>
+          <div style={{
+            marginTop: 10,
+            height: 6, borderRadius: 3,
+            background: "rgba(255,255,255,.1)",
+            overflow: "hidden",
+          }}>
+            <div style={{
+              width: "68%", height: "100%",
+              background: `linear-gradient(90deg, ${T.sun}, ${T.sunL})`,
+              borderRadius: 3,
+              boxShadow: `0 0 8px ${T.sun}66`,
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* 近期徒步 */}
+      <div style={{ margin: "0 16px" }}>
+        <div style={{
+          fontSize: 18, fontWeight: 700,
+          fontFamily: "'Noto Serif SC', serif",
+          marginBottom: 14,
+        }}>近期徒步</div>
+        {recent.map((r, i) => (
+          <div key={i} style={{
+            display: "flex", gap: 12, padding: "12px 0",
+            borderBottom: i < recent.length - 1 ? "0.5px solid rgba(255,255,255,.06)" : "none",
+          }}>
+            <div style={{
+              width: 60, height: 60, borderRadius: 12,
+              flexShrink: 0,
+              backgroundImage: `url(${r.img})`,
+              backgroundSize: "cover", backgroundPosition: "center",
+            }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "'Noto Sans SC', sans-serif" }}>{r.name}</div>
+              <div style={{ fontSize: 11, color: T.rockL, marginTop: 2, fontFamily: "'Noto Sans SC', sans-serif" }}>{r.date}</div>
+              <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 11, color: T.sunL, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                <span>{r.km} km</span>
+                <span>·</span>
+                <span>↑{r.hm} m</span>
+              </div>
+            </div>
+            <button className="interactive" style={{
+              alignSelf: "center",
+              padding: "6px 12px",
+              borderRadius: 14,
+              background: "rgba(255,255,255,.08)",
+              border: "0.5px solid rgba(255,255,255,.1)",
+              color: "#fff",
+              fontSize: 11,
+              cursor: "none",
+              fontFamily: "'Noto Sans SC', sans-serif",
+            }}>详情</button>
+          </div>
+        ))}
+      </div>
+
+      {/* 设计规范/接口文档入口 */}
+      <div style={{
+        margin: "24px 16px 0",
+        display: "grid", gridTemplateColumns: "1fr 1fr",
+        gap: 10,
+      }}>
+        <button
+          className="interactive"
+          onClick={() => onOpen("design")}
+          style={{
+          padding: 16, borderRadius: 14,
+          background: `linear-gradient(135deg, ${T.moss} 0%, ${T.mossD} 100%)`,
+          border: "none",
+          color: "#fff",
+          textAlign: "left",
+          cursor: "none",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>设计规范</div>
+          <div style={{ fontSize: 10, opacity: .7, marginTop: 4, fontFamily: "'Noto Sans SC', sans-serif" }}>Design System</div>
+        </button>
+        <button
+          className="interactive"
+          onClick={() => onOpen("api")}
+          style={{
+          padding: 16, borderRadius: 14,
+          background: `linear-gradient(135deg, ${T.sunD} 0%, ${T.burgundy} 100%)`,
+          border: "none",
+          color: "#fff",
+          textAlign: "left",
+          cursor: "none",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>接口文档</div>
+          <div style={{ fontSize: 10, opacity: .7, marginTop: 4, fontFamily: "'Noto Sans SC', sans-serif" }}>API Reference</div>
+        </button>
+      </div>
+
+      <style>{`
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 7: 设计规范页 —— 左右分栏
+   ============================================================ */
+function DesignPage({ onBack }) {
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.mist,
+      overflowY: "auto",
+      paddingBottom: 50,
+      paddingTop: 54,
+      WebkitOverflowScrolling: "touch",
+    }}>
+      {/* 导航栏 */}
+      <div style={{
+        position: "sticky", top: 54, zIndex: 10,
+        height: 44,
+        background: `rgba(242,239,231,.95)`,
+        backdropFilter: "blur(20px)",
+        display: "flex", alignItems: "center",
+        padding: "0 16px",
+        borderBottom: `0.5px solid ${T.mistD}`,
+      }}>
+        <button onClick={onBack} className="interactive" style={{
+          border: "none", background: "transparent",
+          display: "flex", alignItems: "center",
+          fontSize: 16, color: T.moss,
+          cursor: "none", fontFamily: "'Noto Sans SC', sans-serif",
+          gap: 4,
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+          返回
+        </button>
+        <div style={{
+          position:"absolute", left: "50%", transform:"translateX(-50%)",
+          fontSize: 17, fontWeight: 700, color: T.char,
+          fontFamily: "'Noto Serif SC', serif",
+        }}>设计规范</div>
+      </div>
+
+      <div style={{ padding: "20px 16px" }}>
+        <div style={{
+          fontSize: 24, fontWeight: 900, color: T.char,
+          fontFamily: "'Noto Serif SC', serif",
+          marginBottom: 4,
+        }}>山径 Design System</div>
+        <div style={{ fontSize: 12, color: T.rock, fontFamily: "'Noto Sans SC', sans-serif", marginBottom: 20 }}>
+          V2.0 · 徒步山野社区 App 设计语言
+        </div>
+
+        {/* 色彩系统 */}
+        <Section title="色彩系统" subtitle="Color Palette">
+          {/* 主色 + 辅色 分栏 */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr",
+            gap: 10,
+            marginBottom: 12,
+          }}>
+            <ColorCard name="苔原绿" hex={T.moss} role="主色" dark />
+            <ColorCard name="暖曦橙" hex={T.sun} role="强调色" />
+          </div>
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 8,
+          }}>
+            <ColorCard name="岩壁灰" hex={T.rock} role="辅助" small />
+            <ColorCard name="雾米白" hex={T.mist} role="背景" small light />
+            <ColorCard name="深炭黑" hex={T.char} role="文字" small dark />
+          </div>
+        </Section>
+
+        {/* 字体排版 */}
+        <Section title="字体排版" subtitle="Typography">
+          <div style={{
+            background: "#fff", borderRadius: 14, padding: 16,
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            <div style={{
+              fontSize: 28, fontWeight: 900, color: T.char,
+              fontFamily: "'Noto Serif SC', serif",
+              lineHeight: 1.2, marginBottom: 4,
+            }}>山径山野徒步</div>
+            <div style={{ fontSize: 10, color: T.rockL, marginBottom: 14, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              Noto Serif SC · Display · 900 · 标题字体
+            </div>
+            <div style={{
+              fontSize: 15, color: T.rock, lineHeight: 1.6,
+              fontFamily: "'Noto Sans SC', sans-serif",
+              marginBottom: 4,
+            }}>徒步是与山对话的方式，每一步都是心跳的节奏。</div>
+            <div style={{ fontSize: 10, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              Noto Sans SC · Body · 400/600 · 正文字体
+            </div>
+          </div>
+
+          {/* 字号阶梯 */}
+          <div style={{
+            marginTop: 12,
+            background: "#fff", borderRadius: 14, padding: "14px 16px",
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            {[
+              { size: 34, weight: 900, label: "大标题 / Large Title", family: "serif" },
+              { size: 22, weight: 700, label: "标题 / Title 1", family: "serif" },
+              { size: 17, weight: 600, label: "小标题 / Title 2", family: "sans" },
+              { size: 15, weight: 500, label: "正文 / Body", family: "sans" },
+              { size: 13, weight: 400, label: "辅助 / Caption", family: "sans" },
+              { size: 11, weight: 400, label: "注释 / Footnote", family: "sans" },
+            ].map((t, i) => (
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between",
+                alignItems: "baseline",
+                padding: "6px 0",
+                borderBottom: i < 5 ? `0.5px solid ${T.mistD}` : "none",
+              }}>
+                <span style={{
+                  fontSize: t.size, fontWeight: t.weight, color: T.char,
+                  fontFamily: t.family === "serif" ? "'Noto Serif SC', serif" : "'Noto Sans SC', sans-serif",
+                }}>山径Aa</span>
+                <span style={{ fontSize: 10, color: T.rockL, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                  {t.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* 间距 */}
+        <Section title="间距系统" subtitle="Spacing">
+          <div style={{
+            background: "#fff", borderRadius: 14, padding: 16,
+            display: "flex", alignItems: "flex-end", gap: 8,
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            {[4, 8, 12, 16, 24, 32].map((s, i) => (
+              <div key={i} style={{
+                flex: 1, textAlign: "center",
+              }}>
+                <div style={{
+                  height: s * 2,
+                  background: i % 2 === 0 ? T.moss : T.sun,
+                  borderRadius: 4,
+                  margin: "0 auto",
+                  width: 28,
+                }} />
+                <div style={{
+                  fontSize: 10, color: T.rockL, marginTop: 6,
+                  fontFamily: "'Noto Sans SC', sans-serif",
+                }}>{s}px</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* 组件 */}
+        <Section title="组件示例" subtitle="Components">
+          {/* 按钮 */}
+          <div style={{
+            background: "#fff", borderRadius: 14, padding: 16,
+            marginBottom: 12,
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.char, marginBottom: 12, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              按钮 Button
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button className="interactive" style={{
+                padding: "12px 24px", borderRadius: 24,
+                background: T.moss, color: "#fff",
+                border: "none", fontSize: 14, fontWeight: 600,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+                boxShadow: `0 4px 12px ${T.moss}44`,
+              }}>主按钮 · Primary</button>
+              <button className="interactive" style={{
+                padding: "12px 24px", borderRadius: 24,
+                background: T.sun, color: "#fff",
+                border: "none", fontSize: 14, fontWeight: 600,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+                boxShadow: `0 4px 12px ${T.sun}44`,
+              }}>强调按钮 · Accent</button>
+              <button className="interactive" style={{
+                padding: "12px 24px", borderRadius: 24,
+                background: "#fff", color: T.moss,
+                border: `1.5px solid ${T.moss}`, fontSize: 14, fontWeight: 600,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+              }}>描边按钮 · Outline</button>
+            </div>
+          </div>
+
+          {/* 卡片 */}
+          <div style={{
+            background: "#fff", borderRadius: 14, padding: 16,
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.char, marginBottom: 12, fontFamily: "'Noto Sans SC', sans-serif" }}>
+              卡片 Card
+            </div>
+            <div style={{
+              borderRadius: 14, overflow: "hidden",
+              boxShadow: "0 4px 16px rgba(0,0,0,.06)",
+            }}>
+              <div style={{
+                height: 100,
+                backgroundImage: `url(${IMG.aerial})`,
+                backgroundSize: "cover", backgroundPosition: "center",
+              }} />
+              <div style={{ padding: 12, background: "#fff" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.char, fontFamily: "'Noto Sans SC', sans-serif" }}>路线卡片示例</div>
+                <div style={{ fontSize: 11, color: T.rockL, marginTop: 3, fontFamily: "'Noto Sans SC', sans-serif" }}>12.8 km · 中级 · 2,150m</div>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* 动效原则 */}
+        <Section title="动效原则" subtitle="Motion">
+          <div style={{
+            background: "#fff", borderRadius: 14, padding: 16,
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.moss, fontFamily: "'Noto Sans SC', sans-serif" }}>缓动曲线</div>
+                <div style={{ fontSize: 11, color: T.rock, marginTop: 4, lineHeight: 1.5, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                  cubic-bezier(.2, .8, .2, 1)<br/>
+                  弹簧感 · 快速启动
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.sun, fontFamily: "'Noto Sans SC', sans-serif" }}>时长规范</div>
+                <div style={{ fontSize: 11, color: T.rock, marginTop: 4, lineHeight: 1.5, fontFamily: "'Noto Sans SC', sans-serif" }}>
+                  微交互 150–250ms<br/>
+                  转场 300–500ms
+                </div>
+              </div>
+            </div>
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, subtitle, children }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 12 }}>
+        <span style={{
+          fontSize: 17, fontWeight: 700, color: T.char,
+          fontFamily: "'Noto Serif SC', serif",
+        }}>{title}</span>
+        <span style={{ fontSize: 11, color: T.rockL, marginLeft: 8, fontFamily: "'Noto Sans SC', sans-serif" }}>
+          {subtitle}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ColorCard({ name, hex, role, dark, light, small }) {
+  return (
+    <div style={{
+      background: "#fff", borderRadius: 12, overflow: "hidden",
+      boxShadow: "0 2px 8px rgba(0,0,0,.05)",
+    }}>
+      <div style={{
+        height: small ? 40 : 60,
+        background: hex,
+        border: light ? `1px solid ${T.mistD}` : "none",
+        position: "relative",
+      }}>
+        {dark && (
+          <span style={{
+            position:"absolute", top: 6, right: 8,
+            fontSize: 9, color: "rgba(255,255,255,.7)",
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>{role}</span>
+        )}
+        {!dark && (
+          <span style={{
+            position:"absolute", top: 6, right: 8,
+            fontSize: 9, color: "rgba(0,0,0,.4)",
+            fontFamily: "'Noto Sans SC', sans-serif",
+          }}>{role}</span>
+        )}
+      </div>
+      <div style={{ padding: small ? "6px 10px" : "8px 12px" }}>
+        <div style={{
+          fontSize: small ? 11 : 13, fontWeight: 600, color: T.char,
+          fontFamily: "'Noto Sans SC', sans-serif",
+        }}>{name}</div>
+        <div style={{
+          fontSize: small ? 9 : 10, color: T.rockL,
+          fontFamily: "'Noto Sans SC', sans-serif",
+          textTransform: "uppercase",
+          letterSpacing: .5,
+        }}>{hex}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   页面 8: 接口文档页 —— 左侧导航 + 右侧内容
+   ============================================================ */
+function ApiPage({ onBack }) {
+  const [active, setActive] = useState("trails");
+
+  const navs = [
+    { key: "trails", label: "路线接口", icon: "⛰" },
+    { key: "record", label: "轨迹记录", icon: "📍" },
+    { key: "user", label: "用户系统", icon: "👤" },
+    { key: "community", label: "社区动态", icon: "💬" },
+    { key: "gear", label: "装备清单", icon: "🎒" },
+  ];
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: T.char,
+      color: "#fff",
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+    }}>
+      {/* 导航栏 */}
+      <div style={{
+        height: 44,
+        background: `rgba(38,38,31,.95)`,
+        backdropFilter: "blur(20px)",
+        display: "flex", alignItems: "center",
+        padding: "0 16px",
+        borderBottom: "0.5px solid rgba(255,255,255,.08)",
+        marginTop: 54,
+        flexShrink: 0,
+        zIndex: 10,
+      }}>
+        <button onClick={onBack} className="interactive" style={{
+          border: "none", background: "transparent",
+          display: "flex", alignItems: "center",
+          fontSize: 15, color: T.sun,
+          cursor: "none", fontFamily: "'Noto Sans SC', sans-serif",
+          gap: 4,
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+          返回
+        </button>
+        <div style={{
+          position:"absolute", left: "50%", transform:"translateX(-50%)",
+          fontSize: 16, fontWeight: 700,
+          fontFamily: "'Noto Serif SC', serif",
+        }}>API 文档</div>
+      </div>
+
+      {/* 主体左右分栏 */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* 左侧导航 */}
+        <div style={{
+          width: 100, flexShrink: 0,
+          background: "rgba(255,255,255,.03)",
+          borderRight: "0.5px solid rgba(255,255,255,.06)",
+          overflowY: "auto",
+          padding: "12px 0",
+        }}>
+          {navs.map((n) => (
+            <button
+              key={n.key}
+              className="interactive"
+              onClick={() => setActive(n.key)}
+              style={{
+                width: "100%", padding: "12px 8px",
+                border: "none",
+                background: active === n.key ? "rgba(232,150,60,.12)" : "transparent",
+                borderRight: active === n.key ? `2px solid ${T.sun}` : "2px solid transparent",
+                color: active === n.key ? T.sun : T.rockL,
+                fontSize: 11,
+                cursor: "none",
+                fontFamily: "'Noto Sans SC', sans-serif",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 4,
+                transition: "all .2s ease",
+              }}
+            >
+              <span style={{ fontSize: 18 }}>{n.icon}</span>
+              {n.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 右侧内容 */}
+        <div style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "16px 14px 50px",
+          WebkitOverflowScrolling: "touch",
+        }}>
+          {active === "trails" && (
+            <>
+              <ApiH1>路线接口</ApiH1>
+              <ApiP>获取和管理徒步路线数据的相关接口。</ApiP>
+
+              <ApiEndpoint method="GET" path="/api/v2/trails" title="获取路线列表">
+                <ApiParamTable
+                  params={[
+                    { name: "page", type: "int", desc: "页码，默认 1" },
+                    { name: "page_size", type: "int", desc: "每页数量，默认 20" },
+                    { name: "level", type: "string", desc: "难度筛选：easy/medium/hard" },
+                    { name: "sort", type: "string", desc: "排序：popular/new/nearby" },
+                  ]}
+                />
+                <ApiResponse>
+{`{
+  "code": 0,
+  "data": {
+    "total": 128,
+    "items": [
+      {
+        "id": 1,
+        "name": "雾灵山脊线",
+        "distance": 12.8,
+        "elevation_gain": 1280,
+        "max_altitude": 2150,
+        "level": "medium",
+        "rating": 4.9,
+        "trail_count": 2384
+      }
+    ]
+  }
+}`}
+                </ApiResponse>
+              </ApiEndpoint>
+
+              <ApiEndpoint method="GET" path="/api/v2/trails/:id" title="路线详情">
+                <ApiParamTable
+                  params={[
+                    { name: "id", type: "int", desc: "路线 ID" },
+                  ]}
+                />
+              </ApiEndpoint>
+
+              <ApiEndpoint method="POST" path="/api/v2/trails/:id/review" title="发表评价">
+                <ApiParamTable
+                  params={[
+                    { name: "rating", type: "int", desc: "评分 1-5" },
+                    { name: "content", type: "string", desc: "评价内容" },
+                    { name: "images", type: "array", desc: "图片数组" },
+                  ]}
+                />
+              </ApiEndpoint>
+            </>
+          )}
+
+          {active === "record" && (
+            <>
+              <ApiH1>轨迹记录</ApiH1>
+              <ApiP>实时轨迹上传与历史记录管理。</ApiP>
+
+              <ApiEndpoint method="POST" path="/api/v2/records/start" title="开始记录">
+                <ApiParamTable
+                  params={[
+                    { name: "trail_id", type: "int", desc: "关联路线 ID，可选" },
+                    { name: "device", type: "string", desc: "设备型号" },
+                  ]}
+                />
+              </ApiEndpoint>
+
+              <ApiEndpoint method="PUT" path="/api/v2/records/:id/point" title="上传轨迹点">
+                <ApiParamTable
+                  params={[
+                    { name: "lat", type: "float", desc: "纬度" },
+                    { name: "lng", type: "float", desc: "经度" },
+                    { name: "altitude", type: "float", desc: "海拔 (m)" },
+                    { name: "timestamp", type: "int", desc: "时间戳 (ms)" },
+                    { name: "heart_rate", type: "int", desc: "心率，可选" },
+                  ]}
+                />
+              </ApiEndpoint>
+
+              <ApiEndpoint method="POST" path="/api/v2/records/:id/finish" title="结束记录">
+                <ApiResponse>
+{`{
+  "code": 0,
+  "data": {
+    "record_id": "rec_abc123",
+    "distance": 12.8,
+    "duration": 27000,
+    "elevation_gain": 1280,
+    "calories": 856,
+    "avg_pace": "5.2min/km"
+  }
+}`}
+                </ApiResponse>
+              </ApiEndpoint>
+            </>
+          )}
+
+          {active === "user" && (
+            <>
+              <ApiH1>用户系统</ApiH1>
+              <ApiP>用户注册、登录、个人信息与成就。</ApiP>
+
+              <ApiEndpoint method="POST" path="/api/v2/auth/login" title="登录">
+                <ApiParamTable
+                  params={[
+                    { name: "phone", type: "string", desc: "手机号" },
+                    { name: "code", type: "string", desc: "验证码" },
+                  ]}
+                />
+              </ApiEndpoint>
+
+              <ApiEndpoint method="GET" path="/api/v2/users/me" title="获取个人信息">
+                <ApiResponse>
+{`{
+  "code": 0,
+  "data": {
+    "id": 10086,
+    "nickname": "岭上白云",
+    "level": 6,
+    "exp": 24860,
+    "total_km": 248.6,
+    "total_hm": 18420,
+    "badges": ["first_peak", "100km", "iron"]
+  }
+}`}
+                </ApiResponse>
+              </ApiEndpoint>
+
+              <ApiEndpoint method="GET" path="/api/v2/users/:id/achievements" title="成就列表" />
+            </>
+          )}
+
+          {active === "community" && (
+            <>
+              <ApiH1>社区动态</ApiH1>
+              <ApiP>动态发布、点赞、评论、关注。</ApiP>
+
+              <ApiEndpoint method="GET" path="/api/v2/feed" title="获取动态流">
+                <ApiParamTable
+                  params={[
+                    { name: "type", type: "string", desc: "follow/recommend/nearby" },
+                    { name: "cursor", type: "string", desc: "分页游标" },
+                  ]}
+                />
+              </ApiEndpoint>
+
+              <ApiEndpoint method="POST" path="/api/v2/posts" title="发布动态" />
+              <ApiEndpoint method="POST" path="/api/v2/posts/:id/like" title="点赞" />
+              <ApiEndpoint method="POST" path="/api/v2/posts/:id/comments" title="评论" />
+            </>
+          )}
+
+          {active === "gear" && (
+            <>
+              <ApiH1>装备清单</ApiH1>
+              <ApiP>个人装备库与路线清单管理。</ApiP>
+
+              <ApiEndpoint method="GET" path="/api/v2/gear" title="获取装备列表" />
+              <ApiEndpoint method="POST" path="/api/v2/gear" title="添加装备" />
+              <ApiEndpoint method="PUT" path="/api/v2/gear/:id" title="编辑装备" />
+              <ApiEndpoint method="POST" path="/api/v2/gear/checklists" title="生成路线清单">
+                <ApiParamTable
+                  params={[
+                    { name: "trail_id", type: "int", desc: "路线 ID" },
+                    { name: "season", type: "string", desc: "季节：spring/summer/autumn/winter" },
+                  ]}
+                />
+              </ApiEndpoint>
+            </>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+    </div>
+  );
+}
+
+function ApiH1({ children }) {
+  return (
+    <div style={{
+      fontSize: 20, fontWeight: 800, color: "#fff",
+      fontFamily: "'Noto Serif SC', serif",
+      marginBottom: 6,
+    }}>{children}</div>
+  );
+}
+
+function ApiP({ children }) {
+  return (
+    <p style={{
+      fontSize: 12, color: T.rockL, lineHeight: 1.6,
+      margin: "0 0 16px",
+      fontFamily: "'Noto Sans SC', sans-serif",
+    }}>{children}</p>
+  );
+}
+
+function ApiEndpoint({ method, path, title, children }) {
+  const colors = {
+    GET: "#4CAF50",
+    POST: T.sun,
+    PUT: "#2196F3",
+    DELETE: "#f44336",
+  };
+  const color = colors[method] || T.rockL;
+  return (
+    <div style={{
+      background: "rgba(255,255,255,.04)",
+      border: "0.5px solid rgba(255,255,255,.06)",
+      borderRadius: 12,
+      marginBottom: 14,
+      overflow: "hidden",
+    }}>
+      <div style={{
+        padding: "12px 14px",
+        borderBottom: "0.5px solid rgba(255,255,255,.06)",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{
+          padding: "3px 8px", borderRadius: 4,
+          background: `${color}22`,
+          color: color,
+          fontSize: 10, fontWeight: 700,
+          fontFamily: "'Noto Sans SC', sans-serif",
+          letterSpacing: .5,
+        }}>{method}</span>
+        <code style={{
+          fontSize: 11, color: "#fff",
+          fontFamily: "'Noto Sans SC', monospace, sans-serif",
+          wordBreak: "break-all",
+        }}>{path}</code>
+      </div>
+      <div style={{ padding: "10px 14px" }}>
+        <div style={{
+          fontSize: 13, fontWeight: 600, color: "#fff",
+          marginBottom: 8,
+          fontFamily: "'Noto Sans SC', sans-serif",
+        }}>{title}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ApiParamTable({ params }) {
+  return (
+    <div style={{
+      borderRadius: 8, overflow: "hidden",
+      border: "0.5px solid rgba(255,255,255,.06)",
+      marginBottom: 10,
+    }}>
+      <div style={{
+        display: "grid", gridTemplateColumns: "90px 70px 1fr",
+        fontSize: 10, color: T.rockL,
+        padding: "6px 8px",
+        background: "rgba(255,255,255,.03)",
+        fontFamily: "'Noto Sans SC', sans-serif",
+        fontWeight: 600,
+      }}>
+        <span>参数名</span>
+        <span>类型</span>
+        <span>说明</span>
+      </div>
+      {params.map((p, i) => (
+        <div key={i} style={{
+          display: "grid", gridTemplateColumns: "90px 70px 1fr",
+          fontSize: 11,
+          padding: "6px 8px",
+          borderTop: "0.5px solid rgba(255,255,255,.04)",
+          gap: 4,
+          fontFamily: "'Noto Sans SC', sans-serif",
+        }}>
+          <span style={{ color: T.sunL, wordBreak: "break-all" }}>{p.name}</span>
+          <span style={{ color: T.mossL }}>{p.type}</span>
+          <span style={{ color: "rgba(255,255,255,.75)" }}>{p.desc}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ApiResponse({ children }) {
+  return (
+    <div style={{
+      background: "rgba(0,0,0,.3)",
+      borderRadius: 8,
+      padding: 10,
+      overflowX: "auto",
+    }}>
+      <div style={{ fontSize: 10, color: T.mossL, marginBottom: 6, fontFamily: "'Noto Sans SC', sans-serif" }}>
+        Response 200 OK
+      </div>
+      <pre style={{
+        margin: 0, fontSize: 11,
+        color: "#d4d4d4",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        lineHeight: 1.5,
+        whiteSpace: "pre-wrap",
+      }}>{children}</pre>
+    </div>
+  );
+}
+
+/* ============================================================
+   顶层 App：页面路由 + 转场动画
+   ============================================================ */
+function App() {
+  const [tab, setTab] = useState("home");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailId, setDetailId] = useState(1);
+  const [designOpen, setDesignOpen] = useState(false);
+  const [apiOpen, setApiOpen] = useState(false);
+  const [transitionDir, setTransitionDir] = useState("forward");
+  const reduced = prefersReducedMotion();
+
+  const openDetail = (id) => {
+    setDetailId(id);
+    setTransitionDir("forward");
+    setTimeout(() => setDetailOpen(true), 10);
+  };
+  const closeDetail = () => {
+    setTransitionDir("back");
+    setDetailOpen(false);
+  };
+  const openDesign = () => {
+    setTransitionDir("forward");
+    setTimeout(() => setDesignOpen(true), 10);
+  };
+  const closeDesign = () => {
+    setTransitionDir("back");
+    setDesignOpen(false);
+  };
+  const openApi = () => {
+    setTransitionDir("forward");
+    setTimeout(() => setApiOpen(true), 10);
+  };
+  const closeApi = () => {
+    setTransitionDir("back");
+    setApiOpen(false);
+  };
+
+  const handleTabChange = (key) => {
+    setTab(key);
+  };
+
+  // 顶层页面列表（tab 切换）
+  const renderTabPage = () => {
+    switch (tab) {
+      case "home":      return <HomePage onOpenDetail={openDetail} />;
+      case "record":    return <RecordPage />;
+      case "community": return <CommunityPage />;
+      case "gear":      return <GearPage />;
+      case "me":        return <MePage onOpen={(p) => p === "design" ? openDesign() : openApi()} />;
+      default:          return null;
+    }
+  };
+
+  const modalOpen = detailOpen || designOpen || apiOpen;
+
+  return (
+    <div style={{
+      width: "100vw", height: "100vh",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: `linear-gradient(135deg, ${T.mistD} 0%, ${T.sand}55 100%)`,
+      position: "relative",
+      overflow: "hidden",
+      cursor: "none",
+    }}>
+      {/* 背景装饰 —— 山形 */}
+      <div style={{
+        position:"absolute", bottom: 0, left: 0, right: 0,
+        height: "40%",
+        background: `linear-gradient(180deg, transparent 0%, ${T.moss}22 100%)`,
+        clipPath: "polygon(0 100%, 0 60%, 15% 40%, 30% 55%, 45% 25%, 60% 45%, 75% 20%, 90% 50%, 100% 35%, 100% 100%)",
+        opacity: .6,
+      }} />
+
+      {/* 标题 */}
+      <div style={{
+        position:"absolute", top: 30, left: 0, right: 0,
+        textAlign: "center",
+        pointerEvents: "none",
+      }}>
+        <div style={{
+          fontSize: 28, fontWeight: 900,
+          color: T.mossD,
+          fontFamily: "'Noto Serif SC', serif",
+          letterSpacing: 8,
+        }}>山 径</div>
+        <div style={{
+          fontSize: 12, color: T.rock,
+          fontFamily: "'Noto Sans SC', sans-serif",
+          letterSpacing: 3, marginTop: 4,
+        }}>徒步与山野路线社区 · V2</div>
+      </div>
+
+      {/* 手机外壳 */}
+      <IOSDevice>
+        <div style={{
+          position:"absolute", inset: 0,
+          overflow: "hidden",
+        }}>
+          {/* Tab 页面 */}
+          <div key={tab} style={{
+            position:"absolute", inset: 0,
+            animation: reduced ? "none" : `tabFadeIn .35s cubic-bezier(.2,.8,.2,1)`,
+          }}>
+            {renderTabPage()}
+            {/* TabBar */}
+            {!modalOpen && <TabBar current={tab} onChange={handleTabChange} />}
+          </div>
+
+          {/* 详情页（模态栈导航） */}
+          {detailOpen && (
+            <div
+              key="detail"
+              style={{
+                position:"absolute", inset: 0,
+                zIndex: 40,
+                animation: reduced ? "none" : `slideFromRight .4s cubic-bezier(.2,.8,.2,1)`,
+              }}
+            >
+              <DetailPage onBack={closeDetail} />
+            </div>
+          )}
+
+          {/* 设计规范页 */}
+          {designOpen && (
+            <div
+              key="design"
+              style={{
+                position:"absolute", inset: 0,
+                zIndex: 45,
+                animation: reduced ? "none" : `slideFromRight .4s cubic-bezier(.2,.8,.2,1)`,
+              }}
+            >
+              <DesignPage onBack={closeDesign} />
+            </div>
+          )}
+
+          {/* 接口文档页 */}
+          {apiOpen && (
+            <div
+              key="api"
+              style={{
+                position:"absolute", inset: 0,
+                zIndex: 45,
+                animation: reduced ? "none" : `slideFromRight .4s cubic-bezier(.2,.8,.2,1)`,
+              }}
+            >
+              <ApiPage onBack={closeApi} />
+            </div>
+          )}
+        </div>
+      </IOSDevice>
+
+      {/* 底部提示 */}
+      <div style={{
+        position:"absolute", bottom: 24, left: 0, right: 0,
+        textAlign: "center",
+        fontSize: 11, color: T.rockL,
+        fontFamily: "'Noto Sans SC', sans-serif",
+        letterSpacing: 1,
+        pointerEvents: "none",
+      }}>
+        点击 Tab 切换页面 · 长按动态卡片弹出菜单 · 下拉首页刷新
+      </div>
+
+      <style>{`
+        @keyframes tabFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideFromRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   渲染 + 升级宣告
+   ============================================================ */
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <>
+    <CustomCursor />
+    <App />
+  </>
+);
+
+function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: "miaoda:upgrade:available", kind: "interactive-prototype" }, "*");
+  } catch (e) {}
+}
+announceUpgrade();
+if (document.readyState !== "complete") {
+  window.addEventListener("load", announceUpgrade, { once: true });
+}
+</script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    cursor: none;
+  }
+  button { font-family: inherit; }
+  #root { width: 100%; height: 100%; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+
+</head>
+<body>
+<div id="root"></div>
+</body>
+</html>
