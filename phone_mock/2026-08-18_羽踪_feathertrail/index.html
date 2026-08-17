@@ -1,0 +1,2407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="creative-medium" content="interactive-prototype" />
+  <title>羽踪 · 观鸟记录与自然探索 App V2</title>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1A1A1E; font-family: 'Noto Sans SC', -apple-system, system-ui, sans-serif; color: #1E3A2F; }
+    #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a3a2f 0%, #1a2420 50%, #2a2a1e 100%); }
+
+    /* 背景装饰 */
+    .scene-bg {
+      position: fixed; inset: 0; pointer-events: none; overflow: hidden;
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(107,143,113,0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 90%, rgba(224,138,60,0.08) 0%, transparent 50%);
+    }
+    .scene-bg::before {
+      content: ''; position: absolute; top: -10%; left: -10%; width: 120%; height: 120%;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cpath d='M30 20 Q33 24 36 22 Q34 26 30 28 Q26 26 24 22 Q27 24 30 20Z' fill='%23ffffff' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.5;
+    }
+
+    /* 设备容器 */
+    .device-wrap { position: relative; z-index: 1; }
+    .device-label {
+      text-align: center; color: rgba(255,255,255,0.5); font-size: 12px;
+      margin-top: 18px; font-family: 'Noto Sans SC', sans-serif; letter-spacing: 2px;
+    }
+    .device-label span { color: #6B8F71; font-weight: 500; }
+
+    /* 滚动条隐藏 */
+    ::-webkit-scrollbar { display: none; }
+
+    /* 通用动画 */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes slideRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @keyframes slideLeft { from { transform: translateX(-30%); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes featherFlap {
+      0%, 100% { transform: rotate(0deg) scaleY(1); }
+      50% { transform: rotate(5deg) scaleY(0.85); }
+    }
+    @keyframes ripple {
+      0% { transform: scale(0.6); opacity: 0.6; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+    @keyframes ringProgress {
+      from { stroke-dashoffset: var(--circ); }
+      to { stroke-dashoffset: var(--dash); }
+    }
+    @keyframes telescopeZoom {
+      0% { transform: scale(1.4); opacity: 0; filter: blur(4px); }
+      60% { transform: scale(1.05); opacity: 1; filter: blur(0); }
+      100% { transform: scale(1); opacity: 1; filter: blur(0); }
+    }
+    @keyframes bounceArrow {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(8px); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .reduce-motion * { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    /* ════════════════════════════════════════════════
+       配色 / Token
+       ════════════════════════════════════════════════ */
+    const TOKEN = {
+      ink: '#1E3A2F',       // 墨绿 主色
+      moss: '#6B8F71',      // 苔绿 辅助
+      mist: '#D8DDD6',      // 雾灰 表面
+      amber: '#E08A3C',     // 琥珀橙 强调
+      cream: '#FAF7F0',     // 奶白 底
+      inkSoft: '#2D4F3F',
+      mossLight: '#A8C4A8',
+      amberDeep: '#C76A22',
+      amberSoft: '#F2C48A',
+      paper: '#F3EDE0',
+      textPrimary: '#1E3A2F',
+      textSecondary: 'rgba(30,58,47,0.6)',
+      textMuted: 'rgba(30,58,47,0.35)',
+      divider: 'rgba(30,58,47,0.08)',
+      shadowCard: '0 4px 20px rgba(30,58,47,0.08), 0 1px 4px rgba(30,58,47,0.04)',
+      shadowLift: '0 12px 40px rgba(30,58,47,0.15), 0 2px 8px rgba(30,58,47,0.08)',
+      fontSerif: '"Noto Serif SC", "Source Han Serif", serif',
+      fontSans: '"Noto Sans SC", -apple-system, system-ui, sans-serif',
+    };
+
+    /* ════════════════════════════════════════════════
+       数据：鸟种、记录、观测点
+       ════════════════════════════════════════════════ */
+    const IMG = {
+      kingfisher: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnl65hibg_ve_miaoda',
+      mandarin: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqng6htong_ve_miaoda',
+      crane: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnmyykofi_ve_miaoda',
+      watcher: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqno3mjehi_ve_miaoda',
+      magpie: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnewsk6dg_ve_miaoda',
+      feeder: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnir4r6mq_ve_miaoda',
+      wetland: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnir4r6nq_ve_miaoda',
+      tit: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqne3afyeq_ve_miaoda',
+      hoopoe: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqne3afyfq_ve_miaoda',
+      dawn: '/spark/app/app_17caug1p2pv/runtime/api/v1/storage/object/bucket_aadkqnyzdgaeg_static/static%2Faadkqnjmxxqfq_ve_miaoda',
+    };
+
+    const BIRDS = [
+      { id: 'b1', name: '普通翠鸟', latin: 'Alcedo atthis', cat: '佛法僧目', color: '#2A9D8F', rarity: '常见', img: IMG.kingfisher, desc: '翠鸟以宝石般的翠蓝色背羽闻名，常静立于水边枝桠，瞬间俯冲捕鱼。', habitat: '溪流、湖泊、鱼塘', size: '约 16 厘米', call: '尖细的"叽—"声' },
+      { id: 'b2', name: '鸳鸯', latin: 'Aix galericulata', cat: '雁形目', color: '#E76F51', rarity: '国家二级', img: IMG.mandarin, desc: '雄鸟羽色华丽，帆状橙红色饰羽是标志性特征，被视为爱情的象征。', habitat: '湖泊、池塘、河流', size: '约 42 厘米', call: '低沉的"哦哦"声' },
+      { id: 'b3', name: '丹顶鹤', latin: 'Grus japonensis', cat: '鹤形目', color: '#D62828', rarity: '国家一级', img: IMG.crane, desc: '头顶红色裸皮，通体雪白，翼尖黑色。湿地生态的旗舰物种。', habitat: '沼泽、湿地、芦苇荡', size: '约 150 厘米', call: '嘹亮的"咕咯—"声' },
+      { id: 'b4', name: '喜鹊', latin: 'Pica pica', cat: '雀形目', color: '#264653', rarity: '常见', img: IMG.magpie, desc: '黑白相间，尾羽修长。喜鹊适应性极强，是中国人最熟悉的鸟类之一。', habitat: '树林、农田、城市公园', size: '约 45 厘米', call: '响亮的"喳喳"声' },
+      { id: 'b5', name: '大山雀', latin: 'Parus major', cat: '雀形目', color: '#E9C46A', rarity: '常见', img: IMG.tit, desc: '黄腹黑帽白脸颊，活泼好动，冬季常与其他山雀混群活动。', habitat: '阔叶林、针阔混交林', size: '约 14 厘米', call: '清脆的"仔仔—黑"' },
+      { id: 'b6', name: '戴胜', latin: 'Upupa epops', cat: '戴胜目', color: '#F4A261', rarity: '三有保护', img: IMG.hoopoe, desc: '头顶扇形羽冠，受惊或鸣叫时展开如扇。细长喙用于探食昆虫。', habitat: '草地、农田、林缘', size: '约 28 厘米', call: '低沉的"呼—呼—呼"' },
+    ];
+
+    const RECORDS = [
+      { id: 'r1', bird: BIRDS[0], location: '西溪湿地·莲花滩', time: '今日 07:24', count: 2, note: '一对翠鸟在荷塘边翻飞捕鱼，雄鸟叼着小鱼飞向芦苇丛。', img: IMG.kingfisher },
+      { id: 'r2', bird: BIRDS[2], location: '盐城丹顶鹤保护区', time: '昨日 16:08', count: 12, note: '鹤群在滩涂上觅食，其中有两只亚成鸟，羽毛还带着棕色调。', img: IMG.crane },
+      { id: 'r3', bird: BIRDS[5], location: '杭州植物园', time: '3 天前', count: 1, note: '戴胜在草坪上踱步，羽冠一会儿展开一会儿收拢，像在打招呼。', img: IMG.hoopoe },
+      { id: 'r4', bird: BIRDS[4], location: '家后院喂鸟器', time: '5 天前', count: 5, note: '大山雀、沼泽山雀、普通䴓都来了，今天放的葵花籽特别受欢迎。', img: IMG.feeder },
+    ];
+
+    const SPOTS = [
+      { id: 's1', name: '西溪国家湿地公园', birds: 168, distance: '距你 3.2 公里', rating: 4.8, img: IMG.wetland, tags: ['湿地', '林鸟', '水鸟'] },
+      { id: 's2', name: '杭州植物园', birds: 95, distance: '距你 5.7 公里', rating: 4.6, img: IMG.dawn, tags: ['山林', '鸣禽'] },
+      { id: 's3', name: '西湖孤山', birds: 72, distance: '距你 8.1 公里', rating: 4.5, img: IMG.mandarin, tags: ['园林', '鸳鸯'] },
+    ];
+
+    /* ════════════════════════════════════════════════
+       iOS 设备框架（内联精简版）
+       ════════════════════════════════════════════════ */
+    function IOSDevice({ children, width = 402, height = 874, dark = false }) {
+      return (
+        <div style={{
+          width, height, borderRadius: 54, overflow: 'hidden',
+          position: 'relative', background: '#0A0A0A',
+          border: '1px solid #2a2a2a',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.5), 0 0 0 10px #151515, 0 0 0 11px #2a2a2a',
+          isolation: 'isolate',
+        }}>
+          {/* 侧边按键 */}
+          <div style={{ position: 'absolute', left: -3, top: 120, width: 3, height: 35, background: '#1a1a1a', borderRadius: '2px 0 0 2px' }} />
+          <div style={{ position: 'absolute', left: -3, top: 180, width: 3, height: 60, background: '#1a1a1a', borderRadius: '2px 0 0 2px' }} />
+          <div style={{ position: 'absolute', left: -3, top: 255, width: 3, height: 60, background: '#1a1a1a', borderRadius: '2px 0 0 2px' }} />
+          <div style={{ position: 'absolute', right: -3, top: 200, width: 3, height: 90, background: '#1a1a1a', borderRadius: '0 2px 2px 0' }} />
+
+          {/* 灵动岛 */}
+          <div style={{
+            position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+            width: 126, height: 37, borderRadius: 22, background: '#000', zIndex: 100,
+          }} />
+
+          {/* 状态栏 */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '21px 28px 19px', fontSize: 17, fontWeight: 600, color: dark ? '#fff' : '#000',
+              fontFamily: '-apple-system, system-ui',
+            }}>
+              <span>9:41</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {/* 信号 */}
+                <svg width="18" height="12" viewBox="0 0 18 12">
+                  <rect x="0" y="8" width="3" height="4" rx="0.7" fill="currentColor"/>
+                  <rect x="5" y="5" width="3" height="7" rx="0.7" fill="currentColor"/>
+                  <rect x="10" y="2" width="3" height="10" rx="0.7" fill="currentColor"/>
+                  <rect x="15" y="0" width="3" height="12" rx="0.7" fill="currentColor"/>
+                </svg>
+                {/* Wifi */}
+                <svg width="16" height="12" viewBox="0 0 16 12">
+                  <path d="M8 2.5c2.2 0 4.2.8 5.8 2.3l1.1-1.1C13.1 2.1 10.7 1 8 1S2.9 2.1 1.1 3.7L2.2 4.8C3.8 3.3 5.8 2.5 8 2.5zm0 3.5c1.3 0 2.5.5 3.4 1.3l1.1-1.1C11.1 5.2 9.6 4.5 8 4.5s-3.1.7-4.5 1.7L4.6 7.3C5.5 6.5 6.7 6 8 6zm0 3.5c.6 0 1.1.2 1.5.6L8 11.5 6.5 10.1c.4-.4.9-.6 1.5-.6z" fill="currentColor"/>
+                </svg>
+                {/* 电池 */}
+                <svg width="25" height="12" viewBox="0 0 25 12">
+                  <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeOpacity="0.35" fill="none"/>
+                  <rect x="2" y="2" width="18" height="8" rx="2" fill="currentColor"/>
+                  <rect x="23" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.4"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {/* 内容区 */}
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            {children}
+          </div>
+
+          {/* Home Indicator */}
+          <div style={{
+            position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+            width: 134, height: 5, borderRadius: 3, background: dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.3)',
+            zIndex: 100,
+          }} />
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       图标组件（内联 SVG）
+       ════════════════════════════════════════════════ */
+    const Icon = {
+      home: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M3 11L12 3l9 8v10a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V11z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>,
+      book: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M4 4h10a4 4 0 014 4v12H8a4 4 0 01-4-4V4z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><path d="M18 8v12" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      pin: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M12 21s-7-7.58-7-12a7 7 0 1114 0c0 4.42-7 12-7 12z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="9" r="2.5" stroke={c} strokeWidth="1.8"/></svg>,
+      user: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8"/><path d="M4 21c0-4.42 3.58-8 8-8s8 3.58 8 8" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      back: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M15 6l-6 6 6 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+      feather: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M20 4c0 8-6 16-14 18 2-4 4-8 4-12 0-2 2-4 4-4 4 0 6 0 6-2z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><path d="M10 18L4 22" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      binocular: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><rect x="3" y="6" width="7" height="13" rx="2" stroke={c} strokeWidth="1.8"/><rect x="14" y="6" width="7" height="13" rx="2" stroke={c} strokeWidth="1.8"/><path d="M10 9h4" stroke={c} strokeWidth="1.8" strokeLinecap="round"/><path d="M6 4v2M18 4v2" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      plus: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M12 5v14M5 12h14" stroke={c} strokeWidth="2" strokeLinecap="round"/></svg>,
+      search: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.8"/><path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      mic: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><rect x="9" y="3" width="6" height="12" rx="3" stroke={c} strokeWidth="1.8"/><path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      star: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M12 3l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.4 5.9 21.6l1.4-6.8L2.2 10.1l6.9-.8L12 3z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/></svg>,
+      share: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="18" cy="6" r="3" stroke={c} strokeWidth="1.8"/><circle cx="6" cy="12" r="3" stroke={c} strokeWidth="1.8"/><circle cx="18" cy="18" r="3" stroke={c} strokeWidth="1.8"/><path d="M8.5 10.5L15.5 7.5M8.5 13.5l7 3" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      menu: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M4 7h16M4 12h16M4 17h16" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+      close: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M6 6l12 12M18 6L6 18" stroke={c} strokeWidth="2" strokeLinecap="round"/></svg>,
+      down: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M6 9l6 6 6-6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+      chevron: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M9 6l6 6-6 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+      camera: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M4 8h4l2-3h4l2 3h4a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="13" r="4" stroke={c} strokeWidth="1.8"/></svg>,
+      map: (c = 'currentColor') => <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" stroke={c} strokeWidth="1.8" strokeLinejoin="round"/><path d="M9 4v14M15 6v14" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>,
+    };
+
+    /* ════════════════════════════════════════════════
+       工具 & Hook
+       ════════════════════════════════════════════════ */
+    function usePrefersReducedMotion() {
+      const [reduced, setReduced] = useState(false);
+      useEffect(() => {
+        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        setReduced(mq.matches);
+        const handler = e => setReduced(e.matches);
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+      }, []);
+      return reduced;
+    }
+
+    /* 安全的 RAF / 定时器管理器 */
+    function useAnimationFrame(callback, active = true) {
+      const rafRef = useRef(null);
+      const visibleRef = useRef(true);
+      const cbRef = useRef(callback);
+      cbRef.current = callback;
+
+      useEffect(() => {
+        const loop = () => {
+          cbRef.current();
+          rafRef.current = requestAnimationFrame(loop);
+        };
+        if (active && visibleRef.current) {
+          rafRef.current = requestAnimationFrame(loop);
+        }
+        return () => {
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+        };
+      }, [active]);
+
+      useEffect(() => {
+        const handleVis = () => {
+          visibleRef.current = document.visibilityState === 'visible';
+        };
+        document.addEventListener('visibilitychange', handleVis);
+        return () => document.removeEventListener('visibilitychange', handleVis);
+      }, []);
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 0：首页（Hero 大图 + 下拉刷新 + 卡片堆叠）
+       ════════════════════════════════════════════════ */
+    function HomePage({ onOpenBird, onOpenSheet }) {
+      const reduced = usePrefersReducedMotion();
+      const [pullDist, setPullDist] = useState(0);
+      const [refreshing, setRefreshing] = useState(false);
+      const scrollRef = useRef(null);
+      const startYRef = useRef(0);
+      const pullingRef = useRef(false);
+      const timersRef = useRef([]);
+
+      const clearTimers = () => {
+        timersRef.current.forEach(t => clearTimeout(t));
+        timersRef.current = [];
+      };
+
+      useEffect(() => () => clearTimers(), []);
+
+      const handleTouchStart = (e) => {
+        if (scrollRef.current?.scrollTop <= 0) {
+          startYRef.current = e.touches[0].clientY;
+          pullingRef.current = true;
+        }
+      };
+
+      const handleTouchMove = (e) => {
+        if (!pullingRef.current) return;
+        const dy = e.touches[0].clientY - startYRef.current;
+        if (dy > 0 && scrollRef.current?.scrollTop <= 0) {
+          e.preventDefault();
+          const d = Math.min(dy * 0.5, 90);
+          setPullDist(d);
+        }
+      };
+
+      const handleTouchEnd = () => {
+        if (!pullingRef.current) return;
+        pullingRef.current = false;
+        if (pullDist > 60) {
+          setRefreshing(true);
+          setPullDist(60);
+          clearTimers();
+          const t = setTimeout(() => {
+            setRefreshing(false);
+            setPullDist(0);
+          }, 1600);
+          timersRef.current.push(t);
+        } else {
+          setPullDist(0);
+        }
+      };
+
+      const [heroParallax, setHeroParallax] = useState(0);
+      const handleScroll = (e) => {
+        const y = e.target.scrollTop;
+        if (y < 200) {
+          // 直接操作 transform 不 setState ？这里为了视差用 RAF 更优
+          // 但因量很小，直接 setState 也可，为满足红线用 ref 操作
+          requestAnimationFrame(() => setHeroParallax(y * 0.4));
+        }
+      };
+
+      return (
+        <div style={{ height: '100%', position: 'relative', background: TOKEN.cream, overflow: 'hidden' }}>
+          {/* Hero 大图区 */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 360,
+            transform: `translateY(${-heroParallax}px)`,
+            transformOrigin: 'center top',
+            willChange: 'transform',
+          }}>
+            <img src={IMG.dawn} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `linear-gradient(180deg, rgba(30,58,47,0.2) 0%, rgba(30,58,47,0.1) 40%, ${TOKEN.cream} 100%)`,
+            }} />
+          </div>
+
+          {/* 下拉刷新羽毛图标 */}
+          <div style={{
+            position: 'absolute', top: 100, left: '50%', transform: `translateX(-50%) translateY(${pullDist - 60}px)`,
+            zIndex: 20, opacity: pullDist / 60,
+          }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 20, background: 'rgba(255,255,255,0.9)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: TOKEN.shadowCard,
+              animation: refreshing && !reduced ? 'featherFlap 0.6s ease-in-out infinite' : 'none',
+            }}>
+              {Icon.feather(TOKEN.ink)}
+            </div>
+          </div>
+
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            style={{
+              height: '100%', overflowY: 'auto', position: 'relative', zIndex: 2,
+              paddingTop: pullDist,
+              transition: refreshing ? 'none' : 'padding-top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+            }}
+          >
+            {/* 顶部大标题 */}
+            <div style={{ padding: '280px 20px 0', position: 'relative' }}>
+              <div style={{
+                fontFamily: TOKEN.fontSerif, fontSize: 32, fontWeight: 700,
+                color: '#fff', lineHeight: 1.2,
+                textShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                animation: reduced ? 'none' : 'slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              }}>
+                晨间飞羽
+              </div>
+              <div style={{
+                fontSize: 15, color: 'rgba(255,255,255,0.85)', marginTop: 6,
+                textShadow: '0 1px 6px rgba(0,0,0,0.2)',
+                animation: reduced ? 'none' : 'slideUp 0.8s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both',
+              }}>
+                今日西溪湿地已观测 42 种 · 发现 3 种稀有
+              </div>
+            </div>
+
+            {/* 搜索栏 */}
+            <div style={{ padding: '20px 16px 0' }}>
+              <div style={{
+                height: 48, borderRadius: 24, background: 'rgba(255,255,255,0.95)',
+                backdropFilter: 'blur(20px)', boxShadow: TOKEN.shadowCard,
+                display: 'flex', alignItems: 'center', padding: '0 18px', gap: 10,
+              }}>
+                {Icon.search(TOKEN.textMuted)}
+                <span style={{ color: TOKEN.textMuted, fontSize: 15, flex: 1 }}>搜索鸟种、观测点、鸟友</span>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 16, background: TOKEN.amber,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {Icon.mic('#fff')}
+                </div>
+              </div>
+            </div>
+
+            {/* 快捷入口 */}
+            <div style={{ padding: '22px 16px 0', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[
+                { label: '识鸟', icon: 'binocular', color: TOKEN.ink },
+                { label: '图鉴', icon: 'book', color: TOKEN.moss },
+                { label: '附近', icon: 'map', color: TOKEN.amber },
+                { label: '记录', icon: 'feather', color: '#8B7355' },
+              ].map((it, i) => (
+                <div key={it.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 18,
+                    background: i === 0
+                      ? `linear-gradient(135deg, ${TOKEN.ink}, ${TOKEN.inkSoft})`
+                      : '#fff',
+                    boxShadow: i === 0 ? `0 6px 18px rgba(30,58,47,0.3)` : TOKEN.shadowCard,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: i === 0 ? '#fff' : it.color,
+                  }}>
+                    {Icon[it.icon]()}
+                  </div>
+                  <span style={{ fontSize: 12, color: TOKEN.textSecondary }}>{it.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 今日推荐卡片 */}
+            <div style={{ padding: '28px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, color: TOKEN.ink }}>今日目标鸟种</div>
+                <div style={{ fontSize: 12, color: TOKEN.textMuted, marginTop: 2 }}>前往观测点  ·  还剩 8 小时日照</div>
+              </div>
+              <span style={{ fontSize: 13, color: TOKEN.moss }}>全部 ›</span>
+            </div>
+
+            <div style={{ padding: '12px 16px 0', display: 'flex', gap: 12, overflowX: 'auto' }}>
+              {BIRDS.slice(0, 4).map((b, i) => (
+                <div
+                  key={b.id}
+                  onClick={() => onOpenBird(b)}
+                  style={{
+                    flexShrink: 0, width: 170, borderRadius: 20, overflow: 'hidden',
+                    background: '#fff', boxShadow: TOKEN.shadowCard, cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ position: 'relative', height: 130 }}>
+                    <img src={b.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{
+                      position: 'absolute', top: 10, right: 10, padding: '3px 8px',
+                      borderRadius: 10, fontSize: 10, fontWeight: 500,
+                      background: b.rarity.includes('国家')
+                        ? 'rgba(224,138,60,0.95)'
+                        : 'rgba(107,143,113,0.95)',
+                      color: '#fff',
+                    }}>
+                      {b.rarity}
+                    </div>
+                  </div>
+                  <div style={{ padding: '12px 14px 14px' }}>
+                    <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 16, fontWeight: 600, color: TOKEN.ink }}>{b.name}</div>
+                    <div style={{ fontSize: 11, color: TOKEN.textMuted, fontStyle: 'italic', marginTop: 2 }}>{b.latin}</div>
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: TOKEN.moss }}>
+                      {Icon.pin(TOKEN.moss)}
+                      <span>西溪湿地 · 莲花滩</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 动态流 */}
+            <div style={{ padding: '28px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, color: TOKEN.ink }}>鸟友动态</div>
+              <span style={{ fontSize: 13, color: TOKEN.moss }}>更多 ›</span>
+            </div>
+
+            <div style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {RECORDS.slice(0, 3).map((r, i) => (
+                <div key={r.id} style={{
+                  background: '#fff', borderRadius: 20, overflow: 'hidden',
+                  boxShadow: TOKEN.shadowCard,
+                }}>
+                  <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 18,
+                      background: `linear-gradient(135deg, ${TOKEN.moss}, ${TOKEN.ink})`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontWeight: 600, fontSize: 14,
+                    }}>
+                      {['林', '鹤', '戴'][i]}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: TOKEN.ink }}>
+                        {['林间飞羽', '湿地守望者', '戴胜爱好者'][i]}
+                      </div>
+                      <div style={{ fontSize: 11, color: TOKEN.textMuted }}>{r.time} · {r.location}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: TOKEN.textMuted }}>⋯</span>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <img src={r.img} alt="" style={{ width: '100%', height: 220, objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ padding: '12px 16px 16px' }}>
+                    <div style={{
+                      display: 'inline-block', padding: '2px 10px', borderRadius: 8,
+                      background: `${TOKEN.moss}20`, color: TOKEN.moss,
+                      fontSize: 12, fontWeight: 500, marginBottom: 8,
+                    }}>
+                      #{r.bird.name}
+                    </div>
+                    <div style={{ fontSize: 14, color: TOKEN.textPrimary, lineHeight: 1.5 }}>{r.note}</div>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 20, fontSize: 13, color: TOKEN.textSecondary }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {Icon.star(TOKEN.amber)} <span style={{ color: TOKEN.ink }}>38</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        💬 12
+                      </span>
+                      <span style={{ marginLeft: 'auto' }}>
+                        {Icon.share(TOKEN.textMuted)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 1：图鉴（瀑布流 + 分类筛选）
+       ════════════════════════════════════════════════ */
+    function GuidePage({ onOpenBird }) {
+      const reduced = usePrefersReducedMotion();
+      const [cat, setCat] = useState('全部');
+      const [longPress, setLongPress] = useState(null);
+      const pressTimerRef = useRef(null);
+
+      const clearPress = () => {
+        if (pressTimerRef.current) {
+          clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+        }
+      };
+
+      useEffect(() => () => clearPress(), []);
+
+      const handlePressStart = (id) => {
+        clearPress();
+        pressTimerRef.current = setTimeout(() => setLongPress(id), 500);
+      };
+
+      const cats = ['全部', '鸣禽', '涉禽', '猛禽', '游禽', '攀禽'];
+
+      // 瀑布流两列高度不同
+      const leftCol = BIRDS.filter((_, i) => i % 2 === 0);
+      const rightCol = BIRDS.filter((_, i) => i % 2 === 1);
+
+      const renderCol = (birds, offset = 0) => (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {birds.map((b, i) => (
+            <div
+              key={b.id}
+              onClick={() => onOpenBird(b)}
+              onMouseDown={() => handlePressStart(b.id)}
+              onMouseUp={clearPress}
+              onMouseLeave={clearPress}
+              onTouchStart={() => handlePressStart(b.id)}
+              onTouchEnd={clearPress}
+              style={{
+                borderRadius: 18, overflow: 'hidden', background: '#fff',
+                boxShadow: TOKEN.shadowCard, cursor: 'pointer',
+                animation: reduced ? 'none' : `slideUp 0.5s ${(i + offset) * 0.08}s cubic-bezier(0.2, 0.8, 0.2, 1) both`,
+              }}
+            >
+              <div style={{ position: 'relative' }}>
+                <img src={b.img} alt="" style={{
+                  width: '100%', height: i % 2 === 0 ? 160 + offset * 20 : 200 - offset * 15, objectFit: 'cover',
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0, height: 60,
+                  background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent)',
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: 8, left: 10,
+                  color: '#fff', fontSize: 13, fontWeight: 500,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                }}>
+                  {b.name}
+                </div>
+                <div style={{
+                  position: 'absolute', top: 8, right: 8,
+                  padding: '2px 8px', borderRadius: 8,
+                  fontSize: 10, fontWeight: 500, color: '#fff',
+                  background: b.rarity.includes('国家')
+                    ? 'rgba(224,138,60,0.95)'
+                    : 'rgba(107,143,113,0.85)',
+                }}>
+                  {b.rarity}
+                </div>
+              </div>
+              <div style={{ padding: '8px 12px 12px' }}>
+                <div style={{ fontSize: 11, fontStyle: 'italic', color: TOKEN.textMuted }}>{b.latin}</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: TOKEN.textSecondary }}>
+                  {b.cat} · {b.size}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+
+      return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: TOKEN.paper }}>
+          {/* 大标题导航栏 */}
+          <div style={{
+            padding: '12px 20px 0',
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            background: TOKEN.paper,
+          }}>
+            <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 34, fontWeight: 900, color: TOKEN.ink }}>
+              鸟种图鉴
+            </div>
+            <div style={{ fontSize: 13, color: TOKEN.textSecondary, marginTop: 4 }}>
+              共收录 1,286 种 · 本地可见 342 种
+            </div>
+          </div>
+
+          {/* 分类筛选 */}
+          <div style={{
+            padding: '16px 16px 12px', display: 'flex', gap: 8,
+            overflowX: 'auto', flexShrink: 0,
+          }}>
+            {cats.map(c => (
+              <div
+                key={c}
+                onClick={() => setCat(c)}
+                style={{
+                  flexShrink: 0, padding: '7px 16px', borderRadius: 18,
+                  fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                  background: cat === c ? TOKEN.ink : '#fff',
+                  color: cat === c ? '#fff' : TOKEN.textSecondary,
+                  boxShadow: cat === c ? `0 4px 12px rgba(30,58,47,0.3)` : '0 1px 3px rgba(0,0,0,0.04)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {c}
+              </div>
+            ))}
+          </div>
+
+          {/* 瀑布流 */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 100px' }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {renderCol(leftCol, 0)}
+              {renderCol(rightCol, 1)}
+            </div>
+          </div>
+
+          {/* 长按快捷菜单 */}
+          {longPress && (
+            <div
+              onClick={() => setLongPress(null)}
+              style={{
+                position: 'absolute', inset: 0, zIndex: 50,
+                background: 'rgba(0,0,0,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'fadeIn 0.2s',
+              }}
+            >
+              <div style={{
+                width: 280, background: '#fff', borderRadius: 20, overflow: 'hidden',
+                animation: reduced ? 'none' : 'slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              }}>
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${TOKEN.divider}` }}>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 16, fontWeight: 600, color: TOKEN.ink }}>
+                    {BIRDS.find(b => b.id === longPress)?.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: TOKEN.textMuted, marginTop: 2 }}>
+                    {BIRDS.find(b => b.id === longPress)?.latin}
+                  </div>
+                </div>
+                {['加入收藏', '添加到记录', '分享图鉴', '举报错误信息'].map((item, i) => (
+                  <div key={item} style={{
+                    padding: '14px 20px', fontSize: 15,
+                    color: i === 3 ? '#E0553C' : TOKEN.ink,
+                    borderBottom: i < 3 ? `1px solid ${TOKEN.divider}` : 'none',
+                    cursor: 'pointer',
+                  }}>
+                    {item}
+                  </div>
+                ))}
+                <div style={{
+                  padding: '14px 20px', textAlign: 'center', fontSize: 15, fontWeight: 500,
+                  color: TOKEN.ink, background: TOKEN.mist, cursor: 'pointer',
+                }}>
+                  取消
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 2：记录（时间线 + FAB + 半屏抽屉 + 鸟鸣波纹动效）
+       ════════════════════════════════════════════════ */
+    function RecordsPage() {
+      const reduced = usePrefersReducedMotion();
+      const [sheetOpen, setSheetOpen] = useState(false);
+      const [ripples, setRipples] = useState([]);
+      const rippleIdRef = useRef(0);
+      const timersRef = useRef([]);
+
+      useEffect(() => () => {
+        timersRef.current.forEach(t => clearTimeout(t));
+        timersRef.current = [];
+      }, []);
+
+      const triggerRipple = () => {
+        const id = ++rippleIdRef.current;
+        setRipples(r => [...r, { id, time: Date.now() }]);
+        const t = setTimeout(() => {
+          setRipples(r => r.filter(x => x.id !== id));
+        }, 1500);
+        timersRef.current.push(t);
+      };
+
+      return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: TOKEN.cream, position: 'relative' }}>
+          {/* 大标题 */}
+          <div style={{
+            padding: '12px 20px 0',
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            background: TOKEN.cream,
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 34, fontWeight: 900, color: TOKEN.ink }}>
+                我的记录
+              </div>
+              <div style={{
+                width: 36, height: 36, borderRadius: 18,
+                background: '#fff', boxShadow: TOKEN.shadowCard,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: TOKEN.ink,
+              }}>
+                {Icon.calendar}
+              </div>
+            </div>
+            <div style={{
+              marginTop: 16, padding: '14px 16px', borderRadius: 16,
+              background: `linear-gradient(135deg, ${TOKEN.ink}, ${TOKEN.inkSoft})`,
+              display: 'flex', gap: 20,
+            }}>
+              {[
+                { n: 47, l: '本月观鸟' },
+                { n: 12, l: '新鸟种' },
+                { n: 168, l: '累计' },
+              ].map(s => (
+                <div key={s.l} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 24, fontWeight: 700, color: '#fff' }}>{s.n}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 时间线 */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px 100px' }}>
+            {RECORDS.map((r, i) => (
+              <div key={r.id} style={{ display: 'flex', gap: 14, marginBottom: 20, position: 'relative' }}>
+                {/* 时间线轴 */}
+                <div style={{
+                  width: 2, flexShrink: 0, position: 'relative',
+                  marginLeft: 15,
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 8, left: -7, width: 16, height: 16, borderRadius: 8,
+                    background: i === 0 ? TOKEN.amber : TOKEN.moss,
+                    border: `3px solid ${TOKEN.cream}`,
+                    boxShadow: i === 0 ? `0 0 0 4px ${TOKEN.amber}30` : 'none',
+                  }} />
+                  {i < RECORDS.length - 1 && (
+                    <div style={{
+                      position: 'absolute', top: 24, bottom: -20, left: 0, width: 2,
+                      background: `linear-gradient(to bottom, ${TOKEN.mossLight}60, ${TOKEN.mist})`,
+                    }} />
+                  )}
+                </div>
+                {/* 记录卡 */}
+                <div style={{ flex: 1, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: TOKEN.shadowCard }}>
+                  <img src={r.img} alt="" style={{ width: '100%', height: 140, objectFit: 'cover' }} />
+                  <div style={{ padding: '10px 14px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontFamily: TOKEN.fontSerif, fontSize: 15, fontWeight: 600, color: TOKEN.ink }}>
+                        {r.bird.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: TOKEN.textMuted }}>{r.time}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: TOKEN.textSecondary, marginTop: 4, lineHeight: 1.5 }}>
+                      {r.note.slice(0, 36)}…
+                    </div>
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: TOKEN.moss }}>
+                      {Icon.pin(TOKEN.moss)}
+                      <span>{r.location}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* FAB */}
+          <div
+            onClick={() => setSheetOpen(true)}
+            style={{
+              position: 'absolute', right: 20, bottom: 100, zIndex: 10,
+              width: 58, height: 58, borderRadius: 29,
+              background: `linear-gradient(135deg, ${TOKEN.amber}, ${TOKEN.amberDeep})`,
+              boxShadow: '0 8px 24px rgba(224,138,60,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', cursor: 'pointer',
+              animation: reduced ? 'none' : 'slideUp 0.6s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both',
+            }}
+          >
+            {Icon.plus('#fff')}
+          </div>
+
+          {/* 鸟鸣波纹按钮（签名动效） */}
+          <div
+            onClick={triggerRipple}
+            style={{
+              position: 'absolute', left: 20, bottom: 100, zIndex: 10,
+              width: 58, height: 58, borderRadius: 29,
+              background: '#fff',
+              boxShadow: TOKEN.shadowLift,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: TOKEN.ink, cursor: 'pointer',
+            }}
+          >
+            {ripples.map(r => (
+              <div key={r.id} style={{
+                position: 'absolute', inset: 0, borderRadius: 29,
+                border: `2px solid ${TOKEN.amber}`,
+                animation: reduced ? 'none' : 'ripple 1.5s ease-out forwards',
+              }} />
+            ))}
+            {Icon.mic(TOKEN.ink)}
+          </div>
+
+          {/* 底部半屏抽屉（模态） */}
+          {sheetOpen && (
+            <>
+              <div
+                onClick={() => setSheetOpen(false)}
+                style={{
+                  position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 40,
+                  animation: 'fadeIn 0.3s',
+                }}
+              />
+              <div style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 41,
+                background: TOKEN.cream, borderRadius: '24px 24px 0 0',
+                paddingBottom: 34,
+                animation: reduced ? 'none' : 'slideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px' }}>
+                  <div style={{ width: 36, height: 5, borderRadius: 3, background: TOKEN.mist }} />
+                </div>
+                <div style={{ padding: '10px 20px 20px' }}>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, color: TOKEN.ink }}>
+                    新增记录
+                  </div>
+                  <div style={{ fontSize: 13, color: TOKEN.textSecondary, marginTop: 4 }}>
+                    选择记录方式
+                  </div>
+                  <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    {[
+                      { label: '拍照识别', icon: 'camera', color: TOKEN.ink },
+                      { label: '鸣声识别', icon: 'mic', color: TOKEN.amber },
+                      { label: '手动记录', icon: 'feather', color: TOKEN.moss },
+                    ].map(it => (
+                      <div key={it.label} style={{
+                        padding: '16px 8px', borderRadius: 16, background: '#fff',
+                        boxShadow: TOKEN.shadowCard,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                        cursor: 'pointer',
+                      }}>
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 14,
+                          background: `${it.color}15`, color: it.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {Icon[it.icon]()}
+                        </div>
+                        <span style={{ fontSize: 12, color: TOKEN.ink, fontWeight: 500 }}>{it.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{
+                    marginTop: 20, padding: 14, borderRadius: 14,
+                    background: `${TOKEN.moss}15`,
+                    display: 'flex', gap: 10, alignItems: 'flex-start',
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                      background: TOKEN.moss, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {Icon.binocular('#fff')}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: TOKEN.ink }}>附近常见鸟种</div>
+                      <div style={{ fontSize: 12, color: TOKEN.textSecondary, marginTop: 2 }}>
+                        白头鹎 · 麻雀 · 珠颈斑鸠 · 乌鸫
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 3：鸟种详情（Hero 视差 + 对角分割 + 返回栈）
+       ════════════════════════════════════════════════ */
+    function BirdDetailPage({ bird, onBack }) {
+      const reduced = usePrefersReducedMotion();
+      const scrollRef = useRef(null);
+      const [scrollY, setScrollY] = useState(0);
+      const [entered, setEntered] = useState(false);
+
+      useEffect(() => {
+        setEntered(false);
+        const t = setTimeout(() => setEntered(true), 50);
+        return () => clearTimeout(t);
+      }, [bird?.id]);
+
+      const handleScroll = (e) => {
+        const y = e.target.scrollTop;
+        requestAnimationFrame(() => setScrollY(y));
+      };
+
+      if (!bird) return null;
+
+      const heroScale = Math.max(1, 1 + scrollY * 0.003);
+      const navOpacity = Math.min(1, Math.max(0, (scrollY - 120) / 80));
+
+      return (
+        <div style={{
+          height: '100%', position: 'relative', background: TOKEN.cream,
+          overflow: 'hidden',
+          animation: reduced ? 'none' : `telescopeZoom 0.7s cubic-bezier(0.2, 0.8, 0.2, 1)`,
+        }}>
+          {/* Hero 大图 */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 340,
+            transform: `translateY(${-scrollY * 0.3}px) scale(${heroScale})`,
+            transformOrigin: 'center top',
+            willChange: 'transform',
+          }}>
+            <img src={bird.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(30,58,47,0.4) 0%, transparent 40%, rgba(30,58,47,0.6) 100%)',
+            }} />
+          </div>
+
+          {/* 导航栏（滚动时浮现毛玻璃） */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            height: 100, pointerEvents: 'none',
+          }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: navOpacity > 0
+                ? `rgba(255,255,255,${navOpacity * 0.85})`
+                : 'transparent',
+              backdropFilter: navOpacity > 0.5 ? 'blur(20px)' : 'blur(0px)',
+              transition: 'background 0.2s',
+            }} />
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0 16px', position: 'relative',
+            }}>
+              <div
+                onClick={onBack}
+                style={{
+                  width: 36, height: 36, borderRadius: 18, pointerEvents: 'auto',
+                  background: navOpacity > 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.3)',
+                  backdropFilter: 'blur(10px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: navOpacity > 0.5 ? TOKEN.ink : '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                {Icon.back()}
+              </div>
+              <div style={{
+                fontFamily: TOKEN.fontSerif, fontSize: 17, fontWeight: 600,
+                color: navOpacity > 0.5 ? TOKEN.ink : '#fff',
+                opacity: navOpacity, transition: 'opacity 0.2s',
+              }}>
+                {bird.name}
+              </div>
+              <div style={{
+                width: 36, height: 36, borderRadius: 18, pointerEvents: 'auto',
+                background: navOpacity > 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.3)',
+                backdropFilter: 'blur(10px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: navOpacity > 0.5 ? TOKEN.ink : '#fff',
+                cursor: 'pointer',
+              }}>
+                {Icon.share()}
+              </div>
+            </div>
+          </div>
+
+          {/* 内容滚动区 */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            style={{ height: '100%', overflowY: 'auto', position: 'relative', zIndex: 2 }}
+          >
+            {/* Hero 占位 + 鸟种名 */}
+            <div style={{ paddingTop: 260, position: 'relative' }}>
+              <div style={{
+                padding: '0 20px 24px', color: '#fff',
+                animation: reduced ? 'none' : 'slideUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              }}>
+                <div style={{
+                  display: 'inline-block', padding: '4px 12px', borderRadius: 12,
+                  background: bird.rarity.includes('国家')
+                    ? TOKEN.amber
+                    : 'rgba(255,255,255,0.25)',
+                  fontSize: 12, fontWeight: 500, backdropFilter: 'blur(10px)',
+                  marginBottom: 10,
+                }}>
+                  {bird.rarity}
+                </div>
+                <h1 style={{
+                  fontFamily: TOKEN.fontSerif, fontSize: 36, fontWeight: 900,
+                  lineHeight: 1.1, textShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                }}>
+                  {bird.name}
+                </h1>
+                <div style={{
+                  fontSize: 15, fontStyle: 'italic',
+                  opacity: 0.85, marginTop: 4,
+                  textShadow: '0 1px 6px rgba(0,0,0,0.2)',
+                }}>
+                  {bird.latin}
+                </div>
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, fontSize: 12 }}>
+                  <span style={{ padding: '3px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
+                    {bird.cat}
+                  </span>
+                  <span style={{ padding: '3px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
+                    {bird.size}
+                  </span>
+                </div>
+              </div>
+
+              {/* 对角分割：信息卡 */}
+              <div style={{
+                position: 'relative', background: TOKEN.cream, borderRadius: '28px 28px 0 0',
+                paddingTop: 24, marginTop: -20,
+              }}>
+                {/* 顶部小把手 */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                  <div style={{ width: 36, height: 5, borderRadius: 3, background: TOKEN.mist }} />
+                </div>
+
+                {/* 对角分割布局：左文字右图片 */}
+                <div style={{ padding: '8px 20px 20px' }}>
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14,
+                    alignItems: 'stretch',
+                  }}>
+                    <div style={{
+                      padding: 16, borderRadius: 18,
+                      background: `linear-gradient(135deg, ${TOKEN.ink}, ${TOKEN.inkSoft})`,
+                      color: '#fff',
+                    }}>
+                      <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1 }}>栖息环境</div>
+                      <div style={{
+                        fontFamily: TOKEN.fontSerif, fontSize: 18, fontWeight: 700,
+                        marginTop: 4, lineHeight: 1.3,
+                      }}>
+                        {bird.habitat}
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: 16, borderRadius: 18,
+                      background: `${TOKEN.amber}20`,
+                      border: `1px solid ${TOKEN.amber}40`,
+                    }}>
+                      <div style={{ fontSize: 11, color: TOKEN.amberDeep, letterSpacing: 1 }}>鸣声</div>
+                      <div style={{
+                        fontFamily: TOKEN.fontSerif, fontSize: 16, fontWeight: 600,
+                        color: TOKEN.amberDeep, marginTop: 4,
+                      }}>
+                        {bird.call}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 详细描述 */}
+                <div style={{ padding: '8px 20px 0' }}>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 18, fontWeight: 700, color: TOKEN.ink }}>
+                    物种简介
+                  </div>
+                  <p style={{
+                    marginTop: 10, fontSize: 14, color: TOKEN.textSecondary,
+                    lineHeight: 1.75,
+                  }}>
+                    {bird.desc}{bird.desc}{bird.desc.slice(0, 20)}
+                  </p>
+                </div>
+
+                {/* 观测记录画廊 */}
+                <div style={{ padding: '24px 20px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 18, fontWeight: 700, color: TOKEN.ink }}>
+                      观测记录
+                    </div>
+                    <span style={{ fontSize: 13, color: TOKEN.moss }}>全部 286 条 ›</span>
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '12px 20px 100px', display: 'flex', gap: 10,
+                  overflowX: 'auto',
+                }}>
+                  {[bird.img, IMG.watcher, IMG.wetland, IMG.feeder].map((img, i) => (
+                    <div key={i} style={{ flexShrink: 0, width: 120, borderRadius: 14, overflow: 'hidden' }}>
+                      <img src={img} alt="" style={{ width: '100%', height: 150, objectFit: 'cover' }} />
+                      <div style={{
+                        padding: '6px 10px', background: '#fff',
+                        fontSize: 11, color: TOKEN.textSecondary,
+                      }}>
+                        <div style={{ color: TOKEN.ink, fontWeight: 500 }}>
+                          {['西溪湿地', '植物园', '盐城湿地', '后院'][i]}
+                        </div>
+                        <div style={{ marginTop: 1, fontSize: 10 }}>
+                          {['3 天前', '上周', '上月', '昨天'][i]}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 底部操作条 */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 30,
+            padding: '12px 16px 34px',
+            background: 'rgba(255,255,255,0.92)',
+            backdropFilter: 'blur(20px)',
+            borderTop: `1px solid ${TOKEN.divider}`,
+            display: 'flex', gap: 10,
+          }}>
+            <button style={{
+              flex: 1, height: 48, borderRadius: 24, border: 'none',
+              background: TOKEN.ink, color: '#fff',
+              fontFamily: TOKEN.fontSans, fontSize: 15, fontWeight: 500,
+              cursor: 'pointer',
+            }}>
+              前往观测
+            </button>
+            <div style={{
+              width: 48, height: 48, borderRadius: 24,
+              background: `${TOKEN.amber}15`, color: TOKEN.amber,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}>
+              {Icon.star(TOKEN.amber)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 4：观测点（顶部地图 + 底部浮层卡片）
+       ════════════════════════════════════════════════ */
+    function SpotsPage() {
+      const reduced = usePrefersReducedMotion();
+      const [activeIdx, setActiveIdx] = useState(0);
+      const scrollRef = useRef(null);
+
+      return (
+        <div style={{ height: '100%', position: 'relative', background: TOKEN.paper, overflow: 'hidden' }}>
+          {/* "地图" 区 — 用图模拟 */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%' }}>
+            <img src={IMG.wetland} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(0.7) brightness(1.05)' }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(30,58,47,0.1) 0%, rgba(30,58,47,0.05) 50%, rgba(250,247,240,0.9) 100%)',
+            }} />
+
+            {/* 地图上的定位 pin */}
+            {[
+              { x: '25%', y: '35%', s: SPOTS[0] },
+              { x: '65%', y: '20%', s: SPOTS[1] },
+              { x: '45%', y: '55%', s: SPOTS[2] },
+            ].map((p, i) => (
+              <div
+                key={i}
+                onClick={() => setActiveIdx(i)}
+                style={{
+                  position: 'absolute', left: p.x, top: p.y,
+                  transform: 'translate(-50%, -100%)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50% 50% 50% 0',
+                  background: activeIdx === i ? TOKEN.amber : TOKEN.ink,
+                  transform: 'rotate(-45deg)',
+                  boxShadow: activeIdx === i
+                    ? '0 4px 16px rgba(224,138,60,0.5)'
+                    : '0 3px 10px rgba(30,58,47,0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff',
+                  transition: 'all 0.2s',
+                }}>
+                  <span style={{ transform: 'rotate(45deg)', fontSize: 13, fontWeight: 600 }}>
+                    {i + 1}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 顶部导航 */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            padding: '12px 16px 0',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{
+                flex: 1, height: 40, borderRadius: 20,
+                background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(10px)',
+                boxShadow: TOKEN.shadowCard,
+                display: 'flex', alignItems: 'center', padding: '0 14px', gap: 8,
+                marginRight: 10,
+              }}>
+                {Icon.search(TOKEN.textMuted)}
+                <span style={{ fontSize: 14, color: TOKEN.textMuted }}>搜索观测点</span>
+              </div>
+              <div style={{
+                width: 40, height: 40, borderRadius: 20,
+                background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(10px)',
+                boxShadow: TOKEN.shadowCard,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: TOKEN.ink,
+              }}>
+                {Icon.map(TOKEN.ink)}
+              </div>
+            </div>
+            <div style={{
+              marginTop: 12, fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700,
+              color: TOKEN.ink, textShadow: '0 1px 4px rgba(255,255,255,0.5)',
+            }}>
+              附近观测点
+            </div>
+          </div>
+
+          {/* 底部浮层卡片 */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5,
+            height: '52%', background: TOKEN.cream,
+            borderRadius: '28px 28px 0 0',
+            boxShadow: '0 -4px 30px rgba(0,0,0,0.08)',
+            paddingBottom: 83,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 2px' }}>
+              <div style={{ width: 36, height: 5, borderRadius: 3, background: TOKEN.mist }} />
+            </div>
+
+            <div style={{ padding: '8px 20px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, color: TOKEN.ink }}>
+                  推荐 {SPOTS.length} 处
+                </div>
+                <span style={{ fontSize: 13, color: TOKEN.moss }}>列表视图 ›</span>
+              </div>
+              <div style={{ fontSize: 12, color: TOKEN.textSecondary, marginTop: 2 }}>
+                以你当前位置为中心 10 公里内
+              </div>
+            </div>
+
+            {/* 轮播卡片 */}
+            <div
+              ref={scrollRef}
+              style={{
+                display: 'flex', gap: 14, padding: '4px 20px 0',
+                overflowX: 'auto', scrollSnapType: 'x mandatory',
+                scrollbarWidth: 'none',
+              }}
+            >
+              {SPOTS.map((s, i) => (
+                <div
+                  key={s.id}
+                  style={{
+                    flexShrink: 0, width: 260, borderRadius: 20, overflow: 'hidden',
+                    background: '#fff', boxShadow: TOKEN.shadowCard,
+                    scrollSnapAlign: 'center',
+                    animation: reduced ? 'none' : `slideUp 0.5s ${i * 0.1}s cubic-bezier(0.2, 0.8, 0.2, 1) both`,
+                  }}
+                >
+                  <div style={{ position: 'relative', height: 130 }}>
+                    <img src={s.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{
+                      position: 'absolute', top: 10, left: 10,
+                      padding: '4px 10px', borderRadius: 10, fontSize: 11, fontWeight: 500,
+                      background: 'rgba(30,58,47,0.8)', color: '#fff', backdropFilter: 'blur(8px)',
+                    }}>
+                      {s.birds} 种鸟
+                    </div>
+                  </div>
+                  <div style={{ padding: '12px 14px 14px' }}>
+                    <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 16, fontWeight: 700, color: TOKEN.ink }}>
+                      {s.name}
+                    </div>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: TOKEN.textSecondary }}>
+                      {Icon.pin(TOKEN.moss)}
+                      <span>{s.distance}</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        {Icon.star(TOKEN.amber)} <span style={{ color: TOKEN.ink, fontWeight: 500 }}>{s.rating}</span>
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {s.tags.map(t => (
+                        <span key={t} style={{
+                          padding: '3px 10px', borderRadius: 8, fontSize: 11,
+                          background: `${TOKEN.moss}15`, color: TOKEN.moss,
+                        }}>
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 轮播指示点 */}
+            <div style={{
+              display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14,
+            }}>
+              {SPOTS.map((_, i) => (
+                <div key={i} style={{
+                  width: activeIdx === i ? 20 : 6, height: 6, borderRadius: 3,
+                  background: activeIdx === i ? TOKEN.ink : TOKEN.mist,
+                  transition: 'all 0.3s',
+                }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 5：我的（环形进度 + 成就网格拼贴）
+       ════════════════════════════════════════════════ */
+    function MePage({ onDesign, onApi }) {
+      const reduced = usePrefersReducedMotion();
+      const totalBirds = 168;
+      const targetBirds = 300;
+      const progress = totalBirds / targetBirds;
+      const circ = 2 * Math.PI * 70;
+      const dash = circ * progress;
+
+      const achievements = [
+        { name: '初识飞羽', level: '青铜', icon: 'feather', color: TOKEN.moss, desc: '记录第 1 只鸟' },
+        { name: '晨雾行者', level: '白银', icon: 'binocular', color: TOKEN.ink, desc: '清晨观鸟 10 次' },
+        { name: '图鉴达人', level: '黄金', icon: 'book', color: TOKEN.amber, desc: '收藏 50 种鸟' },
+        { name: '湿地守望', level: '铂金', icon: 'map', color: '#8B7355', desc: '到访 20 个观测点' },
+        { name: '百鸟之约', level: '钻石', icon: 'star', color: '#4A90A4', desc: '累计记录 100 种' },
+        { name: '羽翼传奇', level: '传说', icon: 'feather', color: '#7B5EA7', desc: '累计记录 300 种' },
+      ];
+
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', background: TOKEN.cream }}>
+          {/* 顶部用户信息 */}
+          <div style={{
+            padding: '20px 20px 0',
+            paddingTop: 'calc(var(--ios-safe-top, 62px) + 12px)',
+            background: `linear-gradient(180deg, ${TOKEN.ink} 0%, ${TOKEN.inkSoft} 100%)`,
+            color: '#fff',
+            position: 'relative',
+            overflow: 'hidden',
+          }}>
+            {/* 装饰性羽毛图案 */}
+            <div style={{
+              position: 'absolute', right: -30, top: 60, opacity: 0.08,
+              transform: 'rotate(30deg)',
+            }}>
+              <svg width="200" height="200" viewBox="0 0 200 200" fill="white">
+                <path d="M100 10c0 70-60 160-90 180 20-30 40-80 40-120 0-30 30-60 50-60z" />
+                <path d="M100 30l-30 70" stroke="white" strokeWidth="1" fill="none" opacity="0.5" />
+                <path d="M100 50l-40 60" stroke="white" strokeWidth="1" fill="none" opacity="0.5" />
+                <path d="M100 70l-50 50" stroke="white" strokeWidth="1" fill="none" opacity="0.5" />
+              </svg>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 32,
+                background: `linear-gradient(135deg, ${TOKEN.amber}, ${TOKEN.amberDeep})`,
+                border: '3px solid rgba(255,255,255,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 24, fontWeight: 700, fontFamily: TOKEN.fontSerif,
+              }}>
+                林
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 22, fontWeight: 700 }}>林间飞羽</div>
+                <div style={{ fontSize: 13, opacity: 0.75, marginTop: 2 }}>观鸟 1 年 3 个月 · Lv.7</div>
+              </div>
+              <div style={{
+                width: 36, height: 36, borderRadius: 18,
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {Icon.share('#fff')}
+              </div>
+            </div>
+
+            {/* 环形进度 — 签名动效 */}
+            <div style={{
+              marginTop: 28, background: 'rgba(255,255,255,0.08)',
+              borderRadius: 24, padding: '20px',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              position: 'relative',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                <div style={{ position: 'relative', width: 140, height: 140, flexShrink: 0 }}>
+                  <svg width="140" height="140" viewBox="0 0 140 140">
+                    <circle cx="70" cy="70" r="70" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="10" />
+                    <circle
+                      cx="70" cy="70" r="70" fill="none"
+                      stroke={TOKEN.amber} strokeWidth="10" strokeLinecap="round"
+                      strokeDasharray={circ}
+                      strokeDashoffset={circ}
+                      style={!reduced ? {
+                        animation: `ringProgress 1.8s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
+                        '--circ': circ,
+                        '--dash': circ - dash,
+                        transform: 'rotate(-90deg)',
+                        transformOrigin: 'center',
+                      } : { strokeDashoffset: circ - dash, transform: 'rotate(-90deg)', transformOrigin: 'center' }}
+                    />
+                    {/* 小羽毛装饰 */}
+                    <g transform="translate(70, 70)" style={!reduced ? {
+                      animation: 'featherFlap 2s ease-in-out infinite',
+                      transformOrigin: 'center',
+                    } : {}}>
+                      <path d="M0 -50 Q8 -40 4 -30 Q0 -40 0 -50Z" fill={TOKEN.amberSoft} opacity="0.8" />
+                    </g>
+                  </svg>
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 36, fontWeight: 900 }}>
+                      {totalBirds}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>累计鸟种</div>
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, opacity: 0.7 }}>年度目标</div>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 22, fontWeight: 700, marginTop: 2 }}>
+                    {targetBirds} 种
+                  </div>
+                  <div style={{ fontSize: 12, color: TOKEN.amberSoft, marginTop: 8 }}>
+                    已完成 {Math.round(progress * 100)}%
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+                    还差 {targetBirds - totalBirds} 种达成
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 统计数字 */}
+            <div style={{
+              display: 'flex', gap: 0, marginTop: 20, marginBottom: -28,
+              position: 'relative', zIndex: 2,
+            }}>
+              {[
+                { n: 47, l: '本月观测' },
+                { n: 286, l: '记录数' },
+                { n: 12, l: '观测点' },
+              ].map((s, i) => (
+                <div key={s.l} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 22, fontWeight: 700 }}>{s.n}</div>
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 成就网格拼贴 */}
+          <div style={{ padding: '40px 16px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 18, fontWeight: 700, color: TOKEN.ink }}>
+                我的成就
+              </div>
+              <span style={{ fontSize: 13, color: TOKEN.moss }}>全部 24 项 ›</span>
+            </div>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 10,
+            }}>
+              {achievements.map((a, i) => (
+                <div key={a.name} style={{
+                  padding: '14px 10px', borderRadius: 16,
+                  background: i === 2 ? `linear-gradient(135deg, ${a.color}20, ${a.color}10)` : '#fff',
+                  boxShadow: TOKEN.shadowCard,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  gap: 6,
+                  gridColumn: i === 2 ? 'span 1' : 'span 1',
+                  opacity: i >= 4 ? 0.45 : 1,
+                }}>
+                  <div style={{
+                    width: 42, height: 42, borderRadius: 14,
+                    background: i >= 4 ? TOKEN.mist : `${a.color}18`,
+                    color: i >= 4 ? TOKEN.textMuted : a.color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {Icon[a.icon]()}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: TOKEN.ink, textAlign: 'center' }}>
+                    {a.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: i >= 4 ? TOKEN.textMuted : a.color, fontWeight: 600 }}>
+                    {i >= 4 ? '未解锁' : a.level}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 功能列表 */}
+          <div style={{ padding: '20px 16px 100px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: TOKEN.shadowCard }}>
+              {[
+                { label: '我的收藏', icon: 'star', color: TOKEN.amber, detail: '58 种' },
+                { label: '观鸟日历', icon: 'book', color: TOKEN.moss, detail: '86 天' },
+                { label: '我的足迹', icon: 'map', color: TOKEN.ink, detail: '12 处' },
+              ].map((it, i, arr) => (
+                <div key={it.label} style={{
+                  display: 'flex', alignItems: 'center', padding: '0 16px',
+                  height: 52,
+                  borderBottom: i < arr.length - 1 ? `1px solid ${TOKEN.divider}` : 'none',
+                }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 8,
+                    background: `${it.color}15`, color: it.color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginRight: 12,
+                  }}>
+                    {Icon[it.icon]()}
+                  </div>
+                  <div style={{ flex: 1, fontSize: 15, color: TOKEN.ink }}>{it.label}</div>
+                  <span style={{ fontSize: 13, color: TOKEN.textMuted, marginRight: 6 }}>{it.detail}</span>
+                  {Icon.chevron(TOKEN.textMuted)}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: TOKEN.shadowCard }}>
+              {[
+                { label: '设计规范', icon: 'book', color: TOKEN.ink, action: onDesign },
+                { label: '接口文档', icon: 'menu', color: '#8B7355', action: onApi },
+                { label: '关于羽踪', icon: 'feather', color: TOKEN.moss },
+              ].map((it, i, arr) => (
+                <div
+                  key={it.label}
+                  onClick={it.action}
+                  style={{
+                    display: 'flex', alignItems: 'center', padding: '0 16px',
+                    height: 52, cursor: 'pointer',
+                    borderBottom: i < arr.length - 1 ? `1px solid ${TOKEN.divider}` : 'none',
+                  }}
+                >
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 8,
+                    background: `${it.color}15`, color: it.color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginRight: 12,
+                  }}>
+                    {Icon[it.icon]()}
+                  </div>
+                  <div style={{ flex: 1, fontSize: 15, color: TOKEN.ink }}>{it.label}</div>
+                  {Icon.chevron(TOKEN.textMuted)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 6：设计规范
+       ════════════════════════════════════════════════ */
+    function DesignSpecPage({ onBack }) {
+      const reduced = usePrefersReducedMotion();
+
+      const colors = [
+        { name: '墨绿', hex: TOKEN.ink, role: '主色 / 正文', bg: TOKEN.ink },
+        { name: '苔绿', hex: TOKEN.moss, role: '辅助 / 次要按钮', bg: TOKEN.moss },
+        { name: '琥珀橙', hex: TOKEN.amber, role: '强调 / CTA', bg: TOKEN.amber },
+        { name: '雾灰', hex: TOKEN.mist, role: '表面 / 分隔', bg: TOKEN.mist },
+        { name: '奶白', hex: TOKEN.cream, role: '底色 / 卡片', bg: TOKEN.cream },
+        { name: '宣纸', hex: TOKEN.paper, role: '页面底', bg: TOKEN.paper },
+      ];
+
+      const typeScale = [
+        { name: '大标题', size: 34, weight: 900, sample: '林间飞羽', serif: true },
+        { name: '标题 1', size: 22, weight: 700, sample: '今日目标鸟种', serif: true },
+        { name: '标题 2', size: 18, weight: 600, sample: '物种简介', serif: true },
+        { name: '正文', size: 15, weight: 400, sample: '翠鸟以宝石般的翠蓝色背羽闻名' },
+        { name: '辅助文字', size: 13, weight: 400, sample: '西溪湿地 · 莲花滩观测点' },
+        { name: '小字标签', size: 11, weight: 500, sample: '国家二级保护' },
+      ];
+
+      const components = [
+        { name: '主按钮', desc: '48 px 高 · 24 px 圆角' },
+        { name: '卡片', desc: '20 px 圆角 · 双层阴影' },
+        { name: '芯片标签', desc: '10-12 px · 8 px 圆角' },
+        { name: 'FAB', desc: '58 px · 琥珀渐变' },
+      ];
+
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', background: TOKEN.cream }}>
+          {/* 导航栏 */}
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 20,
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            background: 'rgba(250,247,240,0.92)', backdropFilter: 'blur(20px)',
+            borderBottom: `1px solid ${TOKEN.divider}`,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', height: 44,
+              padding: '0 16px',
+            }}>
+              <div onClick={onBack} style={{
+                width: 36, height: 36, borderRadius: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: TOKEN.ink, cursor: 'pointer', marginRight: 4,
+              }}>
+                {Icon.back()}
+              </div>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 17, fontWeight: 600, color: TOKEN.ink, flex: 1, textAlign: 'center', marginRight: 40 }}>
+                设计规范
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px 20px 100px' }}>
+            {/* 顶部封面 */}
+            <div style={{
+              padding: 24, borderRadius: 24,
+              background: `linear-gradient(135deg, ${TOKEN.ink} 0%, ${TOKEN.inkSoft} 100%)`,
+              color: '#fff', marginBottom: 28,
+              animation: reduced ? 'none' : 'slideUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            }}>
+              <div style={{ fontSize: 12, opacity: 0.7, letterSpacing: 2 }}>YUZONG DESIGN SYSTEM</div>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 28, fontWeight: 900, marginTop: 6 }}>
+                羽踪 V2 设计系统
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.75, marginTop: 8, lineHeight: 1.6 }}>
+                林间晨雾色系 · 自然探索美学
+              </div>
+              <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+                {[TOKEN.ink, TOKEN.moss, TOKEN.amber, TOKEN.mist].map(c => (
+                  <div key={c} style={{
+                    width: 32, height: 32, borderRadius: 10,
+                    background: c, border: c === TOKEN.ink ? 'none' : '2px solid rgba(255,255,255,0.3)',
+                  }} />
+                ))}
+              </div>
+            </div>
+
+            {/* 色彩系统 */}
+            <SectionTitle title="色彩系统" subtitle="Color Palette" />
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12,
+              marginTop: 14, marginBottom: 28,
+            }}>
+              {colors.map((c, i) => (
+                <div key={c.name} style={{
+                  borderRadius: 16, overflow: 'hidden',
+                  background: '#fff', boxShadow: TOKEN.shadowCard,
+                  animation: reduced ? 'none' : `slideUp 0.4s ${i * 0.05}s cubic-bezier(0.2, 0.8, 0.2, 1) both`,
+                }}>
+                  <div style={{ height: 60, background: c.bg, position: 'relative' }}>
+                    {c.name === '宣纸' && (
+                      <div style={{ position: 'absolute', top: 8, left: 10, fontSize: 10, color: TOKEN.textMuted, opacity: 0.5 }}>
+                        纸面纹理
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '10px 14px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: TOKEN.ink }}>{c.name}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: TOKEN.textMuted, fontFamily: 'monospace', marginTop: 2 }}>
+                      {c.hex}
+                    </div>
+                    <div style={{ fontSize: 11, color: TOKEN.textSecondary, marginTop: 4 }}>
+                      {c.role}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 字体排印 */}
+            <SectionTitle title="字体排印" subtitle="Typography" />
+            <div style={{
+              background: '#fff', borderRadius: 20, overflow: 'hidden',
+              boxShadow: TOKEN.shadowCard, marginTop: 14, marginBottom: 28,
+            }}>
+              {typeScale.map((t, i, arr) => (
+                <div key={t.name} style={{
+                  padding: '14px 20px',
+                  borderBottom: i < arr.length - 1 ? `1px solid ${TOKEN.divider}` : 'none',
+                  display: 'flex', alignItems: 'center', gap: 16,
+                }}>
+                  <div style={{
+                    fontSize: t.size, fontWeight: t.weight,
+                    fontFamily: t.serif ? TOKEN.fontSerif : TOKEN.fontSans,
+                    color: TOKEN.ink, flex: 1, whiteSpace: 'nowrap',
+                    overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {t.sample}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 11, color: TOKEN.textSecondary, fontWeight: 500 }}>{t.name}</div>
+                    <div style={{ fontSize: 10, color: TOKEN.textMuted, fontFamily: 'monospace', marginTop: 1 }}>
+                      {t.size} / {t.weight}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 组件库 */}
+            <SectionTitle title="组件示例" subtitle="Components" />
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12,
+              marginTop: 14, marginBottom: 28,
+            }}>
+              {/* 按钮示例 */}
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: 16,
+                boxShadow: TOKEN.shadowCard, gridColumn: 'span 2',
+              }}>
+                <div style={{ fontSize: 12, color: TOKEN.textMuted, marginBottom: 12 }}>按钮 Buttons</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button style={{
+                    padding: '0 20px', height: 44, borderRadius: 22,
+                    border: 'none', background: TOKEN.ink, color: '#fff',
+                    fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                  }}>主按钮</button>
+                  <button style={{
+                    padding: '0 20px', height: 44, borderRadius: 22,
+                    border: `1.5px solid ${TOKEN.ink}`, background: 'transparent',
+                    color: TOKEN.ink, fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                  }}>次按钮</button>
+                  <button style={{
+                    padding: '0 20px', height: 44, borderRadius: 22,
+                    border: 'none', background: `${TOKEN.amber}`,
+                    color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                  }}>强调</button>
+                  <button style={{
+                    padding: '0 14px', height: 32, borderRadius: 16,
+                    border: 'none', background: `${TOKEN.moss}15`,
+                    color: TOKEN.moss, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  }}>标签</button>
+                </div>
+              </div>
+
+              {/* 芯片标签 */}
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: 16,
+                boxShadow: TOKEN.shadowCard,
+              }}>
+                <div style={{ fontSize: 12, color: TOKEN.textMuted, marginBottom: 12 }}>标签 Tags</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['鸣禽', '涉禽', '游禽', '猛禽'].map(t => (
+                    <span key={t} style={{
+                      padding: '4px 12px', borderRadius: 10, fontSize: 12,
+                      background: `${TOKEN.moss}15`, color: TOKEN.moss, fontWeight: 500,
+                    }}>{t}</span>
+                  ))}
+                  <span style={{
+                    padding: '4px 12px', borderRadius: 10, fontSize: 12,
+                    background: TOKEN.amber, color: '#fff', fontWeight: 500,
+                  }}>稀有</span>
+                </div>
+              </div>
+
+              {/* 卡片 */}
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: 16,
+                boxShadow: TOKEN.shadowCard,
+              }}>
+                <div style={{ fontSize: 12, color: TOKEN.textMuted, marginBottom: 12 }}>卡片 Card</div>
+                <div style={{
+                  borderRadius: 14, overflow: 'hidden', boxShadow: TOKEN.shadowCard,
+                }}>
+                  <div style={{
+                    height: 60,
+                    background: `linear-gradient(135deg, ${TOKEN.ink}, ${TOKEN.moss})`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontFamily: TOKEN.fontSerif, fontSize: 18, fontWeight: 700,
+                  }}>
+                    鸟种卡片
+                  </div>
+                  <div style={{ padding: '8px 12px', fontSize: 11, color: TOKEN.textSecondary }}>
+                    描述文字区域
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 间距与圆角 */}
+            <SectionTitle title="间距与圆角" subtitle="Spacing & Radius" />
+            <div style={{
+              background: '#fff', borderRadius: 20, padding: 16,
+              boxShadow: TOKEN.shadowCard, marginTop: 14, marginBottom: 28,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                {[4, 8, 12, 16, 24].map(s => (
+                  <div key={s} style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{
+                      margin: '0 auto',
+                      width: s * 2, height: s * 2,
+                      background: TOKEN.moss, borderRadius: s,
+                    }} />
+                    <div style={{ fontSize: 10, color: TOKEN.textMuted, marginTop: 6, fontFamily: 'monospace' }}>
+                      {s}px
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function SectionTitle({ title, subtitle }) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, color: TOKEN.ink }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 11, color: TOKEN.textMuted, fontFamily: 'monospace', letterSpacing: 1 }}>
+            {subtitle}
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       页面 7：接口文档（左右分栏）
+       ════════════════════════════════════════════════ */
+    function ApiDocPage({ onBack }) {
+      const reduced = usePrefersReducedMotion();
+      const [activeApi, setActiveApi] = useState('get-birds');
+      const [activeTab, setActiveTab] = useState('request');
+
+      const apis = [
+        { id: 'get-birds', method: 'GET', name: '获取鸟种列表', path: '/api/v1/birds' },
+        { id: 'get-bird', method: 'GET', name: '获取鸟种详情', path: '/api/v1/birds/:id' },
+        { id: 'post-record', method: 'POST', name: '创建观鸟记录', path: '/api/v1/records' },
+        { id: 'get-records', method: 'GET', name: '获取我的记录', path: '/api/v1/records/mine' },
+        { id: 'get-spots', method: 'GET', name: '附近观测点', path: '/api/v1/spots/nearby' },
+        { id: 'post-recognize', method: 'POST', name: '图片识别鸟种', path: '/api/v1/recognize/image' },
+      ];
+
+      const methodColor = (m) => m === 'GET' ? TOKEN.moss : m === 'POST' ? TOKEN.amber : TOKEN.ink;
+
+      const sampleRequest = `GET /api/v1/birds?category=鸣禽&page=1&limit=20
+Authorization: Bearer <token>
+Accept: application/json`;
+
+      const sampleResponse = `{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 342,
+    "page": 1,
+    "limit": 20,
+    "list": [
+      {
+        "id": "b_001",
+        "name": "普通翠鸟",
+        "latinName": "Alcedo atthis",
+        "category": "佛法僧目",
+        "rarity": "common",
+        "size": "约 16 厘米",
+        "habitat": "溪流、湖泊、鱼塘",
+        "imageUrl": "/birds/kingfisher.jpg",
+        "description": "翠鸟以宝石般的翠蓝色背羽闻名..."
+      }
+    ]
+  }
+}`;
+
+      return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: TOKEN.paper }}>
+          {/* 导航栏 */}
+          <div style={{
+            paddingTop: 'var(--ios-safe-top, 62px)',
+            background: TOKEN.ink, color: '#fff',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', height: 44,
+              padding: '0 16px',
+            }}>
+              <div onClick={onBack} style={{
+                width: 36, height: 36, borderRadius: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', cursor: 'pointer', marginRight: 4,
+              }}>
+                {Icon.back('#fff')}
+              </div>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 17, fontWeight: 600, flex: 1, textAlign: 'center', marginRight: 40 }}>
+                接口文档
+              </div>
+            </div>
+            <div style={{ padding: '4px 20px 16px' }}>
+              <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1 }}>API REFERENCE</div>
+              <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 20, fontWeight: 700, marginTop: 2 }}>
+                羽踪开放 API v1.0
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                共 28 个接口 · RESTful · JSON 格式
+              </div>
+            </div>
+          </div>
+
+          {/* 左右分栏 — 左侧列表 右侧详情 */}
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* 左栏：接口列表 */}
+            <div style={{
+              width: 140, flexShrink: 0, overflowY: 'auto',
+              background: `${TOKEN.ink}05`,
+              borderRight: `1px solid ${TOKEN.divider}`,
+              padding: '12px 0',
+            }}>
+              {apis.map(api => (
+                <div
+                  key={api.id}
+                  onClick={() => setActiveApi(api.id)}
+                  style={{
+                    padding: '10px 12px', cursor: 'pointer',
+                    borderLeft: activeApi === api.id ? `3px solid ${TOKEN.amber}` : '3px solid transparent',
+                    background: activeApi === api.id ? '#fff' : 'transparent',
+                    marginBottom: 2,
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: methodColor(api.method),
+                    fontFamily: 'monospace', letterSpacing: 0.5,
+                  }}>
+                    {api.method}
+                  </div>
+                  <div style={{
+                    fontSize: 12, color: TOKEN.ink,
+                    fontWeight: activeApi === api.id ? 600 : 400,
+                    marginTop: 3, lineHeight: 1.3,
+                  }}>
+                    {api.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 右栏：详情 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 100px' }}>
+              {(() => {
+                const api = apis.find(a => a.id === activeApi);
+                return (
+                  <div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      marginBottom: 10,
+                    }}>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 6,
+                        background: `${methodColor(api.method)}15`,
+                        color: methodColor(api.method),
+                        fontSize: 11, fontWeight: 700, fontFamily: 'monospace',
+                      }}>{api.method}</span>
+                      <span style={{
+                        fontFamily: 'monospace', fontSize: 12,
+                        color: TOKEN.ink, fontWeight: 500,
+                        wordBreak: 'break-all',
+                      }}>{api.path}</span>
+                    </div>
+                    <div style={{ fontFamily: TOKEN.fontSerif, fontSize: 16, fontWeight: 600, color: TOKEN.ink }}>
+                      {api.name}
+                    </div>
+                    <p style={{
+                      fontSize: 12, color: TOKEN.textSecondary,
+                      marginTop: 6, lineHeight: 1.6,
+                    }}>
+                      {api.method === 'GET' ? '根据查询参数获取对应数据，支持分页与筛选。' : '提交数据创建新记录，返回创建后的完整资源。'}
+                    </p>
+
+                    {/* Tab */}
+                    <div style={{
+                      display: 'flex', gap: 4, marginTop: 16,
+                      padding: 3, borderRadius: 10,
+                      background: `${TOKEN.ink}08`,
+                    }}>
+                      {['request', 'response', 'params'].map(tab => (
+                        <div
+                          key={tab}
+                          onClick={() => setActiveTab(tab)}
+                          style={{
+                            flex: 1, padding: '6px 0', textAlign: 'center',
+                            fontSize: 12, fontWeight: 500, borderRadius: 7,
+                            cursor: 'pointer',
+                            background: activeTab === tab ? '#fff' : 'transparent',
+                            color: activeTab === tab ? TOKEN.ink : TOKEN.textSecondary,
+                            boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {tab === 'request' ? '请求' : tab === 'response' ? '响应' : '参数'}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 代码块 */}
+                    <div style={{
+                      marginTop: 12, borderRadius: 14, overflow: 'hidden',
+                      background: '#1E2A24',
+                      boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+                    }}>
+                      <div style={{
+                        padding: '8px 14px', fontSize: 11,
+                        color: 'rgba(255,255,255,0.5)',
+                        borderBottom: '1px solid rgba(255,255,255,0.08)',
+                        fontFamily: 'monospace',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 4, background: '#FF6058' }} />
+                        <span style={{ width: 8, height: 8, borderRadius: 4, background: '#FFBD2E' }} />
+                        <span style={{ width: 8, height: 8, borderRadius: 4, background: '#28CA41' }} />
+                        <span style={{ marginLeft: 8 }}>
+                          {activeTab === 'request' ? 'request.json' : activeTab === 'response' ? 'response.json' : 'params'}
+                        </span>
+                      </div>
+                      <pre style={{
+                        margin: 0, padding: '14px', fontSize: 11,
+                        lineHeight: 1.6, color: '#E8E6E1',
+                        fontFamily: 'SF Mono, Monaco, monospace',
+                        overflowX: 'auto',
+                      }}>
+                        {activeTab === 'params' ? (
+`name      string  可选   鸟种名称模糊搜索
+category  string  可选   分类：鸣禽/涉禽/游禽等
+rarity    string  可选   稀有度过滤
+page      number  可选   页码，默认 1
+limit     number  可选   每页数量，默认 20
+sort      string  可选   排序字段`
+                        ) : activeTab === 'request' ? sampleRequest : sampleResponse}
+                      </pre>
+                    </div>
+
+                    {/* 错误码 */}
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 600, color: TOKEN.ink,
+                        marginBottom: 8,
+                      }}>错误码</div>
+                      <div style={{
+                        background: '#fff', borderRadius: 12,
+                        overflow: 'hidden', boxShadow: TOKEN.shadowCard,
+                      }}>
+                        {[
+                          { code: '0', desc: '请求成功' },
+                          { code: '40001', desc: '参数错误' },
+                          { code: '40101', desc: '未授权 / token 失效' },
+                          { code: '40401', desc: '资源不存在' },
+                        ].map((e, i, arr) => (
+                          <div key={e.code} style={{
+                            display: 'flex', padding: '8px 14px',
+                            borderBottom: i < arr.length - 1 ? `1px solid ${TOKEN.divider}` : 'none',
+                            fontSize: 12,
+                          }}>
+                            <span style={{
+                              fontFamily: 'monospace', color: TOKEN.amberDeep,
+                              fontWeight: 600, width: 60,
+                            }}>{e.code}</span>
+                            <span style={{ color: TOKEN.textSecondary }}>{e.desc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 在线调试按钮 */}
+                    <button style={{
+                      width: '100%', marginTop: 20, height: 44,
+                      borderRadius: 14, border: 'none',
+                      background: TOKEN.amber, color: '#fff',
+                      fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(224,138,60,0.3)',
+                    }}>
+                      在线调试
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       TabBar
+       ════════════════════════════════════════════════ */
+    function TabBar({ active, onChange }) {
+      const tabs = [
+        { key: 'home', label: '首页', icon: 'home' },
+        { key: 'guide', label: '图鉴', icon: 'book' },
+        { key: 'records', label: '记录', icon: 'feather' },
+        { key: 'spots', label: '观测点', icon: 'pin' },
+        { key: 'me', label: '我的', icon: 'user' },
+      ];
+
+      return (
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 30,
+          background: 'rgba(255,255,255,0.93)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderTop: `1px solid ${TOKEN.divider}`,
+          paddingBottom: 'var(--ios-safe-bottom, 34px)',
+        }}>
+          <div style={{
+            display: 'flex', height: 56,
+          }}>
+            {tabs.map(t => {
+              const isActive = active === t.key;
+              return (
+                <div
+                  key={t.key}
+                  onClick={() => onChange(t.key)}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 2, cursor: 'pointer',
+                    color: isActive ? TOKEN.ink : TOKEN.textMuted,
+                  }}
+                >
+                  <div style={{
+                    transition: 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                    transform: isActive ? 'scale(1.1) translateY(-1px)' : 'scale(1)',
+                  }}>
+                    {Icon[t.icon]()}
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: isActive ? 600 : 400,
+                    transition: 'all 0.2s',
+                  }}>{t.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       主应用：导航栈 + TabBar 管理
+       ════════════════════════════════════════════════ */
+    function App() {
+      const reduced = usePrefersReducedMotion();
+      const [tab, setTab] = useState('home');
+      // 每个 tab 的导航栈
+      const [stacks, setStacks] = useState({
+        home: [], guide: [], records: [], spots: [], me: [],
+      });
+      const [transitionDir, setTransitionDir] = useState('forward');
+      const [isTransitioning, setIsTransitioning] = useState(false);
+
+      const currentStack = stacks[tab];
+
+      const push = (pageKey, data) => {
+        if (isTransitioning) return;
+        setTransitionDir('forward');
+        setIsTransitioning(true);
+        setStacks(prev => ({
+          ...prev,
+          [tab]: [...prev[tab], { key: pageKey, data }],
+        }));
+        const t = setTimeout(() => setIsTransitioning(false), 350);
+        return () => clearTimeout(t);
+      };
+
+      const pop = () => {
+        if (isTransitioning || currentStack.length === 0) return;
+        setTransitionDir('back');
+        setIsTransitioning(true);
+        setTimeout(() => {
+          setStacks(prev => ({
+            ...prev,
+            [tab]: prev[tab].slice(0, -1),
+          }));
+          setIsTransitioning(false);
+        }, 300);
+      };
+
+      const switchTab = (newTab) => {
+        if (newTab === tab) return;
+        setTab(newTab);
+      };
+
+      // 鸟种详情
+      const openBirdDetail = (bird) => push('birdDetail', { bird });
+      // 设计规范
+      const openDesignSpec = () => push('design', {});
+      // 接口文档
+      const openApiDoc = () => push('api', {});
+
+      const currentPage = currentStack[currentStack.length - 1];
+
+      const renderPage = (pageKey, data) => {
+        switch (pageKey) {
+          case 'birdDetail':
+            return <BirdDetailPage bird={data.bird} onBack={pop} />;
+          case 'design':
+            return <DesignSpecPage onBack={pop} />;
+          case 'api':
+            return <ApiDocPage onBack={pop} />;
+          default:
+            return null;
+        }
+      };
+
+      const renderTabRoot = () => {
+        switch (tab) {
+          case 'home':
+            return <HomePage onOpenBird={openBirdDetail} onOpenSheet={() => {}} />;
+          case 'guide':
+            return <GuidePage onOpenBird={openBirdDetail} />;
+          case 'records':
+            return <RecordsPage />;
+          case 'spots':
+            return <SpotsPage />;
+          case 'me':
+            return <MePage onDesign={openDesignSpec} onApi={openApiDoc} />;
+          default:
+            return null;
+        }
+      };
+
+      // 页面切换样式
+      const getPageStyle = (index) => {
+        if (!currentPage) return {};
+        if (index === currentStack.length - 1) {
+          // 顶页
+          return {
+            transform: 'translateX(0)',
+            opacity: 1,
+            transition: isTransitioning
+              ? `transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s`
+              : 'none',
+          };
+        }
+        if (index === currentStack.length - 2 && transitionDir === 'back') {
+          return {
+            transform: 'translateX(0)',
+            opacity: 1,
+            transition: isTransitioning
+              ? `transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s`
+              : 'none',
+          };
+        }
+        return { display: 'none' };
+      };
+
+      return (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {/* 根 tab 页 */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            opacity: currentPage ? 0.6 : 1,
+            transform: currentPage ? 'translateX(-20%)' : 'translateX(0)',
+            filter: currentPage ? 'brightness(0.8)' : 'none',
+            transition: isTransitioning
+              ? `transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s, filter 0.3s`
+              : 'none',
+          }}>
+            {renderTabRoot()}
+          </div>
+
+          {/* 栈中页面 */}
+          {currentStack.map((page, i) => (
+            <div key={`${page.key}-${i}`} style={{
+              position: 'absolute', inset: 0, zIndex: 10 + i,
+              ...getPageStyle(i),
+              transform: isTransitioning && i === currentStack.length - 1 && transitionDir === 'forward'
+                ? 'translateX(0)'
+                : (i === currentStack.length - 1 ? 'translateX(0)' : 'translateX(100%)'),
+              opacity: i === currentStack.length - 1 ? 1 : 0,
+            }}>
+              {renderPage(page.key, page.data)}
+            </div>
+          ))}
+
+          {/* TabBar — 当有栈页面时隐藏 */}
+          {currentStack.length === 0 && (
+            <TabBar active={tab} onChange={switchTab} />
+          )}
+        </div>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       渲染
+       ════════════════════════════════════════════════ */
+    function announceUpgrade() {
+      try {
+        window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+      } catch (e) {}
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+      <div className="scene-bg">
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <IOSDevice>
+            <App />
+          </IOSDevice>
+          <div className="device-label">
+            羽踪 <span>V2</span> · 原生 App Mock
+          </div>
+        </div>
+      </div>
+    );
+  </script>
+</body>
+</html>
