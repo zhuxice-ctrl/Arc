@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>文房研物所 · 拟物化微交互实验室</title>
+<link rel="preconnect" href="https://miaoda.feishucdn.com">
+<link rel="stylesheet" href="https://miaoda.feishucdn.com/fonts/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=Ma+Shan+Zheng&display=swap">
+<style>
+/* ============================================================
+   文房研物所 — 拟物化微交互实验室
+   单文件实现，无外部依赖（字体除外）
+   ============================================================ */
+
+:root {
+  --ink-deep: #17332B;
+  --bronze: #4E8C7A;
+  --rice: #F6F1E3;
+  --cinnabar: #B6452F;
+  --soot: #1B1B1B;
+  --rice-dark: #E8DFC8;
+  --ink-mid: #2A5247;
+  --bronze-light: #7AB8A6;
+  --cinnabar-dark: #8E3524;
+  --soot-light: #2E2E2E;
+
+  --shadow-soft: 0 4px 24px rgba(0,0,0,.25);
+  --shadow-deep: 0 12px 48px rgba(0,0,0,.4);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--soot);
+  color: var(--rice);
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+  user-select: none;
+}
+
+/* ==== 背景：松木桌面质感 ==== */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(78,140,122,.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(182,69,47,.06) 0%, transparent 50%),
+    linear-gradient(180deg, #1B2B25 0%, #0F1A17 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 2px,
+      rgba(27,43,37,.3) 2px,
+      rgba(27,43,37,.3) 3px
+    );
+  background-size: 100% 100%;
+  opacity: .15;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ==== 自定义光标 ==== */
+.cursor-outer, .cursor-inner, .cursor-ripple {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.cursor-outer {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(246,241,227,.9);
+  box-shadow: 0 0 12px rgba(246,241,227,.4), 0 0 24px rgba(78,140,122,.3);
+  transition: width .25s cubic-bezier(.34,1.56,.64,1),
+              height .25s cubic-bezier(.34,1.56,.64,1),
+              border-color .2s,
+              box-shadow .2s;
+  will-change: transform, width, height;
+}
+
+.cursor-inner {
+  width: 6px;
+  height: 6px;
+  background: var(--cinnabar);
+  box-shadow: 0 0 8px var(--cinnabar), 0 0 16px rgba(182,69,47,.5);
+  transition: width .15s, height .15s, background-color .2s, box-shadow .2s;
+  will-change: transform;
+}
+
+.cursor-outer.hover-drag {
+  width: 48px;
+  height: 48px;
+  border-color: var(--bronze-light);
+  box-shadow: 0 0 16px var(--bronze-light), 0 0 32px rgba(122,184,166,.4);
+}
+
+.cursor-outer.hover-click {
+  width: 28px;
+  height: 28px;
+  border-color: var(--rice);
+}
+
+.cursor-inner.hover-drag {
+  background: var(--bronze-light);
+  box-shadow: 0 0 10px var(--bronze-light);
+}
+
+.cursor-ripple {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--cinnabar);
+  opacity: 0;
+}
+
+.cursor-ripple.active {
+  animation: cursorRipple .6s ease-out forwards;
+}
+
+@keyframes cursorRipple {
+  0%   { width: 10px;  height: 10px;  opacity: .8; border-width: 2px; }
+  100% { width: 60px;  height: 60px;  opacity: 0;  border-width: 1px; }
+}
+
+/* ==== 顶部标题栏 ==== */
+.header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: 24px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.brand-zh {
+  font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif;
+  font-size: 28px;
+  color: var(--rice);
+  letter-spacing: 4px;
+}
+
+.brand-seal {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 12px;
+  color: var(--cinnabar);
+  padding: 4px 8px;
+  border: 1px solid var(--cinnabar);
+  border-radius: 2px;
+  letter-spacing: 2px;
+  writing-mode: vertical-rl;
+  line-height: 1.4;
+}
+
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(246,241,227,.5);
+  font-family: 'Noto Serif SC', serif;
+  letter-spacing: 1px;
+}
+
+.header-meta .lab-tag {
+  color: var(--bronze-light);
+  border: 1px solid rgba(78,140,122,.4);
+  padding: 3px 10px;
+  border-radius: 2px;
+}
+
+/* ==== 展区网格 ==== */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  padding: 90px 40px 40px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 20px;
+  z-index: 1;
+}
+
+.exhibit {
+  position: relative;
+  background: linear-gradient(145deg, #1E2E28 0%, #15211D 100%);
+  border: 1px solid rgba(78,140,122,.15);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color .3s, box-shadow .3s;
+}
+
+.exhibit:hover {
+  border-color: rgba(78,140,122,.35);
+  box-shadow: inset 0 0 40px rgba(78,140,122,.05), 0 0 20px rgba(0,0,0,.3);
+}
+
+.exhibit::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--bronze), transparent);
+  opacity: .3;
+}
+
+.exhibit-head {
+  padding: 14px 18px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(78,140,122,.1);
+}
+
+.exhibit-num {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 11px;
+  color: var(--bronze);
+  letter-spacing: 2px;
+}
+
+.exhibit-title {
+  font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif;
+  font-size: 22px;
+  color: var(--rice);
+  letter-spacing: 3px;
+}
+
+.exhibit-sub {
+  font-size: 11px;
+  color: rgba(246,241,227,.4);
+  letter-spacing: 1px;
+}
+
+.exhibit-stage {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.exhibit-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 18px;
+  font-size: 11px;
+  color: rgba(246,241,227,.35);
+  letter-spacing: 1px;
+}
+
+.exhibit-hint::before {
+  content: '⟡ ';
+  color: var(--bronze);
+}
+
+/* ============================================================
+   展区 1：研墨台
+   ============================================================ */
+.inkstone-scene {
+  position: relative;
+  width: 240px;
+  height: 180px;
+}
+
+.inkstone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200px;
+  height: 120px;
+  background: radial-gradient(ellipse at 40% 30%, #2a2a2a 0%, #1a1a1a 60%, #0d0d0d 100%);
+  border-radius: 50% / 40%;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    inset 0 -8px 20px rgba(0,0,0,.6),
+    inset 0 4px 12px rgba(255,255,255,.03),
+    0 8px 30px rgba(0,0,0,.5);
+  border: 2px solid #252525;
+}
+
+.inkstone-pool {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 90px;
+  height: 55px;
+  background: radial-gradient(ellipse at center, #0a0a0a 0%, #1a1a1a 100%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.8);
+  overflow: hidden;
+}
+
+.ink-pool-fill {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 30%, #2a2a2a 0%, #0a0a0a 100%);
+  border-radius: 50%;
+  opacity: var(--ink-level, 0);
+  transition: opacity .3s;
+}
+
+.ink-ripple {
+  position: absolute;
+  border: 1px solid rgba(70,70,70,.6);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ink-ripple.anim {
+  animation: inkRippleAnim 1.2s ease-out forwards;
+}
+
+@keyframes inkRippleAnim {
+  0%   { transform: translate(-50%,-50%) scale(0); opacity: .8; }
+  100% { transform: translate(-50%,-50%) scale(2.5); opacity: 0; }
+}
+
+.inkstick {
+  position: absolute;
+  width: 32px;
+  height: 90px;
+  background: linear-gradient(180deg, #2a2a2a 0%, #151515 30%, #0a0a0a 70%, #1a1a1a 100%);
+  border-radius: 4px 4px 2px 2px;
+  left: 50%;
+  top: -20px;
+  transform: translateX(-50%);
+  cursor: grab;
+  box-shadow:
+    inset -3px 0 6px rgba(0,0,0,.4),
+    inset 3px 0 6px rgba(255,255,255,.05),
+    0 4px 12px rgba(0,0,0,.5);
+  z-index: 5;
+  transition: transform .1s;
+}
+
+.inkstick:active { cursor: grabbing; }
+
+.inkstick::before {
+  content: '墨';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 14px;
+  color: rgba(182,69,47,.7);
+  writing-mode: vertical-rl;
+}
+
+.inkstick::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(180deg, #1a1a1a, #050505);
+  border-radius: 0 0 2px 2px;
+}
+
+.ink-level-indicator {
+  position: absolute;
+  bottom: 8px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.ink-bar {
+  width: 50px;
+  height: 4px;
+  background: rgba(246,241,227,.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ink-bar-fill {
+  width: var(--ink-level-pct, 0%);
+  height: 100%;
+  background: linear-gradient(90deg, #333, #000);
+  transition: width .2s;
+}
+
+.ink-label {
+  font-size: 10px;
+  color: rgba(246,241,227,.4);
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   展区 2：火漆印
+   ============================================================ */
+.wax-scene {
+  position: relative;
+  width: 260px;
+  height: 180px;
+}
+
+.wax-paper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 140px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(230,220,195,.1) 0%, transparent 70%),
+    linear-gradient(180deg, #EDE5D0 0%, #E2D9C0 100%);
+  transform: translate(-50%, -50%) rotate(-2deg);
+  border-radius: 2px;
+  box-shadow:
+    0 6px 20px rgba(0,0,0,.3),
+    inset 0 0 30px rgba(180,160,120,.15);
+}
+
+.wax-paper::before,
+.wax-paper::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.wax-paper::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,.06), transparent);
+}
+
+.wax-paper::after {
+  right: 0;
+  background: linear-gradient(-90deg, rgba(0,0,0,.06), transparent);
+}
+
+.wax-blob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 45px;
+  background: radial-gradient(ellipse at 40% 35%, #D4593E 0%, var(--cinnabar) 50%, #8E3524 100%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(var(--wax-scale, 1));
+  box-shadow:
+    inset -4px -4px 10px rgba(0,0,0,.2),
+    inset 3px 3px 8px rgba(255,255,255,.15),
+    0 3px 10px rgba(0,0,0,.25);
+  opacity: var(--wax-opacity, 1);
+  transition: transform .2s ease-out, opacity .2s;
+}
+
+.stamp-tool {
+  position: absolute;
+  left: 50%;
+  top: -30px;
+  width: 54px;
+  height: 110px;
+  transform: translateX(-50%);
+  cursor: grab;
+  z-index: 10;
+  user-select: none;
+}
+
+.stamp-tool:active { cursor: grabbing; }
+
+.stamp-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 65px;
+  background: linear-gradient(90deg, #3D2817 0%, #6B4423 50%, #3D2817 100%);
+  border-radius: 13px 13px 4px 4px;
+  box-shadow: inset -2px 0 4px rgba(0,0,0,.3);
+}
+
+.stamp-head {
+  position: absolute;
+  top: 55px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 54px;
+  height: 54px;
+  background:
+    radial-gradient(circle at 35% 30%, #C49058 0%, #8B6030 40%, #5C3E1A 100%);
+  border-radius: 4px;
+  box-shadow:
+    inset -2px -2px 6px rgba(0,0,0,.3),
+    inset 2px 2px 6px rgba(255,255,255,.15),
+    0 4px 10px rgba(0,0,0,.3);
+}
+
+.stamp-face {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  height: 30px;
+  background: #B6452F;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 18px;
+  color: #F6F1E3;
+  letter-spacing: 2px;
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,.3);
+}
+
+.seal-impression {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 40px;
+  transform: translate(-50%, -50%) scale(0);
+  background: radial-gradient(ellipse at center, rgba(142,53,36,.85) 0%, rgba(142,53,36,.7) 70%, rgba(142,53,36,0) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 22px;
+  color: rgba(246,241,227,.9);
+  pointer-events: none;
+  filter: blur(.3px);
+  z-index: 3;
+}
+
+.seal-impression.show {
+  animation: sealBloom 1.2s cubic-bezier(.25,.46,.45,.94) forwards;
+}
+
+@keyframes sealBloom {
+  0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+  40%  { transform: translate(-50%, -50%) scale(1.3); opacity: .9; }
+  60%  { transform: translate(-50%, -50%) scale(.95); opacity: .7; }
+  80%  { transform: translate(-50%, -50%) scale(1.05);opacity: .8; }
+  100% { transform: translate(-50%, -50%) scale(1);   opacity: .85; }
+}
+
+.seal-reset {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 11px;
+  color: rgba(246,241,227,.4);
+  cursor: pointer;
+  padding: 4px 10px;
+  border: 1px solid rgba(246,241,227,.15);
+  border-radius: 2px;
+  transition: all .2s;
+  z-index: 20;
+}
+
+.seal-reset:hover {
+  color: var(--cinnabar);
+  border-color: var(--cinnabar);
+}
+
+/* ============================================================
+   展区 3：毛笔蘸墨
+   ============================================================ */
+.brush-scene {
+  position: relative;
+  width: 260px;
+  height: 180px;
+}
+
+.brush-paper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 230px;
+  height: 140px;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.3) 0%, transparent 50%),
+    linear-gradient(180deg, #F0E8D3 0%, #E5DCC5 100%);
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.3);
+}
+
+.brush-canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 230px;
+  height: 140px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  cursor: none;
+}
+
+.brush-tool {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  width: 8px;
+  height: 100px;
+  transform: translateX(-50%) rotate(-15deg);
+  transform-origin: top center;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform .1s;
+}
+
+.brush-bamboo {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 65px;
+  background: linear-gradient(90deg, #5C4A2A 0%, #8B7355 50%, #5C4A2A 100%);
+  border-radius: 3px;
+}
+
+.brush-bamboo::before,
+.brush-bamboo::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: rgba(0,0,0,.2);
+}
+
+.brush-bamboo::before { top: 22%; }
+.brush-bamboo::after { top: 55%; }
+
+.brush-ferrule {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 14px;
+  background: linear-gradient(90deg, #8B6030 0%, #C49058 50%, #8B6030 100%);
+  border-radius: 1px;
+}
+
+.brush-hair {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 26px;
+  background: linear-gradient(180deg, #2a2a2a 0%, #111 100%);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  clip-path: polygon(0% 0%, 100% 0%, 70% 100%, 30% 100%);
+  filter: var(--brush-ink-filter, brightness(1.3));
+  transition: filter .2s;
+}
+
+.brush-dip-well {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  width: 36px;
+  height: 20px;
+  background: radial-gradient(ellipse at 40% 30%, #2a2a2a 0%, #0a0a0a 100%);
+  border-radius: 50%;
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,.6);
+  z-index: 2;
+}
+
+.brush-dip-well::after {
+  content: '砚';
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: rgba(246,241,227,.4);
+  white-space: nowrap;
+}
+
+.brush-clear {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 11px;
+  color: rgba(246,241,227,.4);
+  cursor: pointer;
+  padding: 4px 10px;
+  border: 1px solid rgba(246,241,227,.15);
+  border-radius: 2px;
+  transition: all .2s;
+  z-index: 20;
+}
+
+.brush-clear:hover {
+  color: var(--bronze-light);
+  border-color: var(--bronze-light);
+}
+
+/* ============================================================
+   展区 4：镇纸磁吸
+   ============================================================ */
+.paperweight-scene {
+  position: relative;
+  width: 260px;
+  height: 180px;
+}
+
+.pw-paper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 140px;
+  background: linear-gradient(180deg, #EEE5CC 0%, #E0D6B8 100%);
+  transform: translate(-50%, -50%) rotate(var(--paper-rot, 0deg));
+  border-radius: 2px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.3);
+  cursor: grab;
+  transition: transform .05s;
+}
+
+.pw-paper:active { cursor: grabbing; }
+
+.pw-paper::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(0,0,0,.05);
+  pointer-events: none;
+}
+
+.pw-text {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 14px;
+  color: rgba(0,0,0,.5);
+  line-height: 2;
+  writing-mode: vertical-rl;
+  pointer-events: none;
+  letter-spacing: 3px;
+}
+
+.paperweight {
+  position: absolute;
+  left: 50%;
+  top: 78%;
+  width: 70px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #8B6030 0%, #5C3E1A 50%, #3D2817 100%);
+  border-radius: 4px;
+  box-shadow:
+    inset -2px -2px 6px rgba(0,0,0,.4),
+    inset 2px 2px 4px rgba(255,255,255,.15),
+    0 4px 12px rgba(0,0,0,.4);
+  pointer-events: none;
+  z-index: 5;
+  transition: filter .2s;
+}
+
+.paperweight::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  right: 4px;
+  height: 3px;
+  background: rgba(255,255,255,.1);
+  border-radius: 2px;
+}
+
+.paperweight::after {
+  content: '镇纸';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 10px;
+  color: rgba(246,241,227,.4);
+  letter-spacing: 4px;
+}
+
+.magnetic-field {
+  position: absolute;
+  left: 50%;
+  top: 78%;
+  width: 120px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(122,184,166,.2);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+}
+
+.magnetic-field.show { opacity: 1; }
+
+/* ============================================================
+   展区 5：卷轴展开
+   ============================================================ */
+.scroll-scene {
+  position: relative;
+  width: 260px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scroll-container {
+  position: relative;
+  width: 220px;
+  height: 120px;
+  perspective: 800px;
+}
+
+.scroll-back-rod {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 130px;
+  background: linear-gradient(90deg, #3D2817 0%, #6B4423 50%, #3D2817 100%);
+  border-radius: 4px;
+  z-index: 1;
+  box-shadow: 2px 0 8px rgba(0,0,0,.3);
+}
+
+.scroll-back-rod::before,
+.scroll-back-rod::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 8px;
+  background: linear-gradient(90deg, #5C3E1A 0%, #8B6030 50%, #5C3E1A 100%);
+  border-radius: 2px;
+}
+
+.scroll-back-rod::before { top: -4px; }
+.scroll-back-rod::after  { bottom: -4px; }
+
+.scroll-paper {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%) scaleX(var(--scroll-scale, .06));
+  transform-origin: right center;
+  width: 200px;
+  height: 110px;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.08) 0%, transparent 5%),
+    linear-gradient(180deg, #F0E8D3 0%, #E5DCC5 100%);
+  overflow: hidden;
+  box-shadow: inset 2px 0 6px rgba(0,0,0,.1);
+  transition: transform 0s;
+}
+
+.scroll-paper-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: calc(var(--scroll-scale, .06) * 3 - .2);
+  transition: opacity .1s;
+}
+
+.scroll-mountain {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 70%;
+  opacity: .6;
+}
+
+.scroll-front-rod {
+  position: absolute;
+  left: calc(100% - var(--scroll-w, 200px) * var(--scroll-scale, .06) - 7px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 130px;
+  background: linear-gradient(90deg, #3D2817 0%, #6B4423 50%, #3D2817 100%);
+  border-radius: 4px;
+  z-index: 5;
+  cursor: grab;
+  box-shadow: -2px 0 8px rgba(0,0,0,.3);
+}
+
+.scroll-front-rod:active { cursor: grabbing; }
+
+.scroll-front-rod::before,
+.scroll-front-rod::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 8px;
+  background: linear-gradient(90deg, #5C3E1A 0%, #8B6030 50%, #5C3E1A 100%);
+  border-radius: 2px;
+}
+
+.scroll-front-rod::before { top: -4px; }
+.scroll-front-rod::after  { bottom: -4px; }
+
+.scroll-label {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  writing-mode: vertical-rl;
+  font-family: 'Ma Shan Zheng', serif;
+  font-size: 14px;
+  color: var(--soot);
+  letter-spacing: 4px;
+}
+
+/* ============================================================
+   展区 6：铜油灯
+   ============================================================ */
+.lamp-scene {
+  position: relative;
+  width: 200px;
+  height: 180px;
+}
+
+.lamp-base {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 12px;
+  background: linear-gradient(180deg, #8B6030 0%, #5C3E1A 100%);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+}
+
+.lamp-stem {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 50px;
+  background: linear-gradient(90deg, #5C3E1A 0%, #8B6030 50%, #5C3E1A 100%);
+  border-radius: 3px;
+}
+
+.lamp-bowl {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 22px;
+  background: radial-gradient(ellipse at 30% 30%, #C49058 0%, #8B6030 60%, #5C3E1A 100%);
+  border-radius: 50% 50% 40% 40%;
+  box-shadow: inset 0 -4px 8px rgba(0,0,0,.3);
+}
+
+.lamp-oil {
+  position: absolute;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 8px;
+  background: radial-gradient(ellipse at center, #3D2817 0%, #5C3E1A 100%);
+  border-radius: 50%;
+}
+
+.lamp-wick {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 10px;
+  background: #2a2a2a;
+  border-radius: 1px;
+  z-index: 2;
+}
+
+.flame {
+  position: absolute;
+  left: 50%;
+  bottom: 92px;
+  width: 14px;
+  height: 28px;
+  transform: translateX(-50%) scale(0);
+  transform-origin: bottom center;
+  background: radial-gradient(ellipse at 50% 70%, #FFF5D6 0%, #FFD966 30%, #FF9933 60%, #B6452F 100%);
+  border-radius: 50% 50% 40% 40% / 60% 60% 40% 40%;
+  filter: blur(.3px);
+  opacity: 0;
+  transition: transform .4s ease-out, opacity .4s;
+  z-index: 3;
+}
+
+.flame.lit {
+  transform: translateX(-50%) scale(1);
+  opacity: 1;
+}
+
+.flame::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  left: 30%;
+  width: 40%;
+  height: 50%;
+  background: #FFF9E6;
+  border-radius: 50%;
+  filter: blur(1px);
+}
+
+.lamp-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 50% 55%, rgba(255,200,100,.2) 0%, rgba(255,180,80,.08) 30%, transparent 70%);
+  opacity: 0;
+  transition: opacity .6s;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lamp-glow.lit { opacity: 1; }
+
+.lamp-lever {
+  position: absolute;
+  left: calc(50% + 32px);
+  bottom: 36px;
+  width: 6px;
+  height: 28px;
+  background: linear-gradient(90deg, #5C3E1A 0%, #8B6030 50%, #5C3E1A 100%);
+  border-radius: 3px;
+  transform-origin: bottom center;
+  transform: rotate(-20deg);
+  cursor: pointer;
+  z-index: 5;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  box-shadow: 1px 0 4px rgba(0,0,0,.3);
+}
+
+.lamp-lever::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle at 30% 30%, #C49058, #5C3E1A);
+  border-radius: 50%;
+}
+
+.lamp-lever.on { transform: rotate(20deg); }
+
+.lamp-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  width: 60px;
+  height: 8px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.4) 0%, transparent 70%);
+  transform: translateX(-50%);
+  filter: blur(2px);
+  transition: opacity .4s;
+}
+
+/* ==== 底部信息 ==== */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: rgba(246,241,227,.3);
+  letter-spacing: 1px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.footer-left, .footer-right {
+  display: flex;
+  gap: 20px;
+}
+
+.footer .dot {
+  color: var(--bronze);
+}
+
+/* ==== 响应式 ==== */
+@media (max-width: 1100px) {
+  .stage {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    padding: 80px 16px 16px;
+    overflow-y: auto;
+    height: auto;
+    min-height: 100vh;
+  }
+  .exhibit { min-height: 220px; }
+  html, body { overflow: auto; }
+  .footer { position: relative; padding: 20px; }
+}
+
+/* ==== Reduced Motion ==== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .flame { transition: none; }
+  .cursor-outer, .cursor-inner { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+<div class="cursor-ripple" id="cursorRipple"></div>
+
+<!-- 顶部标题 -->
+<header class="header">
+  <div class="brand">
+    <span class="brand-zh">文房研物所</span>
+    <span class="brand-seal">研物<br>第三<br>号</span>
+  </div>
+  <div class="header-meta">
+    <span class="lab-tag">V3 · 拟物化微交互实验室</span>
+    <span>第 03 号陈列室 · 六件展品</span>
+  </div>
+</header>
+
+<!-- 主展区 -->
+<main class="stage" id="stage">
+
+  <!-- 展区 1：研墨台 -->
+  <section class="exhibit" data-interact="drag">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 壹</span>
+      <span class="exhibit-title">研墨台</span>
+      <span class="exhibit-sub">Ink Grinding</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="inkstone-scene" id="inkstoneScene">
+        <div class="inkstone">
+          <div class="inkstone-pool">
+            <div class="ink-pool-fill" id="inkPoolFill"></div>
+          </div>
+        </div>
+        <div class="inkstick" id="inkstick"></div>
+        <div class="ink-level-indicator">
+          <span class="ink-label">墨色浓度</span>
+          <div class="ink-bar"><div class="ink-bar-fill" id="inkBarFill"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="exhibit-hint">拖拽墨条于砚台研磨，墨色渐浓</div>
+  </section>
+
+  <!-- 展区 2：火漆印 -->
+  <section class="exhibit" data-interact="drag">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 贰</span>
+      <span class="exhibit-title">火漆印</span>
+      <span class="exhibit-sub">Wax Seal</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="wax-scene" id="waxScene">
+        <div class="wax-paper"></div>
+        <div class="wax-blob" id="waxBlob"></div>
+        <div class="seal-impression" id="sealImpression">印</div>
+        <div class="stamp-tool" id="stampTool">
+          <div class="stamp-handle"></div>
+          <div class="stamp-head">
+            <div class="stamp-face">印</div>
+          </div>
+        </div>
+        <div class="seal-reset" id="sealReset">重置</div>
+      </div>
+    </div>
+    <div class="exhibit-hint">拖拽印章向下按压，朱砂印记拓开</div>
+  </section>
+
+  <!-- 展区 3：毛笔蘸墨 -->
+  <section class="exhibit" data-interact="drag">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 叁</span>
+      <span class="exhibit-title">毛笔蘸墨</span>
+      <span class="exhibit-sub">Brush & Ink</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="brush-scene" id="brushScene">
+        <div class="brush-paper"></div>
+        <canvas class="brush-canvas" id="brushCanvas" width="230" height="140"></canvas>
+        <div class="brush-dip-well" id="brushDipWell"></div>
+        <div class="brush-tool" id="brushTool">
+          <div class="brush-bamboo"></div>
+          <div class="brush-ferrule"></div>
+          <div class="brush-hair" id="brushHair"></div>
+        </div>
+        <div class="brush-clear" id="brushClear">洗笔</div>
+      </div>
+    </div>
+    <div class="exhibit-hint">悬停砚池蘸墨，拖动画笔留痕</div>
+  </section>
+
+  <!-- 展区 4：镇纸磁吸 -->
+  <section class="exhibit" data-interact="drag">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 肆</span>
+      <span class="exhibit-title">镇纸磁吸</span>
+      <span class="exhibit-sub">Magnetic Weight</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="paperweight-scene" id="pwScene">
+        <div class="pw-paper" id="pwPaper">
+          <div class="pw-text">
+            山不在高有仙则名水不在深有龙则灵斯是陋室惟吾德馨苔痕上阶绿草色入帘青
+          </div>
+        </div>
+        <div class="magnetic-field" id="magneticField"></div>
+        <div class="paperweight" id="paperweight"></div>
+      </div>
+    </div>
+    <div class="exhibit-hint">拖拽宣纸，镇纸磁吸归位带阻尼回弹</div>
+  </section>
+
+  <!-- 展区 5：卷轴展开 -->
+  <section class="exhibit" data-interact="drag">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 伍</span>
+      <span class="exhibit-title">卷轴展开</span>
+      <span class="exhibit-sub">Scroll Unrolling</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="scroll-scene" id="scrollScene">
+        <div class="scroll-container" id="scrollContainer">
+          <div class="scroll-back-rod"></div>
+          <div class="scroll-paper" id="scrollPaper">
+            <div class="scroll-paper-content">
+              <svg class="scroll-mountain" viewBox="0 0 200 80" preserveAspectRatio="none">
+                <path d="M0,80 L0,55 Q20,30 40,45 T80,35 T120,50 T160,30 T200,45 L200,80 Z"
+                      fill="rgba(23,51,43,.15)"/>
+                <path d="M0,80 L0,60 Q25,45 50,55 T100,48 T150,58 T200,52 L200,80 Z"
+                      fill="rgba(23,51,43,.25)"/>
+                <path d="M0,80 L0,70 Q30,62 60,68 T120,65 T180,70 T200,68 L200,80 Z"
+                      fill="rgba(23,51,43,.35)"/>
+              </svg>
+              <span class="scroll-label">山水卷</span>
+            </div>
+          </div>
+          <div class="scroll-front-rod" id="scrollFrontRod"></div>
+        </div>
+      </div>
+    </div>
+    <div class="exhibit-hint">拖拽轴杆展开画卷，松手可惯性阻尼</div>
+  </section>
+
+  <!-- 展区 6：铜油灯 -->
+  <section class="exhibit" data-interact="click">
+    <div class="exhibit-head">
+      <span class="exhibit-num">展区 陆</span>
+      <span class="exhibit-title">铜油灯</span>
+      <span class="exhibit-sub">Bronze Lamp</span>
+    </div>
+    <div class="exhibit-stage">
+      <div class="lamp-scene" id="lampScene">
+        <div class="lamp-glow" id="lampGlow"></div>
+        <div class="lamp-shadow" id="lampShadow"></div>
+        <div class="lamp-base"></div>
+        <div class="lamp-stem"></div>
+        <div class="lamp-bowl"></div>
+        <div class="lamp-oil"></div>
+        <div class="lamp-wick"></div>
+        <div class="flame" id="flame"></div>
+        <div class="lamp-lever" id="lampLever"></div>
+      </div>
+    </div>
+    <div class="exhibit-hint">拨动灯杆，灯焰明灭光影摇曳</div>
+  </section>
+
+</main>
+
+<!-- 底部 -->
+<footer class="footer">
+  <div class="footer-left">
+    <span>文房研物所</span>
+    <span class="dot">·</span>
+    <span>Lab 03</span>
+    <span class="dot">·</span>
+    <span>光标驱动拟物交互</span>
+  </div>
+  <div class="footer-right">
+    <span>六件展品</span>
+    <span class="dot">·</span>
+    <span>十二种动效</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   文房研物所 — 交互脚本
+   纯 Vanilla JS，单文件实现
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  // ===== 全局状态 =====
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let pageVisible = true;
+  const rafHandles = new Set();
+  const timerHandles = new Set();
+
+  // 安全 RAF 封装
+  function safeRAF(cb) {
+    let id = null;
+    const wrapper = function (t) {
+      rafHandles.delete(id);
+      if (!pageVisible) return;
+      cb(t);
+    };
+    id = requestAnimationFrame(wrapper);
+    rafHandles.add(id);
+    return id;
+  }
+
+  function safeSetTimeout(cb, delay) {
+    const id = setTimeout(function () {
+      timerHandles.delete(id);
+      if (!pageVisible) return;
+      cb();
+    }, delay);
+    timerHandles.add(id);
+    return id;
+  }
+
+  // 可见性管理
+  document.addEventListener('visibilitychange', function () {
+    pageVisible = !document.hidden;
+    if (!pageVisible) {
+      rafHandles.forEach(function (id) { cancelAnimationFrame(id); });
+      rafHandles.clear();
+      timerHandles.forEach(function (id) { clearTimeout(id); });
+      timerHandles.clear();
+    }
+  });
+
+  window.addEventListener('beforeunload', function () {
+    rafHandles.forEach(function (id) { cancelAnimationFrame(id); });
+    timerHandles.forEach(function (id) { clearTimeout(id); });
+  });
+
+  // ===== 自定义光标 =====
+  const cursorOuter = document.getElementById('cursorOuter');
+  const cursorInner = document.getElementById('cursorInner');
+  const cursorRipple = document.getElementById('cursorRipple');
+
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let cursorTargetX = cursorX;
+  let cursorTargetY = cursorY;
+  let cursorVelX = 0;
+  let cursorVelY = 0;
+
+  // 初始位置居中
+  cursorOuter.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+  cursorInner.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+
+  document.addEventListener('mousemove', function (e) {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+  });
+
+  // 光标缓动
+  function cursorLoop() {
+    if (!pageVisible) { safeRAF(cursorLoop); return; }
+
+    // 外环有惯性
+    cursorVelX += (cursorTargetX - cursorX) * 0.18;
+    cursorVelY += (cursorTargetY - cursorY) * 0.18;
+    cursorVelX *= 0.75;
+    cursorVelY *= 0.75;
+    cursorX += cursorVelX;
+    cursorY += cursorVelY;
+
+    cursorOuter.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+    // 内点跟随更紧
+    const innerX = cursorX + (cursorTargetX - cursorX) * 0.6;
+    const innerY = cursorY + (cursorTargetY - cursorY) * 0.6;
+    cursorInner.style.transform = 'translate(' + innerX + 'px, ' + innerY + 'px) translate(-50%, -50%)';
+
+    safeRAF(cursorLoop);
+  }
+  if (!reducedMotion) safeRAF(cursorLoop);
+  else {
+    // reduced motion: 直接跟随
+    document.addEventListener('mousemove', function (e) {
+      cursorOuter.style.transform = 'translate(' + e.clientX + 'px, ' + e.clientY + 'px) translate(-50%, -50%)';
+      cursorInner.style.transform = 'translate(' + e.clientX + 'px, ' + e.clientY + 'px) translate(-50%, -50%)';
+    });
+  }
+
+  // 涟漪点击效果
+  document.addEventListener('mousedown', function (e) {
+    cursorRipple.style.left = e.clientX + 'px';
+    cursorRipple.style.top = e.clientY + 'px';
+    cursorRipple.classList.remove('active');
+    // 触发重绘
+    void cursorRipple.offsetWidth;
+    cursorRipple.classList.add('active');
+  });
+
+  // 悬停状态检测
+  const hoverSelector = '[data-interact="drag"], [data-interact="click"], .seal-reset, .brush-clear, .lamp-lever, .scroll-front-rod, .pw-paper';
+
+  document.addEventListener('mouseover', function (e) {
+    const el = e.target.closest(hoverSelector);
+    if (!el) return;
+    const type = el.dataset.interact ||
+                 (el.classList.contains('lamp-lever') ? 'click' :
+                  el.classList.contains('scroll-front-rod') || el.classList.contains('pw-paper') ? 'drag' : 'click');
+    if (type === 'drag') {
+      cursorOuter.classList.add('hover-drag');
+      cursorInner.classList.add('hover-drag');
+    } else {
+      cursorOuter.classList.add('hover-click');
+    }
+  });
+
+  document.addEventListener('mouseout', function (e) {
+    const el = e.target.closest(hoverSelector);
+    if (!el) return;
+    cursorOuter.classList.remove('hover-drag', 'hover-click');
+    cursorInner.classList.remove('hover-drag');
+  });
+
+  // ===== 通用拖拽工具 =====
+  function makeDraggable(el, opts) {
+    opts = opts || {};
+    let dragging = false;
+    let startX = 0, startY = 0;
+    let origX = 0, origY = 0;
+
+    function onDown(e) {
+      e.preventDefault();
+      dragging = true;
+      const pt = getPoint(e);
+      startX = pt.x;
+      startY = pt.y;
+      const rect = el.getBoundingClientRect();
+      origX = rect.left + rect.width / 2;
+      origY = rect.top + rect.height / 2;
+      if (opts.onStart) opts.onStart(pt);
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onUp);
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      e.preventDefault();
+      const pt = getPoint(e);
+      const dx = pt.x - startX;
+      const dy = pt.y - startY;
+      if (opts.onMove) opts.onMove(dx, dy, pt);
+    }
+
+    function onUp(e) {
+      if (!dragging) return;
+      dragging = false;
+      const pt = e ? getPoint(e) : { x: startX, y: startY };
+      if (opts.onEnd) opts.onEnd(pt);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+    }
+
+    function getPoint(e) {
+      if (e.touches && e.touches[0]) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      if (e.changedTouches && e.changedTouches[0]) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
+    }
+
+    el.addEventListener('mousedown', onDown);
+    el.addEventListener('touchstart', onDown, { passive: false });
+
+    return {
+      isDragging: function () { return dragging; }
+    };
+  }
+
+  // ============================================================
+  // 展区 1：研墨台
+  // ============================================================
+  (function inkstoneModule() {
+    const scene = document.getElementById('inkstoneScene');
+    const inkstick = document.getElementById('inkstick');
+    const poolFill = document.getElementById('inkPoolFill');
+    const barFill = document.getElementById('inkBarFill');
+
+    let inkLevel = 0; // 0 ~ 1
+    let stickOffsetX = 0;
+    let stickOffsetY = 0;
+    let stickBaseY = 0;
+    let grindingAngle = 0;
+    let lastGrindTime = 0;
+    let stickVelX = 0;
+    let stickVelY = 0;
+    let animId = null;
+
+    // 初始位置
+    stickBaseY = -20;
+    inkstick.style.top = stickBaseY + 'px';
+
+    function updateInkLevel() {
+      const pct = Math.min(1, inkLevel) * 100 + '%';
+      poolFill.style.setProperty('--ink-level', Math.min(1, inkLevel).toFixed(2));
+      barFill.style.setProperty('--ink-level-pct', pct);
+    }
+    updateInkLevel();
+
+    makeDraggable(inkstick, {
+      onStart: function () {
+        const rect = inkstick.getBoundingClientRect();
+        stickOffsetX = 0;
+        stickOffsetY = 0;
+      },
+      onMove: function (dx, dy) {
+        // 限制移动范围：在砚台上方研磨
+        const maxX = 40;
+        const maxY = 60; // 可以往下压
+        stickOffsetX = Math.max(-maxX, Math.min(maxX, dx));
+        stickOffsetY = Math.max(-10, Math.min(maxY, dy));
+
+        updateStickPos();
+
+        // 研磨检测：当墨条接触砚台且有移动
+        if (stickOffsetY > 20 && Math.abs(dx) > 2) {
+          const now = performance.now();
+          if (now - lastGrindTime > 80) {
+            grindInk();
+            lastGrindTime = now;
+          }
+        }
+      },
+      onEnd: function () {
+        // 弹簧回弹：墨条回到原位
+        springBack();
+      }
+    });
+
+    function updateStickPos() {
+      inkstick.style.transform = 'translate(calc(-50% + ' + stickOffsetX + 'px), ' + stickOffsetY + 'px)';
+    }
+
+    function grindInk() {
+      // 墨色加深
+      inkLevel = Math.min(1, inkLevel + 0.02);
+      updateInkLevel();
+
+      // 涟漪效果
+      createInkRipple();
+    }
+
+    function createInkRipple() {
+      const pool = scene.querySelector('.inkstone-pool');
+      const ripple = document.createElement('div');
+      ripple.className = 'ink-ripple anim';
+      const rx = 30 + Math.random() * 30;
+      const ry = 20 + Math.random() * 15;
+      ripple.style.width = rx + 'px';
+      ripple.style.height = ry + 'px';
+      ripple.style.left = (20 + Math.random() * 50) + '%';
+      ripple.style.top = (25 + Math.random() * 50) + '%';
+      pool.appendChild(ripple);
+      setTimeout(function () { ripple.remove(); }, 1200);
+    }
+
+    function springBack() {
+      if (animId) cancelAnimationFrame(animId);
+      let vel = 0;
+      let pos = stickOffsetY;
+
+      function step() {
+        if (!pageVisible) { animId = safeRAF(step); return; }
+        // 弹簧 + 阻尼
+        const k = 0.08;
+        const damping = 0.75;
+        vel += (0 - pos) * k;
+        vel *= damping;
+        pos += vel;
+        stickOffsetY = pos;
+
+        // x 方向也回弹
+        stickOffsetX *= 0.85;
+
+        updateStickPos();
+
+        if (Math.abs(pos) < 0.1 && Math.abs(vel) < 0.1) {
+          stickOffsetY = 0;
+          stickOffsetX = 0;
+          updateStickPos();
+          return;
+        }
+        animId = safeRAF(step);
+      }
+      step();
+    }
+  })();
+
+  // ============================================================
+  // 展区 2：火漆印
+  // ============================================================
+  (function waxSealModule() {
+    const scene = document.getElementById('waxScene');
+    const stamp = document.getElementById('stampTool');
+    const waxBlob = document.getElementById('waxBlob');
+    const impression = document.getElementById('sealImpression');
+    const resetBtn = document.getElementById('sealReset');
+
+    let pressed = false;
+    let offsetY = 0;
+    let offsetX = 0;
+    let baseY = -30;
+    let springId = null;
+
+    makeDraggable(stamp, {
+      onStart: function () {
+        if (springId) { cancelAnimationFrame(springId); springId = null; }
+        pressed = false;
+      },
+      onMove: function (dx, dy) {
+        offsetX = Math.max(-30, Math.min(30, dx));
+        offsetY = Math.max(-20, Math.min(110, dy));
+        updateStamp();
+
+        // 按压蜡粒
+        if (offsetY > 50) {
+          const press = Math.min(1, (offsetY - 50) / 60);
+          waxBlob.style.setProperty('--wax-scale', (1 - press * 0.4).toFixed(2));
+        }
+      },
+      onEnd: function () {
+        // 如果压到位了，留下印记
+        if (offsetY > 80 && !impression.classList.contains('show')) {
+          // 印记位置跟随印章水平位置
+          const paper = scene.querySelector('.wax-paper');
+          const paperRect = paper.getBoundingClientRect();
+          const stampRect = stamp.getBoundingClientRect();
+          const relX = (stampRect.left + stampRect.width / 2 - paperRect.left) / paperRect.width * 100;
+          impression.style.left = relX + '%';
+
+          impression.classList.add('show');
+          // 蜡粒逐渐消失（被压平融入印记）
+          waxBlob.style.setProperty('--wax-opacity', '0');
+
+          // 轻微震动
+          scene.style.transform = 'translate(0, 0)';
+          shakeScene();
+        }
+        springBack();
+      }
+    });
+
+    function updateStamp() {
+      stamp.style.transform = 'translate(calc(-50% + ' + offsetX + 'px), ' + offsetY + 'px)';
+    }
+
+    function shakeScene() {
+      if (reducedMotion) return;
+      let t = 0;
+      function s() {
+        t++;
+        if (t > 8) return;
+        const mag = (8 - t) / 8 * 2;
+        scene.style.transform = 'translate(' + (Math.random() - 0.5) * mag * 2 + 'px, ' + (Math.random() - 0.5) * mag + 'px)';
+        safeSetTimeout(s, 30);
+      }
+      s();
+      safeSetTimeout(function () { scene.style.transform = ''; }, 300);
+    }
+
+    function springBack() {
+      if (springId) cancelAnimationFrame(springId);
+      let vel = 0;
+      let pos = offsetY;
+      let posX = offsetX;
+      let velX = 0;
+
+      function step() {
+        if (!pageVisible) { springId = safeRAF(step); return; }
+        const k = 0.07;
+        const damping = 0.72;
+        vel += (0 - pos) * k;
+        vel *= damping;
+        pos += vel;
+        offsetY = pos;
+
+        velX += (0 - posX) * k;
+        velX *= damping;
+        posX += velX;
+        offsetX = posX;
+
+        updateStamp();
+
+        // 蜡粒回弹
+        if (offsetY < 50) {
+          const curScale = parseFloat(waxBlob.style.getPropertyValue('--wax-scale') || 1);
+          const target = 1;
+          const newScale = curScale + (target - curScale) * 0.1;
+          waxBlob.style.setProperty('--wax-scale', newScale.toFixed(2));
+        }
+
+        if (Math.abs(pos) < 0.1 && Math.abs(vel) < 0.1) {
+          offsetY = 0;
+          offsetX = 0;
+          updateStamp();
+          return;
+        }
+        springId = safeRAF(step);
+      }
+      step();
+    }
+
+    resetBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      impression.classList.remove('show');
+      waxBlob.style.setProperty('--wax-opacity', '1');
+      waxBlob.style.setProperty('--wax-scale', '1');
+    });
+  })();
+
+  // ============================================================
+  // 展区 3：毛笔蘸墨
+  // ============================================================
+  (function brushModule() {
+    const scene = document.getElementById('brushScene');
+    const canvas = document.getElementById('brushCanvas');
+    const ctx = canvas.getContext('2d');
+    const brush = document.getElementById('brushTool');
+    const brushHair = document.getElementById('brushHair');
+    const dipWell = document.getElementById('brushDipWell');
+    const clearBtn = document.getElementById('brushClear');
+
+    let inkAmount = 0; // 0 ~ 1
+    let isDrawing = false;
+    let lastX = 0, lastY = 0;
+    let brushOffsetX = 0;
+    let brushOffsetY = 0;
+
+    function moveBrushTo(x, y) {
+      const rect = scene.getBoundingClientRect();
+      const localX = x - rect.left;
+      const localY = y - rect.top;
+
+      // 笔的顶部固定在场景上方，笔尖跟随鼠标
+      const baseX = rect.width / 2;
+      const baseY = -30;
+      const dx = localX - baseX;
+      const dy = localY - 0;
+
+      // 限制角度
+      const angle = Math.atan2(dx, 100);
+      const maxAngle = 0.6;
+      const clampedAngle = Math.max(-maxAngle, Math.min(maxAngle, angle));
+
+      brush.style.left = (baseX) + 'px';
+      brush.style.top = (baseY + localY - 30) + 'px';
+      brush.style.transform = 'translateX(-50%) rotate(' + (clampedAngle * 57.3) + 'deg)';
+
+      return { x: localX, y: localY, angle: clampedAngle };
+    }
+
+    scene.addEventListener('mousemove', function (e) {
+      const pos = moveBrushTo(e.clientX, e.clientY);
+
+      // 蘸墨检测
+      const wellRect = dipWell.getBoundingClientRect();
+      const sceneRect = scene.getBoundingClientRect();
+      const wellCx = wellRect.left + wellRect.width / 2 - sceneRect.left;
+      const wellCy = wellRect.top + wellRect.height / 2 - sceneRect.top;
+      const dist = Math.hypot(pos.x - wellCx, pos.y - wellCy);
+
+      if (dist < 25) {
+        // 蘸墨
+        inkAmount = Math.min(1, inkAmount + 0.03);
+        updateBrushInk();
+      }
+
+      if (isDrawing && inkAmount > 0) {
+        drawStroke(lastX, lastY, pos.x, pos.y);
+        inkAmount = Math.max(0, inkAmount - 0.002);
+        updateBrushInk();
+      }
+
+      lastX = pos.x;
+      lastY = pos.y;
+    });
+
+    scene.addEventListener('mousedown', function (e) {
+      // 只有在纸上时才开始画（避开砚池区域）
+      const wellRect = dipWell.getBoundingClientRect();
+      if (e.clientX > wellRect.left && e.clientX < wellRect.right &&
+          e.clientY > wellRect.top && e.clientY < wellRect.bottom) {
+        return;
+      }
+      isDrawing = true;
+      const rect = scene.getBoundingClientRect();
+      lastX = e.clientX - rect.left;
+      lastY = e.clientY - rect.top;
+    });
+
+    document.addEventListener('mouseup', function () {
+      isDrawing = false;
+    });
+
+    function drawStroke(x1, y1, x2, y2) {
+      if (inkAmount <= 0) return;
+      const dist = Math.hypot(x2 - x1, y2 - y1);
+      const steps = Math.max(1, Math.floor(dist / 2));
+
+      for (let i = 0; i < steps; i++) {
+        const t = i / steps;
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+        // 墨色随墨量变化：浓→淡→枯
+        const alpha = inkAmount * 0.85 + Math.random() * 0.1;
+        const gray = Math.floor(30 + (1 - inkAmount) * 100);
+        const size = (3 + inkAmount * 5) + (Math.random() - 0.5) * 1.5;
+
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(' + gray + ',' + gray + ',' + gray + ',' + alpha + ')';
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function updateBrushInk() {
+      // 笔锋颜色随墨量变化
+      const darkness = Math.floor(100 + inkAmount * 100);
+      brushHair.style.setProperty('--brush-ink-filter',
+        'brightness(' + (1.3 - inkAmount * 0.5) + ')');
+    }
+
+    clearBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    // 初始化笔位置
+    moveBrushTo(scene.getBoundingClientRect().left + scene.offsetWidth / 2,
+                scene.getBoundingClientRect().top + 50);
+  })();
+
+  // ============================================================
+  // 展区 4：镇纸磁吸
+  // ============================================================
+  (function paperweightModule() {
+    const scene = document.getElementById('pwScene');
+    const paper = document.getElementById('pwPaper');
+    const paperweight = document.getElementById('paperweight');
+    const magField = document.getElementById('magneticField');
+
+    let paperRot = 0;
+    let paperOffsetX = 0;
+    let paperOffsetY = 0;
+    let pwOffsetX = 0;
+    let pwOffsetY = 0;
+    let animId = null;
+    let dragging = false;
+
+    // 镇纸目标位置（吸附点）
+    const anchorX = 0;
+    const anchorY = 0; // 相对初始位置
+
+    makeDraggable(paper, {
+      onStart: function () {
+        dragging = true;
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+        magField.classList.add('show');
+      },
+      onMove: function (dx, dy) {
+        paperOffsetX = dx;
+        paperOffsetY = dy;
+        paperRot = dx * 0.05;
+        updatePaper();
+
+        // 镇纸磁吸：距离越近吸力越大
+        const paperCenterX = paperOffsetX;
+        const paperCenterY = paperOffsetY;
+
+        // 镇纸位置：跟随纸，但有磁吸锚点拉力（锚点在场景中央下方）
+        const pwTargetX = paperOffsetX;
+        const pwTargetY = paperOffsetY + 30;
+
+        // 磁吸拉力（反平方模拟）
+        const distFromAnchor = Math.hypot(pwTargetX - anchorX, pwTargetY - anchorY);
+        const magnetStrength = Math.min(0.6, 300 / (distFromAnchor * distFromAnchor + 50));
+
+        pwOffsetX = pwTargetX * (1 - magnetStrength) + anchorX * magnetStrength;
+        pwOffsetY = pwTargetY * (1 - magnetStrength) + anchorY * magnetStrength;
+
+        updatePaperweight();
+      },
+      onEnd: function () {
+        dragging = false;
+        // 纸张回弹 + 镇纸磁吸归位（带阻尼振荡）
+        springBack();
+      }
+    });
+
+    function updatePaper() {
+      paper.style.setProperty('--paper-rot', paperRot.toFixed(2) + 'deg');
+      paper.style.transform =
+        'translate(calc(-50% + ' + paperOffsetX + 'px), calc(-50% + ' + paperOffsetY + 'px)) rotate(' + paperRot + 'deg)';
+    }
+
+    function updatePaperweight() {
+      paperweight.style.transform =
+        'translate(calc(-50% + ' + pwOffsetX + 'px), calc(-50% + ' + pwOffsetY + 'px))';
+    }
+
+    function springBack() {
+      if (animId) cancelAnimationFrame(animId);
+
+      let velX = 0, velY = 0, velR = 0;
+      let posX = paperOffsetX, posY = paperOffsetY, posR = paperRot;
+      let pwVelX = 0, pwVelY = 0;
+      let pwPosX = pwOffsetX, pwPosY = pwOffsetY;
+
+      function step() {
+        if (!pageVisible) { animId = safeRAF(step); return; }
+
+        // 纸张弹簧回中心
+        const k = 0.06;
+        const damping = 0.72;
+        velX += (0 - posX) * k;
+        velX *= damping;
+        posX += velX;
+
+        velY += (0 - posY) * k;
+        velY *= damping;
+        posY += velY;
+
+        velR += (0 - posR) * k;
+        velR *= damping;
+        posR += velR;
+
+        paperOffsetX = posX;
+        paperOffsetY = posY;
+        paperRot = posR;
+        updatePaper();
+
+        // 镇纸磁吸 + 弹簧阻尼
+        // 目标：跟着纸的位置 + 向锚点吸附
+        const pwTargetX = posX;
+        const pwTargetY = posY + 30;
+        const dist = Math.hypot(pwPosX - anchorX, pwPosY - anchorY);
+        const magnetK = Math.min(0.15, 100 / (dist * dist + 300));
+
+        pwVelX += ((pwTargetX - pwPosX) * 0.05);
+        pwVelX += (anchorX - pwPosX) * magnetK;
+        pwVelX *= 0.75;
+        pwPosX += pwVelX;
+
+        pwVelY += ((pwTargetY - pwPosY) * 0.05);
+        pwVelY += (anchorY - pwPosY) * magnetK;
+        pwVelY *= 0.75;
+        pwPosY += pwVelY;
+
+        pwOffsetX = pwPosX;
+        pwOffsetY = pwPosY;
+        updatePaperweight();
+
+        if (Math.abs(velX) < 0.05 && Math.abs(velY) < 0.05 && Math.abs(posX) < 0.1 &&
+            Math.abs(pwVelX) < 0.05 && Math.abs(pwVelY) < 0.05) {
+          paperOffsetX = 0; paperOffsetY = 0; paperRot = 0;
+          pwOffsetX = 0; pwOffsetY = 0;
+          updatePaper();
+          updatePaperweight();
+          magField.classList.remove('show');
+          return;
+        }
+        animId = safeRAF(step);
+      }
+      step();
+    }
+  })();
+
+  // ============================================================
+  // 展区 5：卷轴展开
+  // ============================================================
+  (function scrollModule() {
+    const container = document.getElementById('scrollContainer');
+    const paper = document.getElementById('scrollPaper');
+    const frontRod = document.getElementById('scrollFrontRod');
+
+    let scrollScale = 0.06; // 0.06 ~ 1
+    let scrollVel = 0;
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartScale = 0;
+    let animId = null;
+    const paperFullW = 200;
+
+    function updateScroll() {
+      const s = Math.max(0.06, Math.min(1, scrollScale));
+      paper.style.setProperty('--scroll-scale', s.toFixed(3));
+      const leftPos = paperFullW * (1 - s) + 7;
+      frontRod.style.left = 'calc(100% - ' + leftPos.toFixed(1) + 'px - 7px)';
+    }
+    updateScroll();
+
+    frontRod.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+      dragStartX = e.clientX;
+      dragStartScale = scrollScale;
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    function onMove(e) {
+      if (!dragging) return;
+      const dx = e.clientX - dragStartX;
+      // 向左拖动 = 展开（scale 增大）
+      const dScale = -dx / paperFullW;
+      scrollScale = Math.max(0.06, Math.min(1.05, dragStartScale + dScale));
+
+      // 超拉时增加阻力感
+      if (scrollScale > 1) {
+        const over = scrollScale - 1;
+        scrollScale = 1 + over * 0.3;
+      }
+      if (scrollScale < 0.06) {
+        const under = 0.06 - scrollScale;
+        scrollScale = 0.06 - under * 0.3;
+      }
+
+      updateScroll();
+      scrollVel = dScale * 0.3; // 估算速度
+    }
+
+    function onUp(e) {
+      if (!dragging) return;
+      dragging = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+
+      // 惯性 + 阻尼回弹
+      inertiaScroll();
+    }
+
+    function inertiaScroll() {
+      if (animId) cancelAnimationFrame(animId);
+      let vel = scrollVel;
+
+      function step() {
+        if (!pageVisible) { animId = safeRAF(step); return; }
+
+        // 阻尼
+        vel *= 0.94;
+        scrollScale += vel;
+
+        // 边界弹簧
+        if (scrollScale > 1) {
+          vel += (1 - scrollScale) * 0.08;
+        }
+        if (scrollScale < 0.06) {
+          vel += (0.06 - scrollScale) * 0.08;
+        }
+
+        updateScroll();
+
+        if (Math.abs(vel) < 0.001 && Math.abs(scrollScale - 1) < 0.01) {
+          scrollScale = 1;
+          updateScroll();
+          return;
+        }
+        if (Math.abs(vel) < 0.001 && Math.abs(scrollScale - 0.06) < 0.01) {
+          scrollScale = 0.06;
+          updateScroll();
+          return;
+        }
+
+        animId = safeRAF(step);
+      }
+      step();
+    }
+  })();
+
+  // ============================================================
+  // 展区 6：铜油灯
+  // ============================================================
+  (function lampModule() {
+    const scene = document.getElementById('lampScene');
+    const lever = document.getElementById('lampLever');
+    const flame = document.getElementById('flame');
+    const glow = document.getElementById('lampGlow');
+    const shadow = document.getElementById('lampShadow');
+
+    let lit = false;
+    let flickerId = null;
+    let flickerPhase = 0;
+
+    lever.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleLamp();
+    });
+
+    function toggleLamp() {
+      lit = !lit;
+      lever.classList.toggle('on', lit);
+
+      if (lit) {
+        // 点亮
+        flame.classList.add('lit');
+        glow.classList.add('lit');
+        startFlicker();
+      } else {
+        // 熄灭
+        flame.classList.remove('lit');
+        glow.classList.remove('lit');
+        stopFlicker();
+      }
+    }
+
+    function startFlicker() {
+      if (flickerId) cancelAnimationFrame(flickerId);
+      flickerPhase = 0;
+
+      function flicker() {
+        if (!pageVisible || !lit) return;
+        flickerPhase += 0.15 + Math.random() * 0.1;
+
+        // 火焰摇曳：多频率叠加
+        const flick1 = Math.sin(flickerPhase) * 0.08;
+        const flick2 = Math.sin(flickerPhase * 2.3 + 1) * 0.05;
+        const flick3 = (Math.random() - 0.5) * 0.06;
+        const scaleX = 1 + flick1 + flick3;
+        const scaleY = 1 + flick2 + Math.abs(flick1) * 0.5;
+
+        const sway = Math.sin(flickerPhase * 0.7) * 2;
+
+        flame.style.transform =
+          'translate(calc(-50% + ' + sway.toFixed(1) + 'px), 0) scale(' +
+          scaleX.toFixed(2) + ', ' + scaleY.toFixed(2) + ')';
+
+        // 光晕变化
+        const glowScale = 1 + flick1 * 0.3;
+        const glowOpacity = 0.8 + flick2 * 0.5;
+        glow.style.transform =
+          'translate(-50%, -50%) scale(' + glowScale.toFixed(2) + ')';
+        glow.style.opacity = glowOpacity.toFixed(2);
+
+        // 阴影变化
+        shadow.style.opacity = (0.6 + Math.random() * 0.2).toFixed(2);
+
+        flickerId = safeRAF(flicker);
+      }
+      flicker();
+    }
+
+    function stopFlicker() {
+      if (flickerId) {
+        cancelAnimationFrame(flickerId);
+        flickerId = null;
+      }
+      flame.style.transform = '';
+      glow.style.transform = '';
+      glow.style.opacity = '';
+    }
+  })();
+
+  // ===== 入场动画 =====
+  (function entrance() {
+    if (reducedMotion) return;
+    const exhibits = document.querySelectorAll('.exhibit');
+    exhibits.forEach(function (el, i) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(20px)';
+      safeSetTimeout(function () {
+        el.style.transition = 'opacity .6s ease, transform .6s cubic-bezier(.25,.46,.45,.94), border-color .3s, box-shadow .3s';
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, 200 + i * 120);
+    });
+  })();
+
+})();
+</script>
+
+</body>
+</html>
