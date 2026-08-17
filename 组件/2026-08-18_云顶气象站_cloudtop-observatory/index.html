@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>云顶气象站 · 拟物化组件实验室</title>
+<style>
+/* ============================================================
+   云顶气象站 · 设计变量
+   ============================================================ */
+:root {
+  --ink: #191712;
+  --ink-2: #242019;
+  --ink-3: #2E2820;
+  --brass: #B98A3E;
+  --brass-light: #D4A658;
+  --brass-dark: #8A662B;
+  --brass-shadow: #5C441C;
+  --ivory: #EFE7D6;
+  --ivory-2: #D9CFB8;
+  --ivory-dark: #B8AE96;
+  --signal-red: #D8452C;
+  --signal-red-dark: #9E2F1D;
+  --verdigris: #4E7A6A;
+  --verdigris-light: #6B9D8A;
+  --wood: #6B4A2B;
+  --wood-dark: #4A3219;
+  --wood-light: #8B6339;
+
+  --font-display: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
+  --font-body: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Consolas", "Courier New", monospace;
+}
+
+/* ============================================================
+   基础重置
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--ink);
+  color: var(--ivory);
+  line-height: 1.6;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* ============================================================
+   自定义光标
+   ============================================================ */
+.cursor-outer {
+  position: fixed;
+  top: 50%; left: 50%;
+  width: 32px; height: 32px;
+  border: 2px solid var(--ivory);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s cubic-bezier(0.23, 1, 0.32, 1),
+              height 0.2s cubic-bezier(0.23, 1, 0.32, 1),
+              border-color 0.2s ease,
+              background-color 0.2s ease;
+  mix-blend-mode: difference;
+  will-change: transform;
+}
+.cursor-inner {
+  position: fixed;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  background: var(--brass-light);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px var(--brass-light), 0 0 20px rgba(185, 138, 62, 0.4);
+  will-change: transform;
+}
+.cursor-glow {
+  position: fixed;
+  top: 50%; left: 50%;
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(185, 138, 62, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 99998;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+.cursor-outer.hover {
+  width: 48px; height: 48px;
+  border-color: var(--brass-light);
+  background: rgba(185, 138, 62, 0.08);
+}
+.cursor-outer.drag {
+  width: 40px; height: 40px;
+  border-color: var(--signal-red);
+  background: rgba(216, 69, 44, 0.12);
+}
+.cursor-outer.clicked {
+  animation: cursorClick 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes cursorClick {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  40% { transform: translate(-50%, -50%) scale(0.7); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+.cursor-ripple {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  border: 1.5px solid var(--brass-light);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99997;
+  transform: translate(-50%, -50%);
+  opacity: 1;
+  animation: rippleExpand 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+@keyframes rippleExpand {
+  0% { width: 0; height: 0; opacity: 1; border-width: 2px; }
+  100% { width: 60px; height: 60px; opacity: 0; border-width: 1px; }
+}
+
+/* ============================================================
+   灰尘粒子
+   ============================================================ */
+.dust-layer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+.dust-particle {
+  position: absolute;
+  background: var(--brass-light);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+/* ============================================================
+   Hero 区域
+   ============================================================ */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(185, 138, 62, 0.08) 0%, transparent 60%),
+    linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(185, 138, 62, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(185, 138, 62, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+.hero-mountain {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 45%;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.hero-mountain svg { width: 100%; height: 100%; display: block; }
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 2rem;
+  max-width: 900px;
+}
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  color: var(--brass);
+  margin-bottom: 1.5rem;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 1s 0.3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--ivory);
+  margin-bottom: 1.5rem;
+  opacity: 0;
+  transform: translateY(30px);
+  animation: fadeUp 1.2s 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.hero-title .accent {
+  color: var(--brass);
+  font-style: italic;
+}
+.hero-subtitle {
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--ivory-2);
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 1s 0.8s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.hero-meta {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 1s 1.1s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.hero-meta span strong {
+  color: var(--brass-light);
+  font-weight: 400;
+  display: block;
+  font-size: 1.2rem;
+  font-family: var(--font-display);
+  letter-spacing: 0;
+  margin-bottom: 0.25rem;
+}
+
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-scroll {
+  position: absolute;
+  bottom: 3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  letter-spacing: 0.2em;
+  opacity: 0;
+  animation: fadeUp 1s 1.8s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.hero-scroll .line {
+  width: 1px; height: 40px;
+  background: linear-gradient(180deg, var(--brass) 0%, transparent 100%);
+  animation: scrollLine 2s 2s ease-in-out infinite;
+}
+@keyframes scrollLine {
+  0%, 100% { transform: scaleY(1); transform-origin: top; opacity: 0.6; }
+  50% { transform: scaleY(0.3); transform-origin: bottom; opacity: 1; }
+}
+
+/* ============================================================
+   展区通用
+   ============================================================ */
+.gallery {
+  position: relative;
+  z-index: 2;
+  padding: 6rem 2rem 8rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.gallery-header {
+  text-align: center;
+  margin-bottom: 5rem;
+}
+.gallery-header h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 400;
+  color: var(--ivory);
+  margin-bottom: 0.75rem;
+}
+.gallery-header p {
+  font-family: var(--font-display);
+  color: var(--ivory-dark);
+  font-size: 1rem;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2.5rem;
+}
+@media (max-width: 900px) {
+  .gallery-grid { grid-template-columns: 1fr; }
+}
+
+.exhibit {
+  position: relative;
+  opacity: 0;
+  transform: translateY(60px);
+  transition: opacity 0.9s cubic-bezier(0.23, 1, 0.32, 1),
+              transform 0.9s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.exhibit.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.exhibit-frame {
+  position: relative;
+  background:
+    linear-gradient(145deg, var(--ink-2) 0%, var(--ink-3) 100%);
+  border-radius: 8px;
+  padding: 2.5rem 2rem 2rem;
+  border: 1px solid rgba(185, 138, 62, 0.2);
+  box-shadow:
+    0 30px 60px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(239, 231, 214, 0.05);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease, transform 0.1s ease-out;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.exhibit:hover .exhibit-frame {
+  border-color: rgba(185, 138, 62, 0.45);
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(185, 138, 62, 0.08),
+    inset 0 1px 0 rgba(239, 231, 214, 0.08);
+}
+
+/* 黄铜角钉装饰 */
+.exhibit-frame::before,
+.exhibit-frame::after {
+  content: '';
+  position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-dark));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.exhibit-frame::before { top: 10px; left: 10px; }
+.exhibit-frame::after { top: 10px; right: 10px; }
+
+.exhibit-number {
+  position: absolute;
+  top: -1rem;
+  right: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 3.5rem;
+  color: var(--brass);
+  opacity: 0.15;
+  font-weight: 400;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.exhibit-stage {
+  position: relative;
+  height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(185, 138, 62, 0.1);
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(185, 138, 62, 0.04) 0%, transparent 70%),
+    linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
+  overflow: hidden;
+  perspective: 800px;
+}
+
+.exhibit-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.exhibit-info h3 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 400;
+  color: var(--ivory);
+  margin-bottom: 0.4rem;
+}
+.exhibit-info p {
+  font-size: 0.85rem;
+  color: var(--ivory-dark);
+  line-height: 1.5;
+  max-width: 320px;
+}
+.exhibit-tag {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--brass);
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(185, 138, 62, 0.3);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   展区 1：百叶箱拉绳灯
+   ============================================================ */
+.lamp-scene {
+  position: relative;
+  width: 200px;
+  height: 280px;
+}
+/* 百叶箱 */
+.stevenson-box {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 180px;
+  background: linear-gradient(180deg, var(--wood-light) 0%, var(--wood) 50%, var(--wood-dark) 100%);
+  border-radius: 4px;
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.stevenson-box .roof {
+  position: absolute;
+  top: -12px;
+  left: -8px;
+  right: -8px;
+  height: 16px;
+  background: linear-gradient(180deg, var(--brass) 0%, var(--brass-dark) 100%);
+  border-radius: 3px 3px 0 0;
+}
+.stevenson-box .slats {
+  position: absolute;
+  top: 15px;
+  left: 10px;
+  right: 10px;
+  bottom: 15px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 6px,
+      rgba(74, 50, 25, 0.6) 6px,
+      rgba(74, 50, 25, 0.6) 10px
+    );
+  border: 1px solid var(--wood-dark);
+}
+/* 灯泡 */
+.light-bulb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 32px;
+  border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+  background: linear-gradient(180deg, rgba(255, 220, 150, 0.3) 0%, rgba(255, 200, 100, 0.2) 100%);
+  border: 1px solid rgba(255, 220, 150, 0.4);
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 3;
+}
+.light-bulb.on {
+  background: linear-gradient(180deg, #FFE4A0 0%, #FFB347 100%);
+  box-shadow:
+    0 0 20px #FFC970,
+    0 0 50px rgba(255, 180, 80, 0.6),
+    0 0 100px rgba(255, 160, 60, 0.3);
+}
+.light-bulb .filament {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 6px;
+  border: 1px solid rgba(180, 120, 40, 0.6);
+  border-top: none;
+  border-radius: 0 0 50% 50%;
+  transition: all 0.3s ease;
+}
+.light-bulb.on .filament {
+  border-color: #FFE4A0;
+  box-shadow: 0 0 6px #FFE4A0;
+}
+/* 灯光扩散 */
+.light-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 200, 100, 0.4) 0%, rgba(255, 180, 80, 0.1) 40%, transparent 70%);
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  pointer-events: none;
+  z-index: 2;
+}
+.light-bulb.on ~ .light-glow {
+  width: 260px;
+  height: 260px;
+}
+/* 拉绳 */
+.pull-cord {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 70px;
+  background: linear-gradient(180deg, var(--brass-dark), var(--signal-red));
+  transform-origin: top center;
+  cursor: grab;
+  z-index: 5;
+}
+.pull-cord.dragging { cursor: grabbing; }
+.pull-cord .cord-handle {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 18px;
+  background: linear-gradient(180deg, var(--brass-light), var(--brass-dark));
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.pull-cord .cord-handle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--brass-shadow);
+}
+
+/* ============================================================
+   展区 2：风向标罗盘
+   ============================================================ */
+.compass-scene {
+  position: relative;
+  width: 260px;
+  height: 260px;
+}
+.compass-dial {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--ivory) 0%, var(--ivory-2) 70%, var(--ivory-dark) 100%);
+  box-shadow:
+    0 0 0 6px var(--brass),
+    0 0 0 8px var(--brass-dark),
+    0 0 0 14px var(--brass),
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+.compass-dial .mark {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 2px;
+  height: 8px;
+  background: var(--ink);
+  transform-origin: 50% 115px;
+  opacity: 0.5;
+}
+.compass-dial .mark.major {
+  height: 14px;
+  width: 3px;
+  opacity: 1;
+}
+.compass-dial .direction {
+  position: absolute;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+.compass-vane {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 12px;
+  height: 180px;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: 50% 50%;
+  cursor: grab;
+  z-index: 3;
+  will-change: transform;
+}
+.compass-vane.dragging { cursor: grabbing; }
+.compass-vane .arrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 50px solid var(--signal-red);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+.compass-vane .tail {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 60px;
+  background: var(--brass);
+  clip-path: polygon(50% 0%, 100% 30%, 100% 100%, 0% 100%, 0% 30%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+.compass-vane .shaft {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 80px;
+  background: linear-gradient(90deg, var(--brass-dark), var(--brass-light), var(--brass-dark));
+}
+.compass-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-dark));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  z-index: 4;
+}
+.compass-glass {
+  position: absolute;
+  top: 10px; left: 10px;
+  right: 10px; bottom: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0.08) 100%);
+  pointer-events: none;
+  z-index: 5;
+}
+.compass-wind-speed {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  letter-spacing: 0.1em;
+}
+.compass-wind-speed strong {
+  color: var(--brass-light);
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+/* ============================================================
+   展区 3：水银气压表
+   ============================================================ */
+.barometer-scene {
+  position: relative;
+  width: 220px;
+  height: 280px;
+}
+.barometer-dial {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ivory) 0%, var(--ivory-2) 80%, var(--ivory-dark) 100%);
+  box-shadow:
+    0 0 0 5px var(--brass),
+    0 0 0 7px var(--brass-dark),
+    0 0 0 12px var(--brass),
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    inset 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  overflow: hidden;
+}
+.barometer-dial .tick {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 1.5px;
+  height: 6px;
+  background: var(--ink);
+  transform-origin: 50% 85px;
+  opacity: 0.6;
+}
+.barometer-dial .tick.major {
+  height: 10px;
+  width: 2px;
+  opacity: 1;
+}
+.barometer-dial .pressure-num {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+.barometer-center-label {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+.barometer-center-label .weather-icon {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+.barometer-center-label .weather-text {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+.barometer-needle {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 3px;
+  height: 90px;
+  transform: translate(-50%, -100%) rotate(-90deg);
+  transform-origin: 50% 100%;
+  background: linear-gradient(180deg, var(--signal-red) 0%, var(--signal-red-dark) 100%);
+  border-radius: 2px;
+  z-index: 3;
+  will-change: transform;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  transition: filter 0.2s ease;
+}
+.barometer-needle::after {
+  content: '';
+  position: absolute;
+  top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 8px solid var(--signal-red);
+}
+.barometer-needle-cap {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-dark));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+}
+.barometer-glare {
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: skewX(-15deg);
+  pointer-events: none;
+  z-index: 6;
+}
+.barometer-value {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  letter-spacing: 0.05em;
+}
+.barometer-value strong {
+  color: var(--brass-light);
+  font-weight: 400;
+  font-size: 1.2rem;
+  font-family: var(--font-display);
+}
+
+/* ============================================================
+   展区 4：昼夜切换滑杆
+   ============================================================ */
+.daynight-scene {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  height: 220px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #87CEEB 0%, #FFE4B5 100%);
+  transition: background 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.daynight-scene.night {
+  background: linear-gradient(180deg, #0D1B2A 0%, #1B263B 60%, #2C3E50 100%);
+}
+.daynight-sky-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  transition: opacity 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.stars {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  opacity: 0;
+  transition: opacity 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.daynight-scene.night .stars { opacity: 1; }
+.star {
+  position: absolute;
+  width: 2px; height: 2px;
+  background: #fff;
+  border-radius: 50%;
+  animation: twinkle 3s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+.day-cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50px;
+  transition: opacity 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.day-cloud::before, .day-cloud::after {
+  content: '';
+  position: absolute;
+  background: inherit;
+  border-radius: 50%;
+}
+.daynight-scene.night .day-cloud { opacity: 0.15; background: rgba(200, 210, 230, 0.5); }
+
+.daynight-mountain {
+  position: absolute;
+  bottom: 40px;
+  left: 0; right: 0;
+  height: 80px;
+  pointer-events: none;
+}
+.daynight-ground {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 40px;
+  background: linear-gradient(180deg, #4A6741 0%, #2D4A27 100%);
+  transition: background 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.daynight-scene.night .daynight-ground {
+  background: linear-gradient(180deg, #1A2F1A 0%, #0D1A0D 100%);
+}
+.daynight-slider-track {
+  position: absolute;
+  bottom: 15px;
+  left: 30px; right: 30px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  z-index: 5;
+}
+.daynight-slider {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  cursor: grab;
+  z-index: 6;
+  transition: transform 0.2s ease;
+}
+.daynight-slider.dragging { cursor: grabbing; }
+.daynight-slider .sun-moon {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #FFE066 0%, #FF9933 100%);
+  box-shadow: 0 0 20px rgba(255, 200, 80, 0.8), 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: background 0.8s cubic-bezier(0.23, 1, 0.32, 1),
+              box-shadow 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.daynight-scene.night .daynight-slider .sun-moon {
+  background: radial-gradient(circle at 35% 35%, #F0F0F0 0%, #C0C0C0 70%, #909090 100%);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.daynight-slider .sun-moon::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  left: 55%;
+  width: 25%;
+  height: 25%;
+  border-radius: 50%;
+  background: rgba(150, 150, 150, 0);
+  transition: background 0.8s ease;
+}
+.daynight-scene.night .daynight-slider .sun-moon::after {
+  background: rgba(150, 150, 150, 0.4);
+}
+
+/* ============================================================
+   展区 5：信号旗绞盘
+   ============================================================ */
+.winch-scene {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+.winch-flagpole {
+  position: absolute;
+  left: 20px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  background: linear-gradient(90deg, var(--brass-dark), var(--brass), var(--brass-dark));
+  border-radius: 2px;
+}
+.winch-flagpole .top {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-dark));
+}
+.winch-flag {
+  position: absolute;
+  left: 24px;
+  top: 50px;
+  width: 60px;
+  height: 40px;
+  transform-origin: left center;
+  z-index: 3;
+}
+.winch-flag .flag-cloth {
+  width: 100%; height: 100%;
+  background: var(--signal-red);
+  clip-path: polygon(0 0, 100% 10%, 90% 50%, 100% 90%, 0 100%);
+  animation: flagFlutter 3s ease-in-out infinite;
+  transform-origin: left center;
+  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+}
+@keyframes flagFlutter {
+  0%, 100% { transform: skewY(0deg) scaleX(1); }
+  25% { transform: skewY(-2deg) scaleX(0.97); }
+  50% { transform: skewY(1deg) scaleX(1.02); }
+  75% { transform: skewY(-1deg) scaleX(0.98); }
+}
+.winch-rope {
+  position: absolute;
+  left: 24px;
+  top: 12px;
+  width: 2px;
+  height: 38px;
+  background: var(--ivory-dark);
+  transform-origin: top;
+}
+.winch-wheel {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 35%, var(--brass) 35%, var(--brass) 40%, var(--brass-dark) 40%, var(--brass-dark) 45%, var(--brass) 45%, var(--brass) 90%, var(--brass-dark) 100%);
+  cursor: grab;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+}
+.winch-wheel.dragging { cursor: grabbing; }
+.winch-wheel .handle {
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-dark));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+.winch-wheel .wheel-hub {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--brass-light), var(--brass-shadow));
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.winch-wheel .spoke {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 2px; height: 40px;
+  background: var(--brass-dark);
+  transform-origin: 50% 0;
+  opacity: 0.5;
+}
+.winch-rope-horizontal {
+  position: absolute;
+  right: 80px;
+  top: 50%;
+  width: 100px;
+  height: 2px;
+  background: var(--ivory-dark);
+  transform: translateY(-50%);
+}
+.winch-counter {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+}
+.winch-counter strong {
+  color: var(--brass-light);
+  font-weight: 400;
+  font-size: 1rem;
+}
+
+/* ============================================================
+   展区 6：雨量筒倾倒
+   ============================================================ */
+.raingauge-scene {
+  position: relative;
+  width: 200px;
+  height: 280px;
+  perspective: 400px;
+}
+.raingauge-body {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 200px;
+  transform-origin: bottom center;
+  transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  cursor: pointer;
+}
+.raingauge-body.tipped {
+  transform: translateX(-50%) rotate(-60deg);
+}
+.raingauge-glass {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 100%;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.25), rgba(255,255,255,0.1));
+  border: 2px solid var(--ivory-2);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+}
+.raingauge-water {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 65%;
+  background: linear-gradient(180deg, rgba(78, 122, 106, 0.5), rgba(78, 122, 106, 0.8));
+  transition: height 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.raingauge-water::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(78, 122, 106, 0.5));
+  border-radius: 50%;
+  animation: waterSurface 3s ease-in-out infinite;
+}
+@keyframes waterSurface {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.95); }
+}
+.raingauge-scale {
+  position: absolute;
+  top: 10px;
+  right: -30px;
+  width: 25px;
+  height: calc(100% - 10px);
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  color: var(--ivory-dark);
+}
+.raingauge-scale span {
+  position: relative;
+  padding-right: 12px;
+  text-align: right;
+}
+.raingauge-scale span::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: var(--ivory-dark);
+}
+.raingauge-funnel {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 20px;
+  background: linear-gradient(180deg, var(--brass-light), var(--brass-dark));
+  clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.raingauge-base {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 130px;
+  height: 14px;
+  background: linear-gradient(180deg, var(--brass), var(--brass-dark));
+  border-radius: 3px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+.raingauge-spill {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  width: 3px;
+  height: 0;
+  background: linear-gradient(180deg, rgba(78, 122, 106, 0.8), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.raingauge-body.tipped ~ .raingauge-spill {
+  opacity: 1;
+  height: 60px;
+  animation: spillWater 1s ease-out;
+}
+@keyframes spillWater {
+  0% { transform: translateX(-50%) scaleY(0); transform-origin: top; }
+  100% { transform: translateX(-50%) scaleY(1); transform-origin: top; }
+}
+.raingauge-reading {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  white-space: nowrap;
+}
+.raingauge-reading strong {
+  color: var(--verdigris-light);
+  font-weight: 400;
+  font-size: 1.1rem;
+  font-family: var(--font-display);
+}
+.rain-drops {
+  position: absolute;
+  top: 0;
+  left: 0; right: 0;
+  bottom: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+.rain-drops.raining { opacity: 1; }
+.rain-drop {
+  position: absolute;
+  width: 1.5px;
+  height: 10px;
+  background: linear-gradient(180deg, transparent, rgba(150, 200, 220, 0.6));
+  animation: raindrop 1.5s linear infinite;
+}
+@keyframes raindrop {
+  0% { transform: translateY(-20px); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(220px); opacity: 0; }
+}
+
+/* ============================================================
+   底部
+   ============================================================ */
+.footer {
+  text-align: center;
+  padding: 3rem 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ivory-dark);
+  letter-spacing: 0.1em;
+  border-top: 1px solid rgba(185, 138, 62, 0.1);
+  position: relative;
+  z-index: 2;
+}
+.footer .brass-line {
+  width: 60px;
+  height: 1px;
+  background: var(--brass);
+  margin: 0 auto 1.5rem;
+  opacity: 0.5;
+}
+
+/* ============================================================
+   章节标题装饰
+   ============================================================ */
+.section-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+.section-divider .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 8px rgba(185, 138, 62, 0.5);
+}
+.section-divider .line {
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brass), transparent);
+  opacity: 0.5;
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<!-- 灰尘粒子层 -->
+<div class="dust-layer" id="dustLayer"></div>
+
+<!-- Hero 区域 -->
+<section class="hero" id="hero">
+  <div class="hero-mountain">
+    <svg viewBox="0 0 1440 400" preserveAspectRatio="none">
+      <path d="M0,400 L0,280 Q200,200 350,240 Q500,120 650,200 Q800,80 950,180 Q1100,100 1250,220 Q1350,260 1440,240 L1440,400 Z" fill="#191712" opacity="0.8"/>
+      <path d="M0,400 L0,320 Q150,280 300,300 Q450,220 600,280 Q750,180 900,260 Q1050,200 1200,290 Q1350,310 1440,290 L1440,400 Z" fill="#242019" opacity="0.9"/>
+      <path d="M0,400 L0,360 Q200,340 400,350 Q600,310 800,340 Q1000,300 1200,350 Q1350,360 1440,345 L1440,400 Z" fill="#2E2820"/>
+    </svg>
+  </div>
+
+  <div class="hero-content">
+    <div class="hero-eyebrow">海拔 3000 米 · 山巅观测所</div>
+    <h1 class="hero-title">云顶<span class="accent">气象站</span></h1>
+    <p class="hero-subtitle">
+      一座立于云海之上的旧式观测站，六件黄铜仪器静静守候。<br>
+      以光标之手，拨动每一件拟物化装置的机关。
+    </p>
+    <div class="hero-meta">
+      <span><strong>6</strong>件展品</span>
+      <span><strong>12+</strong>种动效</span>
+      <span><strong>纯物理</strong>交互</span>
+    </div>
+  </div>
+
+  <div class="hero-scroll">
+    <span>向下探索</span>
+    <div class="line"></div>
+  </div>
+</section>
+
+<!-- 展区画廊 -->
+<section class="gallery" id="gallery">
+  <div class="gallery-header">
+    <div class="section-divider">
+      <div class="line"></div>
+      <div class="dot"></div>
+      <div class="line"></div>
+    </div>
+    <h2>仪器陈列室</h2>
+    <p>拖拽、悬停、点击——每件器物都有它的脾气</p>
+  </div>
+
+  <div class="gallery-grid">
+
+    <!-- 展区 1：百叶箱拉绳灯 -->
+    <div class="exhibit" data-exhibit="lamp">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">01</div>
+        <div class="exhibit-stage">
+          <div class="lamp-scene">
+            <div class="stevenson-box">
+              <div class="roof"></div>
+              <div class="slats"></div>
+            </div>
+            <div class="light-glow"></div>
+            <div class="light-bulb" id="bulb">
+              <div class="filament"></div>
+            </div>
+            <div class="pull-cord" id="pullCord">
+              <div class="cord-handle"></div>
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>百叶箱照明</h3>
+            <p>抓住拉绳向下拖动，点亮观测箱内的白炽灯。光线穿过百叶，在箱中投下温暖的阴影。</p>
+          </div>
+          <div class="exhibit-tag">拖拽 · 弹簧回弹</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 2：风向标罗盘 -->
+    <div class="exhibit" data-exhibit="compass">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">02</div>
+        <div class="exhibit-stage">
+          <div class="compass-scene">
+            <div class="compass-dial" id="compassDial"></div>
+            <div class="compass-vane" id="compassVane">
+              <div class="arrow"></div>
+              <div class="shaft"></div>
+              <div class="tail"></div>
+            </div>
+            <div class="compass-center"></div>
+            <div class="compass-glass"></div>
+            <div class="compass-wind-speed">
+              风速 <strong id="windSpeed">0.0</strong> m/s
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>风向罗盘</h3>
+            <p>拨动风向标使其旋转，感受惯性与空气阻尼的微妙平衡。指针最终回摆至自然风向。</p>
+          </div>
+          <div class="exhibit-tag">旋转 · 惯性阻尼</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 3：水银气压表 -->
+    <div class="exhibit" data-exhibit="barometer">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">03</div>
+        <div class="exhibit-stage">
+          <div class="barometer-scene">
+            <div class="barometer-dial" id="barometerDial">
+              <div class="barometer-center-label">
+                <div class="weather-icon" id="weatherIcon">晴</div>
+                <div class="weather-text" id="weatherText">天气晴好</div>
+              </div>
+            </div>
+            <div class="barometer-needle" id="barometerNeedle"></div>
+            <div class="barometer-needle-cap"></div>
+            <div class="barometer-glare" id="barometerGlare"></div>
+            <div class="barometer-value">
+              气压 <strong id="pressureValue">1013</strong> hPa
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>水银气压表</h3>
+            <p>光标靠近表盘时，红色指针受磁性吸引微微偏转。点击表盘切换晴雨预测，气压随之升降。</p>
+          </div>
+          <div class="exhibit-tag">磁吸 · 点击切换</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 4：昼夜切换滑杆 -->
+    <div class="exhibit" data-exhibit="daynight">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">04</div>
+        <div class="exhibit-stage">
+          <div class="daynight-scene" id="daynightScene">
+            <div class="stars" id="starsLayer"></div>
+            <div class="day-cloud" style="top: 30px; left: 20px; width: 70px; height: 24px;"></div>
+            <div class="day-cloud" style="top: 60px; right: 30px; width: 55px; height: 18px;"></div>
+            <div class="day-cloud" style="top: 90px; left: 80px; width: 45px; height: 14px;"></div>
+            <svg class="daynight-mountain" viewBox="0 0 340 80" preserveAspectRatio="none">
+              <path d="M0,80 L0,50 Q60,30 100,45 Q150,20 200,40 Q250,15 300,35 Q320,45 340,30 L340,80 Z" fill="#2D4A27"/>
+            </svg>
+            <div class="daynight-ground"></div>
+            <div class="daynight-slider-track">
+              <div class="daynight-slider" id="daynightSlider">
+                <div class="sun-moon"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>昼夜观测切换</h3>
+            <p>拖动太阳与月亮的化身划过天际，白昼与夜空在窗外悄然更替。星辰、云雾各有其时。</p>
+          </div>
+          <div class="exhibit-tag">拖拽 · 状态过渡</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 5：信号旗绞盘 -->
+    <div class="exhibit" data-exhibit="winch">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">05</div>
+        <div class="exhibit-stage">
+          <div class="winch-scene">
+            <div class="winch-flagpole">
+              <div class="top"></div>
+            </div>
+            <div class="winch-flag" id="winchFlag">
+              <div class="flag-cloth"></div>
+            </div>
+            <div class="winch-rope" id="winchRope"></div>
+            <div class="winch-rope-horizontal"></div>
+            <div class="winch-wheel" id="winchWheel">
+              <div class="spoke" style="transform: translate(-50%, 0) rotate(0deg);"></div>
+              <div class="spoke" style="transform: translate(-50%, 0) rotate(90deg);"></div>
+              <div class="spoke" style="transform: translate(-50%, 0) rotate(180deg);"></div>
+              <div class="spoke" style="transform: translate(-50%, 0) rotate(270deg);"></div>
+              <div class="wheel-hub"></div>
+              <div class="handle" id="winchHandle"></div>
+            </div>
+            <div class="winch-counter">
+              旗高 <strong id="flagHeight">3.2</strong> 米
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>信号旗绞盘</h3>
+            <p>转动黄铜绞盘，将信号旗缓缓升起。棘轮每过一齿便有一声轻响，旗帜在山风中猎猎飘动。</p>
+          </div>
+          <div class="exhibit-tag">旋转 · 绳索联动</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展区 6：雨量筒倾倒 -->
+    <div class="exhibit" data-exhibit="raingauge">
+      <div class="exhibit-frame">
+        <div class="exhibit-number">06</div>
+        <div class="exhibit-stage">
+          <div class="raingauge-scene">
+            <div class="rain-drops" id="rainDrops"></div>
+            <div class="raingauge-body" id="raingaugeBody">
+              <div class="raingauge-funnel"></div>
+              <div class="raingauge-glass">
+                <div class="raingauge-water" id="raingaugeWater"></div>
+              </div>
+              <div class="raingauge-scale">
+                <span>100</span>
+                <span>80</span>
+                <span>60</span>
+                <span>40</span>
+                <span>20</span>
+                <span>0</span>
+              </div>
+            </div>
+            <div class="raingauge-spill" id="raingaugeSpill"></div>
+            <div class="raingauge-base"></div>
+            <div class="raingauge-reading">
+              降雨量 <strong id="rainReading">65.0</strong> mm
+            </div>
+          </div>
+        </div>
+        <div class="exhibit-info">
+          <div>
+            <h3>雨量筒倾倒</h3>
+            <p>点击雨量筒将其拿起倾倒，碧绿的雨水沿漏斗流出，刻度缓缓归零。静置则细雨绵绵重新积攒。</p>
+          </div>
+          <div class="exhibit-tag">点击 · 液体流动</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- 底部 -->
+<footer class="footer">
+  <div class="brass-line"></div>
+  云顶气象站 · 拟物化组件实验室 V3<br>
+  <span style="opacity:0.6;">山风不息，观测不止</span>
+</footer>
+
+<script>
+/* ============================================================
+   云顶气象站 · 交互脚本
+   ============================================================ */
+(function() {
+  'use strict';
+
+  // 检测 reduced motion
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 页面可见性
+  var isVisible = true;
+  document.addEventListener('visibilitychange', function() {
+    isVisible = !document.hidden;
+    if (isVisible) {
+      startAnimations();
+    } else {
+      stopAnimations();
+    }
+  });
+
+  // 动画帧管理
+  var rafCallbacks = [];
+  var rafId = null;
+
+  function addRaf(cb) {
+    rafCallbacks.push(cb);
+    if (!rafId && isVisible) {
+      rafId = requestAnimationFrame(rafLoop);
+    }
+  }
+  function removeRaf(cb) {
+    var idx = rafCallbacks.indexOf(cb);
+    if (idx > -1) rafCallbacks.splice(idx, 1);
+  }
+  function rafLoop(ts) {
+    if (!isVisible) { rafId = null; return; }
+    for (var i = 0; i < rafCallbacks.length; i++) {
+      rafCallbacks[i](ts);
+    }
+    rafId = requestAnimationFrame(rafLoop);
+  }
+  function startAnimations() {
+    if (rafCallbacks.length > 0 && !rafId) {
+      rafId = requestAnimationFrame(rafLoop);
+    }
+  }
+  function stopAnimations() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // 工具：弹簧物理
+  function spring(current, target, velocity, stiffness, damping, dt) {
+    dt = dt || 16;
+    var force = -stiffness * (current - target);
+    var damp = -damping * velocity;
+    var acceleration = force + damp;
+    velocity += acceleration * dt / 1000;
+    current += velocity * dt / 1000;
+    return { pos: current, vel: velocity };
+  }
+
+  // ============================================================
+  // 自定义光标
+  // ============================================================
+  var cursorOuter = document.getElementById('cursorOuter');
+  var cursorInner = document.getElementById('cursorInner');
+  var cursorGlow = document.getElementById('cursorGlow');
+
+  var cursorX = window.innerWidth / 2;
+  var cursorY = window.innerHeight / 2;
+  var targetX = cursorX;
+  var targetY = cursorY;
+  var outerX = cursorX;
+  var outerY = cursorY;
+  var glowX = cursorX;
+  var glowY = cursorY;
+
+  function updateCursor(e) {
+    targetX = e.clientX;
+    targetY = e.clientY;
+  }
+  document.addEventListener('mousemove', updateCursor);
+
+  function cursorRaf() {
+    // 内点：直接跟随
+    cursorX += (targetX - cursorX) * 0.5;
+    cursorY += (targetY - cursorY) * 0.5;
+    cursorInner.style.transform = 'translate(' + cursorX + 'px,' + cursorY + 'px) translate(-50%,-50%)';
+
+    // 外环：带延迟
+    outerX += (targetX - outerX) * 0.25;
+    outerY += (targetY - outerY) * 0.25;
+    cursorOuter.style.transform = 'translate(' + outerX + 'px,' + outerY + 'px) translate(-50%,-50%)';
+
+    // 光晕：更慢
+    glowX += (targetX - glowX) * 0.08;
+    glowY += (targetY - glowY) * 0.08;
+    cursorGlow.style.transform = 'translate(' + glowX + 'px,' + glowY + 'px) translate(-50%,-50%)';
+  }
+  if (!reducedMotion) addRaf(cursorRaf);
+
+  // 悬停状态
+  var hoverTargets = document.querySelectorAll('button, a, [class*="pull-cord"], [class*="vane"], [class*="slider"], [class*="wheel"], [class*="raingauge-body"], [class*="barometer-dial"]');
+  hoverTargets.forEach(function(el) {
+    el.addEventListener('mouseenter', function() {
+      cursorOuter.classList.add('hover');
+    });
+    el.addEventListener('mouseleave', function() {
+      if (!cursorOuter.classList.contains('drag')) {
+        cursorOuter.classList.remove('hover');
+      }
+    });
+  });
+
+  // 点击涟漪
+  document.addEventListener('mousedown', function(e) {
+    cursorOuter.classList.add('clicked');
+    var ripple = document.createElement('div');
+    ripple.className = 'cursor-ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(function() {
+      if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+    }, 600);
+    setTimeout(function() {
+      cursorOuter.classList.remove('clicked');
+    }, 400);
+  });
+
+  // ============================================================
+  // 灰尘粒子
+  // ============================================================
+  var dustLayer = document.getElementById('dustLayer');
+  var dustParticles = [];
+  var DUST_COUNT = 30;
+
+  function initDust() {
+    if (reducedMotion) return;
+    for (var i = 0; i < DUST_COUNT; i++) {
+      var p = document.createElement('div');
+      p.className = 'dust-particle';
+      var size = Math.random() * 3 + 1;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      dustLayer.appendChild(p);
+      dustParticles.push({
+        el: p,
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: -Math.random() * 0.2 - 0.1,
+        size: size,
+        opacity: Math.random() * 0.5 + 0.1,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function dustRaf(ts) {
+    for (var i = 0; i < dustParticles.length; i++) {
+      var p = dustParticles[i];
+      p.x += p.vx + Math.sin(ts / 2000 + p.phase) * 0.15;
+      p.y += p.vy;
+      if (p.y < -10) {
+        p.y = window.innerHeight + 10;
+        p.x = Math.random() * window.innerWidth;
+      }
+      if (p.x < -10) p.x = window.innerWidth + 10;
+      if (p.x > window.innerWidth + 10) p.x = -10;
+      var fadeIn = p.y > window.innerHeight - 100 ? (window.innerHeight - p.y) / 100 : 1;
+      var twinkle = 0.5 + Math.sin(ts / 1000 + p.phase) * 0.5;
+      p.el.style.transform = 'translate(' + p.x + 'px,' + p.y + 'px)';
+      p.el.style.opacity = p.opacity * twinkle * fadeIn;
+    }
+  }
+
+  initDust();
+  if (!reducedMotion) addRaf(dustRaf);
+
+  // ============================================================
+  // 滚动渐入
+  // ============================================================
+  var exhibits = document.querySelectorAll('.exhibit');
+  function checkVisible() {
+    for (var i = 0; i < exhibits.length; i++) {
+      var rect = exhibits[i].getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.85) {
+        exhibits[i].classList.add('visible');
+      }
+    }
+  }
+  checkVisible();
+  window.addEventListener('scroll', checkVisible, { passive: true });
+
+  // ============================================================
+  // 展区 1：百叶箱拉绳灯
+  // ============================================================
+  (function initLamp() {
+    var cord = document.getElementById('pullCord');
+    var bulb = document.getElementById('bulb');
+    if (!cord || !bulb) return;
+
+    var isOn = false;
+    var isDragging = false;
+    var cordLength = 70; // 静止长度 px
+    var currentLength = cordLength;
+    var targetLength = cordLength;
+    var velocity = 0;
+    var startY = 0;
+    var startLength = cordLength;
+    var maxLength = 160;
+
+    // 初始长度
+    cord.style.height = cordLength + 'px';
+
+    cord.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      startY = e.clientY;
+      startLength = currentLength;
+      cursorOuter.classList.add('drag');
+      cursorOuter.classList.remove('hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var dy = e.clientY - startY;
+      targetLength = Math.min(maxLength, Math.max(cordLength, startLength + dy));
+      currentLength = targetLength;
+      velocity = 0;
+      updateCord();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      cursorOuter.classList.remove('drag');
+
+      // 如果拉得足够远，切换开关
+      if (currentLength > maxLength * 0.7 && !isOn) {
+        isOn = true;
+        bulb.classList.add('on');
+      } else if (currentLength > maxLength * 0.7 && isOn) {
+        isOn = false;
+        bulb.classList.remove('on');
+      }
+
+      // 弹簧回弹
+      targetLength = cordLength;
+      velocity = 0;
+    });
+
+    function updateCord() {
+      cord.style.height = currentLength + 'px';
+      // 拉绳摆动效果（简单的正弦摆动）
+      var swing = Math.sin(currentLength / 10) * 2 * (1 - (currentLength - cordLength) / (maxLength - cordLength));
+      cord.style.transform = 'translateX(calc(-50% + ' + swing + 'px))';
+    }
+
+    function lampRaf() {
+      if (isDragging) return;
+      if (Math.abs(currentLength - targetLength) < 0.1 && Math.abs(velocity) < 0.1) {
+        currentLength = targetLength;
+        updateCord();
+        return;
+      }
+      var result = spring(currentLength, targetLength, velocity, 80, 12, 16);
+      currentLength = result.pos;
+      velocity = result.vel;
+      updateCord();
+    }
+    if (!reducedMotion) addRaf(lampRaf);
+  })();
+
+  // ============================================================
+  // 展区 2：风向标罗盘
+  // ============================================================
+  (function initCompass() {
+    var dial = document.getElementById('compassDial');
+    var vane = document.getElementById('compassVane');
+    var windSpeedEl = document.getElementById('windSpeed');
+    if (!dial || !vane) return;
+
+    // 生成刻度
+    var majorDirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    var dirCn = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+    for (var i = 0; i < 36; i++) {
+      var mark = document.createElement('div');
+      mark.className = 'mark' + (i % 4 === 0 ? ' major' : '');
+      mark.style.transform = 'translate(-50%, -115px) rotate(' + (i * 10) + 'deg)';
+      mark.style.transformOrigin = '50% 115px';
+      dial.appendChild(mark);
+    }
+    // 方向文字
+    for (var j = 0; j < 8; j++) {
+      var angle = j * 45 - 90;
+      var rad = angle * Math.PI / 180;
+      var dirEl = document.createElement('div');
+      dirEl.className = 'direction';
+      dirEl.textContent = dirCn[j];
+      var r = 88;
+      var x = 130 + Math.cos(rad) * r;
+      var y = 130 + Math.sin(rad) * r;
+      dirEl.style.left = x + 'px';
+      dirEl.style.top = y + 'px';
+      dirEl.style.transform = 'translate(-50%, -50%)';
+      dial.appendChild(dirEl);
+    }
+
+    var isDragging = false;
+    var angle = 0; // 度
+    var angularVelocity = 0;
+    var startAngle = 0;
+    var lastAngle = 0;
+    var lastTime = 0;
+
+    function getAngle(e) {
+      var rect = dial.getBoundingClientRect();
+      var cx = rect.left + rect.width / 2;
+      var cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90;
+    }
+
+    vane.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      startAngle = getAngle(e) - angle;
+      lastAngle = angle;
+      lastTime = performance.now();
+      cursorOuter.classList.add('drag');
+      cursorOuter.classList.remove('hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var newAngle = getAngle(e) - startAngle;
+      var now = performance.now();
+      var dt = now - lastTime;
+      if (dt > 0) {
+        angularVelocity = (newAngle - lastAngle) / dt * 1000; // 度/秒
+      }
+      lastAngle = newAngle;
+      lastTime = now;
+      angle = newAngle;
+      updateVane();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      cursorOuter.classList.remove('drag');
+    });
+
+    function updateVane() {
+      vane.style.transform = 'translate(-50%, -50%) rotate(' + angle + 'deg)';
+      var speed = Math.abs(angularVelocity) / 30;
+      if (windSpeedEl) windSpeedEl.textContent = speed.toFixed(1);
+    }
+
+    function compassRaf() {
+      if (isDragging) return;
+      // 空气阻尼
+      angularVelocity *= 0.985;
+      angle += angularVelocity / 60;
+      // 微弱的弹簧回中（模拟风向稳定）
+      var distToZero = ((angle + 180) % 360 + 360) % 360 - 180;
+      var returnForce = -distToZero * 0.002;
+      angularVelocity += returnForce * 60 / 60;
+
+      if (Math.abs(angularVelocity) < 0.05 && Math.abs(distToZero) < 0.5) {
+        angularVelocity = 0;
+        angle = 0;
+      }
+      updateVane();
+    }
+    if (!reducedMotion) addRaf(compassRaf);
+
+    updateVane();
+  })();
+
+  // ============================================================
+  // 展区 3：水银气压表
+  // ============================================================
+  (function initBarometer() {
+    var dial = document.getElementById('barometerDial');
+    var needle = document.getElementById('barometerNeedle');
+    var glare = document.getElementById('barometerGlare');
+    var valueEl = document.getElementById('pressureValue');
+    var iconEl = document.getElementById('weatherIcon');
+    var textEl = document.getElementById('weatherText');
+    if (!dial || !needle) return;
+
+    // 生成刻度
+    var tickCount = 24;
+    var startAngle = -135;
+    var endAngle = 135;
+    for (var i = 0; i <= tickCount; i++) {
+      var t = i / tickCount;
+      var ang = startAngle + t * (endAngle - startAngle);
+      var tick = document.createElement('div');
+      tick.className = 'tick' + (i % 4 === 0 ? ' major' : '');
+      tick.style.transform = 'translate(-50%, -85px) rotate(' + ang + 'deg)';
+      tick.style.transformOrigin = '50% 85px';
+      dial.appendChild(tick);
+    }
+    // 数字
+    var labels = [980, 1000, 1020, 1040];
+    for (var j = 0; j < labels.length; j++) {
+      var lt = j / (labels.length - 1);
+      var lang = startAngle + lt * (endAngle - startAngle);
+      var rad = (lang - 90) * Math.PI / 180;
+      var num = document.createElement('div');
+      num.className = 'pressure-num';
+      num.textContent = labels[j];
+      var r = 68;
+      num.style.left = (100 + Math.cos(rad) * r) + 'px';
+      num.style.top = (100 + Math.sin(rad) * r) + 'px';
+      num.style.transform = 'translate(-50%, -50%)';
+      dial.appendChild(num);
+    }
+
+    var basePressure = 1013; // hPa
+    var currentAngle = -10; // 初始角度（对应晴好）
+    var targetAngle = -10;
+    var needleVelocity = 0;
+    var magneticAngle = 0; // 磁吸偏移
+    var isSunny = true;
+    var glarePos = -100;
+
+    function pressureToAngle(p) {
+      var t = (p - 980) / (1040 - 980);
+      return startAngle + t * (endAngle - startAngle);
+    }
+
+    // 磁吸效果
+    dial.addEventListener('mousemove', function(e) {
+      if (reducedMotion) return;
+      var rect = dial.getBoundingClientRect();
+      var cx = rect.left + rect.width / 2;
+      var cy = rect.top + rect.height / 2;
+      var dx = e.clientX - cx;
+      var dy = e.clientY - cy;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var maxDist = 140;
+      if (dist < maxDist && dist > 10) {
+        var strength = (1 - dist / maxDist) * (1 - dist / maxDist) * 25; // 反平方
+        var mouseAngle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+        // 将磁力应用到目标角度上
+        var diff = mouseAngle - targetAngle;
+        // 归一化到 -180 ~ 180
+        diff = ((diff + 180) % 360 + 360) % 360 - 180;
+        magneticAngle = diff * strength / 50;
+      } else {
+        magneticAngle *= 0.9;
+      }
+    });
+    dial.addEventListener('mouseleave', function() {
+      magneticAngle = 0;
+    });
+
+    // 点击切换
+    dial.addEventListener('click', function() {
+      isSunny = !isSunny;
+      if (isSunny) {
+        basePressure = 1025;
+        iconEl.textContent = '晴';
+        textEl.textContent = '天气晴好';
+      } else {
+        basePressure = 995;
+        iconEl.textContent = '雨';
+        textEl.textContent = '阴雨将至';
+      }
+      targetAngle = pressureToAngle(basePressure);
+    });
+
+    targetAngle = pressureToAngle(basePressure);
+    currentAngle = targetAngle;
+
+    function barometerRaf() {
+      // 指针弹簧
+      var finalTarget = targetAngle + magneticAngle;
+      var result = spring(currentAngle, finalTarget, needleVelocity, 60, 10, 16);
+      currentAngle = result.pos;
+      needleVelocity = result.vel;
+      needle.style.transform = 'translate(-50%, -100%) rotate(' + currentAngle + 'deg)';
+
+      // 气压数值
+      var t = (currentAngle - startAngle) / (endAngle - startAngle);
+      var p = 980 + t * 60;
+      if (valueEl) valueEl.textContent = Math.round(p);
+
+      // 玻璃光泽扫过
+      glarePos += 0.35;
+      if (glarePos > 200) glarePos = -100;
+      if (glare) glare.style.left = glarePos + '%';
+    }
+
+    if (!reducedMotion) addRaf(barometerRaf);
+  })();
+
+  // ============================================================
+  // 展区 4：昼夜切换滑杆
+  // ============================================================
+  (function initDayNight() {
+    var scene = document.getElementById('daynightScene');
+    var slider = document.getElementById('daynightSlider');
+    var track = slider ? slider.parentElement : null;
+    var starsLayer = document.getElementById('starsLayer');
+    if (!scene || !slider || !track) return;
+
+    // 生成星星
+    for (var i = 0; i < 40; i++) {
+      var star = document.createElement('div');
+      star.className = 'star';
+      star.style.left = Math.random() * 100 + '%';
+      star.style.top = Math.random() * 60 + '%';
+      star.style.animationDelay = Math.random() * 3 + 's';
+      star.style.animationDuration = (2 + Math.random() * 3) + 's';
+      starsLayer.appendChild(star);
+    }
+
+    var isDragging = false;
+    var position = 0; // 0 = 左（日）, 1 = 右（夜）
+    var targetPos = 0;
+    var vel = 0;
+    var snapThreshold = 0.15;
+
+    function updateSlider() {
+      var trackRect = track.getBoundingClientRect();
+      var sliderWidth = 36;
+      var x = position * (trackRect.width - sliderWidth);
+      slider.style.left = x + sliderWidth / 2 + 'px';
+
+      // 更新场景
+      if (position > 0.5) {
+        scene.classList.add('night');
+      } else {
+        scene.classList.remove('night');
+      }
+
+      // 太阳高度
+      var sunMoon = slider.querySelector('.sun-moon');
+      if (sunMoon) {
+        var bob = Math.sin(position * Math.PI) * 15;
+        sunMoon.style.transform = 'translateY(' + (-bob) + 'px)';
+      }
+    }
+
+    slider.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      cursorOuter.classList.add('drag');
+      cursorOuter.classList.remove('hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var rect = track.getBoundingClientRect();
+      var x = e.clientX - rect.left - 18;
+      var t = x / (rect.width - 36);
+      t = Math.max(0, Math.min(1, t));
+      position = t;
+      targetPos = t;
+      updateSlider();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      cursorOuter.classList.remove('drag');
+      // 磁性吸附
+      targetPos = position > 0.5 ? 1 : 0;
+    });
+
+    function daynightRaf() {
+      if (isDragging) return;
+      if (Math.abs(position - targetPos) < 0.001 && Math.abs(vel) < 0.001) {
+        position = targetPos;
+        updateSlider();
+        return;
+      }
+      var result = spring(position, targetPos, vel, 100, 15, 16);
+      position = result.pos;
+      vel = result.vel;
+      updateSlider();
+    }
+    if (!reducedMotion) addRaf(daynightRaf);
+
+    updateSlider();
+  })();
+
+  // ============================================================
+  // 展区 5：信号旗绞盘
+  // ============================================================
+  (function initWinch() {
+    var wheel = document.getElementById('winchWheel');
+    var handle = document.getElementById('winchHandle');
+    var flag = document.getElementById('winchFlag');
+    var rope = document.getElementById('winchRope');
+    var heightEl = document.getElementById('flagHeight');
+    if (!wheel || !flag) return;
+
+    var isDragging = false;
+    var rotation = 0; // 度
+    var angularVel = 0;
+    var lastAngle = 0;
+    var startRotation = 0;
+    var startAngle = 0;
+
+    var flagMinTop = 120; // 最低
+    var flagMaxTop = 20;  // 最高
+    var rotationsToTop = 6; // 多少圈到顶
+
+    function getWheelAngle(e) {
+      var rect = wheel.getBoundingClientRect();
+      var cx = rect.left + rect.width / 2;
+      var cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+    }
+
+    wheel.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      startAngle = getWheelAngle(e);
+      startRotation = rotation;
+      lastAngle = startAngle;
+      cursorOuter.classList.add('drag');
+      cursorOuter.classList.remove('hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var a = getWheelAngle(e);
+      var delta = a - lastAngle;
+      // 处理跨越 -180/180
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      rotation += delta;
+      lastAngle = a;
+      angularVel = delta * 16; // 估算角速度
+      updateWinch();
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      cursorOuter.classList.remove('drag');
+    });
+
+    function rotationToFlagTop(rot) {
+      // 旋转 6 圈 = 从底到顶
+      var t = Math.max(0, Math.min(1, (rot / 360) / rotationsToTop));
+      return flagMinTop - t * (flagMinTop - flagMaxTop);
+    }
+
+    function updateWinch() {
+      wheel.style.transform = 'translateY(-50%) rotate(' + rotation + 'deg)';
+      // 旗高
+      var t = Math.max(0, Math.min(1, (rotation / 360) / rotationsToTop));
+      var flagTop = flagMinTop - t * (flagMinTop - flagMaxTop);
+      flag.style.top = flagTop + 'px';
+      // 绳索高度（从杆顶到旗顶）
+      var ropeHeight = flagTop - 12;
+      if (rope) rope.style.height = Math.max(0, ropeHeight) + 'px';
+      // 数值
+      var heightM = (t * 5 + 0.5).toFixed(1);
+      if (heightEl) heightEl.textContent = heightM;
+    }
+
+    function winchRaf() {
+      if (isDragging) return;
+      // 阻尼衰减
+      angularVel *= 0.95;
+      rotation += angularVel / 60;
+
+      // 限制范围
+      var maxRot = rotationsToTop * 360;
+      if (rotation < 0) {
+        rotation = 0;
+        angularVel = Math.abs(angularVel) * 0.3;
+      }
+      if (rotation > maxRot) {
+        rotation = maxRot;
+        angularVel = -Math.abs(angularVel) * 0.3;
+      }
+
+      if (Math.abs(angularVel) < 0.1) angularVel = 0;
+      updateWinch();
+    }
+    if (!reducedMotion) addRaf(winchRaf);
+
+    // 初始位置
+    rotation = 0.8 * 360; // 大约 0.8 圈
+    updateWinch();
+  })();
+
+  // ============================================================
+  // 展区 6：雨量筒倾倒
+  // ============================================================
+  (function initRainGauge() {
+    var body = document.getElementById('raingaugeBody');
+    var water = document.getElementById('raingaugeWater');
+    var readingEl = document.getElementById('rainReading');
+    var rainDrops = document.getElementById('rainDrops');
+    if (!body || !water) return;
+
+    // 生成雨滴
+    for (var i = 0; i < 12; i++) {
+      var drop = document.createElement('div');
+      drop.className = 'rain-drop';
+      drop.style.left = (30 + Math.random() * 40) + '%';
+      drop.style.animationDelay = Math.random() * 1.5 + 's';
+      drop.style.animationDuration = (1 + Math.random() * 1) + 's';
+      rainDrops.appendChild(drop);
+    }
+
+    var isTipped = false;
+    var waterLevel = 65; // %
+    var targetLevel = 65;
+
+    body.addEventListener('click', function() {
+      isTipped = !isTipped;
+      if (isTipped) {
+        body.classList.add('tipped');
+        targetLevel = 0;
+        rainDrops.classList.remove('raining');
+      } else {
+        body.classList.remove('tipped');
+        rainDrops.classList.add('raining');
+        // 慢慢注水
+      }
+    });
+
+    function updateWater() {
+      water.style.height = waterLevel + '%';
+      if (readingEl) readingEl.textContent = (waterLevel * 1).toFixed(1);
+    }
+
+    // 雨下得慢，慢慢积累
+    var rainFillRate = 0.08; // 每帧 %
+    var drainRate = 0.5;
+
+    function rainRaf() {
+      if (isTipped) {
+        // 倒出
+        if (waterLevel > 0) {
+          waterLevel = Math.max(0, waterLevel - drainRate);
+        }
+      } else {
+        // 下雨积攒
+        if (waterLevel < 85) {
+          waterLevel = Math.min(85, waterLevel + rainFillRate);
+        }
+      }
+      updateWater();
+    }
+    if (!reducedMotion) {
+      addRaf(rainRaf);
+      rainDrops.classList.add('raining');
+    }
+
+    updateWater();
+  })();
+
+  // ============================================================
+  // 滚动视差（山影）
+  // ============================================================
+  (function initParallax() {
+    if (reducedMotion) return;
+    var mountain = document.querySelector('.hero-mountain svg');
+    if (!mountain) return;
+
+    window.addEventListener('scroll', function() {
+      var scrolled = window.pageYOffset;
+      if (scrolled < window.innerHeight) {
+        mountain.style.transform = 'translateY(' + (scrolled * 0.2) + 'px)';
+      }
+    }, { passive: true });
+  })();
+
+  // ============================================================
+  // 鼠标视差（hero 内容微动）
+  // ============================================================
+  (function initHeroParallax() {
+    if (reducedMotion) return;
+    var content = document.querySelector('.hero-content');
+    if (!content) return;
+
+    var hpX = 0, hpY = 0, hpTX = 0, hpTY = 0;
+    document.addEventListener('mousemove', function(e) {
+      hpTX = (e.clientX / window.innerWidth - 0.5) * 10;
+      hpTY = (e.clientY / window.innerHeight - 0.5) * 6;
+    });
+    function heroParallaxRaf() {
+      hpX += (hpTX - hpX) * 0.08;
+      hpY += (hpTY - hpY) * 0.08;
+      content.style.transform = 'translate(' + hpX + 'px,' + hpY + 'px)';
+    }
+    addRaf(heroParallaxRaf);
+  })();
+
+  // ============================================================
+  // 展区卡片 3D 倾斜
+  // ============================================================
+  (function initExhibitTilt() {
+    if (reducedMotion) return;
+    var frames = document.querySelectorAll('.exhibit-frame');
+    frames.forEach(function(frame) {
+      var tiltX = 0, tiltY = 0;
+      var targetTX = 0, targetTY = 0;
+      var active = false;
+
+      frame.parentElement.addEventListener('mousemove', function(e) {
+        if (!active) return;
+        var rect = frame.getBoundingClientRect();
+        var x = (e.clientX - rect.left) / rect.width - 0.5;
+        var y = (e.clientY - rect.top) / rect.height - 0.5;
+        targetTY = x * 6;  // Y 轴旋转由 X 位置决定
+        targetTX = -y * 4; // X 轴旋转由 Y 位置决定
+      });
+      frame.parentElement.addEventListener('mouseenter', function() {
+        active = true;
+      });
+      frame.parentElement.addEventListener('mouseleave', function() {
+        active = false;
+        targetTX = 0;
+        targetTY = 0;
+      });
+
+      function tiltRaf() {
+        tiltX += (targetTX - tiltX) * 0.12;
+        tiltY += (targetTY - tiltY) * 0.12;
+        frame.style.transform = 'perspective(800px) rotateX(' + tiltX + 'deg) rotateY(' + tiltY + 'deg)';
+      }
+      addRaf(tiltRaf);
+    });
+  })();
+
+})();
+</script>
+</body>
+</html>
