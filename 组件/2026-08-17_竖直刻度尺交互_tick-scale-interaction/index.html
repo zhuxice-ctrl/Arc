@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<title>竖直刻度尺悬停注释</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  /* 粉色箭头光标 */
+  .custom-cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 20px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .custom-cursor.visible {
+    opacity: 1;
+  }
+  .custom-cursor svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* 交互轨道（足够宽，快速滑动不丢） */
+  .ruler-track {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 160px;
+    height: 100vh;
+    z-index: 30;
+    touch-action: none;
+    user-select: none;
+  }
+
+  /* 刻度尺容器（视觉） */
+  .ruler-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 90px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 16px 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* 单条刻度 —— 左对齐，统一长度和颜色 */
+  .tick {
+    width: 100%;
+    height: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    pointer-events: none;
+  }
+
+  .tick-line {
+    margin-left: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: #555;
+    /* 初始状态：所有刻度等长 */
+    width: 52px;
+  }
+
+  /* 注释卡片 */
+  .annotation-card {
+    position: fixed;
+    top: 0;
+    left: 108px;
+    min-width: 420px;
+    max-width: 520px;
+    background: #1c1c1e;
+    border: 1px solid #2c2c2e;
+    border-radius: 20px;
+    padding: 24px 28px;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.96);
+    transition: opacity 0.25s ease,
+                transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    will-change: top, opacity, transform;
+  }
+
+  .annotation-card.visible {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+
+  .card-label {
+    display: inline-block;
+    padding: 6px 14px;
+    background: #2c2c2e;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #c7c7cc;
+    margin-bottom: 18px;
+    letter-spacing: 0.5px;
+  }
+
+  .card-body {
+    font-size: 22px;
+    line-height: 1.5;
+    color: #d1d1d6;
+    font-weight: 500;
+  }
+
+  .card-body p {
+    margin-bottom: 14px;
+  }
+
+  .card-body p:last-child {
+    margin-bottom: 0;
+  }
+
+  .card-body ul {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 8px;
+  }
+
+  .card-body ul li {
+    position: relative;
+    padding-left: 22px;
+    margin-bottom: 6px;
+    font-size: 20px;
+  }
+
+  .card-body ul li::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 0.7em;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #8e8e93;
+  }
+
+  /* 减少动效偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    .custom-cursor,
+    .annotation-card,
+    .tick-line {
+      transition: none !important;
+    }
+  }
+
+  /* 触屏 */
+  @media (hover: none) and (pointer: coarse) {
+    html, body { cursor: default; }
+    .custom-cursor { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ruler-track" id="rulerTrack"></div>
+<div class="ruler-container" id="ruler"></div>
+
+<div class="annotation-card" id="annotationCard">
+  <div class="card-label" id="cardLabel"></div>
+  <div class="card-body" id="cardBody"></div>
+</div>
+
+<div class="custom-cursor" id="customCursor">
+  <svg viewBox="0 0 20 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1.5 2L2 20L7.5 14.5L11.5 22.5L14.5 21.5L10.5 13.5L18.5 12.5L1.5 2Z" fill="#E8A0BF" stroke="#D488A8" stroke-width="0.8" stroke-linejoin="round"/>
+  </svg>
+</div>
+
+<script>
+  // ===== 配置 =====
+  const TICK_COUNT = 60;
+  const BASE_WIDTH = 52;          // 所有刻度初始统一长度
+  const MAX_EXTRA_WIDTH = 28;     // 中心刻度最大向右延伸量
+  const GLOW_RADIUS = 8;          // 波形影响半径（刻度数）
+  const CURSOR_LERP = 0.30;
+  const CARD_LERP = 0.18;
+
+  // ===== 注释数据（60 条刻度，每条都关联一个窗口信息）=====
+  const annotations = {
+    0: {
+      label: "入口",
+      html: '<p>首页首屏：品牌名 + 一句标语 + 进入按钮，3 秒内传达"这是什么"。</p>'
+    },
+    1: {
+      label: "导航",
+      html: '<p>顶部固定导航栏：首页 · 文章 · 分类 · 关于，当前页高亮下划线。</p>'
+    },
+    2: {
+      label: "配色",
+      html: '<p>主色定为墨黑 #1a1a1a + 纸白 #fafafa，强调色用朱砂红，克制不滥用。</p>'
+    },
+    3: {
+      label: "字体",
+      html: '<p>正文用思源宋体，标题用思源黑体；行高 1.75，字号 16px 起步。</p>'
+    },
+    4: {
+      label: "间距",
+      html: '<p>全局间距基准 8px 倍数：8 / 16 / 24 / 32 / 48，卡片内边距统一 24px。</p>'
+    },
+    5: {
+      label: "圆角",
+      html: '<p>卡片圆角 12px，按钮 8px，头像 50%；不混用超过两种圆角值。</p>'
+    },
+    6: {
+      label: "阴影",
+      html: '<p>卡片悬浮阴影 y=4 blur=12 opacity=8%，避免重阴影让页面发"糊"。</p>'
+    },
+    7: {
+      label: "动效",
+      html: '<p>页面切换 200ms 淡入，卡片悬浮 150ms 上移 4px，遵守 prefers-reduced-motion。</p>'
+    },
+    8: {
+      label: "D",
+      html: '<p>确定：顶部管理面板提供 7 天 / 30 天 / 全部 切换；文章数量、字数和访客数据随筛选范围变化。</p><p>第八个问题："最近评论"在首页要怎么呈现？</p>'
+    },
+    9: {
+      label: "文章卡",
+      html: '<p>文章列表卡片：封面图 + 标题 + 摘要 + 发布日期 + 阅读时长，点击整卡跳转详情。</p>'
+    },
+    10: {
+      label: "封面图",
+      html: '<p>封面图比例统一 16:9，无图时用纯色占位（取标题首字 hash 选色），不显示破图。</p>'
+    },
+    11: {
+      label: "摘要",
+      html: '<p>摘要自动截取正文前 120 字，末尾加省略号；作者可在编辑器手动覆写。</p>'
+    },
+    12: {
+      label: "标签",
+      html: '<p>每篇文章最多 5 个标签，标签点击进入同标签文章聚合页。</p>'
+    },
+    13: {
+      label: "分类",
+      html: '<p>分类为单选（一篇文章只属一个分类），分类页按时间倒序排列。</p>'
+    },
+    14: {
+      label: "分页",
+      html: '<p>列表分页每页 12 条，底部"加载更多"按钮而非无限滚动，保证可到达页脚。</p>'
+    },
+    15: {
+      label: "空状态",
+      html: '<p>分类无文章时显示插画 + "这里还没有内容" + 去写的按钮，不留白屏。</p>'
+    },
+    16: {
+      label: "搜索",
+      html: '<p>搜索框支持标题 + 正文全文检索，结果高亮关键词，按相关度排序。</p>'
+    },
+    17: {
+      label: "搜索空",
+      html: '<p>无结果时提示"没找到相关内容"并推荐热门文章 3 篇。</p>'
+    },
+    18: {
+      label: "详情页",
+      html: '<p>文章详情页：标题 → 元信息（日期·字数·阅读量）→ 正文 → 标签 → 上下篇。</p>'
+    },
+    19: {
+      label: "正文排版",
+      html: '<p>正文最大宽度 720px 居中，段落间距 1.5em，首行不缩进（中文 Web 惯例）。</p>'
+    },
+    20: {
+      label: "代码块",
+      html: '<p>代码块深色背景 #1e1e1e + 等宽字体，支持语法高亮，右上角复制按钮。</p>'
+    },
+    21: {
+      label: "图片",
+      html: '<p>正文图片点击放大查看（lightbox），懒加载，alt 文本必填用于无障碍。</p>'
+    },
+    22: {
+      label: "目录",
+      html: '<p>长文（&gt;2000 字）右侧自动生成目录锚点，滚动时高亮当前章节。</p>'
+    },
+    23: {
+      label: "保留",
+      html: '<p>确定："我的"保留设备、同步、存储和应用设置；它只承担系统维护，不放内容资产。</p><p>第十三个问题：媒体库在减法后怎样保留？</p>'
+    },
+    24: {
+      label: "阅读进度",
+      html: '<p>详情页顶部 2px 阅读进度条，随滚动填充，读完自动标记已读。</p>'
+    },
+    25: {
+      label: "字数统计",
+      html: '<p>详情页显示预计阅读时长（按 400 字/分钟计算），正文实际字数标在元信息。</p>'
+    },
+    26: {
+      label: "评论入口",
+      html: '<p>文末评论区：默认折叠显示前 3 条 + "查看全部 N 条"，降低首屏压力。</p>'
+    },
+    27: {
+      label: "评论框",
+      html: '<p>评论输入框支持 Markdown 基础语法，输入时实时预览，提交前校验非空。</p>'
+    },
+    28: {
+      label: "评论排序",
+      html: '<p>评论默认按热度（点赞数）排序，可切换为最新；二级回复嵌套最多 2 层。</p>'
+    },
+    29: {
+      label: "点赞",
+      html: '<p>评论和文章都支持点赞，点赞后图标变实心 + 轻微弹跳动画，不可重复点赞。</p>'
+    },
+    30: {
+      label: "举报",
+      html: '<p>评论右上角"···"菜单含举报入口，举报后进入审核队列，不直接删除。</p>'
+    },
+    31: {
+      label: "个人主页",
+      html: '<p>个人主页：头像 + 昵称 + 简介 + 社交链接 + 文章列表（按时间或按热度切换）。</p>'
+    },
+    32: {
+      label: "头像",
+      html: '<p>头像支持上传或用 Gravatar，圆形 80px，默认用昵称首字色块占位。</p>'
+    },
+    33: {
+      label: "简介",
+      html: '<p>个人简介最多 140 字，支持换行，不解析 HTML 防注入。</p>'
+    },
+    34: {
+      label: "关注",
+      html: '<p>支持关注作者，关注后其新文章出现在"动态"页 feed 流。</p>'
+    },
+    35: {
+      label: "动态流",
+      html: '<p>"动态"页按时间倒序展示已关注作者的最新文章，无内容时引导去发现页。</p>'
+    },
+    36: {
+      label: "发现页",
+      html: '<p>"发现"页按热度推荐全站文章，分栏目：今日热门 · 本周精选 · 新作者。</p>'
+    },
+    37: {
+      label: "推荐算法",
+      html: '<p>热度 = 阅读量×1 + 点赞×5 + 评论×3 + 收藏×4，24 小时衰减系数 0.8。</p>'
+    },
+    38: {
+      label: "A",
+      html: '<p>确定访客卡片展示：</p><ul><li>浏览量</li><li>独立访客数</li></ul>'
+    },
+    39: {
+      label: "访客来源",
+      html: '<p>统计页展示访客来源 Top 5（直接/搜索/社交/外链/其他），用横向条形图。</p>'
+    },
+    40: {
+      label: "设备分布",
+      html: '<p>设备分布饼图：桌面 / 移动 / 平板，移动端占比超过 60% 时顶部提示优化移动体验。</p>'
+    },
+    41: {
+      label: "地域分布",
+      html: '<p>访客地域按省份热力图展示，仅显示国内省份，海外归入"其他"。</p>'
+    },
+    42: {
+      label: "趋势图",
+      html: '<p>访问趋势折线图默认显示最近 30 天，可切换 7 天 / 90 天 / 1 年。</p>'
+    },
+    43: {
+      label: "导出",
+      html: '<p>统计数据支持导出 CSV，文件名带日期，导出范围跟当前筛选一致。</p>'
+    },
+    44: {
+      label: "通知",
+      html: '<p>通知中心：新评论 / 新关注 / 收到点赞，红点角标显示未读数，点击标记已读。</p>'
+    },
+    45: {
+      label: "通知偏好",
+      html: '<p>设置页可按类型开关通知，支持邮件摘要（每日/每周）开关。</p>'
+    },
+    46: {
+      label: "邮件模板",
+      html: '<p>邮件通知用统一模板：品牌头 + 正文 + 操作按钮 + 退订链接，纯文本兜底。</p>'
+    },
+    47: {
+      label: "登录",
+      html: '<p>登录支持邮箱+密码和验证码两种方式，记住我默认勾选 30 天。</p>'
+    },
+    48: {
+      label: "注册",
+      html: '<p>注册需邮箱验证，验证链接 24 小时有效，昵称可后续在设置中修改。</p>'
+    },
+    49: {
+      label: "第三方登录",
+      html: '<p>支持 GitHub / Google 第三方登录，首次登录引导补填昵称。</p>'
+    },
+    50: {
+      label: "密码",
+      html: '<p>密码最低 8 位含字母+数字，存储用 bcrypt，修改密码后旧 token 全部失效。</p>'
+    },
+    51: {
+      label: "找回密码",
+      html: '<p>忘记密码走邮箱重置链接，链接单次有效，重置后全端登出。</p>'
+    },
+    52: {
+      label: "A",
+      html: '<p>建议把编辑时候的版本计数关掉 V1,V2 那种，就默认当前版本。</p><p>确定编辑器规则：</p><ul><li>停止输入约 1 秒后自动保存到本机</li><li>切后台、返回、退出时立即保存</li></ul>'
+    },
+    53: {
+      label: "草稿箱",
+      html: '<p>草稿箱按修改时间倒序，显示标题 + 摘要 + 最后编辑时间，支持继续编辑和删除。</p>'
+    },
+    54: {
+      label: "发布",
+      html: '<p>发布前弹确认框：选择分类 + 填写标签 + 可见性（公开/仅自己），确认后跳转详情页。</p>'
+    },
+    55: {
+      label: "定时发布",
+      html: '<p>支持定时发布，设定时间后文章状态为"已排期"，到点自动发布并推送通知。</p>'
+    },
+    56: {
+      label: "媒体库",
+      html: '<p>媒体库按时间网格排列，支持拖拽上传，每张图显示尺寸和占用空间。</p>'
+    },
+    57: {
+      label: "图片压缩",
+      html: '<p>上传图片自动压缩到 1920px 宽以内，生成 WebP 格式，保留原图可手动下载。</p>'
+    },
+    58: {
+      label: "存储用量",
+      html: '<p>设置页显示存储已用/总量进度条，超过 80% 时橙色提示，满后禁止上传。</p>'
+    },
+    59: {
+      label: "关于页",
+      html: '<p>关于页：平台介绍 + 技术栈 + 开源链接 + 联系方式，纯静态无交互。</p>'
+    }
+  };
+
+  // ===== DOM =====
+  const rulerTrack = document.getElementById('rulerTrack');
+  const ruler = document.getElementById('ruler');
+  const annotationCard = document.getElementById('annotationCard');
+  const cardLabel = document.getElementById('cardLabel');
+  const cardBody = document.getElementById('cardBody');
+  const customCursor = document.getElementById('customCursor');
+
+  // ===== 生成刻度（全部等长，左对齐）=====
+  const tickLineElements = [];
+
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+
+    const line = document.createElement('div');
+    line.className = 'tick-line';
+    line.style.width = BASE_WIDTH + 'px';
+
+    tick.appendChild(line);
+    ruler.appendChild(tick);
+    tickLineElements.push(line);
+  }
+
+  // ===== 尺寸缓存 =====
+  let rulerTop = 0;
+  let rulerHeight = 0;
+  let tickSpacing = 0;
+
+  function updateCache() {
+    const rect = ruler.getBoundingClientRect();
+    rulerTop = rect.top;
+    rulerHeight = rect.height;
+    tickSpacing = rulerHeight / TICK_COUNT;
+  }
+  updateCache();
+  window.addEventListener('resize', updateCache);
+  window.addEventListener('orientationchange', updateCache);
+
+  // ===== 状态 =====
+  let activeIndex = -1;
+  let isHovering = false;
+  let cardVisible = false;
+  let contentIndex = -1;
+  let lastContentIndex = -1;
+
+  // 鼠标/光标平滑
+  let mouseX = 0;
+  let mouseY = 0;
+  let cursorX = 0;
+  let cursorY = 0;
+
+  // 卡片位置缓动
+  let cardTargetY = 0;
+  let cardCurrentY = 0;
+
+  // ===== 工具函数 =====
+  function getTickIndexFromY(y) {
+    const relativeY = y - rulerTop;
+    let index = Math.round(relativeY / tickSpacing - 0.5);
+    return Math.max(0, Math.min(TICK_COUNT - 1, index));
+  }
+
+  function getTickCenterY(index) {
+    return rulerTop + (index + 0.5) * tickSpacing;
+  }
+
+  // ===== 核心：连续坐标驱动刻度向右突出波形 =====
+  // 左对齐，所以延伸全部发生在右端；中心刻度最长最亮，向两侧高斯衰减
+  function updateTickDynamics(cursorY) {
+    const cursorRelY = cursorY - rulerTop;
+    const cursorIdx = cursorRelY / tickSpacing; // 浮点刻度索引
+
+    const startIdx = Math.max(0, Math.floor(cursorIdx - GLOW_RADIUS));
+    const endIdx = Math.min(TICK_COUNT - 1, Math.ceil(cursorIdx + GLOW_RADIUS));
+
+    // 先把所有刻度重置为基础态
+    for (let i = 0; i < TICK_COUNT; i++) {
+      const line = tickLineElements[i];
+      if (i < startIdx || i > endIdx) {
+        line.style.width = BASE_WIDTH + 'px';
+        line.style.background = '#555';
+      }
+    }
+
+    // 给范围内的刻度计算突出量
+    const sigma = GLOW_RADIUS / 2.8;
+    for (let i = startIdx; i <= endIdx; i++) {
+      const dist = Math.abs(i + 0.5 - cursorIdx);
+      if (dist > GLOW_RADIUS) {
+        tickLineElements[i].style.width = BASE_WIDTH + 'px';
+        tickLineElements[i].style.background = '#555';
+        continue;
+      }
+
+      // 高斯衰减
+      const intensity = Math.exp(-(dist * dist) / (2 * sigma * sigma));
+
+      const line = tickLineElements[i];
+      // 宽度：基础 + 向右延伸（左对齐，所以右端延伸）
+      line.style.width = (BASE_WIDTH + MAX_EXTRA_WIDTH * intensity) + 'px';
+
+      // 颜色：灰 → 白，中心最亮
+      const r = Math.round(85 + (255 - 85) * intensity);
+      const g = Math.round(85 + (255 - 85) * intensity);
+      const b = Math.round(85 + (255 - 85) * intensity * 0.95);
+      line.style.background = `rgb(${r}, ${g}, ${b})`;
+    }
+  }
+
+  function resetAllTicks() {
+    for (let i = 0; i < TICK_COUNT; i++) {
+      const line = tickLineElements[i];
+      line.style.width = BASE_WIDTH + 'px';
+      line.style.background = '#555';
+    }
+  }
+
+  // ===== 卡片 =====
+  function showAnnotation(index) {
+    const data = annotations[index];
+    if (!data) return;
+
+    if (contentIndex === index) return;
+
+    cardLabel.textContent = data.label;
+    cardBody.innerHTML = data.html;
+    contentIndex = index;
+    lastContentIndex = index;
+
+    if (!cardVisible) {
+      cardVisible = true;
+      cardCurrentY = getTickCenterY(index);
+      cardTargetY = cardCurrentY;
+      annotationCard.style.top = cardCurrentY + 'px';
+      requestAnimationFrame(() => {
+        annotationCard.classList.add('visible');
+      });
+    } else {
+      // 切换内容时轻微弹动
+      annotationCard.style.transform = 'translateY(-50%) scale(0.98)';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          annotationCard.style.transform = 'translateY(-50%) scale(1)';
+        });
+      });
+    }
+  }
+
+  function hideAnnotation() {
+    cardVisible = false;
+    contentIndex = -1;
+    lastContentIndex = -1;
+    annotationCard.classList.remove('visible');
+  }
+
+  function clampCardY(y) {
+    const vh = window.innerHeight;
+    const half = annotationCard.offsetHeight / 2;
+    if (y + half > vh - 20) return vh - half - 20;
+    if (y - half < 20) return half + 20;
+    return y;
+  }
+
+  // ===== rAF 动画循环 =====
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  // 减少动效偏好检测
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function animate() {
+    if (prefersReducedMotion) {
+      // 无缓动，直接同步
+      cursorX = mouseX;
+      cursorY = mouseY;
+    } else {
+      cursorX = lerp(cursorX, mouseX, CURSOR_LERP);
+      cursorY = lerp(cursorY, mouseY, CURSOR_LERP);
+    }
+    customCursor.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px)';
+
+    if (isHovering) {
+      // 刻度动态波形（跟随平滑后的光标，更丝滑）
+      updateTickDynamics(cursorY);
+
+      // 卡片位置缓动
+      if (cardVisible && activeIndex >= 0) {
+        cardTargetY = getTickCenterY(activeIndex);
+        if (prefersReducedMotion) {
+          cardCurrentY = cardTargetY;
+        } else {
+          cardCurrentY = lerp(cardCurrentY, cardTargetY, CARD_LERP);
+        }
+        annotationCard.style.top = clampCardY(cardCurrentY) + 'px';
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  // ===== 交互检测 =====
+  const TRACK_PAD_LEFT = 30;
+  const TRACK_PAD_RIGHT = 80;
+
+  function isInTrack(clientX) {
+    return clientX >= -TRACK_PAD_LEFT && clientX <= 160 + TRACK_PAD_RIGHT;
+  }
+
+  function handlePointerMove(clientX, clientY) {
+    mouseX = clientX;
+    mouseY = clientY;
+
+    const inTrack = isInTrack(clientX);
+
+    if (inTrack) {
+      if (!isHovering) {
+        isHovering = true;
+        cursorX = clientX;
+        cursorY = clientY;
+        cardCurrentY = clientY;
+        cardTargetY = clientY;
+      }
+      const index = getTickIndexFromY(clientY);
+      activeIndex = index;
+      showAnnotation(index);
+    } else {
+      if (isHovering) {
+        isHovering = false;
+        activeIndex = -1;
+        resetAllTicks();
+        hideAnnotation();
+      }
+    }
+  }
+
+  // ===== 鼠标 =====
+  document.addEventListener('pointermove', (e) => {
+    customCursor.classList.add('visible');
+    handlePointerMove(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('pointerenter', () => {
+    customCursor.classList.add('visible');
+  });
+
+  document.addEventListener('pointerleave', () => {
+    customCursor.classList.remove('visible');
+    isHovering = false;
+    activeIndex = -1;
+    resetAllTicks();
+    hideAnnotation();
+  });
+
+  // ===== 触屏 =====
+  let isTouching = false;
+
+  rulerTrack.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    isTouching = true;
+    const t = e.touches[0];
+    handlePointerMove(t.clientX, t.clientY);
+  }, { passive: false });
+
+  rulerTrack.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!isTouching) return;
+    const t = e.touches[0];
+    handlePointerMove(t.clientX, t.clientY);
+  }, { passive: false });
+
+  function endTouch() {
+    isTouching = false;
+    isHovering = false;
+    activeIndex = -1;
+    resetAllTicks();
+    hideAnnotation();
+  }
+
+  rulerTrack.addEventListener('touchend', endTouch, { passive: false });
+  rulerTrack.addEventListener('touchcancel', endTouch, { passive: false });
+
+  // resize
+  window.addEventListener('resize', () => {
+    if (activeIndex >= 0 && cardVisible) {
+      cardTargetY = getTickCenterY(activeIndex);
+      cardCurrentY = cardTargetY;
+      annotationCard.style.top = clampCardY(cardCurrentY) + 'px';
+    }
+    if (!isHovering) resetAllTicks();
+  });
+</script>
+
+</body>
+</html>
