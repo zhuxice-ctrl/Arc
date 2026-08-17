@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>纸鸢气象站 · 收藏风的博物馆</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=Ma+Shan+Zheng&display=swap">
+<style>
+/* ======== 变量与基础 ======== */
+:root {
+  --dai-qing: #1F3A44;
+  --dai-qing-deep: #13262D;
+  --dai-qing-light: #2A4E5C;
+  --zhi-bai: #F6F1E7;
+  --zhi-bai-dark: #E8E1D1;
+  --qian-hong: #C7433B;
+  --qian-hong-dark: #A3352E;
+  --teng-huang: #D9A441;
+  --teng-huang-light: #E8BD63;
+  --ink: #1A2E36;
+  --shadow-kite: 0 20px 60px rgba(31, 58, 68, 0.3);
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-brush: "Ma Shan Zheng", cursive;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--dai-qing);
+  color: var(--zhi-bai);
+  overflow-x: hidden;
+  cursor: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { cursor: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+img { max-width: 100%; display: block; }
+a { text-decoration: none; color: inherit; cursor: none; }
+button { border: none; background: none; color: inherit; font: inherit; cursor: none; }
+ul, ol { list-style: none; }
+
+/* 宣纸纹理背景 */
+.paper-bg {
+  background-color: var(--zhi-bai);
+  background-image:
+    radial-gradient(ellipse at 20% 30%, rgba(215, 195, 155, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(199, 67, 59, 0.06) 0%, transparent 40%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(31, 58, 68, 0.015) 2px,
+      rgba(31, 58, 68, 0.015) 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(31, 58, 68, 0.012) 3px,
+      rgba(31, 58, 68, 0.012) 4px
+    );
+  color: var(--dai-qing-deep);
+}
+
+/* ======== 自定义光标 ======== */
+.cursor-outer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 36px; height: 36px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s;
+  transform: translate(-50%, -50%);
+}
+.cursor-outer.hover {
+  width: 56px; height: 56px;
+  border-color: var(--qian-hong);
+}
+.cursor-dot {
+  position: fixed;
+  top: 0; left: 0;
+  width: 6px; height: 6px;
+  background: var(--teng-huang);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10000;
+  box-shadow:
+    0 0 12px 3px rgba(217, 164, 65, 0.6),
+    0 0 24px 6px rgba(217, 164, 65, 0.3);
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cursor-dot.hover {
+  transform: translate(-50%, -50%) scale(2);
+  background: var(--qian-hong);
+  box-shadow:
+    0 0 16px 4px rgba(199, 67, 59, 0.7),
+    0 0 32px 8px rgba(199, 67, 59, 0.3);
+}
+.cursor-ripple {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  border: 2px solid rgba(255,255,255,0.8);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes rippleExpand {
+  0% { width: 0; height: 0; opacity: 1; border-width: 3px; }
+  100% { width: 80px; height: 80px; opacity: 0; border-width: 1px; }
+}
+
+/* ======== 风场粒子画布 ======== */
+#windCanvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ======== 导航 ======== */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 24px 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav.scrolled {
+  padding: 14px 48px;
+  background: rgba(31, 58, 68, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(246, 241, 231, 0.1);
+}
+.nav-logo {
+  font-family: var(--font-brush);
+  font-size: 28px;
+  color: var(--zhi-bai);
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-logo-icon {
+  width: 32px; height: 32px;
+  color: var(--teng-huang);
+}
+.nav-links {
+  display: flex;
+  gap: 40px;
+  align-items: center;
+}
+.nav-link {
+  position: relative;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--zhi-bai);
+  opacity: 0.85;
+  transition: opacity 0.3s;
+  padding: 4px 0;
+}
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 0; height: 1.5px;
+  background: var(--qian-hong);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-link:hover { opacity: 1; }
+.nav-link:hover::after { width: 100%; }
+.nav-cta {
+  padding: 10px 24px;
+  border: 1px solid var(--teng-huang);
+  color: var(--teng-huang);
+  font-size: 13px;
+  letter-spacing: 1px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.nav-cta::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: var(--teng-huang);
+  transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: -1;
+}
+.nav-cta:hover {
+  color: var(--dai-qing-deep);
+  border-color: var(--teng-huang);
+}
+.nav-cta:hover::before { left: 0; }
+
+/* ======== Hero ======== */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+  padding: 120px 24px 80px;
+  overflow: hidden;
+}
+.hero-content {
+  text-align: center;
+  position: relative;
+  z-index: 3;
+}
+.hero-eyebrow {
+  font-size: 13px;
+  letter-spacing: 6px;
+  color: var(--teng-huang);
+  margin-bottom: 24px;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 8vw, 120px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 8px;
+  color: var(--zhi-bai);
+  margin-bottom: 24px;
+  position: relative;
+}
+.hero-title .title-char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(40px);
+  animation: charReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-title .accent {
+  color: var(--qian-hong);
+  position: relative;
+}
+.hero-title .accent::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 0;
+  width: 100%; height: 3px;
+  background: var(--teng-huang);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: lineGrow 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.8s forwards;
+}
+@keyframes charReveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lineGrow {
+  to { transform: scaleX(1); }
+}
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-typewriter {
+  font-size: clamp(14px, 1.5vw, 18px);
+  color: rgba(246, 241, 231, 0.7);
+  letter-spacing: 2px;
+  margin-top: 32px;
+  min-height: 28px;
+  font-weight: 300;
+}
+.hero-typewriter .cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--teng-huang);
+  margin-left: 4px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.hero-metrics {
+  display: flex;
+  gap: 64px;
+  margin-top: 64px;
+  padding-top: 40px;
+  border-top: 1px solid rgba(246, 241, 231, 0.15);
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 1.4s forwards;
+}
+.hero-metric {
+  text-align: center;
+}
+.hero-metric-num {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.5vw, 44px);
+  font-weight: 700;
+  color: var(--teng-huang);
+  line-height: 1;
+}
+.hero-metric-unit {
+  font-size: 14px;
+  color: var(--zhi-bai);
+  opacity: 0.6;
+  margin-left: 2px;
+}
+.hero-metric-label {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: rgba(246, 241, 231, 0.5);
+  margin-top: 8px;
+}
+
+.hero-kite-container {
+  position: absolute;
+  top: 15%;
+  right: 12%;
+  width: 180px;
+  height: 300px;
+  z-index: 2;
+  pointer-events: none;
+}
+.hero-kite {
+  position: absolute;
+  width: 100%;
+  transform-origin: top center;
+  animation: kiteSway 6s ease-in-out infinite;
+}
+.hero-kite-tail {
+  position: absolute;
+  top: 140px;
+  left: 50%;
+  width: 4px;
+  height: 160px;
+  background: linear-gradient(to bottom, var(--qian-hong), var(--teng-huang), transparent);
+  border-radius: 2px;
+  transform-origin: top center;
+  animation: tailSway 4s ease-in-out infinite;
+}
+.hero-kite-tail::before,
+.hero-kite-tail::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 12px;
+  background: var(--qian-hong);
+  border-radius: 50%;
+}
+.hero-kite-tail::before { top: 50px; opacity: 0.8; }
+.hero-kite-tail::after { top: 110px; width: 16px; height: 10px; opacity: 0.6; }
+
+@keyframes kiteSway {
+  0%, 100% { transform: rotate(-8deg) translateY(0); }
+  50% { transform: rotate(8deg) translateY(-20px); }
+}
+@keyframes tailSway {
+  0%, 100% { transform: translateX(-50%) rotate(5deg); }
+  50% { transform: translateX(-50%) rotate(-5deg); }
+}
+
+.hero-kite-container-2 {
+  position: absolute;
+  top: 25%;
+  left: 8%;
+  width: 100px;
+  height: 180px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.hero-kite-container-2 .hero-kite {
+  animation: kiteSway2 8s ease-in-out infinite;
+  animation-delay: -2s;
+}
+.hero-kite-container-2 .hero-kite-tail {
+  top: 75px;
+  height: 100px;
+  animation: tailSway2 5s ease-in-out infinite;
+  animation-delay: -1s;
+}
+@keyframes kiteSway2 {
+  0%, 100% { transform: rotate(6deg) translateY(0); }
+  50% { transform: rotate(-6deg) translateY(-15px); }
+}
+@keyframes tailSway2 {
+  0%, 100% { transform: translateX(-50%) rotate(-4deg); }
+  50% { transform: translateX(-50%) rotate(4deg); }
+}
+
+.scroll-indicator {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  animation: fadeUp 1s 2s forwards;
+}
+.scroll-indicator-line {
+  width: 1px;
+  height: 40px;
+  background: linear-gradient(to bottom, var(--teng-huang), transparent);
+  position: relative;
+  overflow: hidden;
+}
+.scroll-indicator-line::after {
+  content: '';
+  position: absolute;
+  top: -20px; left: 0;
+  width: 100%; height: 20px;
+  background: var(--teng-huang);
+  animation: scrollDot 2s cubic-bezier(0.55, 0, 0.45, 1) infinite;
+}
+@keyframes scrollDot {
+  0% { top: -20px; }
+  100% { top: 100%; }
+}
+.scroll-indicator-text {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--teng-huang);
+  opacity: 0.7;
+  writing-mode: vertical-rl;
+}
+
+/* ======== 通用 section ======== */
+.section {
+  position: relative;
+  z-index: 2;
+  padding: 120px 48px;
+}
+.section-head {
+  text-align: center;
+  margin-bottom: 80px;
+}
+.section-eyebrow {
+  font-size: 12px;
+  letter-spacing: 6px;
+  color: var(--teng-huang);
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700;
+  letter-spacing: 4px;
+  line-height: 1.2;
+}
+.section-sub {
+  margin-top: 20px;
+  font-size: 15px;
+  line-height: 1.8;
+  opacity: 0.65;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.dark .section-title { color: var(--zhi-bai); }
+.dark .section-sub { color: var(--zhi-bai); }
+.light .section-title { color: var(--dai-qing-deep); }
+.light .section-sub { color: var(--dai-qing-deep); }
+
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ======== 风筝档案 ======== */
+.archive-section {
+  background: var(--dai-qing-deep);
+  overflow: hidden;
+}
+.archive-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 56px;
+  flex-wrap: wrap;
+}
+.archive-tab {
+  padding: 12px 28px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: rgba(246, 241, 231, 0.5);
+  border: 1px solid rgba(246, 241, 231, 0.15);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.archive-tab.active {
+  color: var(--dai-qing-deep);
+  background: var(--teng-huang);
+  border-color: var(--teng-huang);
+}
+.archive-tab:hover:not(.active) {
+  color: var(--zhi-bai);
+  border-color: rgba(246, 241, 231, 0.4);
+}
+
+.archive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.kite-card {
+  position: relative;
+  background: linear-gradient(145deg, rgba(42, 78, 92, 0.5), rgba(31, 58, 68, 0.8));
+  border: 1px solid rgba(246, 241, 231, 0.08);
+  border-radius: 4px;
+  padding: 40px 28px;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  overflow: hidden;
+}
+.kite-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--qian-hong), var(--teng-huang));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.kite-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(217, 164, 65, 0.3);
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.4),
+    0 0 40px rgba(217, 164, 65, 0.1);
+}
+.kite-card:hover::before { transform: scaleX(1); }
+.kite-card-shine {
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255,255,255,0.08),
+    transparent);
+  transform: skewX(-15deg);
+  pointer-events: none;
+}
+.kite-card:hover .kite-card-shine {
+  animation: shineSweep 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes shineSweep {
+  to { left: 120%; }
+}
+.kite-card-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 24px;
+  color: var(--teng-huang);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.kite-card:hover .kite-card-icon {
+  transform: scale(1.1) rotate(-5deg);
+}
+.kite-card-name {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--zhi-bai);
+  margin-bottom: 6px;
+  letter-spacing: 2px;
+}
+.kite-card-origin {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--qian-hong);
+  margin-bottom: 16px;
+}
+.kite-card-desc {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(246, 241, 231, 0.6);
+  margin-bottom: 24px;
+}
+.kite-card-stats {
+  display: flex;
+  gap: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(246, 241, 231, 0.08);
+}
+.kite-stat {
+  text-align: left;
+}
+.kite-stat-val {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--teng-huang);
+}
+.kite-stat-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(246, 241, 231, 0.4);
+  margin-top: 2px;
+}
+
+/* ======== 风之物语 ======== */
+.wind-section {
+  background: var(--zhi-bai);
+  color: var(--dai-qing-deep);
+  position: relative;
+  overflow: hidden;
+}
+.wind-section::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(199, 67, 59, 0.05) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(217, 164, 65, 0.1) 0%, transparent 40%);
+  pointer-events: none;
+}
+.wind-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 900px) {
+  .wind-layout {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+}
+
+/* 风速仪表 */
+.anemometer {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  margin: 0 auto;
+}
+.anemometer-face {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fff, var(--zhi-bai-dark));
+  border: 3px solid var(--dai-qing-deep);
+  box-shadow:
+    inset 0 4px 20px rgba(31, 58, 68, 0.15),
+    0 20px 60px rgba(31, 58, 68, 0.2);
+  position: relative;
+}
+.anemometer-ticks {
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+}
+.anemometer-tick {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 12px;
+  background: var(--dai-qing-deep);
+  transform-origin: 50% 144px;
+  opacity: 0.6;
+}
+.anemometer-tick.major {
+  width: 3px;
+  height: 18px;
+  opacity: 1;
+}
+.anemometer-numbers {
+  position: absolute;
+  inset: 36px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dai-qing-deep);
+}
+.anemometer-number {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  transform-origin: 50% 124px;
+}
+.anemometer-needle {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 4px;
+  height: 120px;
+  background: linear-gradient(to top, var(--qian-hong), var(--teng-huang));
+  border-radius: 2px;
+  transform-origin: bottom center;
+  transform: translateX(-50%) rotate(-45deg);
+  transition: transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 10px rgba(199, 67, 59, 0.3);
+}
+.anemometer-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 20px; height: 20px;
+  background: var(--dai-qing-deep);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.anemometer-value {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.anemometer-speed {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--qian-hong);
+  line-height: 1;
+}
+.anemometer-unit {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--dai-qing-deep);
+  opacity: 0.6;
+  margin-top: 4px;
+}
+.anemometer-direction {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 260px; height: 260px;
+  pointer-events: none;
+}
+.direction-arrow {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--qian-hong);
+  font-weight: 700;
+}
+
+.wind-content h3 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  letter-spacing: 3px;
+  color: var(--dai-qing-deep);
+}
+.wind-content p {
+  font-size: 15px;
+  line-height: 2;
+  margin-bottom: 16px;
+  opacity: 0.8;
+}
+.wind-poems {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.wind-poem {
+  padding: 20px 24px;
+  background: rgba(31, 58, 68, 0.05);
+  border-left: 3px solid var(--qian-hong);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.wind-poem:hover {
+  background: rgba(199, 67, 59, 0.08);
+  transform: translateX(8px);
+}
+.wind-poem-text {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: var(--dai-qing-deep);
+  margin-bottom: 6px;
+}
+.wind-poem-src {
+  font-size: 12px;
+  color: var(--qian-hong);
+  letter-spacing: 1px;
+}
+
+/* ======== 放飞节气 ======== */
+.solar-section {
+  background: var(--dai-qing);
+  position: relative;
+  overflow: hidden;
+}
+.solar-timeline {
+  max-width: 1100px;
+  margin: 0 auto;
+  position: relative;
+  padding: 40px 0;
+}
+.solar-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(to bottom,
+    transparent,
+    var(--teng-huang) 10%,
+    var(--teng-huang) 90%,
+    transparent);
+  opacity: 0.4;
+}
+.solar-item {
+  display: grid;
+  grid-template-columns: 1fr 80px 1fr;
+  align-items: center;
+  margin-bottom: 48px;
+  position: relative;
+}
+.solar-item:last-child { margin-bottom: 0; }
+.solar-item:nth-child(even) .solar-info { order: 3; text-align: left; }
+.solar-item:nth-child(even) .solar-icon-wrap { order: 2; }
+.solar-item:nth-child(even) .solar-season { order: 1; text-align: right; }
+
+.solar-info {
+  padding: 28px 32px;
+  background: rgba(42, 78, 92, 0.4);
+  border: 1px solid rgba(246, 241, 231, 0.08);
+  border-radius: 4px;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.solar-info:hover {
+  background: rgba(42, 78, 92, 0.7);
+  border-color: rgba(217, 164, 65, 0.3);
+  transform: scale(1.02);
+}
+.solar-name {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--zhi-bai);
+  letter-spacing: 4px;
+  margin-bottom: 4px;
+}
+.solar-date {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--teng-huang);
+  margin-bottom: 12px;
+}
+.solar-desc {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(246, 241, 231, 0.65);
+}
+.solar-icon-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+.solar-icon {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--dai-qing-deep);
+  border: 2px solid var(--teng-huang);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--teng-huang);
+  z-index: 2;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.solar-item:hover .solar-icon {
+  transform: scale(1.2);
+  background: var(--teng-huang);
+  color: var(--dai-qing-deep);
+}
+.solar-season {
+  font-family: var(--font-brush);
+  font-size: 36px;
+  color: var(--qian-hong);
+  letter-spacing: 4px;
+  opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .solar-timeline::before { left: 28px; }
+  .solar-item,
+  .solar-item:nth-child(even) {
+    grid-template-columns: 56px 1fr;
+    gap: 16px;
+  }
+  .solar-item:nth-child(even) .solar-info { order: 2; text-align: left; }
+  .solar-item:nth-child(even) .solar-icon-wrap { order: 1; }
+  .solar-item:nth-child(even) .solar-season { display: none; }
+  .solar-season { display: none; }
+}
+
+/* ======== 扎制工坊 ======== */
+.workshop-section {
+  background: var(--zhi-bai);
+  color: var(--dai-qing-deep);
+  position: relative;
+}
+.workshop-steps {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.step-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 48px;
+  border-bottom: 2px solid rgba(31, 58, 68, 0.1);
+}
+.step-btn {
+  position: relative;
+  padding: 16px 32px;
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: rgba(31, 58, 68, 0.5);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+.step-btn.active {
+  color: var(--qian-hong);
+  font-weight: 600;
+}
+.step-btn::after {
+  content: '';
+  position: absolute;
+  bottom: -2px; left: 0; right: 0;
+  height: 2px;
+  background: var(--qian-hong);
+  transform: scaleX(0);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.step-btn.active::after {
+  transform: scaleX(1);
+}
+.step-btn-num {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--teng-huang);
+  margin-right: 8px;
+  font-weight: 700;
+}
+
+.step-content {
+  position: relative;
+  min-height: 340px;
+}
+.step-panel {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s, transform 0.5s;
+  pointer-events: none;
+}
+.step-panel.active {
+  position: relative;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.step-panel-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+@media (max-width: 800px) {
+  .step-panel-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+.step-visual {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #fff, var(--zhi-bai-dark));
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(31, 58, 68, 0.12);
+  overflow: hidden;
+}
+.step-visual svg {
+  width: 60%;
+  height: 60%;
+}
+.step-text h3 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+.step-text p {
+  font-size: 14px;
+  line-height: 2;
+  opacity: 0.75;
+  margin-bottom: 12px;
+}
+.step-tools {
+  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.step-tool {
+  padding: 6px 16px;
+  background: rgba(31, 58, 68, 0.08);
+  border-radius: 20px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--dai-qing-deep);
+  transition: all 0.3s;
+}
+.step-tool:hover {
+  background: var(--qian-hong);
+  color: var(--zhi-bai);
+  transform: translateY(-2px);
+}
+
+/* ======== CTA ======== */
+.cta-section {
+  background: linear-gradient(135deg, var(--dai-qing-deep), var(--dai-qing));
+  padding: 120px 48px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(199, 67, 59, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(217, 164, 65, 0.1) 0%, transparent 50%);
+}
+.cta-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.cta-title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4.5vw, 44px);
+  font-weight: 700;
+  color: var(--zhi-bai);
+  letter-spacing: 4px;
+  line-height: 1.4;
+  margin-bottom: 20px;
+}
+.cta-sub {
+  font-size: 15px;
+  color: rgba(246, 241, 231, 0.6);
+  line-height: 1.9;
+  margin-bottom: 40px;
+}
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 48px;
+  background: var(--qian-hong);
+  color: var(--zhi-bai);
+  font-size: 15px;
+  letter-spacing: 3px;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cta-btn:hover {
+  background: var(--qian-hong-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(199, 67, 59, 0.3);
+}
+.cta-btn-arrow {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cta-btn:hover .cta-btn-arrow {
+  transform: translateX(6px);
+}
+
+/* ======== 页脚 ======== */
+.footer {
+  background: var(--dai-qing-deep);
+  padding: 60px 48px 32px;
+  border-top: 1px solid rgba(246, 241, 231, 0.08);
+  position: relative;
+  z-index: 2;
+}
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 48px;
+}
+@media (max-width: 768px) {
+  .footer-inner {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+}
+.footer-brand .footer-logo {
+  font-family: var(--font-brush);
+  font-size: 28px;
+  color: var(--zhi-bai);
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+.footer-brand p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(246, 241, 231, 0.5);
+  max-width: 300px;
+}
+.footer-col h4 {
+  font-size: 14px;
+  color: var(--teng-huang);
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+.footer-col li {
+  margin-bottom: 12px;
+}
+.footer-col a {
+  font-size: 13px;
+  color: rgba(246, 241, 231, 0.5);
+  transition: color 0.3s;
+}
+.footer-col a:hover {
+  color: var(--zhi-bai);
+}
+.footer-bottom {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(246, 241, 231, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-copy {
+  font-size: 12px;
+  color: rgba(246, 241, 231, 0.3);
+  letter-spacing: 1px;
+}
+
+/* ======== 响应式调整 ======== */
+@media (max-width: 768px) {
+  .nav { padding: 16px 20px; }
+  .nav-links { display: none; }
+  .section { padding: 80px 20px; }
+  .hero-metrics { gap: 32px; }
+  .hero-kite-container { display: none; }
+  .hero-kite-container-2 { display: none; }
+  .footer { padding: 48px 20px 24px; }
+}
+
+/* 涟漪按钮效果 */
+.ripple-btn {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-effect {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  transform: scale(0);
+  animation: rippleAnim 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes rippleAnim {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 风场粒子画布 -->
+<canvas id="windCanvas"></canvas>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-dot" id="cursorDot"></div>
+
+<div id="root"></div>
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ==================== SVG 图标组件 ==================== */
+const KiteIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <polygon points="32,4 52,28 32,56 12,28" />
+    <line x1="32" y1="4" x2="32" y2="56" stroke="currentColor" strokeWidth="1.5" opacity="0.3" />
+    <line x1="12" y1="28" x2="52" y2="28" stroke="currentColor" strokeWidth="1.5" opacity="0.3" />
+  </svg>
+);
+
+const SwallowKiteIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <path d="M32 4 L48 24 L44 36 L32 56 L20 36 L16 24 Z" />
+    <circle cx="24" cy="28" r="2.5" fill="currentColor" opacity="0.6" />
+    <circle cx="40" cy="28" r="2.5" fill="currentColor" opacity="0.6" />
+  </svg>
+);
+
+const HardWingIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2">
+    <polygon points="32,6 56,26 32,46 8,26" fill="currentColor" fillOpacity="0.8" />
+    <rect x="28" y="20" width="8" height="36" fill="currentColor" fillOpacity="0.6" />
+    <line x1="32" y1="6" x2="32" y2="56" />
+  </svg>
+);
+
+const PlateKiteIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <rect x="8" y="12" width="48" height="40" rx="2" />
+    <rect x="14" y="18" width="36" height="28" fill="currentColor" opacity="0.4" />
+    <line x1="32" y1="12" x2="32" y2="52" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+    <line x1="8" y1="32" x2="56" y2="32" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+  </svg>
+);
+
+const SoftWingIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <path d="M8 28 Q32 4 56 28 Q32 36 8 28 Z" />
+    <path d="M32 28 L32 56 L24 48 L32 56 L40 48" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </svg>
+);
+
+const DragonKiteIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <circle cx="32" cy="16" r="10" />
+    <circle cx="32" cy="32" r="7" opacity="0.8" />
+    <circle cx="32" cy="46" r="5" opacity="0.6" />
+    <circle cx="32" cy="56" r="3" opacity="0.4" />
+    <path d="M22 12 L18 8 M42 12 L46 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const WindIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 8h11a3 3 0 1 0-3-3" />
+    <path d="M3 12h17a3 3 0 1 1-3 3" />
+    <path d="M3 16h9" />
+  </svg>
+);
+
+const SunIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </svg>
+);
+
+const LeafIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.5c2 2.28 1.5 5.5-.5 10.5-3.2 2.03-4.5 2.5-7.7 7z" />
+    <path d="M2 21c5-3 8-5 10-10" />
+  </svg>
+);
+
+const SnowIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2v20M4.93 6.93l14.14 14.14M2 12h20M4.93 17.07L19.07 2.93" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const ArrowRightIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
+
+const BambooIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="20" y1="4" x2="20" y2="60" />
+    <line x1="44" y1="8" x2="44" y2="56" />
+    <line x1="16" y1="20" x2="24" y2="20" />
+    <line x1="16" y1="36" x2="24" y2="36" />
+    <line x1="16" y1="52" x2="24" y2="52" />
+    <line x1="40" y1="24" x2="48" y2="24" />
+    <line x1="40" y1="40" x2="48" y2="40" />
+    <path d="M20 12 Q8 16 4 12" />
+    <path d="M44 18 Q56 22 60 18" />
+  </svg>
+);
+
+const PaperIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="currentColor">
+    <rect x="12" y="8" width="40" height="48" rx="1" />
+    <rect x="18" y="16" width="28" height="3" rx="1" opacity="0.5" />
+    <rect x="18" y="24" width="22" height="2" rx="1" opacity="0.3" />
+    <rect x="18" y="30" width="26" height="2" rx="1" opacity="0.3" />
+    <rect x="18" y="36" width="20" height="2" rx="1" opacity="0.3" />
+    <rect x="18" y="42" width="24" height="2" rx="1" opacity="0.3" />
+    <path d="M52 8 L56 12 L52 16 Z" opacity="0.6" />
+  </svg>
+);
+
+const PaintIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 40 L24 24 L40 40 L24 56 Z" />
+    <path d="M40 40 L56 24" />
+    <path d="M48 32 Q56 32 56 24 Q56 16 48 16 Q40 16 40 24" />
+    <circle cx="12" cy="48" r="2" fill="currentColor" />
+    <circle cx="20" cy="52" r="1.5" fill="currentColor" opacity="0.6" />
+  </svg>
+);
+
+const FlyIcon = ({ className = "", style = {} }) => (
+  <svg viewBox="0 0 64 64" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="32,8 48,28 32,48 16,28" fill="currentColor" fillOpacity="0.3" />
+    <path d="M32 48 Q30 54 28 56 Q26 54 32 48" fill="currentColor" fillOpacity="0.5" />
+    <path d="M28 56 Q24 58 22 56" />
+    <path d="M22 56 Q18 58 16 56" />
+    <path d="M8 48 Q14 46 18 50" strokeDasharray="2 3" />
+  </svg>
+);
+
+/* ==================== 风筝档案数据 ==================== */
+const KITE_DATA = {
+  classic: [
+    { name: "潍坊硬翅", origin: "山东潍坊", icon: HardWingIcon,
+      desc: "硬翅风筝以竹条扎制上下两条硬翅边为特征，中部鼓风形成升力面，造型多为人物与鸟兽，起飞稳定，是潍坊风筝的代表流派。",
+      stats: [{ v: "600+", l: "年历史" }, { v: "3级", l: "最佳风力" }] },
+    { name: "北京沙燕", origin: "京津地区", icon: SwallowKiteIcon,
+      desc: "沙燕风筝形如沙燕，头、胸、腰、尾比例讲究，讲究\"胖沙燕\"\"瘦沙燕\"之分，绘以五彩纹样，是宫廷风筝的代表。",
+      stats: [{ v: "300+", l: "年历史" }, { v: "2-4级", l: "最佳风力" }] },
+    { name: "南通板鹞", origin: "江苏南通", icon: PlateKiteIcon,
+      desc: "板鹞风筝方正如板，鹞面缀满哨口，放飞时空中齐鸣如乐，故又称\"鹞子音乐\"，是南派风筝的代表。",
+      stats: [{ v: "千余", l: "年历史" }, { v: "4-5级", l: "最佳风力" }] },
+  ],
+  soft: [
+    { name: "软翅风筝", origin: "南北皆有", icon: SoftWingIcon,
+      desc: "软翅风筝仅上翅边用竹条支撑，下边缘为软边，造型多为鹰、蝶、燕等飞禽昆虫，放飞时翅面随风起伏，栩栩如生。",
+      stats: [{ v: "2-3级", l: "最佳风力" }, { v: "极高", l: "仿真度" }] },
+    { name: "龙串风筝", origin: "广东阳江", icon: DragonKiteIcon,
+      desc: "龙头风筝由头、身、尾三部分串联而成，身长可达数十米，放飞时凌空蜿蜒，气势恢宏，是阳江风筝的代表。",
+      stats: [{ v: "100m+", l: "身长可达" }, { v: "3-5级", l: "最佳风力" }] },
+    { name: "七星风筝", origin: "浙江杭州", icon: PlateKiteIcon,
+      desc: "七星风筝由七只小风筝排列组成，形如北斗七星，放飞时群鸢齐飞，错落有致，是江南文人气风筝的代表。",
+      stats: [{ v: "7只", l: "串联数量" }, { v: "2-3级", l: "最佳风力" }] },
+  ],
+  craft: [
+    { name: "微型风筝", origin: "北京", icon: KiteIcon,
+      desc: "微型风筝小如指甲盖，以细竹丝为骨、蝉翼为面，做工极其精巧，可置于指尖放飞，是传统工艺的极致体现。",
+      stats: [{ v: "2cm", l: "最小尺寸" }, { v: "1级", l: "可放飞风力" }] },
+    { name: "动态风筝", origin: "山东潍坊", icon: WindIcon,
+      desc: "动态风筝内置机关，借风力驱动部件运动，如仙鹤展翅、哪吒翻筋斗等，是风筝工艺与机械智慧的结合。",
+      stats: [{ v: "5+", l: "传动机关" }, { v: "3级", l: "启动风力" }] },
+    { name: "立体风筝", origin: "天津", icon: DragonKiteIcon,
+      desc: "立体风筝以扎制立体造型著称，如宫灯、花瓶、人物等，结构复杂，需精确计算重心与风阻，工艺难度极高。",
+      stats: [{ v: "360°", l: "立体造型" }, { v: "4级", l: "最佳风力" }] },
+  ],
+};
+
+/* ==================== 节气数据 ==================== */
+const SOLAR_DATA = [
+  { name: "清明", date: "四月初", icon: WindIcon, season: "春",
+    desc: "清明时节，东风和煦，正是踏青放风筝的好时节。古人以放风筝送走晦气，放飞新一年的祈愿。" },
+  { name: "立夏", date: "五月初", icon: SunIcon, season: "夏",
+    desc: "立夏南风渐起，气温升高，风力适中。傍晚时分放一只软翅风筝，看它随晚霞共舞，是夏日的一大乐事。" },
+  { name: "秋分", date: "九月末", icon: LeafIcon, season: "秋",
+    desc: "秋高气爽，金风送爽，是一年中放风筝的最佳时节。天高云淡，纸鸢扶摇直上，可达数百米高空。" },
+  { name: "小雪", date: "十一月中", icon: SnowIcon, season: "冬",
+    desc: "冬日寒风凛冽，却是放大型风筝的好时机。板鹞、龙串皆需劲风，北方雪地里放风筝别有风味。" },
+];
+
+/* ==================== 扎制工坊步骤数据 ==================== */
+const WORKSHOP_STEPS = [
+  { id: 0, name: "扎", num: "壹", icon: BambooIcon,
+    title: "扎骨：以竹为骨，以火塑形",
+    desc: "风筝之骨，首选三年以上的毛竹，竹龄足够则韧性与硬度兼备。扎骨之前需先选竹、烤竹、劈竹，将竹条削至厚薄均匀。",
+    desc2: "扎制时讲究\"三点一线\"，左右对称不差毫厘。接头处用纸缠裹，蘸以桃胶粘结，再用火烤校正弧度。一只沙燕的骨架，需大小竹条二十余根，耗时三日方成。",
+    tools: ["毛竹", "劈刀", "烤灯", "线绳", "桃胶", "卡尺"] },
+  { id: 1, name: "糊", num: "贰", icon: PaperIcon,
+    title: "糊面：宣纸为衣，平整如镜",
+    desc: "糊面之纸，北方多用高丽纸，南方则爱用绵纸，皆以纤维长、韧性强者为佳。好的风筝纸薄如蝉翼却不易破，风吹不鼓，雨打不烂。",
+    desc2: "糊纸讲究\"平、整、匀、实\"四个字。先将纸裁出形状，刷胶后覆于骨架之上，以毛刷轻轻扫平，不可有一丝褶皱。边沿用小剪刀修齐，收尾处折回再粘，方为工整。",
+    tools: ["高丽纸", "浆糊", "毛刷", "剪刀", "压石", "喷壶"] },
+  { id: 2, name: "绘", num: "叁", icon: PaintIcon,
+    title: "绘彩：笔墨点染，神采飞扬",
+    desc: "风筝之绘，与国画同源。先以碳条起稿，再用墨线勾勒，最后填色晕染。人物开脸最难，需一笔传神；花卉翎毛次之，讲究设色淡雅。",
+    desc2: "传统风筝彩绘多用矿物颜料，石青、石绿、朱砂、藤黄，历经百年不褪色。沙燕风筝的彩绘更有固定程式：\"黑锅底\"\"红沙燕\"\"蓝沙燕\"，各有寓意与讲究。",
+    tools: ["狼毫笔", "矿物颜料", "墨锭", "砚台", "碳条", "调色盘"] },
+  { id: 3, name: "放", num: "肆", icon: FlyIcon,
+    title: "放飞：一线牵起，万里同风",
+    desc: "放风筝讲究\"风、线、手、心\"四者合一。先辨风向风力，三级风最宜放中等风筝，五级风可放大型板鹞。放线不可急也不可缓。",
+    desc2: "高手放飞，能令风筝在空中做出各种动作——左右盘旋、上下翻飞、甚至\"鹞子翻身\"。南通板鹞更讲究空中音响，数十上百只哨口齐鸣，如空中交响乐。",
+    tools: ["线轴", "风筝线", "手套", "风速仪", "腰钩", "尾飘"] },
+];
+
+/* ==================== 数字计数 hook ==================== */
+function useCountUp(target, duration = 2000, start = false) {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef(null);
+  const startTimeRef = useRef(null);
+
+  useEffect(() => {
+    if (!start) return;
+    startTimeRef.current = null;
+
+    const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+
+    const tick = (now) => {
+      if (!startTimeRef.current) startTimeRef.current = now;
+      const elapsed = now - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      setValue(Math.floor(easeOutQuart(progress) * target));
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration, start]);
+
+  return value;
+}
+
+/* ==================== 打字机 hook ==================== */
+function useTypewriter(phrases, typeSpeed = 80, pauseSpeed = 2000) {
+  const [text, setText] = useState("");
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    const current = phrases[phraseIdx];
+    let delay;
+
+    if (!isDeleting && text === current) {
+      delay = pauseSpeed;
+      timerRef.current = setTimeout(() => setIsDeleting(true), delay);
+    } else if (isDeleting && text === "") {
+      delay = 300;
+      timerRef.current = setTimeout(() => {
+        setIsDeleting(false);
+        setPhraseIdx((i) => (i + 1) % phrases.length);
+      }, delay);
+    } else {
+      delay = isDeleting ? typeSpeed / 2 : typeSpeed;
+      timerRef.current = setTimeout(() => {
+        setText(t => isDeleting ? t.slice(0, -1) : current.slice(0, t.length + 1));
+      }, delay);
+    }
+
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [text, isDeleting, phraseIdx, phrases, typeSpeed, pauseSpeed]);
+
+  return text;
+}
+
+/* ==================== 滚动渐入 hook ==================== */
+function useReveal(ref, delay = 0) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            setTimeout(() => el.classList.add("in"), delay);
+            obs.unobserve(el);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, delay]);
+}
+
+/* ==================== 涟漪 hook ==================== */
+function useRipple() {
+  const createRipple = useCallback((e) => {
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const x = e.clientX - rect.left - size / 2;
+    const y = e.clientY - rect.top - size / 2;
+
+    const ripple = document.createElement("span");
+    ripple.className = "ripple-effect";
+    ripple.style.width = ripple.style.height = `${size}px`;
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+    btn.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }, []);
+  return createRipple;
+}
+
+/* ==================== 3D 卡片倾斜 ==================== */
+function useTilt(ref, intensity = 10) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const onMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width - 0.5;
+      const y = (e.clientY - rect.top) / rect.height - 0.5;
+      el.style.transform = `perspective(1000px) rotateY(${x * intensity}deg) rotateX(${-y * intensity}deg) translateY(-8px)`;
+    };
+    const onLeave = () => {
+      el.style.transform = "perspective(1000px) rotateY(0) rotateX(0) translateY(0)";
+    };
+
+    el.addEventListener("mousemove", onMove);
+    el.addEventListener("mouseleave", onLeave);
+    return () => {
+      el.removeEventListener("mousemove", onMove);
+      el.removeEventListener("mouseleave", onLeave);
+    };
+  }, [ref, intensity]);
+}
+
+/* ==================== 主应用 ==================== */
+function App() {
+  const [archiveTab, setArchiveTab] = useState("classic");
+  const [workshopStep, setWorkshopStep] = useState(0);
+  const [navScrolled, setNavScrolled] = useState(false);
+
+  // 打字机
+  const typewriterText = useTypewriter(
+    ["一座收藏风的博物馆", "记录每一阵风的形状", "扎糊绘放，千年手艺", "二十四节气，风有信"],
+    100, 2500
+  );
+
+  // 导航滚动状态
+  useEffect(() => {
+    const onScroll = () => setNavScrolled(window.scrollY > 50);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <>
+      {/* 导航 */}
+      <nav className={`nav ${navScrolled ? "scrolled" : ""}`}>
+        <a href="#top" className="nav-logo">
+          <KiteIcon className="nav-logo-icon" />
+          <span>纸鸢气象站</span>
+        </a>
+        <div className="nav-links">
+          <a href="#archive" className="nav-link">风筝档案</a>
+          <a href="#wind" className="nav-link">风之物语</a>
+          <a href="#solar" className="nav-link">放飞节气</a>
+          <a href="#workshop" className="nav-link">扎制工坊</a>
+          <button className="nav-cta">预约参观</button>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="hero" id="top">
+        <div className="hero-kite-container">
+          <SwallowKiteIcon className="hero-kite" style={{ color: "#C7433B" }} />
+          <div className="hero-kite-tail"></div>
+        </div>
+        <div className="hero-kite-container-2">
+          <KiteIcon className="hero-kite" style={{ color: "#D9A441" }} />
+          <div className="hero-kite-tail"></div>
+        </div>
+
+        <div className="hero-content">
+          <div className="hero-eyebrow">PAPER KITE WEATHER STATION</div>
+          <h1 className="hero-title">
+            {"纸鸢气象站".split("").map((c, i) => (
+              <span
+                key={i}
+                className={`title-char ${c === "气" ? "accent" : ""}`}
+                style={{ animationDelay: `${0.4 + i * 0.12}s` }}
+              >
+                {c}
+              </span>
+            ))}
+          </h1>
+          <div className="hero-typewriter">
+            {typewriterText}
+            <span className="cursor"></span>
+          </div>
+
+          <div className="hero-metrics">
+            <div className="hero-metric">
+              <span className="hero-metric-num">
+                <MetricNumber target={206} suffix="+" />
+              </span>
+              <div className="hero-metric-label">风筝藏品</div>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-metric-num">
+                <MetricNumber target={24} />
+              </span>
+              <span className="hero-metric-unit">节气</span>
+              <div className="hero-metric-label">风候记录</div>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-metric-num">
+                <MetricNumber target={1200} suffix="+" />
+              </span>
+              <span className="hero-metric-unit">年</span>
+              <div className="hero-metric-label">技艺传承</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="scroll-indicator">
+          <div className="scroll-indicator-line"></div>
+          <span className="scroll-indicator-text">风起</span>
+        </div>
+      </section>
+
+      {/* 风筝档案 */}
+      <section className="section dark archive-section" id="archive">
+        <div className="section-head">
+          <RevealText>
+            <div className="section-eyebrow">风筝档案</div>
+          </RevealText>
+          <RevealText delay={150}>
+            <h2 className="section-title">百鸢齐飞，流派纷呈</h2>
+          </RevealText>
+          <RevealText delay={250}>
+            <p className="section-sub">
+              中国风筝源远流长，南北流派各有千秋。北派以潍坊、北京为代表，讲究造型工整、彩绘富丽；南派以南通、阳江为宗，擅长音响与大型放飞。
+            </p>
+          </RevealText>
+        </div>
+
+        <div className="archive-tabs">
+          {[
+            { key: "classic", label: "经典流派" },
+            { key: "soft", label: "软翅特色" },
+            { key: "craft", label: "工艺巧思" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              className={`archive-tab ${archiveTab === t.key ? "active" : ""}`}
+              onClick={() => setArchiveTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="archive-grid">
+          {KITE_DATA[archiveTab].map((kite, i) => (
+            <KiteCard key={kite.name} kite={kite} delay={i * 100} />
+          ))}
+        </div>
+      </section>
+
+      {/* 风之物语 */}
+      <section className="section light wind-section" id="wind">
+        <div className="wind-layout">
+          <RevealText>
+            <div className="anemometer">
+              <div className="anemometer-face">
+                <WindDial />
+                <div className="anemometer-needle" id="anemometerNeedle"></div>
+                <div className="anemometer-center"></div>
+                <div className="anemometer-value">
+                  <div className="anemometer-speed" id="windSpeedVal">3.2</div>
+                  <div className="anemometer-unit">米 / 秒 · 二级风</div>
+                </div>
+                <div className="anemometer-direction">
+                  <span className="direction-arrow">N</span>
+                </div>
+              </div>
+            </div>
+          </RevealText>
+
+          <div className="wind-content">
+            <RevealText>
+              <div className="section-eyebrow" style={{ textAlign: "left" }}>风之物语</div>
+            </RevealText>
+            <RevealText delay={100}>
+              <h3>风起于青萍之末</h3>
+            </RevealText>
+            <RevealText delay={180}>
+              <p>
+                古人辨风，有八风之名：东北曰炎风，东方曰滔风，东南曰熏风，南方曰巨风，西南曰凄风，西方曰飂风，西北曰厉风，北方曰寒风。
+              </p>
+            </RevealText>
+            <RevealText delay={260}>
+              <p>
+                风筝者，因风而起，借风而行。善放风筝者，必先识风。风向决定放飞方向，风力决定风筝大小，风的稳与乱，决定了一只风筝能否直上青云。
+              </p>
+            </RevealText>
+            <div className="wind-poems">
+              <RevealText delay={340}>
+                <div className="wind-poem">
+                  <div className="wind-poem-text">草长莺飞二月天，拂堤杨柳醉春烟</div>
+                  <div className="wind-poem-src">—— 清 · 高鼎《村居》</div>
+                </div>
+              </RevealText>
+              <RevealText delay={420}>
+                <div className="wind-poem">
+                  <div className="wind-poem-text">儿童散学归来早，忙趁东风放纸鸢</div>
+                  <div className="wind-poem-src">—— 清 · 高鼎《村居》</div>
+                </div>
+              </RevealText>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 放飞节气 */}
+      <section className="section dark solar-section" id="solar">
+        <div className="section-head">
+          <RevealText>
+            <div className="section-eyebrow">放飞节气</div>
+          </RevealText>
+          <RevealText delay={150}>
+            <h2 className="section-title">二十四节气，风有信</h2>
+          </RevealText>
+          <RevealText delay={250}>
+            <p className="section-sub">
+              二十四节气各有其时，风亦随之变幻。从清明的东风到小雪的北风，四季轮回中，风有信，鸢有期。
+            </p>
+          </RevealText>
+        </div>
+
+        <div className="solar-timeline">
+          {SOLAR_DATA.map((s, i) => (
+            <SolarItem key={s.name} solar={s} delay={i * 120} />
+          ))}
+        </div>
+      </section>
+
+      {/* 扎制工坊 */}
+      <section className="section light workshop-section" id="workshop">
+        <div className="section-head">
+          <RevealText>
+            <div className="section-eyebrow">扎制工坊</div>
+          </RevealText>
+          <RevealText delay={150}>
+            <h2 className="section-title">扎糊绘放，四艺皆精</h2>
+          </RevealText>
+          <RevealText delay={250}>
+            <p className="section-sub">
+              传统风筝制作有四大技艺：扎、糊、绘、放。一道工序皆需数年功力，一只上好的风筝，从选料到完工，往往耗时月余。
+            </p>
+          </RevealText>
+        </div>
+
+        <div className="workshop-steps">
+          <div className="step-nav">
+            {WORKSHOP_STEPS.map((s) => (
+              <button
+                key={s.id}
+                className={`step-btn ${workshopStep === s.id ? "active" : ""}`}
+                onClick={() => setWorkshopStep(s.id)}
+              >
+                <span className="step-btn-num">{s.num}</span>
+                {s.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="step-content">
+            {WORKSHOP_STEPS.map((s) => (
+              <div
+                key={s.id}
+                className={`step-panel ${workshopStep === s.id ? "active" : ""}`}
+              >
+                <div className="step-panel-inner">
+                  <div className="step-visual">
+                    <s.icon style={{ color: "#1F3A44", width: "55%", height: "55%" }} />
+                  </div>
+                  <div className="step-text">
+                    <h3>{s.title}</h3>
+                    <p>{s.desc}</p>
+                    <p>{s.desc2}</p>
+                    <div className="step-tools">
+                      {s.tools.map(t => (
+                        <span key={t} className="step-tool">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="cta-section">
+        <div className="cta-inner">
+          <RevealText>
+            <h2 className="cta-title">赴一场<br/>与风的千年之约</h2>
+          </RevealText>
+          <RevealText delay={120}>
+            <p className="cta-sub">
+              纸鸢气象站常设展位于风筝博物馆三层，展出历代风筝两百余件，更有扎制工坊体验课。来与我们一起，亲手放飞一只属于你的纸鸢。
+            </p>
+          </RevealText>
+          <RevealText delay={220}>
+            <button className="cta-btn ripple-btn" onClick={handleRipple}>
+              预约参观
+              <ArrowRightIcon className="cta-btn-arrow" style={{ width: 18, height: 18 }} />
+            </button>
+          </RevealText>
+        </div>
+      </section>
+
+      {/* 页脚 */}
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <div className="footer-logo">纸鸢气象站</div>
+            <p>一座收藏风与风筝文化的博物馆，记录每一阵风的形状，传承千年扎糊绘放的手艺。</p>
+          </div>
+          <div className="footer-col">
+            <h4>展览</h4>
+            <ul>
+              <li><a href="#">常设展</a></li>
+              <li><a href="#">特展预告</a></li>
+              <li><a href="#">藏品档案</a></li>
+              <li><a href="#">线上展厅</a></li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h4>工坊</h4>
+            <ul>
+              <li><a href="#">扎制体验课</a></li>
+              <li><a href="#">彩绘工坊</a></li>
+              <li><a href="#">亲子活动</a></li>
+              <li><a href="#">研学课程</a></li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h4>关于</h4>
+            <ul>
+              <li><a href="#">气象站简介</a></li>
+              <li><a href="#">参观指南</a></li>
+              <li><a href="#">联系我们</a></li>
+              <li><a href="#">加入我们</a></li>
+            </ul>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <span className="footer-copy">© 纸鸢气象站 · 风有信，鸢有期</span>
+          <span className="footer-copy">山东 · 潍坊</span>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+/* ==================== 子组件 ==================== */
+
+// 数字计数
+function MetricNumber({ target, suffix = "" }) {
+  const ref = useRef(null);
+  const [start, setStart] = useState(false);
+  const val = useCountUp(target, 2200, start);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            setStart(true);
+            obs.unobserve(el);
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref]);
+
+  return <span ref={ref}>{val}{suffix}</span>;
+}
+
+// 滚动渐入文字
+function RevealText({ children, delay = 0 }) {
+  const ref = useRef(null);
+  useReveal(ref, delay);
+  return <div className="reveal" ref={ref}>{children}</div>;
+}
+
+// 风筝卡片（3D 倾斜）
+function KiteCard({ kite, delay = 0 }) {
+  const ref = useRef(null);
+  useReveal(ref, delay);
+  useTilt(ref, 8);
+
+  const Icon = kite.icon;
+
+  return (
+    <div className="kite-card reveal" ref={ref}>
+      <div className="kite-card-shine"></div>
+      <Icon className="kite-card-icon" />
+      <h3 className="kite-card-name">{kite.name}</h3>
+      <div className="kite-card-origin">{kite.origin}</div>
+      <p className="kite-card-desc">{kite.desc}</p>
+      <div className="kite-card-stats">
+        {kite.stats.map(s => (
+          <div key={s.l} className="kite-stat">
+            <div className="kite-stat-val">{s.v}</div>
+            <div className="kite-stat-label">{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 节气时间线项
+function SolarItem({ solar, delay = 0 }) {
+  const ref = useRef(null);
+  useReveal(ref, delay);
+  const Icon = solar.icon;
+
+  return (
+    <div className="solar-item reveal" ref={ref}>
+      <div className="solar-info">
+        <div className="solar-name">{solar.name}</div>
+        <div className="solar-date">{solar.date}</div>
+        <p className="solar-desc">{solar.desc}</p>
+      </div>
+      <div className="solar-icon-wrap">
+        <div className="solar-icon">
+          <Icon style={{ width: 24, height: 24 }} />
+        </div>
+      </div>
+      <div className="solar-season">{solar.season}</div>
+    </div>
+  );
+}
+
+// 仪表刻度
+function WindDial() {
+  const ticks = [];
+  const numbers = [];
+  for (let i = 0; i <= 20; i++) {
+    const angle = -135 + i * 13.5; // -135 to 135 deg
+    const isMajor = i % 5 === 0;
+    ticks.push(
+      <div
+        key={i}
+        className={`anemometer-tick ${isMajor ? "major" : ""}`}
+        style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
+      />
+    );
+  }
+  [0, 5, 10, 15, 20].forEach((n, i) => {
+    const angle = -135 + i * 67.5;
+    const rad = (angle - 90) * Math.PI / 180;
+    numbers.push(
+      <div
+        key={n}
+        className="anemometer-number"
+        style={{ transform: `rotate(${angle}deg) translateY(-124px) rotate(${-angle}deg)` }}
+      >
+        {n}
+      </div>
+    );
+  });
+  return (
+    <>
+      <div className="anemometer-ticks">{ticks}</div>
+      <div className="anemometer-numbers">{numbers}</div>
+    </>
+  );
+}
+
+/* ==================== 涟漪处理 ==================== */
+function handleRipple(e) {
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const x = e.clientX - rect.left - size / 2;
+  const y = e.clientY - rect.top - size / 2;
+  const ripple = document.createElement("span");
+  ripple.className = "ripple-effect";
+  ripple.style.width = ripple.style.height = `${size}px`;
+  ripple.style.left = `${x}px`;
+  ripple.style.top = `${y}px`;
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+}
+
+/* ==================== 渲染 ==================== */
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+/* ==================== 宣告可升级 ==================== */
+function announceUpgrade() {
+  window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+}
+announceUpgrade();
+if (document.readyState !== 'complete') window.addEventListener('load', announceUpgrade, { once: true });
+</script>
+
+<script>
+/* ==================== 自定义光标（非 React，最高 z-index） ==================== */
+(function() {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reducedMotion) return;
+
+  const outer = document.getElementById('cursorOuter');
+  const dot = document.getElementById('cursorDot');
+
+  // 初始位置：屏幕中央
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let outerX = mouseX;
+  let outerY = mouseY;
+  let dotX = mouseX;
+  let dotY = mouseY;
+
+  // 弹簧参数
+  const outerSpring = { tension: 0.08, friction: 0.82 };
+  const dotSpring = { tension: 0.35, friction: 0.75 };
+
+  let outerVelX = 0, outerVelY = 0;
+  let dotVelX = 0, dotVelY = 0;
+
+  let rafId = null;
+  let isVisible = true;
+
+  function animate() {
+    if (!isVisible) return;
+
+    // 外环：滞后跟随
+    outerVelX = (outerVelX + (mouseX - outerX) * outerSpring.tension) * outerSpring.friction;
+    outerVelY = (outerVelY + (mouseY - outerY) * outerSpring.tension) * outerSpring.friction;
+    outerX += outerVelX;
+    outerY += outerVelY;
+    outer.style.transform = `translate(${outerX}px, ${outerY}px) translate(-50%, -50%)`;
+
+    // 内点：快速跟随
+    dotVelX = (dotVelX + (mouseX - dotX) * dotSpring.tension) * dotSpring.friction;
+    dotVelY = (dotVelY + (mouseY - dotY) * dotSpring.tension) * dotSpring.friction;
+    dotX += dotVelX;
+    dotY += dotVelY;
+    dot.style.transform = `translate(${dotX}px, ${dotY}px) translate(-50%, -50%) scale(${dot.classList.contains('hover') ? 2 : 1})`;
+
+    rafId = requestAnimationFrame(animate);
+  }
+
+  function onMouseMove(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  }
+
+  // 悬停检测
+  function onMouseOver(e) {
+    const target = e.target.closest('a, button, .kite-card, .wind-poem, .solar-item, .step-btn, .step-tool, .archive-tab');
+    if (target) {
+      outer.classList.add('hover');
+      dot.classList.add('hover');
+    }
+  }
+  function onMouseOut(e) {
+    const target = e.target.closest('a, button, .kite-card, .wind-poem, .solar-item, .step-btn, .step-tool, .archive-tab');
+    if (target) {
+      outer.classList.remove('hover');
+      dot.classList.remove('hover');
+    }
+  }
+
+  // 点击涟漪
+  function onClick(e) {
+    const ripple = document.createElement('div');
+    ripple.className = 'cursor-ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }
+
+  // 可见性切换
+  function onVisibilityChange() {
+    isVisible = !document.hidden;
+    if (isVisible && !rafId) {
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  window.addEventListener('mousemove', onMouseMove, { passive: true });
+  document.addEventListener('mouseover', onMouseOver);
+  document.addEventListener('mouseout', onMouseOut);
+  document.addEventListener('click', onClick);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // 启动
+  rafId = requestAnimationFrame(animate);
+})();
+
+/* ==================== 风场粒子系统 ==================== */
+(function() {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canvas = document.getElementById('windCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let width, height;
+  let particles = [];
+  let rafId = null;
+  let isVisible = true;
+  const PARTICLE_COUNT = reducedMotion ? 0 : 60;
+  const WIND_SPEED_BASE = 0.8;
+
+  // 噪声场（简化版 Perlin-like）
+  const noiseSize = 64;
+  const noiseField = [];
+  function initNoise() {
+    for (let y = 0; y < noiseSize; y++) {
+      noiseField[y] = [];
+      for (let x = 0; x < noiseSize; x++) {
+        noiseField[y][x] = Math.random();
+      }
+    }
+  }
+  function wrapIdx(n) {
+    const m = Math.floor(n) % noiseSize;
+    return m < 0 ? m + noiseSize : m;
+  }
+  function smoothNoise(x, y) {
+    const xi = wrapIdx(x);
+    const yi = wrapIdx(y);
+    const xi1 = (xi + 1) % noiseSize;
+    const yi1 = (yi + 1) % noiseSize;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const v00 = noiseField[yi][xi];
+    const v10 = noiseField[yi][xi1];
+    const v01 = noiseField[yi1][xi];
+    const v11 = noiseField[yi1][xi1];
+    const sx = xf * xf * (3 - 2 * xf);
+    const sy = yf * yf * (3 - 2 * yf);
+    const a = v00 + (v10 - v00) * sx;
+    const b = v01 + (v11 - v01) * sx;
+    return a + (b - a) * sy;
+  }
+
+  function resize() {
+    width = canvas.width = window.innerWidth * window.devicePixelRatio;
+    height = canvas.height = window.innerHeight * window.devicePixelRatio;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+
+  function initParticles() {
+    particles = [];
+    const dpr = window.devicePixelRatio || 1;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      particles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: 0,
+        vy: 0,
+        age: Math.random() * 200,
+        maxAge: 150 + Math.random() * 200,
+        size: 1 + Math.random() * 2.5,
+        type: Math.random() < 0.15 ? 'kite' : 'streak',
+        opacity: 0,
+      });
+    }
+  }
+
+  let time = 0;
+
+  function animate() {
+    if (!isVisible) return;
+    time += 0.003;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    for (let p of particles) {
+      // 风场向量
+      const nx = p.x * 0.004 + time;
+      const ny = p.y * 0.004 + time * 0.7;
+      const angle = smoothNoise(nx * 2, ny * 2) * Math.PI * 3;
+      const speed = WIND_SPEED_BASE + smoothNoise(nx * 3 + 10, ny * 3 + 5) * 1.5;
+
+      p.vx = p.vx * 0.92 + Math.cos(angle) * speed * 0.08;
+      p.vy = p.vy * 0.92 + Math.sin(angle) * speed * 0.04;
+
+      p.x += p.vx;
+      p.y += p.vy;
+      p.age++;
+
+      // 生命周期淡入淡出
+      const lifeRatio = p.age / p.maxAge;
+      if (lifeRatio < 0.1) {
+        p.opacity = lifeRatio / 0.1;
+      } else if (lifeRatio > 0.85) {
+        p.opacity = (1 - lifeRatio) / 0.15;
+      } else {
+        p.opacity = 1;
+      }
+
+      // 绘制
+      ctx.globalAlpha = p.opacity * 0.5;
+
+      if (p.type === 'streak') {
+        // 流线型粒子
+        const len = p.size * 8 + Math.abs(p.vx) * 3;
+        const grd = ctx.createLinearGradient(p.x, p.y, p.x - p.vx * len, p.y - p.vy * len);
+        grd.addColorStop(0, 'rgba(217, 164, 65, 0.8)');
+        grd.addColorStop(1, 'rgba(246, 241, 231, 0)');
+        ctx.strokeStyle = grd;
+        ctx.lineWidth = p.size * 0.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * len, p.y - p.vy * len);
+        ctx.stroke();
+      } else {
+        // 纸鸢形粒子（小菱形）
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(p.vy, p.vx) + Math.PI / 2);
+        ctx.fillStyle = `rgba(199, 67, 59, ${p.opacity * 0.6})`;
+        const s = p.size * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.7, 0);
+        ctx.lineTo(0, s);
+        ctx.lineTo(-s * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 重置出界或过期粒子
+      if (p.x < -50 || p.x > window.innerWidth + 50 ||
+          p.y < -50 || p.y > window.innerHeight + 50 ||
+          p.age > p.maxAge) {
+        // 从左侧或顶部重新进入
+        const side = Math.random();
+        if (side < 0.7) {
+          p.x = -20;
+          p.y = Math.random() * window.innerHeight;
+        } else {
+          p.x = Math.random() * window.innerWidth;
+          p.y = -20;
+        }
+        p.age = 0;
+        p.maxAge = 150 + Math.random() * 200;
+        p.vx = 0;
+        p.vy = 0;
+      }
+    }
+
+    ctx.globalAlpha = 1;
+    rafId = requestAnimationFrame(animate);
+  }
+
+  function onVisibilityChange() {
+    isVisible = !document.hidden;
+    if (isVisible && !rafId) {
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  function start() {
+    if (reducedMotion) return;
+    initNoise();
+    resize();
+    initParticles();
+    rafId = requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  start();
+})();
+
+/* ==================== 风速仪动态指针 ==================== */
+(function() {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const needle = document.getElementById('anemometerNeedle');
+  const valEl = document.getElementById('windSpeedVal');
+  if (!needle || !valEl) return;
+
+  let rafId = null;
+  let isVisible = true;
+  let speed = 3.2;
+  let targetSpeed = 3.2;
+  let time = 0;
+
+  function updateSpeed() {
+    // 基于噪声的自然风速变化
+    time += 0.01;
+    const base = 2.5;
+    const variation = Math.sin(time * 0.7) * 1.2 + Math.sin(time * 1.3) * 0.6 + Math.sin(time * 0.3) * 1.5;
+    targetSpeed = Math.max(0.5, Math.min(8, base + variation));
+  }
+
+  function animate() {
+    if (!isVisible) return;
+
+    updateSpeed();
+    // 弹簧式逼近
+    speed += (targetSpeed - speed) * 0.03;
+
+    // -135deg = 0m/s, 135deg = 20m/s
+    const angle = -135 + (speed / 20) * 270;
+    needle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+    valEl.textContent = speed.toFixed(1);
+
+    rafId = requestAnimationFrame(animate);
+  }
+
+  function onVisibilityChange() {
+    isVisible = !document.hidden;
+    if (isVisible && !rafId && !reducedMotion) {
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  if (reducedMotion) {
+    needle.style.transform = 'translateX(-50%) rotate(-45deg)';
+    return;
+  }
+
+  // IntersectionObserver 控制启停
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      isVisible = e.isIntersecting;
+      if (isVisible && !rafId) {
+        rafId = requestAnimationFrame(animate);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  const dial = needle.closest('.anemometer');
+  if (dial) obs.observe(dial);
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+})();
+</script>
+</body>
+</html>
