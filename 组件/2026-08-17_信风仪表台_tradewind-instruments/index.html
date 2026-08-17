@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>信风仪表台 · Tradewind Instruments</title>
+<style>
+  /* ===== 基础重置 ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+    background: #2a1d10;
+    color: #F5EFE0;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ===== 自定义光标 ===== */
+  .cursor-outer, .cursor-inner, .cursor-ring {
+    position: fixed;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    will-change: transform;
+    mix-blend-mode: normal;
+  }
+  .cursor-outer {
+    width: 36px; height: 36px;
+    border: 2px solid #F5EFE0;
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(184,134,11,0.6), inset 0 0 6px rgba(184,134,11,0.3);
+    transition: width 0.25s cubic-bezier(.2,.8,.2,1), height 0.25s cubic-bezier(.2,.8,.2,1),
+                border-color 0.25s, box-shadow 0.25s;
+  }
+  .cursor-inner {
+    width: 6px; height: 6px;
+    background: #C0392B;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(192,57,43,0.9);
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .cursor-ring {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(245,239,224,0.6);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  body.cursor-hover .cursor-outer {
+    width: 52px; height: 52px;
+    border-color: #B8860B;
+    box-shadow: 0 0 20px rgba(184,134,11,0.9), inset 0 0 10px rgba(184,134,11,0.5);
+  }
+  body.cursor-hover .cursor-inner {
+    background: #B8860B;
+    box-shadow: 0 0 10px rgba(184,134,11,1);
+  }
+  body.cursor-drag .cursor-outer {
+    width: 44px; height: 44px;
+    border-color: #C0392B;
+    box-shadow: 0 0 16px rgba(192,57,43,0.8);
+  }
+  body.cursor-drag .cursor-inner {
+    background: #F5EFE0;
+  }
+
+  /* ===== 主容器 ===== */
+  .stage {
+    position: relative;
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 30%, #4a3520 0%, #2a1d10 55%, #1a110a 100%);
+    overflow: hidden;
+  }
+  .stage::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(90deg, transparent 0, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px),
+      repeating-linear-gradient(0deg, transparent 0, transparent 40px, rgba(139,90,43,0.08) 40px, rgba(139,90,43,0.08) 41px);
+    pointer-events: none;
+  }
+
+  /* ===== 木台面 ===== */
+  .shelf {
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    transform: translateX(-50%);
+    width: 92%;
+    max-width: 1400px;
+    height: 62%;
+    perspective: 1400px;
+  }
+  .shelf-top {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 72%;
+    background:
+      linear-gradient(180deg,
+        #6b4a2a 0%,
+        #5a3d20 20%,
+        #4a3018 60%,
+        #3b2512 100%);
+    border-radius: 8px 8px 0 0;
+    transform: rotateX(18deg);
+    transform-origin: bottom center;
+    box-shadow:
+      0 -2px 0 rgba(255,200,120,0.15) inset,
+      0 20px 60px rgba(0,0,0,0.6);
+  }
+  .shelf-top::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(90deg,
+        rgba(90,50,20,0.3) 0px,
+        rgba(120,70,30,0.15) 2px,
+        rgba(70,40,15,0.25) 5px,
+        rgba(100,60,25,0.2) 8px);
+    border-radius: 8px 8px 0 0;
+  }
+  .shelf-front {
+    position: absolute;
+    bottom: -14%; left: -1%; right: -1%;
+    height: 18%;
+    background: linear-gradient(180deg, #3b2512, #25170a);
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+  }
+
+  /* ===== 标题 ===== */
+  .title-area {
+    position: absolute;
+    top: 6%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 5;
+  }
+  .title-main {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: 12px;
+    color: #B8860B;
+    text-shadow:
+      0 2px 4px rgba(0,0,0,0.6),
+      0 0 20px rgba(184,134,11,0.3);
+    padding-left: 12px; /* 补偿字距 */
+  }
+  .title-sub {
+    font-size: 13px;
+    letter-spacing: 6px;
+    color: #8a7a5a;
+    margin-top: 8px;
+    font-style: italic;
+    font-family: "Georgia", serif;
+    padding-left: 6px;
+  }
+  .title-divider {
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #B8860B, transparent);
+    margin: 14px auto 0;
+    opacity: 0.6;
+  }
+
+  /* ===== 仪表通用 ===== */
+  .instrument {
+    position: absolute;
+    bottom: 58%;
+    transform: translate(-50%, 50%) rotateX(18deg);
+    transform-origin: bottom center;
+    cursor: none;
+  }
+  .inst-label {
+    position: absolute;
+    bottom: -42px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: #C9A96E;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    padding-left: 3px;
+  }
+  .inst-sub {
+    position: absolute;
+    bottom: -58px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #7a6544;
+    white-space: nowrap;
+    font-family: Georgia, serif;
+    font-style: italic;
+  }
+
+  /* 黄铜底座通用 */
+  .brass-base {
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    width: 120%;
+    height: 14px;
+    background: linear-gradient(180deg, #d4a85a, #8a6220 60%, #5a4010);
+    border-radius: 50%;
+    box-shadow:
+      0 4px 8px rgba(0,0,0,0.5),
+      inset 0 2px 4px rgba(255,220,150,0.4);
+  }
+
+  /* ===== 仪表位置 ===== */
+  #wind-vane { left: 12%;  width: 200px; height: 200px; }
+  #barometer { left: 31%;  width: 160px; height: 260px; }
+  #rain-gauge { left: 50%; width: 180px; height: 220px; }
+  #thermo-hygro { left: 69%; width: 200px; height: 180px; }
+  #fog-dial { left: 88%;   width: 190px; height: 190px; }
+
+  /* ===== 1. 风向标 ===== */
+  .wind-compass {
+    position: relative;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #2d5a42 0%, #1F3A2E 55%, #152a20 100%);
+    box-shadow:
+      0 0 0 6px #B8860B,
+      0 0 0 8px #7a5a18,
+      0 0 0 12px #d4a85a,
+      0 0 0 14px #8a6220,
+      inset 0 0 30px rgba(0,0,0,0.5),
+      0 10px 30px rgba(0,0,0,0.7);
+  }
+  .wind-compass::before {
+    content: '';
+    position: absolute; inset: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(184,134,11,0.4);
+  }
+  .compass-ticks { position: absolute; inset: 0; }
+  .compass-tick {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 2px; height: 8px;
+    background: #B8860B;
+    transform-origin: 50% 90px;
+    opacity: 0.7;
+  }
+  .compass-tick.major {
+    width: 3px; height: 14px;
+    background: #F5EFE0;
+    opacity: 0.95;
+  }
+  .compass-dir {
+    position: absolute;
+    left: 50%; top: 50%;
+    color: #F5EFE0;
+    font-size: 16px;
+    font-weight: 700;
+    transform: translate(-50%, -50%);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+
+  .wind-pointer {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 6px; height: 160px;
+    transform-origin: 50% 50%;
+    transform: translate(-50%, -50%) rotate(0deg);
+    cursor: grab;
+    z-index: 3;
+  }
+  .wind-pointer.dragging { cursor: grabbing; }
+  .pointer-shaft {
+    position: absolute;
+    left: 50%; top: 10px;
+    width: 4px; height: 140px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, #C0392B, #e05a4a, #C0392B);
+    border-radius: 2px;
+    box-shadow: 1px 0 2px rgba(0,0,0,0.4);
+  }
+  .pointer-arrow {
+    position: absolute;
+    left: 50%; top: 0;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-bottom: 24px solid #C0392B;
+    filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.5));
+  }
+  .pointer-tail {
+    position: absolute;
+    left: 50%; bottom: 8px;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 18px solid #F5EFE0;
+    filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.4));
+  }
+  .compass-center {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e8c878, #B8860B 50%, #7a5a18);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.6),
+      inset 0 1px 2px rgba(255,255,255,0.4);
+    z-index: 4;
+  }
+
+  /* 风车叶片 */
+  .wind-mill {
+    position: absolute;
+    left: 50%; top: -30px;
+    transform: translateX(-50%);
+    width: 60px; height: 60px;
+  }
+  .wind-mill-blades {
+    position: absolute;
+    inset: 0;
+    animation: millSpin 4s linear infinite;
+    animation-play-state: paused;
+  }
+  .wind-mill-blades.spinning { animation-play-state: running; }
+  .mill-blade {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 6px; height: 28px;
+    background: linear-gradient(90deg, #d4a85a, #8a6220);
+    transform-origin: 50% 100%;
+    border-radius: 2px;
+    transform: translate(-50%, -100%);
+  }
+  .mill-blade:nth-child(1) { transform: translate(-50%, 0) rotate(0deg) translateY(-26px); }
+  .mill-blade:nth-child(2) { transform: translate(-50%, 0) rotate(90deg) translateY(-26px); }
+  .mill-blade:nth-child(3) { transform: translate(-50%, 0) rotate(180deg) translateY(-26px); }
+  .mill-blade:nth-child(4) { transform: translate(-50%, 0) rotate(270deg) translateY(-26px); }
+  .mill-hub {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #e8c878, #7a5a18);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  }
+
+  @keyframes millSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* ===== 2. 气压计 ===== */
+  .baro-body {
+    position: relative;
+    width: 100px; height: 240px;
+    margin: 0 auto;
+    background: linear-gradient(180deg,
+      #1F3A2E 0%,
+      #152a20 100%);
+    border: 4px solid #B8860B;
+    border-radius: 50px 50px 8px 8px;
+    box-shadow:
+      inset 0 0 20px rgba(0,0,0,0.5),
+      0 8px 20px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  .baro-glass {
+    position: absolute;
+    left: 50%;
+    top: 20px;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 180px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    border: 1px solid rgba(184,134,11,0.4);
+    overflow: hidden;
+  }
+  .baro-mercury {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 60%;
+    background: linear-gradient(90deg,
+      #6a4a1a 0%,
+      #d4a85a 25%,
+      #f0d088 45%,
+      #e8c070 55%,
+      #b8862a 75%,
+      #6a4a1a 100%);
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.3);
+    transition: height 0.1s linear;
+  }
+  .baro-mercury::before {
+    content: '';
+    position: absolute;
+    top: -3px; left: 2px; right: 2px;
+    height: 6px;
+    background: linear-gradient(180deg, #f5e0a0, #d4a85a);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255,220,120,0.8);
+  }
+  .baro-scale {
+    position: absolute;
+    right: 8px;
+    top: 20px;
+    height: 180px;
+    width: 30px;
+    font-size: 9px;
+    color: #C9A96E;
+    font-family: Georgia, serif;
+  }
+  .baro-scale-tick {
+    position: absolute;
+    right: 0;
+    width: 10px;
+    height: 1px;
+    background: #B8860B;
+  }
+  .baro-scale-tick.major { width: 16px; background: #F5EFE0; }
+  .baro-scale-label {
+    position: absolute;
+    right: 20px;
+    font-size: 8px;
+    color: #C9A96E;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+  .baro-slider {
+    position: absolute;
+    left: 50%;
+    bottom: 30px;
+    transform: translateX(-50%);
+    width: 60px; height: 16px;
+    background: linear-gradient(180deg, #d4a85a, #8a6220);
+    border-radius: 3px;
+    cursor: ns-resize;
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.5),
+      inset 0 1px 2px rgba(255,220,150,0.5);
+    z-index: 3;
+  }
+  .baro-slider::before, .baro-slider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 4px; height: 10px;
+    background: #5a4010;
+    transform: translateY(-50%);
+    border-radius: 1px;
+  }
+  .baro-slider::before { left: 12px; }
+  .baro-slider::after { right: 12px; }
+  .baro-readout {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #F5EFE0;
+    font-family: Georgia, serif;
+    letter-spacing: 1px;
+  }
+  .baro-readout span {
+    color: #C0392B;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* ===== 3. 雨量计 ===== */
+  .rain-body {
+    position: relative;
+    width: 150px; height: 180px;
+    margin: 0 auto;
+  }
+  .rain-funnel {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 100px; height: 30px;
+    background: linear-gradient(180deg, #d4a85a, #8a6220);
+    border-radius: 50%;
+    box-shadow:
+      inset 0 -4px 8px rgba(0,0,0,0.4),
+      0 2px 4px rgba(0,0,0,0.3);
+    z-index: 2;
+  }
+  .rain-funnel::before {
+    content: '';
+    position: absolute;
+    top: 4px; left: 50%;
+    transform: translateX(-50%);
+    width: 70px; height: 18px;
+    background: #1a1a1a;
+    border-radius: 50%;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+  }
+  .rain-collector {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 130px;
+    background: linear-gradient(90deg,
+      rgba(100,160,200,0.1) 0%,
+      rgba(200,230,245,0.25) 50%,
+      rgba(100,160,200,0.1) 100%);
+    border: 2px solid rgba(184,134,11,0.6);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+  }
+  .rain-water {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg,
+      rgba(100,180,220,0.6) 0%,
+      rgba(60,130,170,0.8) 100%);
+    transition: height 0.6s cubic-bezier(.2,.8,.2,1);
+  }
+  .rain-water::before {
+    content: '';
+    position: absolute;
+    top: -6px; left: -10%;
+    width: 120%;
+    height: 12px;
+    background: radial-gradient(ellipse at center,
+      rgba(180,220,240,0.8) 0%,
+      rgba(100,180,220,0.5) 60%,
+      transparent 100%);
+    animation: waterWave 2s ease-in-out infinite;
+  }
+  @keyframes waterWave {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(4px); }
+  }
+
+  .rain-scale {
+    position: absolute;
+    right: 6px;
+    top: 30px;
+    bottom: 28px;
+    width: 24px;
+    pointer-events: none;
+  }
+  .rain-scale-tick {
+    position: absolute;
+    right: 0;
+    width: 8px;
+    height: 1px;
+    background: rgba(184,134,11,0.7);
+  }
+  .rain-scale-tick.major { width: 14px; background: #F5EFE0; }
+  .rain-scale-num {
+    position: absolute;
+    right: 18px;
+    font-size: 8px;
+    color: #C9A96E;
+    transform: translateY(-50%);
+    font-family: Georgia, serif;
+  }
+
+  /* 翻斗 */
+  .rain-tipper-wrap {
+    position: absolute;
+    top: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px; height: 50px;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .rain-tipper {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform-origin: 50% 50%;
+    width: 80px; height: 20px;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    transition: transform 0.5s cubic-bezier(.5,-0.3,.3,1.3);
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .rain-tipper.flipped {
+    transform: translate(-50%, -50%) rotate(15deg);
+  }
+  .tipper-bucket {
+    position: absolute;
+    top: 0;
+    width: 36px; height: 18px;
+    background: linear-gradient(180deg, #d4a85a, #8a6220);
+    border-radius: 2px 2px 18px 18px / 2px 2px 12px 12px;
+    box-shadow:
+      inset 0 -2px 4px rgba(0,0,0,0.4),
+      0 2px 3px rgba(0,0,0,0.3);
+  }
+  .tipper-bucket.left { left: 0; }
+  .tipper-bucket.right { right: 0; }
+  .tipper-pivot {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e8c878, #7a5a18);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    z-index: 2;
+  }
+  .rain-count {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #C9A96E;
+    font-family: Georgia, serif;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .rain-count strong {
+    color: #6ac0e0;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* 雨滴 */
+  .rain-drops {
+    position: absolute;
+    top: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px; height: 20px;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 4;
+  }
+  .raindrop {
+    position: absolute;
+    width: 2px; height: 6px;
+    background: linear-gradient(180deg, rgba(180,220,240,0.3), rgba(100,180,220,0.8));
+    border-radius: 50%;
+    animation: raindropFall 0.8s linear infinite;
+    opacity: 0;
+  }
+  .rain-drops.raining .raindrop { opacity: 1; }
+  @keyframes raindropFall {
+    0% { transform: translateY(-10px); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translateY(30px); opacity: 0.5; }
+  }
+
+  /* 涟漪 */
+  .ripples {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 100%;
+    pointer-events: none;
+  }
+  .ripple {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 10px; height: 4px;
+    border: 1px solid rgba(200,230,255,0.8);
+    border-radius: 50%;
+    transform: translate(-50%, 50%) scale(0);
+    opacity: 1;
+    pointer-events: none;
+  }
+  @keyframes rippleExpand {
+    0% { transform: translate(-50%, 50%) scale(0); opacity: 1; }
+    100% { transform: translate(-50%, 50%) scale(4); opacity: 0; }
+  }
+
+  /* ===== 4. 温湿度 双金属片 ===== */
+  .bimetal-body {
+    position: relative;
+    width: 180px; height: 150px;
+    margin: 0 auto;
+    background: linear-gradient(180deg, #1F3A2E, #152a20);
+    border: 4px solid #B8860B;
+    border-radius: 12px;
+    box-shadow:
+      inset 0 0 20px rgba(0,0,0,0.5),
+      0 8px 20px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  .bimetal-title {
+    position: absolute;
+    top: 8px; left: 12px;
+    font-size: 10px;
+    color: #C9A96E;
+    letter-spacing: 2px;
+  }
+  .bimetal-scale {
+    position: absolute;
+    top: 28px;
+    left: 12px; right: 12px;
+    height: 40px;
+    border-bottom: 1px solid rgba(184,134,11,0.3);
+  }
+  .bimetal-ticks { position: relative; width: 100%; height: 100%; }
+  .bimetal-tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px; height: 6px;
+    background: #B8860B;
+    opacity: 0.6;
+  }
+  .bimetal-tick.major { height: 10px; background: #F5EFE0; opacity: 0.9; }
+  .bimetal-label {
+    position: absolute;
+    bottom: 12px;
+    font-size: 8px;
+    color: #C9A96E;
+    transform: translateX(-50%);
+    font-family: Georgia, serif;
+    white-space: nowrap;
+  }
+
+  /* 双金属片 */
+  .bimetal-strip {
+    position: absolute;
+    left: 16px;
+    top: 70px;
+    width: 140px;
+    height: 8px;
+    transform-origin: left center;
+    cursor: grab;
+    z-index: 3;
+  }
+  .bimetal-strip.dragging { cursor: grabbing; }
+  .bimetal-strip svg {
+    width: 100%; height: 100%;
+    overflow: visible;
+    display: block;
+  }
+  .bimetal-grip {
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px; height: 22px;
+    background: linear-gradient(90deg, #5a4010, #8a6220, #5a4010);
+    border-radius: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    z-index: 4;
+  }
+  .bimetal-knob {
+    position: absolute;
+    right: -6px; top: 50%;
+    transform: translateY(-50%);
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e8c878, #B8860B 50%, #7a5a18);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.5),
+      inset 0 1px 2px rgba(255,255,255,0.4);
+    cursor: grab;
+    z-index: 5;
+  }
+  .bimetal-readout {
+    position: absolute;
+    bottom: 8px;
+    left: 12px;
+    font-size: 10px;
+    color: #F5EFE0;
+    font-family: Georgia, serif;
+  }
+  .bimetal-readout .temp-val {
+    color: #C0392B;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .bimetal-readout .humi-val {
+    color: #6ac0e0;
+    font-size: 12px;
+    margin-left: 10px;
+  }
+
+  /* ===== 5. 能见度雾度转盘 ===== */
+  .fog-body {
+    position: relative;
+    width: 170px; height: 170px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #2d5a42 0%, #1F3A2E 55%, #152a20 100%);
+    box-shadow:
+      0 0 0 6px #B8860B,
+      0 0 0 8px #7a5a18,
+      inset 0 0 30px rgba(0,0,0,0.5),
+      0 10px 30px rgba(0,0,0,0.7);
+    overflow: hidden;
+  }
+  /* 内部海景场景 */
+  .fog-scene {
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(180deg,
+      #c8d8e8 0%,
+      #a8c0d8 40%,
+      #5a7a9a 42%,
+      #3a5a7a 100%);
+    transition: filter 0.3s;
+  }
+  .fog-sun {
+    position: absolute;
+    top: 20px; right: 25px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff5d0, #f5d880);
+    box-shadow: 0 0 15px rgba(255,230,150,0.8);
+  }
+  .fog-ship {
+    position: absolute;
+    bottom: 38%;
+    left: 30%;
+    width: 30px; height: 20px;
+    transition: opacity 0.3s;
+  }
+  .ship-hull {
+    position: absolute;
+    bottom: 0;
+    width: 30px; height: 8px;
+    background: #4a2a10;
+    border-radius: 2px 2px 6px 6px;
+  }
+  .ship-mast {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1.5px; height: 12px;
+    background: #2a1808;
+  }
+  .ship-sail {
+    position: absolute;
+    bottom: 10px;
+    left: 52%;
+    width: 0; height: 0;
+    border-bottom: 10px solid #F5EFE0;
+    border-right: 10px solid transparent;
+  }
+
+  .fog-layer {
+    position: absolute;
+    inset: 0;
+    background: rgba(230,235,240,0.0);
+    pointer-events: none;
+    transition: background 0.2s;
+  }
+
+  /* 雾度转盘刻度 */
+  .fog-ticks { position: absolute; inset: 0; }
+  .fog-tick {
+    position: absolute;
+    left: 50%; top: 8px;
+    width: 2px; height: 6px;
+    background: #F5EFE0;
+    transform-origin: 50% 77px;
+    opacity: 0.8;
+  }
+  .fog-tick.major {
+    width: 3px; height: 10px;
+    background: #B8860B;
+  }
+
+  /* 旋钮 */
+  .fog-knob {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #e8c878 0%, #B8860B 40%, #8a6220 80%, #5a4010 100%);
+    box-shadow:
+      0 4px 10px rgba(0,0,0,0.6),
+      inset 0 -2px 4px rgba(0,0,0,0.3),
+      inset 0 2px 4px rgba(255,220,150,0.5);
+    cursor: grab;
+    z-index: 5;
+  }
+  .fog-knob.dragging { cursor: grabbing; }
+  .fog-knob::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px; height: 10px;
+    background: #C0392B;
+    border-radius: 2px;
+    box-shadow: 0 0 4px rgba(192,57,43,0.6);
+  }
+  .fog-knob-line {
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    border: 1px solid rgba(122,90,24,0.5);
+    pointer-events: none;
+  }
+  .fog-readout {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    color: #F5EFE0;
+    font-family: Georgia, serif;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .fog-readout span {
+    color: #B8860B;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* ===== 页脚小字 ===== */
+  .footnote {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #5a4a2a;
+    letter-spacing: 4px;
+    font-family: Georgia, serif;
+    font-style: italic;
+    padding-left: 4px;
+    z-index: 2;
+  }
+
+  /* ===== 点击涟漪 ===== */
+  .click-ripple {
+    position: fixed;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid #B8860B;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.8;
+    animation: clickRipple 0.5s ease-out forwards;
+  }
+  @keyframes clickRipple {
+    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.8; border-width: 3px; }
+    100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; border-width: 1px; }
+  }
+
+  /* ===== 工具说明 ===== */
+  .hint {
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #7a6544;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    z-index: 3;
+  }
+  .hint::before, .hint::after {
+    content: '◆';
+    margin: 0 10px;
+    color: #B8860B;
+    font-size: 8px;
+    vertical-align: middle;
+  }
+
+  /* ===== 磁吸时的短暂闪光 ===== */
+  .snap-flash {
+    animation: snapFlash 0.3s ease-out;
+  }
+  @keyframes snapFlash {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.4) drop-shadow(0 0 6px #B8860B); }
+    100% { filter: brightness(1); }
+  }
+
+  /* ===== 减少动效偏好 ===== */
+  @media (prefers-reduced-motion: reduce) {
+    .wind-mill-blades { animation: none !important; }
+    .rain-water::before { animation: none !important; }
+    .raindrop { animation: none !important; }
+    .cursor-outer, .cursor-inner, .cursor-ring { transition: none !important; }
+    .baro-mercury { transition: none !important; }
+    .rain-water { transition: none !important; }
+    .rain-tipper { transition: none !important; }
+    .fog-layer { transition: none !important; }
+    .fog-scene { transition: none !important; }
+    .snap-flash { animation: none !important; }
+    .click-ripple { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <!-- 标题 -->
+  <div class="title-area">
+    <div class="title-main">信风仪表台</div>
+    <div class="title-sub">TRADEWIND &nbsp; INSTRUMENTS</div>
+    <div class="title-divider"></div>
+  </div>
+
+  <div class="hint">拖拽指针 · 拨弄旋钮 · 每一件都可把玩</div>
+
+  <!-- 木台面 -->
+  <div class="shelf">
+    <div class="shelf-top"></div>
+    <div class="shelf-front"></div>
+  </div>
+
+  <!-- 仪表容器 -->
+  <div class="shelf" style="pointer-events: none;">
+    <div style="position: absolute; inset: 0; pointer-events: none;">
+      <!-- 1. 风向标 -->
+      <div class="instrument" id="wind-vane" data-hover>
+        <div class="wind-mill">
+          <div class="wind-mill-blades" id="millBlades">
+            <div class="mill-blade"></div>
+            <div class="mill-blade"></div>
+            <div class="mill-blade"></div>
+            <div class="mill-blade"></div>
+          </div>
+          <div class="mill-hub"></div>
+        </div>
+        <div class="wind-compass" id="windCompass">
+          <div class="compass-ticks" id="compassTicks"></div>
+          <div class="wind-pointer" id="windPointer">
+            <div class="pointer-arrow"></div>
+            <div class="pointer-shaft"></div>
+            <div class="pointer-tail"></div>
+          </div>
+          <div class="compass-center"></div>
+        </div>
+        <div class="inst-label">风向标</div>
+        <div class="inst-sub">WIND · DIRECTION</div>
+      </div>
+
+      <!-- 2. 气压计 -->
+      <div class="instrument" id="barometer" data-hover>
+        <div class="baro-body">
+          <div class="baro-readout">气压 <span id="baroVal">760</span> mmHg</div>
+          <div class="baro-glass">
+            <div class="baro-mercury" id="mercury"></div>
+          </div>
+          <div class="baro-scale" id="baroScale"></div>
+          <div class="baro-slider" id="baroSlider"></div>
+        </div>
+        <div class="brass-base" style="width: 130%; bottom: -6px;"></div>
+        <div class="inst-label">气压计</div>
+        <div class="inst-sub">BAROMETER</div>
+      </div>
+
+      <!-- 3. 雨量计 -->
+      <div class="instrument" id="rain-gauge" data-hover>
+        <div class="rain-body">
+          <div class="rain-funnel"></div>
+          <div class="rain-drops" id="rainDrops"></div>
+          <div class="rain-collector">
+            <div class="rain-water" id="rainWater" style="height: 25%;"></div>
+            <div class="ripples" id="ripples"></div>
+            <div class="rain-tipper-wrap">
+              <div class="rain-tipper" id="rainTipper">
+                <div class="tipper-bucket left"></div>
+                <div class="tipper-bucket right"></div>
+                <div class="tipper-pivot"></div>
+              </div>
+            </div>
+          </div>
+          <div class="rain-scale" id="rainScale"></div>
+          <div class="rain-count">翻斗次数 <strong id="rainCount">0</strong></div>
+        </div>
+        <div class="brass-base" style="width: 110%; bottom: -6px;"></div>
+        <div class="inst-label">雨量计</div>
+        <div class="inst-sub">RAIN · GAUGE</div>
+      </div>
+
+      <!-- 4. 温湿度双金属片 -->
+      <div class="instrument" id="thermo-hygro" data-hover>
+        <div class="bimetal-body">
+          <div class="bimetal-title">温 度 · 湿 度</div>
+          <div class="bimetal-scale">
+            <div class="bimetal-ticks" id="bimetalTicks"></div>
+          </div>
+          <div class="bimetal-grip"></div>
+          <div class="bimetal-strip" id="bimetalStrip">
+            <svg viewBox="0 0 140 40" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="stripGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#C0392B;stop-opacity:1" />
+                  <stop offset="50%" style="stop-color:#d4a85a;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#6a8a9a;stop-opacity:1" />
+                </linearGradient>
+              </defs>
+              <path id="bimetalPath" d="M 0,20 Q 70,20 140,20" stroke="url(#stripGrad)" stroke-width="8" fill="none" stroke-linecap="round"/>
+            </svg>
+            <div class="bimetal-knob" id="bimetalKnob"></div>
+          </div>
+          <div class="bimetal-readout">
+            <span class="temp-val" id="tempVal">22°</span>
+            <span style="font-size: 9px; color: #C9A96E;">温度</span>
+            <span class="humi-val" id="humiVal">65%</span>
+            <span style="font-size: 9px; color: #C9A96E;">湿度</span>
+          </div>
+        </div>
+        <div class="brass-base" style="width: 105%; bottom: -6px;"></div>
+        <div class="inst-label">双金属片</div>
+        <div class="inst-sub">BIMETAL · STRIP</div>
+      </div>
+
+      <!-- 5. 能见度雾度转盘 -->
+      <div class="instrument" id="fog-dial" data-hover>
+        <div class="fog-body">
+          <div class="fog-scene" id="fogScene">
+            <div class="fog-sun"></div>
+            <div class="fog-ship" id="fogShip">
+              <div class="ship-hull"></div>
+              <div class="ship-mast"></div>
+              <div class="ship-sail"></div>
+            </div>
+            <div class="fog-layer" id="fogLayer"></div>
+          </div>
+          <div class="fog-ticks" id="fogTicks"></div>
+          <div class="fog-knob" id="fogKnob">
+            <div class="fog-knob-line"></div>
+          </div>
+          <div class="fog-readout">
+            能见度 <span id="fogVal">10</span> km<br/>
+            <span style="color: #8a7a5a; font-size: 8px; letter-spacing: 1px;">VISIBILITY</span>
+          </div>
+        </div>
+        <div class="inst-label">雾度计</div>
+        <div class="inst-sub">FOG · METER</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">—— 黄铜与珐琅 · 拟物微交互实验室 ——</div>
+</div>
+
+<!-- 自定义光标 -->
+<div class="cursor-outer" id="cursorOuter"></div>
+<div class="cursor-inner" id="cursorInner"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== 减少动效检测 =====
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ===== 自定义光标 =====
+  const cursorOuter = document.getElementById('cursorOuter');
+  const cursorInner = document.getElementById('cursorInner');
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let targetX = cursorX;
+  let targetY = cursorY;
+  let outerX = cursorX;
+  let outerY = cursorY;
+  let rafId = null;
+  let visible = true;
+
+  // 初始放在屏幕中央
+  cursorOuter.style.transform = `translate(${cursorX}px, ${cursorY}px) translate(-50%, -50%)`;
+  cursorInner.style.transform = `translate(${cursorX}px, ${cursorY}px) translate(-50%, -50%)`;
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function tickCursor() {
+    if (!visible) return;
+    // 内点直接跟随
+    cursorInner.style.transform = `translate(${targetX}px, ${targetY}px) translate(-50%, -50%)`;
+    // 外环有阻尼延迟
+    outerX = lerp(outerX, targetX, 0.18);
+    outerY = lerp(outerY, targetY, 0.18);
+    cursorOuter.style.transform = `translate(${outerX}px, ${outerY}px) translate(-50%, -50%)`;
+    rafId = requestAnimationFrame(tickCursor);
+  }
+  if (!reducedMotion) tickCursor();
+
+  document.addEventListener('mousemove', function(e) {
+    targetX = e.clientX;
+    targetY = e.clientY;
+    if (reducedMotion) {
+      cursorOuter.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+      cursorInner.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+    }
+  });
+
+  // 悬停可交互元素
+  const hoverEls = document.querySelectorAll('[data-hover], #windPointer, #baroSlider, #rainTipper, #bimetalKnob, #fogKnob, #bimetalStrip');
+  hoverEls.forEach(function(el) {
+    el.style.pointerEvents = 'auto';
+    el.addEventListener('mouseenter', function() { document.body.classList.add('cursor-hover'); });
+    el.addEventListener('mouseleave', function() {
+      if (!isDragging) document.body.classList.remove('cursor-hover');
+    });
+  });
+
+  // 点击涟漪
+  document.addEventListener('mousedown', function(e) {
+    if (reducedMotion) return;
+    const ripple = document.createElement('div');
+    ripple.className = 'click-ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(function() { ripple.remove(); }, 500);
+  });
+
+  // ===== visibilitychange 管理 =====
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      visible = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+    } else {
+      visible = true;
+      if (!reducedMotion) tickCursor();
+    }
+  });
+
+  // ===== 1. 风向标 =====
+  (function() {
+    const compass = document.getElementById('windCompass');
+    const pointer = document.getElementById('windPointer');
+    const millBlades = document.getElementById('millBlades');
+    const ticksEl = document.getElementById('compassTicks');
+
+    // 生成刻度
+    for (let i = 0; i < 36; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'compass-tick' + (i % 3 === 0 ? ' major' : '');
+      tick.style.transform = `translate(-50%, -90px) rotate(${i * 10}deg) translateY(-82px)`;
+      ticksEl.appendChild(tick);
+    }
+    // 方位字
+    const dirs = [{l:'北',a:0},{l:'东',a:90},{l:'南',a:180},{l:'西',a:270}];
+    dirs.forEach(function(d) {
+      const dir = document.createElement('div');
+      dir.className = 'compass-dir';
+      dir.textContent = d.l;
+      const rad = (d.a - 90) * Math.PI / 180;
+      const r = 68;
+      dir.style.left = (100 + r * Math.cos(rad)) + 'px';
+      dir.style.top = (100 + r * Math.sin(rad)) + 'px';
+      ticksEl.appendChild(dir);
+    });
+
+    let angle = 0; // 度
+    let targetAngle = 0;
+    let dragging = false;
+    let windSpeed = 0; // 0-1
+    let spinSpeed = 0;
+
+    function setPointerAngle(a) {
+      angle = a;
+      pointer.style.transform = `translate(-50%, -50%) rotate(${a}deg)`;
+      // 风力大小：偏离正北方越多风越大（示意）
+      const normalized = Math.abs(((a % 360) + 360) % 360 - 180) / 180;
+      windSpeed = 0.3 + normalized * 0.7;
+    }
+
+    function getAngleFromEvent(e) {
+      const rect = compass.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90;
+    }
+
+    // 磁吸到 8 主方位
+    const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315];
+    function snapToNearest(a) {
+      let best = a, bestDist = 1000;
+      snapAngles.forEach(function(sa) {
+        // 处理环绕
+        let diff = Math.abs(((a - sa) % 360 + 540) % 360 - 180);
+        if (diff < bestDist) { bestDist = diff; best = sa; }
+      });
+      // 磁吸范围 ±12 度
+      return bestDist <= 12 ? best : a;
+    }
+
+    let lastSnap = -1;
+    function animLoop() {
+      if (!visible) return;
+      // 风车转速跟随 windSpeed
+      spinSpeed = windSpeed;
+      if (!reducedMotion) {
+        const speed = 1 + spinSpeed * 5;
+        millBlades.style.animationDuration = (4 / speed) + 's';
+        if (spinSpeed > 0.01) millBlades.classList.add('spinning');
+      }
+      requestAnimationFrame(animLoop);
+    }
+    if (!reducedMotion) animLoop();
+
+    pointer.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      dragging = true;
+      isDragging = true;
+      document.body.classList.add('cursor-drag', 'cursor-hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      const a = getAngleFromEvent(e);
+      setPointerAngle(a);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!dragging) return;
+      dragging = false;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag', 'cursor-hover');
+      // 磁吸动画
+      const snapped = snapToNearest(angle);
+      if (snapped !== angle && !reducedMotion) {
+        // 弹簧回弹效果
+        const start = angle;
+        const diff = snapped - start;
+        const startTime = performance.now();
+        const duration = 600;
+        function spring(t) {
+          t = t / duration;
+          return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 3) * 0.5;
+        }
+        function snap(now) {
+          const elapsed = now - startTime;
+          if (elapsed >= duration) {
+            setPointerAngle(snapped);
+            compass.classList.add('snap-flash');
+            setTimeout(function() { compass.classList.remove('snap-flash'); }, 300);
+            return;
+          }
+          setPointerAngle(start + diff * spring(elapsed));
+          requestAnimationFrame(snap);
+        }
+        requestAnimationFrame(snap);
+      } else {
+        setPointerAngle(snapped);
+      }
+    });
+
+    // 初始角度
+    setPointerAngle(45);
+  })();
+
+  // ===== 2. 气压计 =====
+  (function() {
+    const slider = document.getElementById('baroSlider');
+    const mercury = document.getElementById('mercury');
+    const baroVal = document.getElementById('baroVal');
+    const scaleEl = document.getElementById('baroScale');
+
+    // 生成刻度 720 - 780 mmHg
+    const minP = 720, maxP = 780;
+    const pxTotal = 180;
+    for (let i = 0; i <= 30; i++) {
+      const p = minP + i * 2;
+      const y = (1 - (p - minP) / (maxP - minP)) * pxTotal;
+      const tick = document.createElement('div');
+      tick.className = 'baro-scale-tick' + (i % 5 === 0 ? ' major' : '');
+      tick.style.top = y + 'px';
+      scaleEl.appendChild(tick);
+      if (i % 5 === 0) {
+        const label = document.createElement('div');
+        label.className = 'baro-scale-label';
+        label.textContent = p;
+        label.style.top = y + 'px';
+        scaleEl.appendChild(label);
+      }
+    }
+
+    let pressure = 760;
+    let dragging = false;
+    let startY = 0;
+    let startP = 0;
+
+    function setPressure(p) {
+      p = Math.max(minP, Math.min(maxP, p));
+      pressure = p;
+      const h = (p - minP) / (maxP - minP) * 100;
+      mercury.style.height = h + '%';
+      baroVal.textContent = Math.round(p);
+    }
+
+    slider.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      dragging = true;
+      isDragging = true;
+      startY = e.clientY;
+      startP = pressure;
+      document.body.classList.add('cursor-drag', 'cursor-hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      const dy = e.clientY - startY;
+      // 向上拖（负 dy）气压增大
+      const dp = -dy / pxTotal * (maxP - minP) * 1.2;
+      setPressure(startP + dp);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!dragging) return;
+      dragging = false;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag', 'cursor-hover');
+      // 弹簧回弹到最近整 5 值
+      const target = Math.round(pressure / 5) * 5;
+      if (Math.abs(target - pressure) < 2.5 && !reducedMotion) {
+        const start = pressure;
+        const diff = target - start;
+        const startTime = performance.now();
+        const duration = 400;
+        function spring(now) {
+          const t = Math.min(1, (now - startTime) / duration);
+          const eased = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2) * 0.3;
+          setPressure(start + diff * eased);
+          if (t < 1) requestAnimationFrame(spring);
+        }
+        requestAnimationFrame(spring);
+      }
+    });
+
+    setPressure(760);
+  })();
+
+  // ===== 3. 雨量计 =====
+  (function() {
+    const tipper = document.getElementById('rainTipper');
+    const water = document.getElementById('rainWater');
+    const countEl = document.getElementById('rainCount');
+    const rainDrops = document.getElementById('rainDrops');
+    const ripplesEl = document.getElementById('ripples');
+    const scaleEl = document.getElementById('rainScale');
+
+    // 生成刻度 0-100 mm
+    for (let i = 0; i <= 10; i++) {
+      const y = i * 10; // 百分比从顶往下
+      const tick = document.createElement('div');
+      tick.className = 'rain-scale-tick' + (i % 5 === 0 ? ' major' : '');
+      tick.style.top = (i * 10) + '%';
+      scaleEl.appendChild(tick);
+      if (i % 5 === 0 && i > 0) {
+        const num = document.createElement('div');
+        num.className = 'rain-scale-num';
+        num.textContent = (10 - i) * 10;
+        num.style.top = (i * 10) + '%';
+        scaleEl.appendChild(num);
+      }
+    }
+
+    // 生成雨滴
+    for (let i = 0; i < 12; i++) {
+      const drop = document.createElement('div');
+      drop.className = 'raindrop';
+      drop.style.left = (10 + Math.random() * 80) + '%';
+      drop.style.animationDelay = (Math.random() * 0.8) + 's';
+      drop.style.animationDuration = (0.5 + Math.random() * 0.5) + 's';
+      rainDrops.appendChild(drop);
+    }
+
+    let count = 0;
+    let waterLevel = 25; // %
+    let flipped = false;
+    let raining = false;
+    let rainTimer = null;
+
+    function setWater(v) {
+      waterLevel = Math.max(0, Math.min(95, v));
+      water.style.height = waterLevel + '%';
+    }
+
+    function addRipple() {
+      if (reducedMotion) return;
+      const r = document.createElement('div');
+      r.className = 'ripple';
+      r.style.left = (30 + Math.random() * 40) + '%';
+      r.style.bottom = waterLevel + '%';
+      r.style.animation = 'rippleExpand 0.8s ease-out forwards';
+      ripplesEl.appendChild(r);
+      setTimeout(function() { r.remove(); }, 800);
+    }
+
+    tipper.addEventListener('click', function(e) {
+      e.stopPropagation();
+      flipped = !flipped;
+      tipper.classList.toggle('flipped', flipped);
+      count++;
+      countEl.textContent = count;
+
+      // 倒水：水位增加
+      setWater(waterLevel + 8);
+
+      // 涟漪
+      setTimeout(function() {
+        for (let i = 0; i < 3; i++) {
+          setTimeout(addRipple, i * 120);
+        }
+      }, 200);
+
+      // 下雨效果
+      if (!raining) {
+        raining = true;
+        rainDrops.classList.add('raining');
+        if (rainTimer) clearTimeout(rainTimer);
+        rainTimer = setTimeout(function() {
+          raining = false;
+          rainDrops.classList.remove('raining');
+        }, 1500);
+      }
+    });
+
+    // 悬停时微动
+    tipper.addEventListener('mouseenter', function() {
+      if (!reducedMotion && !flipped) {
+        tipper.style.transform = 'translate(-50%, -50%) rotate(-12deg)';
+      }
+    });
+    tipper.addEventListener('mouseleave', function() {
+      if (!flipped) {
+        tipper.style.transform = '';
+      }
+    });
+
+    setWater(25);
+  })();
+
+  // ===== 4. 双金属片 =====
+  (function() {
+    const strip = document.getElementById('bimetalStrip');
+    const knob = document.getElementById('bimetalKnob');
+    const path = document.getElementById('bimetalPath');
+    const tempVal = document.getElementById('tempVal');
+    const humiVal = document.getElementById('humiVal');
+    const ticksEl = document.getElementById('bimetalTicks');
+
+    // 生成刻度 -10 到 50 度
+    const minT = -10, maxT = 50;
+    const totalW = 156;
+    for (let i = 0; i <= 30; i++) {
+      const t = minT + i * 2;
+      const x = (t - minT) / (maxT - minT) * totalW;
+      const tick = document.createElement('div');
+      tick.className = 'bimetal-tick' + (i % 5 === 0 ? ' major' : '');
+      tick.style.left = x + 'px';
+      ticksEl.appendChild(tick);
+      if (i % 10 === 0) {
+        const label = document.createElement('div');
+        label.className = 'bimetal-label';
+        label.textContent = t + '°';
+        label.style.left = x + 'px';
+        ticksEl.appendChild(label);
+      }
+    }
+
+    let temperature = 22;
+    let dragging = false;
+    let startX = 0;
+    let startT = 0;
+
+    function setTemp(t) {
+      t = Math.max(minT, Math.min(maxT, t));
+      temperature = t;
+      // 弯曲幅度：冷向上弯，热向下弯
+      const bend = (t - 20) * 1.5; // 像素
+      // 二次贝塞尔，控制点 y = 20 + bend
+      const cy = 20 + bend;
+      path.setAttribute('d', `M 0,20 Q 70,${cy} 140,20`);
+      // 旋钮位置跟随末端
+      knob.style.top = (20 - 8) + 'px'; // 相对 strip
+      tempVal.textContent = Math.round(t) + '°';
+      // 湿度反比
+      const hum = Math.round(90 - (t - minT) / (maxT - minT) * 60);
+      humiVal.textContent = hum + '%';
+    }
+
+    knob.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      dragging = true;
+      isDragging = true;
+      startX = e.clientX;
+      startT = temperature;
+      document.body.classList.add('cursor-drag', 'cursor-hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dt = dx / totalW * (maxT - minT) * 0.8;
+      setTemp(startT + dt);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!dragging) return;
+      dragging = false;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag', 'cursor-hover');
+    });
+
+    setTemp(22);
+  })();
+
+  // ===== 5. 雾度转盘 =====
+  (function() {
+    const knob = document.getElementById('fogKnob');
+    const body = document.querySelector('.fog-body');
+    const fogLayer = document.getElementById('fogLayer');
+    const fogShip = document.getElementById('fogShip');
+    const fogVal = document.getElementById('fogVal');
+    const fogScene = document.getElementById('fogScene');
+    const ticksEl = document.getElementById('fogTicks');
+
+    // 生成刻度
+    for (let i = 0; i <= 20; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'fog-tick' + (i % 5 === 0 ? ' major' : '');
+      // 范围 -120 度 到 +120 度（下方留空）
+      const angle = -120 + i * 12;
+      tick.style.transform = `translateX(-50%) rotate(${angle}deg) translateY(-69px)`;
+      ticksEl.appendChild(tick);
+    }
+
+    let angle = -120; // -120 (晴) 到 120 (浓雾)
+    let dragging = false;
+    let startAngle = 0;
+    let startPointerAngle = 0;
+
+    function getAngleFromEvent(e) {
+      const rect = body.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90;
+    }
+
+    function setFogAngle(a) {
+      a = Math.max(-120, Math.min(120, a));
+      angle = a;
+      knob.style.transform = `translate(-50%, -50%) rotate(${a}deg)`;
+      // 能见度：-120 = 10km (晴), 120 = 0.2km (浓雾)
+      const norm = (a + 120) / 240; // 0-1
+      const vis = 10 - norm * 9.8;
+      fogVal.textContent = vis.toFixed(1);
+      // 雾层浓度
+      fogLayer.style.background = `rgba(230,235,240,${norm * 0.85})`;
+      // 船的可见度
+      fogShip.style.opacity = 1 - norm * 0.95;
+      // 太阳模糊
+      fogScene.style.filter = `blur(${norm * 3}px)`;
+    }
+
+    knob.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      dragging = true;
+      isDragging = true;
+      startAngle = angle;
+      startPointerAngle = getAngleFromEvent(e);
+      document.body.classList.add('cursor-drag', 'cursor-hover');
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      const cur = getAngleFromEvent(e);
+      let delta = cur - startPointerAngle;
+      // 处理 180 度环绕
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      setFogAngle(startAngle + delta);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!dragging) return;
+      dragging = false;
+      isDragging = false;
+      document.body.classList.remove('cursor-drag', 'cursor-hover');
+      // 棘轮感：吸附到最近 10 度
+      const snapped = Math.round(angle / 10) * 10;
+      if (snapped !== angle && !reducedMotion) {
+        const start = angle;
+        const diff = snapped - start;
+        const startTime = performance.now();
+        const duration = 200;
+        function snap(now) {
+          const t = Math.min(1, (now - startTime) / duration);
+          const eased = 1 - Math.pow(1 - t, 2);
+          setFogAngle(start + diff * eased);
+          if (t < 1) requestAnimationFrame(snap);
+        }
+        requestAnimationFrame(snap);
+      }
+    });
+
+    setFogAngle(-60);
+  })();
+
+  // 全局拖拽状态标记（给光标用）
+  let isDragging = false;
+
+  // ===== 宣告升级入口 =====
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch(e) {}
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+})();
+</script>
+</body>
+</html>
