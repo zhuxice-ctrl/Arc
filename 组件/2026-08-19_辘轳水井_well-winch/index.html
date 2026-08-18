@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>辘轳水井 · 交互组件</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+  :root {
+    --brick-light: #6b7280;
+    --brick-dark: #3d444d;
+    --wood-light: #a87c52;
+    --wood-mid: #8a6642;
+    --wood-dark: #5d442a;
+    --water-top: #4a8a7a;
+    --water-mid: #2e5a4f;
+    --water-deep: #1d3a33;
+    --water-abyss: #0f2420;
+    --moss: #6b8e5a;
+    --moss-dark: #4a6b3d;
+    --text: #f5f0e6;
+    --text-dim: #c9c0ae;
+    --rope: #c4a574;
+    --iron: #4a4540;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #2a2d32;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    color: var(--text);
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .scene-wrap {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 30%, #3a3e44 0%, #23262b 70%, #1a1c20 100%);
+  }
+
+  svg.scene {
+    width: min(90vw, calc(90vh * 4 / 3));
+    height: min(90vh, calc(90vw * 3 / 4));
+    max-width: 1000px;
+    max-height: 750px;
+    filter: drop-shadow(0 20px 40px rgba(0,0,0,0.4));
+  }
+
+  /* Custom cursor */
+  .cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.15s ease, height 0.15s ease, opacity 0.2s ease;
+    will-change: transform;
+  }
+  .cursor svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .cursor.grip { width: 32px; height: 32px; }
+  .cursor.pinch { width: 28px; height: 28px; }
+  .cursor.idle .cursor-ring { stroke: #f5f0e6; fill: rgba(245, 240, 230, 0.15); }
+  .cursor.grip .cursor-ring { stroke: #f5d78a; fill: rgba(245, 215, 138, 0.2); }
+  .cursor.pinch .cursor-ring { stroke: #f5a878; fill: rgba(245, 168, 120, 0.2); }
+  .cursor.hidden { opacity: 0; }
+
+  .cursor-ring {
+    stroke-width: 2;
+    transition: stroke 0.15s ease, fill 0.15s ease;
+  }
+
+  /* Instruction text */
+  .instructions {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .instructions .title {
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 4px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .instructions .sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    line-height: 1.7;
+  }
+  .instructions .sub span {
+    display: inline-block;
+    margin: 0 8px;
+    color: var(--moss);
+  }
+
+  .corner-label {
+    position: fixed;
+    top: 28px;
+    left: 32px;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    writing-mode: vertical-rl;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .corner-label.right {
+    left: auto;
+    right: 32px;
+  }
+
+  /* Hint that fades after interaction */
+  .hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -140px);
+    font-size: 14px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    opacity: 1;
+    transition: opacity 0.8s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .hint.fade { opacity: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+    .hint { opacity: 1 !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="scene-wrap">
+  <svg class="scene" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Well water depth gradient -->
+      <linearGradient id="wellWater" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3a6b5e"/>
+        <stop offset="30%" stop-color="var(--water-mid)"/>
+        <stop offset="70%" stop-color="var(--water-deep)"/>
+        <stop offset="100%" stop-color="var(--water-abyss)"/>
+      </linearGradient>
+
+      <!-- Wood grain gradient for posts -->
+      <linearGradient id="woodPost" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="var(--wood-dark)"/>
+        <stop offset="35%" stop-color="var(--wood-mid)"/>
+        <stop offset="65%" stop-color="var(--wood-mid)"/>
+        <stop offset="100%" stop-color="var(--wood-dark)"/>
+      </linearGradient>
+
+      <!-- Wood grain for axle -->
+      <linearGradient id="woodAxle" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--wood-light)"/>
+        <stop offset="50%" stop-color="var(--wood-mid)"/>
+        <stop offset="100%" stop-color="var(--wood-dark)"/>
+      </linearGradient>
+
+      <!-- Brick gradient -->
+      <linearGradient id="brickTop" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#7a8189"/>
+        <stop offset="100%" stop-color="var(--brick-light)"/>
+      </linearGradient>
+      <linearGradient id="brickSide" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--brick-light)"/>
+        <stop offset="100%" stop-color="var(--brick-dark)"/>
+      </linearGradient>
+
+      <!-- Inner wall of well -->
+      <linearGradient id="wellWall" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#2a2f36"/>
+        <stop offset="30%" stop-color="#3a3f46"/>
+        <stop offset="70%" stop-color="#3a3f46"/>
+        <stop offset="100%" stop-color="#2a2f36"/>
+      </linearGradient>
+
+      <!-- Rope texture -->
+      <linearGradient id="ropeGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#a68858"/>
+        <stop offset="50%" stop-color="var(--rope)"/>
+        <stop offset="100%" stop-color="#a68858"/>
+      </linearGradient>
+
+      <!-- Water in bucket -->
+      <linearGradient id="bucketWater" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5a9a8a"/>
+        <stop offset="100%" stop-color="var(--water-mid)"/>
+      </linearGradient>
+
+      <!-- Bucket wood -->
+      <linearGradient id="bucketWood" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="var(--wood-dark)"/>
+        <stop offset="20%" stop-color="var(--wood-mid)"/>
+        <stop offset="50%" stop-color="var(--wood-light)"/>
+        <stop offset="80%" stop-color="var(--wood-mid)"/>
+        <stop offset="100%" stop-color="var(--wood-dark)"/>
+      </linearGradient>
+
+      <!-- Radial shadow for well opening -->
+      <radialGradient id="wellShadow" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0.6)"/>
+      </radialGradient>
+
+      <!-- Ratchet tooth highlight -->
+      <linearGradient id="ratchetMetal" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5a5550"/>
+        <stop offset="50%" stop-color="var(--iron)"/>
+        <stop offset="100%" stop-color="#2f2b27"/>
+      </linearGradient>
+
+      <!-- Moss pattern -->
+      <pattern id="mossPat" x="0" y="0" width="20" height="12" patternUnits="userSpaceOnUse">
+        <ellipse cx="5" cy="6" rx="4" ry="3" fill="var(--moss)" opacity="0.7"/>
+        <ellipse cx="15" cy="4" rx="3" ry="2" fill="var(--moss-dark)" opacity="0.5"/>
+        <ellipse cx="10" cy="9" rx="3" ry="2" fill="var(--moss)" opacity="0.6"/>
+      </pattern>
+
+      <!-- Glow filter for crank hover -->
+      <filter id="crankGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+
+    <!-- ============== WELL PLATFORM ============== -->
+    <g id="platform">
+      <!-- Back platform (behind well) -->
+      <path d="M 100 440 L 700 440 L 720 460 L 80 460 Z" fill="#4a4f56" opacity="0.5"/>
+      <!-- Main platform top -->
+      <rect x="140" y="450" width="520" height="30" fill="url(#brickTop)"/>
+      <!-- Platform front face -->
+      <path d="M 140 480 L 160 520 L 640 520 L 660 480 Z" fill="url(#brickSide)"/>
+      <!-- Brick lines top -->
+      <g stroke="var(--brick-dark)" stroke-width="0.8" opacity="0.6">
+        <line x1="200" y1="450" x2="200" y2="480"/>
+        <line x1="260" y1="450" x2="260" y2="480"/>
+        <line x1="320" y1="450" x2="320" y2="480"/>
+        <line x1="380" y1="450" x2="380" y2="480"/>
+        <line x1="440" y1="450" x2="440" y2="480"/>
+        <line x1="500" y1="450" x2="500" y2="480"/>
+        <line x1="560" y1="450" x2="560" y2="480"/>
+        <line x1="620" y1="450" x2="620" y2="480"/>
+        <line x1="140" y1="465" x2="660" y2="465"/>
+      </g>
+      <!-- Moss on platform edges -->
+      <path d="M 140 450 Q 200 446 280 450 Q 360 444 440 450 Q 520 446 600 450 Q 640 448 660 450 L 660 452 L 140 452 Z"
+            fill="url(#mossPat)" opacity="0.8"/>
+      <path d="M 160 520 Q 250 515 340 520 Q 450 516 550 520 Q 600 517 640 520 L 640 522 L 160 522 Z"
+            fill="url(#mossPat)" opacity="0.6"/>
+    </g>
+
+    <!-- ============== WELL OPENING & SHAFT (background) ============== -->
+    <g id="wellShaft">
+      <!-- Well wall outer rim back -->
+      <ellipse cx="400" cy="445" rx="95" ry="18" fill="#4a4f56"/>
+      <ellipse cx="400" cy="442" rx="90" ry="15" fill="#5a5f66"/>
+      <!-- Well opening (dark hole) -->
+      <ellipse cx="400" cy="445" rx="78" ry="12" fill="#0a0e0c"/>
+      <!-- Well shaft inner wall -->
+      <rect x="322" y="445" width="156" height="120" fill="url(#wellWall)"/>
+      <!-- Water at bottom of visible shaft -->
+      <rect id="wellWaterRect" x="322" y="475" width="156" height="90" fill="url(#wellWater)"/>
+      <!-- Water surface ellipse -->
+      <ellipse id="wellWaterSurface" cx="400" cy="475" rx="78" ry="8" fill="#3a6b5e" opacity="0.9"/>
+      <!-- Ripples (hidden by default) -->
+      <g id="ripples" opacity="0">
+        <ellipse cx="400" cy="477" rx="10" ry="2" fill="none" stroke="#7ab8a8" stroke-width="1.2"/>
+        <ellipse cx="400" cy="477" rx="20" ry="4" fill="none" stroke="#7ab8a8" stroke-width="1" opacity="0.8"/>
+        <ellipse cx="400" cy="477" rx="35" ry="6" fill="none" stroke="#7ab8a8" stroke-width="0.8" opacity="0.6"/>
+        <ellipse cx="400" cy="477" rx="50" ry="8" fill="none" stroke="#7ab8a8" stroke-width="0.6" opacity="0.4"/>
+      </g>
+      <!-- Splash particles group (inside well) -->
+      <g id="splashParticles"></g>
+      <!-- Inner shadow / depth fade at top of well -->
+      <rect x="322" y="445" width="156" height="30" fill="url(#wellShadow)" opacity="0.8"/>
+    </g>
+
+    <!-- ============== WOODEN FRAME ============== -->
+    <g id="woodFrame">
+      <!-- Left post -->
+      <rect x="250" y="190" width="22" height="265" fill="url(#woodPost)" rx="2"/>
+      <rect x="252" y="192" width="4" height="260" fill="var(--wood-light)" opacity="0.3"/>
+      <!-- Right post -->
+      <rect x="528" y="190" width="22" height="265" fill="url(#woodPost)" rx="2"/>
+      <rect x="544" y="192" width="4" height="260" fill="var(--wood-light)" opacity="0.3"/>
+      <!-- Top crossbeam -->
+      <rect x="242" y="178" width="316" height="20" fill="var(--wood-mid)" rx="2"/>
+      <rect x="244" y="180" width="312" height="4" fill="var(--wood-light)" opacity="0.4"/>
+      <!-- Diagonal braces left -->
+      <path d="M 250 250 L 280 198 L 290 202 L 260 254 Z" fill="var(--wood-dark)"/>
+      <!-- Diagonal braces right -->
+      <path d="M 550 250 L 520 198 L 510 202 L 540 254 Z" fill="var(--wood-dark)"/>
+      <!-- Base blocks on platform -->
+      <rect x="244" y="448" width="34" height="14" fill="var(--wood-dark)" rx="1"/>
+      <rect x="522" y="448" width="34" height="14" fill="var(--wood-dark)" rx="1"/>
+    </g>
+
+    <!-- ============== AXLE & ROPE ============== -->
+    <g id="axleGroup">
+      <!-- Axle (wooden cylinder) -->
+      <rect id="axleBody" x="270" y="210" width="240" height="28" fill="url(#woodAxle)" rx="4"/>
+      <!-- Axle end cap (left) -->
+      <ellipse cx="270" cy="224" rx="4" ry="14" fill="var(--wood-dark)"/>
+      <!-- Axle end cap (right, behind ratchet) -->
+      <ellipse cx="510" cy="224" rx="4" ry="14" fill="var(--wood-dark)"/>
+
+      <!-- Rope coils on axle (drawn dynamically via JS) -->
+      <g id="ropeCoils"></g>
+    </g>
+
+    <!-- ============== RATCHET WHEEL (right side, coaxial with crank) ============== -->
+    <g id="ratchetGroup" transform="translate(548, 224)">
+      <!-- Ratchet wheel body -->
+      <g id="ratchetWheel">
+        <!-- Will be drawn by JS: 12 teeth -->
+      </g>
+      <!-- Central hub -->
+      <circle r="10" fill="var(--wood-dark)"/>
+      <circle r="5" fill="var(--iron)"/>
+    </g>
+
+    <!-- ============== PAWL (棘爪) - above-left of ratchet, pawl tip drops into tooth valley -->
+    <g id="pawlGroup" transform="translate(510, 162)">
+      <!-- Pawl pivot base -->
+      <circle cx="20" cy="10" r="7" fill="var(--iron)"/>
+      <circle cx="20" cy="10" r="3.5" fill="#2a2520"/>
+      <!-- Pawl arm (the catch that drops into teeth) -->
+      <g id="pawlArm">
+        <!-- Main arm body: extends down-left from pivot -->
+        <path d="M 16 12 L -14 60 L -8 64 L 24 14 Z" fill="var(--iron)"/>
+        <!-- Pawl tip triangle (points down into tooth valley) -->
+        <path d="M -16 58 L -8 70 L -2 60 Z" fill="#1f1a15"/>
+        <!-- Highlight on arm -->
+        <path d="M 18 14 L -10 60" stroke="#5a5550" stroke-width="1.2" fill="none" opacity="0.7"/>
+      </g>
+      <!-- Release lever (wooden rod going up-right from pivot) -->
+      <g id="pawlLever">
+        <rect x="18" y="-58" width="6" height="70" fill="var(--wood-mid)" rx="2" transform="rotate(12, 21, 10)"/>
+        <!-- Lever handle knob -->
+        <ellipse cx="30" cy="-60" rx="11" ry="7" fill="var(--wood-light)"/>
+        <ellipse cx="30" cy="-60" rx="7" ry="4.5" fill="var(--wood-mid)"/>
+        <!-- Metal ring at base of lever -->
+        <ellipse cx="21" cy="10" rx="5" ry="3" fill="none" stroke="var(--iron)" stroke-width="1"/>
+      </g>
+      <!-- Spring (pulls lever back, keeps pawl engaged) -->
+      <path d="M 30 8 Q 44 4 42 -6 Q 40 -16 28 -14" stroke="#5a5550" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <!-- Mounting bracket -->
+      <rect x="10" y="7" width="28" height="10" fill="var(--wood-dark)" rx="1.5" opacity="0.8"/>
+    </g>
+
+    <!-- ============== CRANK HANDLE (far right) ============== -->
+    <g id="crankGroup" transform="translate(548, 224)">
+      <g id="crankArm">
+        <!-- Crank arm (wooden) -->
+        <rect x="-4" y="-60" width="8" height="60" fill="var(--wood-mid)" rx="2"/>
+        <rect x="-2" y="-60" width="2" height="60" fill="var(--wood-light)" opacity="0.4"/>
+        <!-- Crank handle grip -->
+        <g id="crankGrip">
+          <ellipse cx="0" cy="-68" rx="11" ry="9" fill="var(--wood-dark)"/>
+          <ellipse cx="0" cy="-66" rx="9" ry="7" fill="var(--wood-mid)"/>
+          <ellipse cx="-2" cy="-67" rx="2.5" ry="1.8" fill="var(--wood-light)" opacity="0.5"/>
+          <!-- Metal band on grip -->
+          <ellipse cx="0" cy="-66" rx="7" ry="2" fill="none" stroke="var(--iron)" stroke-width="0.8" opacity="0.6"/>
+        </g>
+        <!-- Hub at axle -->
+        <circle r="10" fill="var(--wood-dark)"/>
+        <circle r="5" fill="var(--iron)"/>
+        <circle r="2" fill="#2a2520"/>
+      </g>
+      <!-- Hover glow (controlled by JS) -->
+      <circle id="crankGlowEl" cx="0" cy="-68" r="20" fill="#f5d78a" opacity="0" style="filter: blur(7px);"/>
+    </g>
+
+    <!-- ============== HANGING ROPE & BUCKET ============== -->
+    <g id="ropeAndBucket">
+      <!-- Main hanging rope -->
+      <line id="hangingRope" x1="400" y1="224" x2="400" y2="480" stroke="url(#ropeGrad)" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Bucket -->
+      <g id="bucket" transform="translate(400, 480)">
+        <!-- Bucket body (wooden staves) -->
+        <path d="M -22 0 L -18 40 Q 0 44 18 40 L 22 0 Z" fill="url(#bucketWood)" stroke="var(--wood-dark)" stroke-width="0.8"/>
+        <!-- Metal hoops -->
+        <path d="M -21 8 Q 0 11 21 8" fill="none" stroke="var(--iron)" stroke-width="1.5"/>
+        <path d="M -20 32 Q 0 35 20 32" fill="none" stroke="var(--iron)" stroke-width="1.5"/>
+        <!-- Water inside bucket (clipped) -->
+        <clipPath id="bucketClip">
+          <path d="M -21 2 L -18 39 Q 0 42 18 39 L 21 2 Z"/>
+        </clipPath>
+        <g clip-path="url(#bucketClip)">
+          <!-- Water surface (will be tilted for slosh) -->
+          <g id="bucketWaterGroup">
+            <ellipse id="bucketWaterSurface" cx="0" cy="8" rx="22" ry="4" fill="#6aa898"/>
+            <path id="bucketWaterBody" d="M -22 8 L -22 42 Q 0 46 22 42 L 22 8 Z" fill="url(#bucketWater)"/>
+            <!-- Water highlight -->
+            <ellipse cx="-6" cy="9" rx="5" ry="1" fill="#8ac8b8" opacity="0.6"/>
+          </g>
+        </g>
+        <!-- Bucket rim -->
+        <ellipse cx="0" cy="0" rx="22" ry="4" fill="var(--wood-dark)"/>
+        <ellipse cx="0" cy="0" rx="20" ry="3" fill="var(--wood-mid)"/>
+        <!-- Rope attachment point -->
+        <circle cx="0" cy="2" r="3" fill="var(--iron)"/>
+      </g>
+    </g>
+
+    <!-- Water overflow drops (when bucket reaches top) -->
+    <g id="overflowDrops"></g>
+
+    <!-- ============== WELL RIM OVERLAY (on top of bucket for occlusion) ============== -->
+    <g id="wellRim">
+      <!-- Front rim stone (sits above bucket opening) -->
+      <ellipse cx="400" cy="445" rx="92" ry="16" fill="#5a5f66"/>
+      <ellipse cx="400" cy="443" rx="88" ry="13" fill="#6b7280"/>
+      <!-- Inner opening (dark, frames the hole) -->
+      <ellipse cx="400" cy="445" rx="76" ry="10" fill="#0a0e0c"/>
+      <!-- Rim top highlight -->
+      <ellipse cx="400" cy="441" rx="82" ry="10" fill="none" stroke="#8a9198" stroke-width="1" opacity="0.4"/>
+      <!-- Moss on top rim -->
+      <path d="M 312 442 Q 330 439 355 441 Q 375 444 400 441 Q 430 438 460 442 Q 480 444 488 442"
+            stroke="var(--moss)" stroke-width="3.5" fill="none" opacity="0.8" stroke-linecap="round"/>
+      <path d="M 330 440 Q 360 438 390 440 Q 420 439 460 441"
+            stroke="var(--moss-dark)" stroke-width="2" fill="none" opacity="0.5" stroke-linecap="round"/>
+      <!-- Crack/weather lines on stone -->
+      <path d="M 340 443 L 355 446" stroke="#3a3f46" stroke-width="0.8" opacity="0.4"/>
+      <path d="M 440 444 L 460 447" stroke="#3a3f46" stroke-width="0.8" opacity="0.4"/>
+    </g>
+  </svg>
+</div>
+
+<!-- Custom cursor -->
+<div class="cursor idle" id="customCursor">
+  <svg viewBox="-12 -12 24 24">
+    <circle class="cursor-ring" cx="0" cy="0" r="8" stroke="#f5f0e6" stroke-width="2" fill="rgba(245, 240, 230, 0.15)"/>
+    <circle cx="0" cy="0" r="1.5" fill="#f5f0e6"/>
+  </svg>
+</div>
+
+<!-- Instructions -->
+<div class="instructions">
+  <div class="title">辘 轳 水 井</div>
+  <div class="sub">拖动摇柄汲水 <span>·</span> 扳开棘爪落桶 <span>·</span> 聆听咔哒</div>
+</div>
+
+<div class="corner-label">交互组件 · V3</div>
+<div class="corner-label right">拟物装置</div>
+
+<div class="hint" id="startHint">摇 动 曲 柄</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== CONFIG ==========
+  const CFG = {
+    axleRadius: 13,           // radius of axle for rope winding (px per radian)
+    crankLength: 68,          // distance from axle center to crank grip center
+    ratchetTeeth: 12,         // number of ratchet teeth
+    ratchetOuterR: 36,        // ratchet wheel outer radius
+    ratchetInnerR: 24,        // ratchet wheel inner (base) radius
+    wellTopY: 224,            // y position of axle (rope start)
+    wellOpeningY: 445,        // y of well opening
+    wellBottomY: 545,         // y of water surface at bottom of well
+    maxRopeLen: 235,          // maximum rope length (bucket at water surface)
+    minRopeLen: 36,           // minimum rope length (bucket just below axle)
+    bucketHeight: 44,         // visual height of bucket
+    gravity: 2600,            // free fall acceleration (px/s^2)
+    friction: 0.6,            // rotational friction per second (angular velocity decay factor per second)
+    waterSloshFreq: 3.2,      // water slosh natural frequency (rad/s)
+    waterSloshDamping: 2.5,   // water slosh damping
+    pawlReleaseAngle: 0.28,   // how far pawl rotates when released (radians)
+  };
+
+  // ========== STATE ==========
+  const state = {
+    totalAngle: 0,            // cumulative crank rotation (positive CCW = lifting, CW = lowering)
+    angle: -Math.PI * 0.5,    // current crank visual angle (mod 2pi, for display)
+    angularVel: 0,            // rad/s, positive = CCW (lifting bucket)
+    ropeLen: CFG.maxRopeLen,  // current rope length
+    bucketY: CFG.wellTopY + CFG.maxRopeLen, // bucket Y position
+    isDragging: false,
+    dragAngle: 0,             // angle offset between mouse and crank during drag
+    pawlEngaged: true,        // pawl is currently holding ratchet
+    pawlAngle: 0,             // pawl rotation (0 = engaged, positive = pulled back)
+    pawlTargetAngle: 0,
+    isFalling: false,         // bucket is in free fall
+    fallVel: 0,               // fall velocity (px/s)
+    lastRatchetTooth: -1,     // last tooth index that clicked
+    waterSloshAngle: 0,       // current water tilt angle (rad)
+    waterSloshVel: 0,         // water tilt velocity
+    crankHover: false,
+    pawlHover: false,
+    lastTime: 0,
+    rafId: null,
+    pageVisible: true,
+    splashTimer: 0,
+    interactionHappened: false,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  };
+
+  // ========== DOM REFERENCES ==========
+  const svg = document.querySelector('svg.scene');
+  const crankArm = document.getElementById('crankArm');
+  const crankGrip = document.getElementById('crankGrip');
+  const crankGlowEl = document.getElementById('crankGlowEl');
+  const crankGroup = document.getElementById('crankGroup');
+  const ratchetWheel = document.getElementById('ratchetWheel');
+  const pawlArm = document.getElementById('pawlArm');
+  const pawlLever = document.getElementById('pawlLever');
+  const pawlGroup = document.getElementById('pawlGroup');
+  const hangingRope = document.getElementById('hangingRope');
+  const bucket = document.getElementById('bucket');
+  const bucketWaterGroup = document.getElementById('bucketWaterGroup');
+  const bucketWaterSurface = document.getElementById('bucketWaterSurface');
+  const ropeCoils = document.getElementById('ropeCoils');
+  const ripples = document.getElementById('ripples');
+  const splashParticles = document.getElementById('splashParticles');
+  const overflowDrops = document.getElementById('overflowDrops');
+  const wellWaterSurface = document.getElementById('wellWaterSurface');
+  const customCursor = document.getElementById('customCursor');
+  const startHint = document.getElementById('startHint');
+
+  // Crank position in SVG coordinates (right side, far right of ratchet)
+  const CRANK_CENTER = { x: 548, y: 224 };
+  // Pawl lever position (above ratchet, wooden handle)
+  const PAWL_LEVER_TOP = { x: 545, y: 100 };
+
+  // ========== SVG COORDINATE HELPERS ==========
+  function clientToSvg(clientX, clientY) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  // ========== RATCHET DRAWING ==========
+  function drawRatchetWheel() {
+    const teeth = CFG.ratchetTeeth;
+    const rOuter = CFG.ratchetOuterR;
+    const rInner = CFG.ratchetInnerR;
+    let d = '';
+
+    for (let i = 0; i < teeth; i++) {
+      // Tooth shape: steep face on CCW side, gradual ramp on CW side
+      // As ratchet turns CW (positive angle in SVG), ramp pushes pawl up
+      // When ratchet tries to turn CCW (negative), steep face catches pawl
+      const a0 = (i / teeth) * Math.PI * 2;           // start of valley (inner radius)
+      const a1 = ((i + 0.15) / teeth) * Math.PI * 2;  // base of steep face
+      const a2 = ((i + 0.25) / teeth) * Math.PI * 2;  // tooth tip (CCW side of tooth)
+      const a3 = ((i + 0.8) / teeth) * Math.PI * 2;   // end of ramp, back to inner
+
+      if (i === 0) {
+        d += `M ${Math.cos(a0) * rInner} ${Math.sin(a0) * rInner} `;
+      }
+      // Steep face (almost radial, on CCW side of tooth)
+      d += `L ${Math.cos(a1) * rInner} ${Math.sin(a1) * rInner} `;
+      // Tooth tip
+      d += `L ${Math.cos(a2) * rOuter} ${Math.sin(a2) * rOuter} `;
+      // Gradual ramp down to inner radius (CW side of tooth)
+      d += `L ${Math.cos(a3) * rInner} ${Math.sin(a3) * rInner} `;
+    }
+    d += 'Z';
+
+    ratchetWheel.innerHTML = `
+      <path d="${d}" fill="url(#ratchetMetal)" stroke="#2a2520" stroke-width="0.5"/>
+      <circle r="${rInner - 4}" fill="var(--wood-mid)" opacity="0.9"/>
+    `;
+  }
+
+  // ========== ROPE COILS ==========
+  function drawRopeCoils() {
+    // Calculate how many coils are currently on the axle
+    const totalTurns = state.totalAngle / (Math.PI * 2);
+    const fullCoils = Math.floor(Math.max(0, totalTurns));
+    const partialTurn = Math.max(0, totalTurns - fullCoils);
+
+    const wellCenterX = 400;     // rope hangs straight down from well center
+    const axleRight = 500;       // right boundary for coils (before ratchet)
+    const coilSpacing = 5;       // px between coils
+    const maxCoils = Math.floor((axleRight - wellCenterX) / coilSpacing);
+    const visibleCoils = Math.min(fullCoils, maxCoils);
+
+    let html = '';
+    // Draw full coils spreading from center outward to the right
+    for (let i = 0; i < visibleCoils; i++) {
+      const x = wellCenterX + i * coilSpacing + coilSpacing / 2;
+      html += `<line x1="${x}" y1="211" x2="${x}" y2="237" stroke="url(#ropeGrad)" stroke-width="1.8" stroke-linecap="round" opacity="0.9"/>`;
+    }
+
+    // Draw partial coil for the current partial turn
+    if (partialTurn > 0 && fullCoils < maxCoils) {
+      const x = wellCenterX + visibleCoils * coilSpacing + coilSpacing / 2;
+      // Represent partial turn as a line that grows from top down the front face
+      const height = 26 * Math.min(partialTurn, 1);
+      html += `<line x1="${x}" y1="211" x2="${x}" y2="${211 + height}" stroke="url(#ropeGrad)" stroke-width="1.8" stroke-linecap="round" opacity="${Math.min(partialTurn * 1.2, 0.9)}"/>`;
+    }
+
+    // Transition arc: rope comes off axle bottom and goes down to well center
+    // (subtle curve from last coil position to vertical hanging rope)
+    if (totalTurns >= 0) {
+      const lastX = wellCenterX + Math.min(visibleCoils + partialTurn * 0.5, maxCoils) * coilSpacing;
+      html += `<path d="M ${lastX} 238 Q ${lastX} 242 ${wellCenterX} 244" stroke="url(#ropeGrad)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.85"/>`;
+    }
+
+    ropeCoils.innerHTML = html;
+  }
+
+  // ========== UPDATE VISUALS ==========
+  function updateCrankVisual() {
+    // Rotate crank arm by current visual angle
+    crankArm.setAttribute('transform', `rotate(${visualAngle() * 180 / Math.PI})`);
+
+    // Glow on hover
+    const targetGlow = state.crankHover && !state.isDragging ? 0.4 : 0;
+    crankGlowEl.setAttribute('opacity', targetGlow);
+  }
+
+  function updateRatchetVisual() {
+    ratchetWheel.setAttribute('transform', `rotate(${visualAngle() * 180 / Math.PI})`);
+  }
+
+  function updatePawlVisual() {
+    // Pawl angle: 0 = engaged (tip down in tooth valley)
+    // positive = pawl lifts up (released), lever tilts right
+    // Rotate around pivot (20, 10) in pawlGroup local coords
+    const deg = state.pawlAngle * 180 / Math.PI;
+    // When pawlAngle increases (released), arm lifts clockwise, lever tilts right
+    pawlArm.setAttribute('transform', `rotate(${deg}, 20, 10)`);
+    pawlLever.setAttribute('transform', `rotate(${deg}, 21, 10)`);
+  }
+
+  function updateRopeAndBucket() {
+    const bucketCenterX = 400;
+    const bucketTopY = CFG.wellTopY + state.ropeLen + 20; // rope goes from axle bottom to bucket top
+
+    // Hanging rope (from axle bottom area straight down to bucket)
+    const ropeTopY = 244; // bottom of axle where rope exits
+    hangingRope.setAttribute('x1', bucketCenterX);
+    hangingRope.setAttribute('y1', ropeTopY);
+    hangingRope.setAttribute('x2', bucketCenterX);
+    hangingRope.setAttribute('y2', bucketTopY);
+
+    // Bucket position and slight sway from slosh
+    const sloshOffsetX = Math.sin(state.waterSloshAngle) * 2;
+    const bucketRot = state.waterSloshAngle * 8; // slight bucket tilt
+    // Bucket transform: center of bucket = bucketTopY + half bucket height
+    bucket.setAttribute('transform', `translate(${bucketCenterX + sloshOffsetX}, ${bucketTopY + CFG.bucketHeight / 2}) rotate(${bucketRot})`);
+
+    // Water inside bucket tilts opposite to slosh (inertia)
+    const waterRot = -state.waterSloshAngle * 25; // water tilts more than bucket
+    bucketWaterGroup.setAttribute('transform', `rotate(${waterRot})`);
+
+    // Draw coils
+    drawRopeCoils();
+  }
+
+  // ========== PHYSICS ==========
+  // Rope length is computed from totalAngle (cumulative rotation)
+  // Initial state: bucket at bottom, totalAngle = 0
+  // Lifting: totalAngle increases (more positive), ropeLen decreases
+  function totalAngleToRopeLen(totalAngle) {
+    // Each radian of rotation shortens rope by axleRadius
+    // totalAngle = 0 -> rope at max length (bucket at bottom)
+    // totalAngle > 0 -> rope shorter (bucket lifted)
+    const len = CFG.maxRopeLen - totalAngle * CFG.axleRadius;
+    return Math.max(CFG.minRopeLen, Math.min(CFG.maxRopeLen, len));
+  }
+
+  function ropeLenToTotalAngle(len) {
+    // returns totalAngle corresponding to given rope length
+    return (CFG.maxRopeLen - len) / CFG.axleRadius;
+  }
+
+  // Get current ratchet tooth index (from visual angle, normalized 0..teeth-1)
+  function getRatchetTooth(visualAngle) {
+    const teeth = CFG.ratchetTeeth;
+    // Normalize visual angle to [0, 2PI)
+    let a = ((visualAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return Math.floor(a / (Math.PI * 2 / teeth));
+  }
+
+  // Compute visual angle from totalAngle + offset
+  function visualAngle() {
+    return state.totalAngle + state.angleOffset;
+  }
+
+  // ========== AUDIO (synthesized clicks and thuds) ==========
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) { audioCtx = null; }
+    }
+    return audioCtx;
+  }
+
+  function playClick(freq, volume, duration) {
+    if (state.reducedMotion) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(volume * 0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  }
+
+  function playThud() {
+    if (state.reducedMotion) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    // Low frequency thud
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(80, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+
+    // Splash noise
+    const bufferSize = ctx.sampleRate * 0.3;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) * 0.3;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.15;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1500;
+    noise.connect(filter).connect(noiseGain).connect(ctx.destination);
+    noise.start();
+  }
+
+  function playRatchetClick() {
+    playClick(1200 + Math.random() * 200, 1.0, 0.04);
+  }
+
+  // ========== SPLASH & RIPPLES ==========
+  function createSplash() {
+    if (state.reducedMotion) {
+      ripples.setAttribute('opacity', '0.8');
+      setTimeout(() => ripples.setAttribute('opacity', '0'), 1500);
+      return;
+    }
+    const count = 18;
+    let html = '';
+    const splashY = 477; // water surface y
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI + Math.PI; // upward half-circle
+      const speed = 80 + Math.random() * 160;
+      const spread = (Math.random() - 0.5) * 30;
+      const vx = Math.cos(angle) * speed + spread;
+      const vy = -Math.abs(Math.sin(angle) * speed) - 60; // always up
+      const size = 1.5 + Math.random() * 2.5;
+      html += `<circle class="splash-drop" data-vx="${vx}" data-vy="${vy}" cx="400" cy="${splashY}" r="${size}" fill="#7ab8a8" opacity="0.9"/>`;
+    }
+    // Plus some big drops
+    for (let i = 0; i < 5; i++) {
+      const vx = (Math.random() - 0.5) * 120;
+      const vy = -100 - Math.random() * 80;
+      const size = 2.5 + Math.random() * 2;
+      html += `<circle class="splash-drop" data-vx="${vx}" data-vy="${vy}" cx="400" cy="${splashY}" r="${size}" fill="#5a9a8a" opacity="0.95"/>`;
+    }
+    splashParticles.innerHTML = html;
+    state.splashTimer = 0.8; // seconds until particles fade
+
+    // Ripples
+    ripples.setAttribute('opacity', '0');
+    // Animate ripples expanding
+    animateRipples();
+  }
+
+  let rippleStartTime = 0;
+  function animateRipples() {
+    rippleStartTime = performance.now();
+    function step(now) {
+      const t = (now - rippleStartTime) / 1000;
+      if (t > 2) {
+        ripples.setAttribute('opacity', '0');
+        return;
+      }
+      const scale = 1 + t * 3;
+      const opacity = Math.max(0, 1 - t / 2);
+      const ellipses = ripples.querySelectorAll('ellipse');
+      ellipses.forEach((el, i) => {
+        const baseRx = [10, 20, 35, 50][i];
+        const baseRy = [2, 4, 6, 8][i];
+        el.setAttribute('rx', baseRx * scale);
+        el.setAttribute('ry', baseRy * scale);
+      });
+      ripples.setAttribute('opacity', opacity);
+      if (state.pageVisible) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function updateSplash(dt) {
+    if (state.splashTimer <= 0) return;
+    state.splashTimer -= dt;
+
+    const drops = splashParticles.querySelectorAll('.splash-drop');
+    drops.forEach(drop => {
+      let vx = parseFloat(drop.dataset.vx);
+      let vy = parseFloat(drop.dataset.vy);
+      let x = parseFloat(drop.getAttribute('cx'));
+      let y = parseFloat(drop.getAttribute('cy'));
+
+      vy += 1200 * dt; // gravity on droplets
+      x += vx * dt;
+      y += vy * dt;
+
+      drop.setAttribute('cx', x);
+      drop.setAttribute('cy', y);
+
+      const opacity = Math.max(0, state.splashTimer / 0.8);
+      drop.setAttribute('opacity', opacity);
+    });
+
+    if (state.splashTimer <= 0) {
+      splashParticles.innerHTML = '';
+    }
+  }
+
+  // ========== WATER OVERFLOW (when bucket reaches top) ==========
+  function createOverflowDrop(fromLeft) {
+    const drop = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    drop.setAttribute('cx', fromLeft ? 388 : 412);
+    drop.setAttribute('cy', CFG.wellTopY + state.ropeLen + 4);
+    drop.setAttribute('rx', 1.5);
+    drop.setAttribute('ry', 2.5);
+    drop.setAttribute('fill', '#6aa898');
+    drop.setAttribute('opacity', '0.8');
+    drop.classList.add('overflow-drop');
+    drop.dataset.vx = fromLeft ? -20 : 20;
+    drop.dataset.vy = 40;
+    overflowDrops.appendChild(drop);
+  }
+
+  function updateOverflow(dt) {
+    const drops = overflowDrops.querySelectorAll('.overflow-drop');
+    drops.forEach(drop => {
+      let vx = parseFloat(drop.dataset.vx);
+      let vy = parseFloat(drop.dataset.vy) + 600 * dt;
+      let x = parseFloat(drop.getAttribute('cx')) + vx * dt;
+      let y = parseFloat(drop.getAttribute('cy')) + vy * dt;
+
+      drop.setAttribute('cx', x);
+      drop.setAttribute('cy', y);
+
+      // Remove when below well opening
+      if (y > CFG.wellOpeningY + 20) {
+        drop.remove();
+      }
+    });
+  }
+
+  // ========== MAIN LOOP ==========
+  function tick(now) {
+    if (!state.pageVisible) {
+      state.rafId = null;
+      return;
+    }
+
+    const dt = Math.min((now - state.lastTime) / 1000, 1/30); // cap dt
+    state.lastTime = now;
+
+    if (state.reducedMotion) {
+      // Reduced motion: just update visuals from state, no physics
+      updateCrankVisual();
+      updateRatchetVisual();
+      updatePawlVisual();
+      updateRopeAndBucket();
+      state.rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    // Free fall physics
+    if (state.isFalling) {
+      state.fallVel += CFG.gravity * dt;
+      const dLen = state.fallVel * dt;
+      state.ropeLen += dLen;
+
+      // Crank spins CLOCKWISE (rope unwinds) -> totalAngle decreases
+      const dAngle = dLen / CFG.axleRadius;
+      state.totalAngle -= dAngle;
+      state.angularVel = -dAngle / dt; // negative = CW = lowering
+
+      // Check if bucket hit bottom (water surface)
+      if (state.ropeLen >= CFG.maxRopeLen) {
+        state.ropeLen = CFG.maxRopeLen;
+        state.totalAngle = ropeLenToTotalAngle(CFG.maxRopeLen);
+        state.isFalling = false;
+        state.fallVel = 0;
+
+        // Impact!
+        playThud();
+        createSplash();
+
+        // Crank bounces back (rebound CCW) then settles
+        state.angularVel = 8; // small rebound spin CCW
+      }
+    }
+    // Rotational physics (when not falling, not dragging)
+    else if (!state.isDragging) {
+      // Apply friction
+      state.angularVel *= Math.pow(CFG.friction, dt);
+
+      // Update cumulative rotation
+      const dAngle = state.angularVel * dt;
+      state.totalAngle += dAngle;
+
+      // Update rope length
+      const newLen = totalAngleToRopeLen(state.totalAngle);
+
+      // Check ratchet engagement
+      if (state.pawlEngaged) {
+        // If moving backward (rope lengthening, angularVel < 0), pawl catches
+        if (state.angularVel < -0.05 && newLen > state.ropeLen) {
+          // Pawl engages - find the nearest tooth and snap to it
+          const teeth = CFG.ratchetTeeth;
+          const toothAngle = (Math.PI * 2) / teeth;
+          // Find the last tooth that was passed going CCW
+          const normVisual = ((visualAngle() % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          const toothIdx = Math.floor(normVisual / toothAngle);
+          // Snap visual angle to the tooth's holding position (valley at toothIdx)
+          // Valley is at toothIdx * toothAngle, the pawl catches on the steep face
+          // Position after the tooth tip (on the ramp side) for a good hold
+          const snapVisual = (toothIdx + 0.15) * toothAngle;
+          // Adjust totalAngle to match this snap position
+          const currentVisualNorm = normVisual;
+          const snapVisualNorm = ((snapVisual % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          let deltaSnap = snapVisualNorm - currentVisualNorm;
+          // We want a positive snap (CCW correction) if we slipped back
+          if (deltaSnap < -Math.PI) deltaSnap += Math.PI * 2;
+          if (deltaSnap > Math.PI) deltaSnap -= Math.PI * 2;
+
+          // Only snap forward (positive delta) to prevent further backward slip
+          if (deltaSnap > 0) {
+            state.totalAngle += deltaSnap;
+            state.angularVel = 0;
+            state.ropeLen = totalAngleToRopeLen(state.totalAngle);
+          } else {
+            state.ropeLen = newLen;
+          }
+        } else {
+          state.ropeLen = newLen;
+        }
+      } else {
+        state.ropeLen = newLen;
+        // Clamp at bottom
+        if (state.ropeLen >= CFG.maxRopeLen) {
+          state.ropeLen = CFG.maxRopeLen;
+          state.totalAngle = ropeLenToTotalAngle(CFG.maxRopeLen);
+          if (state.angularVel < 0) state.angularVel = 0;
+        }
+        // Clamp at top
+        if (state.ropeLen <= CFG.minRopeLen) {
+          state.ropeLen = CFG.minRopeLen;
+          state.totalAngle = ropeLenToTotalAngle(CFG.minRopeLen);
+          if (state.angularVel > 0) state.angularVel = 0;
+        }
+      }
+
+      // Ratchet click detection (going forward = CCW = lifting)
+      if (Math.abs(state.angularVel) > 0.5) {
+        const tooth = getRatchetTooth(visualAngle());
+        if (tooth !== state.lastRatchetTooth && state.lastRatchetTooth !== -1) {
+          if (state.angularVel > 0) {
+            playRatchetClick();
+            // Small pawl lift animation
+            state.pawlAngle = 0.12;
+            setTimeout(() => { if (state.pawlEngaged) state.pawlAngle = 0; }, 40);
+          }
+        }
+        state.lastRatchetTooth = tooth;
+      }
+    } else {
+      // Dragging - update rope length from total angle
+      state.ropeLen = totalAngleToRopeLen(state.totalAngle);
+
+      // Ratchet click detection during drag
+      const tooth = getRatchetTooth(visualAngle());
+      if (tooth !== state.lastRatchetTooth && state.lastRatchetTooth !== -1) {
+        // Click if going forward (lifting = positive angularVel)
+        if (state.angularVel > 0.2) {
+          playRatchetClick();
+          state.pawlAngle = 0.10;
+          setTimeout(() => { if (state.pawlEngaged) state.pawlAngle = 0; }, 30);
+        }
+      }
+      state.lastRatchetTooth = tooth;
+
+      // Clamp at top
+      if (state.ropeLen <= CFG.minRopeLen) {
+        state.ropeLen = CFG.minRopeLen;
+        state.totalAngle = ropeLenToTotalAngle(CFG.minRopeLen);
+        state.angularVel = 0;
+        // Overflow drops when bucket is at top and moving
+        if (Math.random() < 0.15) createOverflowDrop(Math.random() > 0.5);
+      }
+      // Clamp at bottom
+      if (state.ropeLen >= CFG.maxRopeLen) {
+        state.ropeLen = CFG.maxRopeLen;
+        state.totalAngle = ropeLenToTotalAngle(CFG.maxRopeLen);
+        state.angularVel = 0;
+      }
+    }
+
+    // Water slosh physics (pendulum)
+    // Driving force comes from bucket acceleration
+    const bucketAccel = state.isFalling ? CFG.gravity :
+                        state.isDragging ? state.angularVel * CFG.axleRadius * 0.5 : 0;
+    // Slosh excitation
+    const excitation = (state.angularVel * CFG.axleRadius * 0.02) *
+                        (state.isDragging ? 1 : 0.3);
+
+    // Pendulum equation: sloshAngle'' = -freq^2 * sloshAngle - damping * sloshAngle' + excitation
+    const sloshAccel = -CFG.waterSloshFreq * CFG.waterSloshFreq * state.waterSloshAngle
+                       - CFG.waterSloshDamping * state.waterSloshVel
+                       + excitation;
+    state.waterSloshVel += sloshAccel * dt;
+    state.waterSloshAngle += state.waterSloshVel * dt;
+
+    // Extra shake on impact
+    if (state.isFalling === false && state.fallVel === 0 && state.splashTimer > 0.7) {
+      // Just hit bottom - add big slosh
+      state.waterSloshVel += (Math.random() - 0.5) * 4;
+    }
+
+    // Pawl animation (spring back to engaged or held position)
+    const pawlSpringK = 40;
+    const pawlDamping = 8;
+    const pawlTarget = state.pawlEngaged ? 0 : CFG.pawlReleaseAngle;
+    const pawlForce = -pawlSpringK * (state.pawlAngle - pawlTarget) - pawlDamping * (state.pawlAngle - state.pawlTargetAngle) / Math.max(dt, 0.001);
+    // Simple approach: just ease toward target
+    state.pawlAngle += (pawlTarget - state.pawlAngle) * Math.min(1, dt * 12);
+    state.pawlTargetAngle = pawlTarget;
+
+    // Splash particles
+    updateSplash(dt);
+    updateOverflow(dt);
+
+    // Update all visuals
+    updateCrankVisual();
+    updateRatchetVisual();
+    updatePawlVisual();
+    updateRopeAndBucket();
+
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  // ========== INTERACTION: CRANK DRAG ==========
+  function getMouseAngle(e) {
+    const pt = clientToSvg(e.clientX, e.clientY);
+    const dx = pt.x - CRANK_CENTER.x;
+    const dy = pt.y - CRANK_CENTER.y;
+    return Math.atan2(dy, dx);
+  }
+
+  function handleCrankMouseDown(e) {
+    if (state.isFalling) return;
+    e.preventDefault();
+    state.isDragging = true;
+    state.interactionHappened = true;
+    hideHint();
+
+    // Capture mouse angle at drag start, compute offset to current visual angle
+    const mouseAngle = getMouseAngle(e);
+    state.dragAngleOffset = visualAngle() - mouseAngle;
+    state.lastVisualAngle = visualAngle();
+    state.lastMoveTime = e.timeStamp || performance.now();
+    state.angularVel = 0;
+
+    // Engage pawl when starting to crank
+    state.pawlEngaged = true;
+
+    customCursor.classList.remove('idle', 'pinch');
+    customCursor.classList.add('grip');
+
+    // Resume audio context on user gesture
+    ensureAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function handleMouseMove(e) {
+    // Update custom cursor position
+    customCursor.style.left = e.clientX + 'px';
+    customCursor.style.top = e.clientY + 'px';
+
+    if (state.isDragging) {
+      const mouseAngle = getMouseAngle(e);
+      const newVisualAngle = mouseAngle + state.dragAngleOffset;
+      
+      // Compute delta from last visual angle, handle wrap-around
+      let delta = newVisualAngle - state.lastVisualAngle;
+      // Normalize delta to [-PI, PI] (shortest rotation)
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      
+      // Update cumulative rotation
+      state.totalAngle += delta;
+      
+      // Compute angular velocity for physics (use actual time delta)
+      const now = e.timeStamp || performance.now();
+      const dt = Math.max(0.001, (now - state.lastMoveTime) / 1000);
+      state.angularVel = delta / dt;
+      
+      state.lastVisualAngle = newVisualAngle;
+      state.lastMoveTime = now;
+    }
+
+    // Hover detection for cursor changes
+    updateHoverState(e);
+  }
+
+  function handleMouseUp(e) {
+    if (state.isDragging) {
+      state.isDragging = false;
+      customCursor.classList.remove('grip');
+      // Re-check hover to set correct cursor state
+      updateHoverState(e);
+      // angularVel will decay naturally in physics loop
+    }
+  }
+
+  // ========== INTERACTION: PAWL ==========
+  function handlePawlClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.isFalling) return;
+    if (state.ropeLen <= CFG.minRopeLen + 5) return; // already at top, nothing to fall
+
+    state.interactionHappened = true;
+    hideHint();
+    ensureAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Disengage pawl
+    state.pawlEngaged = false;
+    state.pawlAngle = CFG.pawlReleaseAngle;
+    playClick(800, 0.8, 0.06);
+
+    // Start free fall
+    state.isFalling = true;
+    state.fallVel = Math.max(0, state.angularVel * CFG.axleRadius * -1); // initial velocity from current spin
+
+    // Re-engage pawl after fall completes (in physics loop)
+    // Actually, pawl stays disengaged until user cranks again
+  }
+
+  function handlePawlMouseDown(e) {
+    // Just clicking releases it
+    handlePawlClick(e);
+  }
+
+  // ========== HOVER DETECTION ==========
+  function updateHoverState(e) {
+    if (state.isDragging) return;
+
+    const pt = clientToSvg(e.clientX, e.clientY);
+
+    // Check crank grip hover (grip orbits around crank center)
+    const crankGripX = CRANK_CENTER.x + Math.cos(visualAngle()) * CFG.crankLength;
+    const crankGripY = CRANK_CENTER.y + Math.sin(visualAngle()) * CFG.crankLength;
+    const dxCrank = pt.x - crankGripX;
+    const dyCrank = pt.y - crankGripY;
+    const distCrank = Math.sqrt(dxCrank * dxCrank + dyCrank * dyCrank);
+
+    state.crankHover = distCrank < 22;
+
+    // Check pawl lever hover (wooden stick going up from pivot)
+    // Pawl group is at transform translate(520, 148), lever top at (25, -44) in local = (545, 104) global
+    // Pivot at (28, 40) in local = (548, 188) global
+    const leverTopX = 545;
+    const leverTopY = 104;
+    const leverBotX = 548;
+    const leverBotY = 188;
+    const A = pt.x - leverTopX;
+    const B = pt.y - leverTopY;
+    const C = leverBotX - leverTopX;
+    const D = leverBotY - leverTopY;
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = lenSq !== 0 ? dot / lenSq : -1;
+    let xx, yy;
+    if (param < 0) { xx = leverTopX; yy = leverTopY; }
+    else if (param > 1) { xx = leverBotX; yy = leverBotY; }
+    else { xx = leverTopX + param * C; yy = leverTopY + param * D; }
+    const distToLever = Math.sqrt((pt.x - xx) ** 2 + (pt.y - yy) ** 2);
+
+    state.pawlHover = distToLever < 14;
+
+    // Update cursor
+    customCursor.classList.remove('idle', 'grip', 'pinch');
+    if (state.crankHover) {
+      customCursor.classList.add('grip');
+    } else if (state.pawlHover) {
+      customCursor.classList.add('pinch');
+    } else {
+      customCursor.classList.add('idle');
+    }
+  }
+
+  // ========== HINT ==========
+  function hideHint() {
+    if (startHint && !startHint.classList.contains('fade')) {
+      startHint.classList.add('fade');
+    }
+  }
+
+  // ========== VISIBILITY CHANGE ==========
+  document.addEventListener('visibilitychange', () => {
+    state.pageVisible = !document.hidden;
+    if (state.pageVisible && !state.rafId) {
+      state.lastTime = performance.now();
+      state.rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // ========== INIT ==========
+  function init() {
+    // Draw initial ratchet
+    drawRatchetWheel();
+
+    // Set initial state: bucket at bottom (ropeLen = maxRopeLen)
+    // totalAngle = 0 is the baseline where ropeLen = maxRopeLen
+    // Visual angle at start: position ratchet so a tooth valley is under the pawl tip
+    const initialVisualAngle = 8.5 * (Math.PI * 2 / 12); // valley at index 8.5 = 255deg
+    state.ropeLen = CFG.maxRopeLen;
+    state.totalAngle = 0;
+    state.angleOffset = initialVisualAngle;
+    state.lastRatchetTooth = getRatchetTooth(visualAngle());
+
+    // Initial visuals
+    updateCrankVisual();
+    updateRatchetVisual();
+    updatePawlVisual();
+    updateRopeAndBucket();
+
+    // Event listeners
+    crankGrip.addEventListener('mousedown', handleCrankMouseDown);
+    crankArm.addEventListener('mousedown', handleCrankMouseDown);
+    pawlLever.addEventListener('mousedown', handlePawlMouseDown);
+    pawlArm.addEventListener('mousedown', handlePawlMouseDown);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // Touch support
+    crankGrip.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches[0]) handleCrankMouseDown({
+        clientX: e.touches[0].clientX,
+        clientY: e.touches[0].clientY,
+        preventDefault: () => e.preventDefault()
+      });
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (state.isDragging && e.touches[0]) {
+        e.preventDefault();
+        handleMouseMove({
+          clientX: e.touches[0].clientX,
+          clientY: e.touches[0].clientY
+        });
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      if (state.isDragging) {
+        handleMouseUp({ clientX: 0, clientY: 0 });
+      }
+    });
+
+    // Pawl touch
+    pawlLever.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      handlePawlClick({
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation()
+      });
+    }, { passive: false });
+
+    // Center cursor on load
+    customCursor.style.left = window.innerWidth / 2 + 'px';
+    customCursor.style.top = window.innerHeight / 2 + 'px';
+
+    // Hide cursor when leaving window
+    document.addEventListener('mouseleave', () => {
+      customCursor.classList.add('hidden');
+    });
+    document.addEventListener('mouseenter', () => {
+      customCursor.classList.remove('hidden');
+    });
+
+    // Re-engage pawl after fall completes and bucket is at bottom
+    setInterval(() => {
+      if (!state.pawlEngaged && !state.isFalling && !state.isDragging &&
+          Math.abs(state.angularVel) < 0.1 && state.ropeLen >= CFG.maxRopeLen - 1) {
+        state.pawlEngaged = true;
+      }
+    }, 300);
+
+    // Start animation loop
+    state.lastTime = performance.now();
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  // Run init
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Announce upgrade capability
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch(e) {}
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+})();
+</script>
+</body>
+</html>

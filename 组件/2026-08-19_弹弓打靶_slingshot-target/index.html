@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" string="true">interactive-prototype">
+<title>弹弓打靶 · 黄昏打谷场</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --sunset: #E07B39;
+    --hay: #D9B36A;
+    --wood: #6E4B36;
+    --rubber: #3E2A1E;
+    --lime: #EFE8DA;
+    --dusk: #C9A68E;
+    --shadow: rgba(62, 42, 30, 0.35);
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif;
+    background: linear-gradient(180deg, var(--dusk) 0%, var(--hay) 55%, var(--sunset) 100%);
+  }
+
+  #gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    cursor: none;
+  }
+
+  /* 自定义石子光标 */
+  #stoneCursor {
+    position: fixed;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%) rotate(0deg);
+    transition: transform 0.08s ease-out;
+    will-change: transform;
+  }
+  #stoneCursor svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 2px 3px var(--shadow));
+  }
+  #stoneCursor.grab {
+    transform: translate(-50%, -50%) scale(1.15) rotate(12deg);
+  }
+  #stoneCursor.aim {
+    transform: translate(-50%, -50%) scale(0.9) rotate(-8deg);
+  }
+  #stoneCursor.hidden {
+    opacity: 0;
+  }
+
+  /* HUD */
+  #hud {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    pointer-events: none;
+  }
+  .hud-chip {
+    background: rgba(239, 232, 218, 0.85);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(110, 75, 54, 0.2);
+    border-radius: 20px;
+    padding: 8px 18px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--wood);
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .hud-chip strong {
+    color: var(--sunset);
+    font-weight: 700;
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 重新摆罐按钮 */
+  #resetBtn {
+    position: fixed;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    background: var(--wood);
+    color: var(--lime);
+    border: none;
+    border-radius: 28px;
+    padding: 14px 32px;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(62, 42, 30, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+    font-family: inherit;
+  }
+  #resetBtn:hover {
+    background: #5a3c2b;
+    transform: translateX(-50%) translateY(-2px);
+    box-shadow: 0 6px 20px rgba(62, 42, 30, 0.5);
+  }
+  #resetBtn:active {
+    transform: translateX(-50%) translateY(1px);
+    box-shadow: 0 2px 8px rgba(62, 42, 30, 0.4);
+  }
+
+  /* 力度条 */
+  #powerBar {
+    position: fixed;
+    right: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    width: 14px;
+    height: 220px;
+    background: rgba(239, 232, 218, 0.5);
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1px solid rgba(110, 75, 54, 0.25);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  #powerBar.show { opacity: 1; }
+  #powerFill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    background: linear-gradient(180deg, var(--sunset) 0%, #c05624 100%);
+    border-radius: 7px 7px 0 0;
+    transition: height 0.05s linear;
+  }
+  #powerBar::before {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: -3px;
+    right: -3px;
+    height: 2px;
+    background: rgba(224, 123, 57, 0.6);
+    z-index: 2;
+  }
+
+  /* 开场提示 */
+  #hint {
+    position: fixed;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99;
+    color: var(--wood);
+    font-size: 14px;
+    opacity: 0.7;
+    letter-spacing: 1px;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+  }
+  #hint.fade { opacity: 0; }
+
+  /* 命中飘字 */
+  .score-pop {
+    position: fixed;
+    z-index: 200;
+    color: var(--sunset);
+    font-size: 22px;
+    font-weight: 700;
+    pointer-events: none;
+    text-shadow: 0 2px 6px rgba(255, 255, 255, 0.6);
+    animation: scorePop 1.2s ease-out forwards;
+  }
+  @keyframes scorePop {
+    0% { transform: translateY(0) scale(0.8); opacity: 0; }
+    20% { transform: translateY(-10px) scale(1.1); opacity: 1; }
+    100% { transform: translateY(-60px) scale(0.9); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #stoneCursor { transition: none; }
+    .score-pop { animation-duration: 0.6s; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="stoneCursor">
+  <svg viewBox="0 0 24 24" fill="none">
+    <defs>
+      <radialGradient id="stoneGrad" cx="40%" cy="35%" r="60%">
+        <stop offset="0%" stop-color="#9A8A7A"/>
+        <stop offset="60%" stop-color="#6E5A4A"/>
+        <stop offset="100%" stop-color="#4A3A2E"/>
+      </radialGradient>
+    </defs>
+    <ellipse cx="12" cy="12" rx="10" ry="9" fill="url(#stoneGrad)"/>
+    <ellipse cx="9" cy="9" rx="3" ry="2" fill="rgba(255,255,255,0.25)"/>
+  </svg>
+</div>
+
+<div id="hud">
+  <div class="hud-chip">得分<strong id="scoreVal">0</strong></div>
+  <div class="hud-chip">石子<strong id="stoneVal">8</strong></div>
+  <div class="hud-chip">剩罐<strong id="canVal">6</strong></div>
+</div>
+
+<div id="hint">抓住皮兜向后拖拽，松手发射</div>
+
+<div id="powerBar">
+  <div id="powerFill"></div>
+</div>
+
+<button id="resetBtn">重新摆罐</button>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== 配置 ==========
+  const CONFIG = {
+    gravity: 0.55,
+    airDrag: 0.998,
+    maxDrawDistance: 180,
+    powerMultiplier: 0.18,
+    hookeK: 0.012,
+    bandDamping: 0.88,
+    canRestitution: 0.35,
+    canFriction: 0.92,
+    angularDamping: 0.96,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  };
+
+  // ========== Canvas 设置 ==========
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    layoutScenes();
+  }
+
+  // ========== 场景坐标（响应式布局）==========
+  let slingshot = { x: 0, y: 0, forkL: {x:0,y:0}, forkR: {x:0,y:0}, pouch: {x:0,y:0} };
+  let canStack = [];
+  let stump = { x: 0, y: 0, w: 0, h: 0 };
+  let groundY = 0;
+
+  function layoutScenes() {
+    groundY = H * 0.78;
+
+    // 弹弓位置：左侧约 1/4
+    const sx = W * 0.22;
+    const sy = groundY - 80;
+    slingshot.x = sx;
+    slingshot.y = sy;
+    slingshot.forkL = { x: sx - 22, y: sy - 90 };
+    slingshot.forkR = { x: sx + 22, y: sy - 90 };
+    slingshot.pouch = { x: sx, y: sy - 55 };
+    slingshot.restPouch = { x: sx, y: sy - 55 };
+
+    // 树桩和罐子：右侧约 2/3
+    stump.w = 110;
+    stump.h = 60;
+    stump.x = W * 0.7 - stump.w / 2;
+    stump.y = groundY - stump.h;
+
+    resetCans();
+  }
+
+  // ========== 罐子 ==========
+  function createCan(cx, cy) {
+    return {
+      x: cx, y: cy,
+      vx: 0, vy: 0,
+      width: 42, height: 58,
+      angle: 0,
+      angVel: 0,
+      standing: true,
+      onGround: true,
+      falling: false,
+      hit: false
+    };
+  }
+
+  function resetCans() {
+    canStack = [];
+    const baseX = stump.x + stump.w / 2;
+    const baseY = stump.y;
+    // 3 层：底层 3 个，中层 2 个，顶层 1 个
+    const offsets = [
+      [-1, 0], [0, 0], [1, 0],     // 底层
+      [-0.5, 1], [0.5, 1],         // 中层
+      [0, 2]                       // 顶层
+    ];
+    const w = 42, h = 58;
+    const gap = 0;
+    offsets.forEach(([col, row]) => {
+      const cx = baseX + col * (w + gap);
+      const cy = baseY - (row + 1) * h + row * 0;
+      canStack.push(createCan(cx, cy));
+    });
+    updateCanCount();
+  }
+
+  // ========== 石子 ==========
+  let stones = [];
+  let stonesLeft = 8;
+
+  function fireStone(fromX, fromY, vx, vy) {
+    if (stonesLeft <= 0) return;
+    stonesLeft--;
+    updateStoneCount();
+    stones.push({
+      x: fromX, y: fromY,
+      vx: vx, vy: vy,
+      spin: 0,
+      spinVel: (Math.random() - 0.3) * 0.3,
+      radius: 9,
+      alive: true,
+      trail: []
+    });
+  }
+
+  // ========== 粒子（尘土）==========
+  let particles = [];
+  function spawnDust(x, y, count, spread) {
+    if (CONFIG.reducedMotion) return;
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: x + (Math.random() - 0.5) * spread,
+        y: y + (Math.random() - 0.5) * spread * 0.5,
+        vx: (Math.random() - 0.5) * 3,
+        vy: -Math.random() * 2 - 0.5,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.02,
+        size: 2 + Math.random() * 4,
+        color: 'rgba(217, 179, 106, 0.6)'
+      });
+    }
+  }
+
+  // ========== 输入状态 ==========
+  let mouseX = W / 2, mouseY = H / 2;
+  let isDragging = false;
+  let dragStartX = 0, dragStartY = 0;
+  let hoverPouch = false;
+  let releaseOscillation = null; // { t, amp, freq, decay }
+  let postReleaseTimer = 0;
+
+  // ========== 皮兜/皮筋振荡 ==========
+  function startReleaseOscillation() {
+    releaseOscillation = {
+      t: 0,
+      amp: drawDistance,
+      freq: CONFIG.reducedMotion ? 12 : 25,
+      decay: CONFIG.reducedMotion ? 0.85 : 0.78,
+      angle: drawAngle,
+      phase: 0
+    };
+    postReleaseTimer = 0;
+  }
+
+  // ========== 计算拉伸 ==========
+  let drawDistance = 0;
+  let drawAngle = 0;
+
+  function computeDraw() {
+    const rx = slingshot.x - mouseX;
+    const ry = slingshot.restPouch.y - mouseY;
+    drawDistance = Math.min(Math.sqrt(rx * rx + ry * ry), CONFIG.maxDrawDistance);
+    drawAngle = Math.atan2(ry, rx);
+  }
+
+  // 皮兜位置（基于拉伸）
+  function getPouchPos() {
+    if (isDragging) {
+      const rx = slingshot.x - mouseX;
+      const ry = slingshot.restPouch.y - mouseY;
+      const dist = Math.sqrt(rx * rx + ry * ry);
+      if (dist > CONFIG.maxDrawDistance) {
+        const ratio = CONFIG.maxDrawDistance / dist;
+        return {
+          x: slingshot.x - rx * ratio,
+          y: slingshot.restPouch.y - ry * ratio
+        };
+      }
+      return { x: mouseX, y: mouseY };
+    }
+    if (releaseOscillation) {
+      // 阻尼振荡
+      const o = releaseOscillation;
+      const damped = o.amp * Math.pow(o.decay, o.t * 60);
+      const offset = damped * Math.sin(o.t * o.freq * Math.PI * 2);
+      const cos = Math.cos(o.angle), sin = Math.sin(o.angle);
+      return {
+        x: slingshot.restPouch.x + cos * offset,
+        y: slingshot.restPouch.y + sin * offset
+      };
+    }
+    return { x: slingshot.restPouch.x, y: slingshot.restPouch.y };
+  }
+
+  // ========== 鼠标事件 ==========
+  const cursorEl = document.getElementById('stoneCursor');
+
+  function updateCursor(x, y) {
+    cursorEl.style.left = x + 'px';
+    cursorEl.style.top = y + 'px';
+  }
+
+  function isOverPouch(x, y) {
+    const p = getPouchPos();
+    const dx = x - p.x, dy = y - p.y;
+    return dx * dx + dy * dy < 400; // 20px 半径
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    updateCursor(mouseX, mouseY);
+
+    if (!isDragging) {
+      const over = isOverPouch(mouseX, mouseY);
+      if (over !== hoverPouch) {
+        hoverPouch = over;
+        cursorEl.classList.toggle('grab', over);
+      }
+    } else {
+      computeDraw();
+      updatePowerBar();
+    }
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (isOverPouch(mouseX, mouseY) && stonesLeft > 0 && !releaseOscillation) {
+      isDragging = true;
+      cursorEl.classList.remove('grab');
+      cursorEl.classList.add('aim');
+      document.getElementById('hint').classList.add('fade');
+      showPowerBar(true);
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (e.button !== 0) return;
+    if (isDragging) {
+      isDragging = false;
+      cursorEl.classList.remove('aim');
+
+      if (drawDistance > 15) {
+        // 发射！
+        const p = getPouchPos();
+        const speed = drawDistance * CONFIG.powerMultiplier;
+        const vx = Math.cos(drawAngle) * speed;
+        const vy = Math.sin(drawAngle) * speed;
+        fireStone(p.x, p.y, vx, vy);
+        startReleaseOscillation();
+        spawnDust(p.x, p.y + 5, 6, 10);
+      }
+
+      showPowerBar(false);
+    }
+  });
+
+  // 防止拖拽时选中文本
+  document.addEventListener('selectstart', (e) => {
+    if (isDragging) e.preventDefault();
+  });
+
+  // ========== HUD 更新 ==========
+  const scoreEl = document.getElementById('scoreVal');
+  const stoneEl = document.getElementById('stoneVal');
+  const canEl = document.getElementById('canVal');
+  const powerBar = document.getElementById('powerBar');
+  const powerFill = document.getElementById('powerFill');
+
+  let score = 0;
+  function updateScore(delta, x, y) {
+    score += delta;
+    scoreEl.textContent = score;
+    if (delta > 0 && x !== undefined) {
+      showScorePop(delta, x, y);
+    }
+  }
+  function updateStoneCount() { stoneEl.textContent = stonesLeft; }
+  function updateCanCount() {
+    const standing = canStack.filter(c => c.standing).length;
+    canEl.textContent = standing;
+  }
+
+  function showPowerBar(show) {
+    powerBar.classList.toggle('show', show);
+  }
+  function updatePowerBar() {
+    const pct = (drawDistance / CONFIG.maxDrawDistance) * 100;
+    powerFill.style.height = pct + '%';
+  }
+
+  function showScorePop(val, x, y) {
+    const el = document.createElement('div');
+    el.className = 'score-pop';
+    el.textContent = '+' + val;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1200);
+  }
+
+  // ========== 重置按钮 ==========
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    resetCans();
+    stonesLeft = 8;
+    updateStoneCount();
+    stones = [];
+    particles = [];
+    score = 0;
+    scoreEl.textContent = 0;
+    document.getElementById('hint').classList.remove('fade');
+  });
+
+  // ========== 碰撞检测 ==========
+  function circleRectCollide(cx, cy, r, can) {
+    // AABB 简化：将罐子视为直立矩形（即便有角度，也近似）
+    // 考虑角度的简化：使用包围盒
+    const hw = can.width / 2;
+    const hh = can.height / 2;
+
+    // 旋转后的矩形碰撞：把圆心变换到罐子局部坐标系
+    const cos = Math.cos(-can.angle);
+    const sin = Math.sin(-can.angle);
+    const dx = cx - can.x;
+    const dy = cy - can.y;
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+
+    // 最近点
+    const closestX = Math.max(-hw, Math.min(hw, lx));
+    const closestY = Math.max(-hh, Math.min(hh, ly));
+    const ddx = lx - closestX;
+    const ddy = ly - closestY;
+    const dist2 = ddx * ddx + ddy * ddy;
+
+    if (dist2 < r * r) {
+      const dist = Math.sqrt(dist2) || 0.01;
+      // 碰撞法线（世界坐标）
+      const nxLocal = ddx / dist;
+      const nyLocal = ddy / dist;
+      const cosA = Math.cos(can.angle), sinA = Math.sin(can.angle);
+      const nx = nxLocal * cosA - nyLocal * sinA;
+      const ny = nxLocal * sinA + nyLocal * cosA;
+      // 接触点（世界坐标）
+      const cpx = can.x + closestX * cosA - closestY * sinA;
+      const cpy = can.y + closestX * sinA + closestY * cosA;
+      return { nx, ny, cpx, cpy, depth: r - dist };
+    }
+    return null;
+  }
+
+  // ========== 物理更新 ==========
+  function updatePhysics(dt) {
+    // 皮筋振荡
+    if (releaseOscillation) {
+      releaseOscillation.t += dt;
+      const damped = releaseOscillation.amp * Math.pow(releaseOscillation.decay, releaseOscillation.t * 60);
+      if (damped < 0.5) {
+        releaseOscillation = null;
+      }
+    }
+
+    // 石子更新
+    for (const s of stones) {
+      if (!s.alive) continue;
+
+      // 轨迹
+      s.trail.push({ x: s.x, y: s.y });
+      if (s.trail.length > 15) s.trail.shift();
+
+      s.vy += CONFIG.gravity;
+      s.vx *= CONFIG.airDrag;
+      s.vy *= CONFIG.airDrag;
+      s.x += s.vx;
+      s.y += s.vy;
+      s.spin += s.spinVel;
+
+      // 地面碰撞
+      if (s.y + s.radius > groundY) {
+        s.y = groundY - s.radius;
+        s.vy = -s.vy * 0.3;
+        s.vx *= 0.7;
+        spawnDust(s.x, groundY, 4, 12);
+        if (Math.abs(s.vy) < 1 && Math.abs(s.vx) < 0.5) {
+          s.alive = false;
+        }
+      }
+
+      // 出界
+      if (s.x < -50 || s.x > W + 50 || s.y > H + 50) {
+        s.alive = false;
+      }
+
+      // 与罐子碰撞
+      for (const can of canStack) {
+        if (!can.standing && !can.falling) continue;
+        const hit = circleRectCollide(s.x, s.y, s.radius, can);
+        if (hit) {
+          // 冲量 = 速度 * 质量系数
+          const impactSpeed = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+          // 计算冲量方向（石子速度方向投影到法线）
+          const vDotN = s.vx * hit.nx + s.vy * hit.ny;
+          if (vDotN < 0) {
+            // 反射速度
+            const jn = -(1 + 0.4) * vDotN;
+            s.vx += jn * hit.nx;
+            s.vy += jn * hit.ny;
+
+            // 角动量：撞击点相对罐子中心的位置 × 冲量
+            const rx = hit.cpx - can.x;
+            const ry = hit.cpy - can.y;
+            // 冲量大小
+            const impulse = Math.abs(vDotN) * 0.8;
+            // 角加速度（简化：距离中心越远，角动量越大）
+            const leverX = rx / (can.width / 2);
+            const leverY = ry / (can.height / 2);
+            const torque = (leverX * (-s.vy) + leverY * s.vx) * 0.015 * impulse;
+            can.angVel += torque * 3;
+
+            if (can.standing) {
+              can.standing = false;
+              can.falling = true;
+              can.hit = true;
+              // 给一个初始线速度（被推）
+              const push = impactSpeed * 0.15;
+              can.vx += s.vx * 0.2;
+              can.vy += Math.min(s.vy, 0) * 0.3;
+            } else {
+              can.vx += s.vx * 0.1;
+              can.vy += s.vy * 0.1;
+            }
+
+            spawnDust(hit.cpx, hit.cpy, 5, 8);
+          }
+
+          // 位置修正（推出）
+          s.x += hit.nx * hit.depth;
+          s.y += hit.ny * hit.depth;
+        }
+      }
+    }
+
+    // 罐子更新（倒下/堆叠物理）
+    for (let i = 0; i < canStack.length; i++) {
+      const can = canStack[i];
+      if (can.standing) continue;
+
+      can.vy += CONFIG.gravity * 0.8;
+      can.vx *= CONFIG.canFriction;
+      can.x += can.vx;
+      can.y += can.vy;
+      can.angle += can.angVel;
+      can.angVel *= CONFIG.angularDamping;
+
+      const hw = can.width / 2;
+      const hh = can.height / 2;
+
+      // 地面碰撞
+      if (can.y + hh > groundY) {
+        can.y = groundY - hh;
+        if (can.vy > 1) {
+          can.vy = -can.vy * CONFIG.canRestitution;
+          can.angVel += can.vx * 0.02;
+          spawnDust(can.x, groundY, 3, 15);
+        } else {
+          can.vy = 0;
+          can.falling = false;
+        }
+      }
+
+      // 左右边界
+      if (can.x - hw < 10) { can.x = 10 + hw; can.vx = -can.vx * 0.5; can.angVel *= -0.5; }
+      if (can.x + hw > W - 10) { can.x = W - 10 - hw; can.vx = -can.vx * 0.5; can.angVel *= -0.5; }
+
+      // 罐子间碰撞（简化 AABB）
+      for (let j = 0; j < canStack.length; j++) {
+        if (i === j) continue;
+        const other = canStack[j];
+        const ohw = other.width / 2;
+        const ohh = other.height / 2;
+
+        // 仅检测 AABB 重叠（忽略角度，简化）
+        const minAX = can.x - hw, maxAX = can.x + hw;
+        const minAY = can.y - hh, maxAY = can.y + hh;
+        const minBX = other.x - ohw, maxBX = other.x + ohw;
+        const minBY = other.y - ohh, maxBY = other.y + ohh;
+
+        if (maxAX > minBX && minAX < maxBX && maxAY > minBY && minAY < maxBY) {
+          // 确定最小分离轴
+          const overlapX = Math.min(maxAX - minBX, maxBX - minAX);
+          const overlapY = Math.min(maxAY - minBY, maxBY - minAY);
+
+          if (overlapY < overlapX) {
+            // 垂直方向分离
+            const dir = (can.y < other.y) ? -1 : 1;
+            can.y += dir * overlapY * 0.5;
+            other.y -= dir * overlapY * 0.5;
+
+            if (dir < 0) {
+              // can 在 other 上面
+              can.vy = Math.min(can.vy, -0.5);
+              // 若 other 站立，可能被压翻
+              if (other.standing && Math.abs(can.vx) + Math.abs(can.vy) > 2) {
+                other.standing = false;
+                other.falling = true;
+                other.angVel += can.vx * 0.03;
+                other.vx += can.vx * 0.3;
+              }
+            } else {
+              other.vy = Math.min(other.vy, -0.5);
+            }
+
+            // 摩擦力传递
+            can.angVel += can.vx * 0.01;
+            other.angVel -= other.vx * 0.01;
+          } else {
+            // 水平方向分离
+            const dir = (can.x < other.x) ? -1 : 1;
+            can.x += dir * overlapX * 0.5;
+            other.x -= dir * overlapX * 0.5;
+            const tmp = can.vx;
+            can.vx = other.vx * 0.6;
+            other.vx = tmp * 0.6;
+
+            // 角动量传递
+            can.angVel += (tmp - other.vx) * 0.02;
+            other.angVel -= (tmp - other.vx) * 0.02;
+
+            // 撞倒站立的罐子
+            if (other.standing && Math.abs(can.vx) > 2) {
+              other.standing = false;
+              other.falling = true;
+              other.angVel += can.vx * 0.04;
+              other.vx += can.vx * 0.4;
+            }
+            if (can.standing && Math.abs(other.vx) > 2) {
+              can.standing = false;
+              can.falling = true;
+              can.angVel += other.vx * 0.04;
+              can.vx += other.vx * 0.4;
+            }
+          }
+        }
+      }
+
+      // 静止检测
+      if (!can.falling && Math.abs(can.vx) < 0.2 && Math.abs(can.angVel) < 0.01) {
+        can.vx = 0;
+        can.angVel = 0;
+      }
+    }
+
+    // 计分：从站立变倒下的罐子
+    let scoreAdd = 0;
+    let firstHitY = Infinity;
+    let firstHitX = 0;
+    for (const can of canStack) {
+      if (can.hit) {
+        scoreAdd += 10;
+        can.hit = false; // 清除标记
+        if (can.y < firstHitY) {
+          firstHitY = can.y;
+          firstHitX = can.x;
+        }
+      }
+    }
+    if (scoreAdd > 0) {
+      // 一箭多罐加成
+      if (scoreAdd >= 30) scoreAdd += 20;
+      else if (scoreAdd >= 20) scoreAdd += 5;
+      updateScore(scoreAdd, firstHitX, firstHitY);
+    }
+
+    updateCanCount();
+
+    // 粒子更新
+    for (const p of particles) {
+      p.vy += 0.05;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= p.decay;
+    }
+    particles = particles.filter(p => p.life > 0);
+
+    // 清理死石子
+    stones = stones.filter(s => s.alive);
+  }
+
+  // ========== 绘制 ==========
+  function drawBackground() {
+    // 天空渐变
+    const grad = ctx.createLinearGradient(0, 0, 0, groundY);
+    grad.addColorStop(0, '#C9A68E');
+    grad.addColorStop(0.6, '#D9B36A');
+    grad.addColorStop(1, '#E07B39');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, groundY);
+
+    // 远山（剪影）
+    ctx.fillStyle = 'rgba(110, 75, 54, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(0, groundY - 60);
+    ctx.lineTo(W * 0.15, groundY - 120);
+    ctx.lineTo(W * 0.3, groundY - 80);
+    ctx.lineTo(W * 0.45, groundY - 140);
+    ctx.lineTo(W * 0.6, groundY - 90);
+    ctx.lineTo(W * 0.75, groundY - 130);
+    ctx.lineTo(W * 0.9, groundY - 70);
+    ctx.lineTo(W, groundY - 100);
+    ctx.lineTo(W, groundY);
+    ctx.lineTo(0, groundY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 太阳
+    ctx.fillStyle = 'rgba(255, 220, 180, 0.6)';
+    ctx.beginPath();
+    ctx.arc(W * 0.7, groundY - 180, 45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 200, 150, 0.3)';
+    ctx.beginPath();
+    ctx.arc(W * 0.7, groundY - 180, 65, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 地面
+    const groundGrad = ctx.createLinearGradient(0, groundY, 0, H);
+    groundGrad.addColorStop(0, '#D9B36A');
+    groundGrad.addColorStop(0.3, '#C49A52');
+    groundGrad.addColorStop(1, '#A67C3E');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, groundY, W, H - groundY);
+
+    // 干草纹理（几笔简单的）
+    ctx.strokeStyle = 'rgba(110, 75, 54, 0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 40; i++) {
+      const x = (i * 37) % W;
+      const y = groundY + 20 + (i * 13) % (H - groundY - 30);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 3, y - 8 - (i % 5));
+      ctx.stroke();
+    }
+  }
+
+  function drawStump() {
+    // 树桩
+    const sx = stump.x, sy = stump.y, sw = stump.w, sh = stump.h;
+
+    // 树桩侧面
+    ctx.fillStyle = '#6E4B36';
+    ctx.fillRect(sx, sy, sw, sh);
+
+    // 树桩顶面（椭圆）
+    ctx.fillStyle = '#8B5E3C';
+    ctx.beginPath();
+    ctx.ellipse(sx + sw / 2, sy, sw / 2, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 年轮
+    ctx.strokeStyle = 'rgba(62, 42, 30, 0.5)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(sx + sw / 2, sy, sw / 2 - i * 12, 10 - i * 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 树桩底部阴影
+    ctx.fillStyle = 'rgba(62, 42, 30, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(sx + sw / 2, groundY + 2, sw / 2 + 5, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSlingshot() {
+    const sx = slingshot.x;
+    const sy = slingshot.y;
+
+    // 弹弓影子
+    ctx.fillStyle = 'rgba(62, 42, 30, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(sx, groundY + 2, 28, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 主杆（Y形木杈）
+    ctx.strokeStyle = '#6E4B36';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+
+    // 竖杆
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx, sy + 80);
+    ctx.stroke();
+
+    // 左杈
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 10);
+    ctx.quadraticCurveTo(sx - 25, sy - 40, slingshot.forkL.x, slingshot.forkL.y);
+    ctx.stroke();
+
+    // 右杈
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 10);
+    ctx.quadraticCurveTo(sx + 25, sy - 40, slingshot.forkR.x, slingshot.forkR.y);
+    ctx.stroke();
+
+    // 木纹高光
+    ctx.strokeStyle = 'rgba(139, 94, 60, 0.6)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx - 4, sy + 10);
+    ctx.lineTo(sx - 4, sy + 75);
+    ctx.stroke();
+
+    // 木杈节疤
+    ctx.fillStyle = 'rgba(62, 42, 30, 0.4)';
+    ctx.beginPath();
+    ctx.arc(sx + 5, sy + 30, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 皮筋 + 皮兜
+    drawBandsAndPouch();
+  }
+
+  function drawBandsAndPouch() {
+    const pouch = getPouchPos();
+    const fl = slingshot.forkL;
+    const fr = slingshot.forkR;
+
+    // 计算拉伸比例
+    const restLen = Math.hypot(fl.x - slingshot.restPouch.x, fl.y - slingshot.restPouch.y);
+    const curLenL = Math.hypot(fl.x - pouch.x, fl.y - pouch.y);
+    const stretch = Math.max(1, curLenL / restLen);
+
+    // 皮筋宽度：拉伸越厉害越细（非线性）
+    const baseWidth = 8;
+    const bandWidth = Math.max(2, baseWidth / Math.pow(stretch, 0.6));
+
+    // 皮筋颜色：拉伸越深颜色越深
+    const baseColor = '#3E2A1E';
+    const darkColor = '#2A1B12';
+    const colorT = Math.min(1, (stretch - 1) * 0.8);
+    const bandColor = lerpColor(baseColor, darkColor, colorT);
+
+    // 预接触/阈值震颤
+    let trembleX = 0, trembleY = 0;
+    if (isDragging && !CONFIG.reducedMotion) {
+      const ratio = drawDistance / CONFIG.maxDrawDistance;
+      if (ratio > 0.85) {
+        // 接近极限：高频震颤
+        const amp = (ratio - 0.85) * 6;
+        trembleX = (Math.random() - 0.5) * amp;
+        trembleY = (Math.random() - 0.5) * amp;
+      } else if (ratio > 0.3) {
+        // 普通拉伸的轻微颤抖
+        const amp = ratio * 1.5;
+        trembleX = (Math.random() - 0.5) * amp;
+        trembleY = (Math.random() - 0.5) * amp;
+      }
+    }
+
+    const px = pouch.x + trembleX;
+    const py = pouch.y + trembleY;
+
+    // 左皮筋（两条边，填充）
+    drawBand(fl.x, fl.y, px - 4, py, bandWidth, bandColor);
+    // 右皮筋
+    drawBand(fr.x, fr.y, px + 4, py, bandWidth, bandColor);
+
+    // 皮兜（皮革）
+    ctx.save();
+    ctx.translate(px, py);
+    const angle = Math.atan2(py - slingshot.y, px - slingshot.x) + Math.PI / 2;
+    ctx.rotate(angle);
+
+    // 皮革本体
+    ctx.fillStyle = '#8B4513';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 皮革高光
+    ctx.fillStyle = 'rgba(180, 100, 50, 0.6)';
+    ctx.beginPath();
+    ctx.ellipse(-3, -4, 5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 皮革纹理（缝线）
+    ctx.strokeStyle = 'rgba(62, 42, 30, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-8, -10);
+    ctx.lineTo(-8, 10);
+    ctx.moveTo(8, -10);
+    ctx.lineTo(8, 10);
+    ctx.stroke();
+
+    // 悬停/抓取时的微亮
+    if (hoverPouch || isDragging) {
+      ctx.strokeStyle = 'rgba(255, 200, 120, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14, 18, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // 瞄准时的虚线弧（预测轨迹）
+    if (isDragging && drawDistance > 20) {
+      drawAimArc(px, py);
+    }
+  }
+
+  function drawBand(x1, y1, x2, y2, width, color) {
+    // 轻微弯曲的皮筋
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2 + 3; // 轻微下垂
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(midX, midY, x2, y2);
+    ctx.stroke();
+
+    // 高光边
+    ctx.strokeStyle = 'rgba(139, 90, 60, 0.3)';
+    ctx.lineWidth = Math.max(1, width * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(midX - 1, midY - 1, x2 - 1, y2 - 1);
+    ctx.stroke();
+  }
+
+  function drawAimArc(startX, startY) {
+    // 模拟抛物线预测
+    const speed = drawDistance * CONFIG.powerMultiplier;
+    const vx = Math.cos(drawAngle) * speed;
+    const vy = Math.sin(drawAngle) * speed;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(239, 232, 218, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+
+    let x = startX, y = startY;
+    let tvx = vx, tvy = vy;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let i = 0; i < 40; i++) {
+      tvy += CONFIG.gravity;
+      tvx *= CONFIG.airDrag;
+      x += tvx;
+      y += tvy;
+      if (y > groundY || x > W || x < 0) break;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCans() {
+    for (const can of canStack) {
+      drawCan(can);
+    }
+  }
+
+  function drawCan(can) {
+    ctx.save();
+    ctx.translate(can.x, can.y);
+    ctx.rotate(can.angle);
+
+    const w = can.width, h = can.height;
+
+    // 阴影（地面投影）
+    if (can.standing) {
+      ctx.fillStyle = 'rgba(62, 42, 30, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(0, h / 2 + 3, w / 2 + 2, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 罐身主体
+    const bodyGrad = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+    bodyGrad.addColorStop(0, '#C0C0C0');
+    bodyGrad.addColorStop(0.3, '#E8E8E8');
+    bodyGrad.addColorStop(0.5, '#F5F5F5');
+    bodyGrad.addColorStop(0.7, '#D0D0D0');
+    bodyGrad.addColorStop(1, '#A0A0A0');
+    ctx.fillStyle = bodyGrad;
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+
+    // 罐顶卷边
+    ctx.fillStyle = '#888';
+    ctx.fillRect(-w / 2, -h / 2 - 3, w, 4);
+    ctx.fillStyle = '#B0B0B0';
+    ctx.fillRect(-w / 2 + 2, -h / 2 - 3, w - 4, 2);
+
+    // 罐底卷边
+    ctx.fillStyle = '#777';
+    ctx.fillRect(-w / 2, h / 2 - 1, w, 4);
+
+    // 标签（橙红色，符合黄昏色调）
+    ctx.fillStyle = '#C94C2A';
+    ctx.fillRect(-w / 2 + 2, -h / 4, w - 4, h / 2);
+
+    // 标签文字（简化的横条）
+    ctx.fillStyle = '#F5DEB3';
+    ctx.fillRect(-w / 2 + 4, -2, w - 8, 4);
+    ctx.fillStyle = '#8B3A1A';
+    ctx.fillRect(-w / 2 + 4, -h / 4 + 3, w - 8, 2);
+    ctx.fillRect(-w / 2 + 4, h / 4 - 5, w - 8, 2);
+
+    // 罐口顶视图
+    ctx.fillStyle = '#999';
+    ctx.beginPath();
+    ctx.ellipse(0, -h / 2 - 1, w / 2 - 1, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawStones() {
+    for (const s of stones) {
+      if (!s.alive) continue;
+
+      // 轨迹
+      if (s.trail.length > 1) {
+        ctx.strokeStyle = 'rgba(110, 75, 54, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(s.trail[0].x, s.trail[0].y);
+        for (let i = 1; i < s.trail.length; i++) {
+          ctx.lineTo(s.trail[i].x, s.trail[i].y);
+        }
+        ctx.stroke();
+      }
+
+      // 石子
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.spin);
+
+      const grad = ctx.createRadialGradient(-2, -2, 1, 0, 0, s.radius);
+      grad.addColorStop(0, '#9A8A7A');
+      grad.addColorStop(0.6, '#6E5A4A');
+      grad.addColorStop(1, '#4A3A2E');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s.radius, s.radius * 0.85, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 高光
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(-3, -3, 2.5, 1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ========== 颜色插值 ==========
+  function lerpColor(c1, c2, t) {
+    const r1 = parseInt(c1.slice(1, 3), 16);
+    const g1 = parseInt(c1.slice(3, 5), 16);
+    const b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16);
+    const g2 = parseInt(c2.slice(3, 5), 16);
+    const b2 = parseInt(c2.slice(5, 7), 16);
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // ========== 主循环 ==========
+  let rafId = null;
+  let lastTime = 0;
+  let running = true;
+
+  function loop(time) {
+    if (!running) return;
+    const dt = Math.min(0.033, (time - lastTime) / 1000 || 0.016);
+    lastTime = time;
+
+    updatePhysics(dt);
+
+    // 绘制
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawStump();
+    drawCans();
+    drawSlingshot();
+    drawStones();
+    drawParticles();
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // ========== 可见性管理 ==========
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+    } else {
+      running = true;
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(loop);
+    }
+  });
+
+  // 页面卸载清理
+  window.addEventListener('beforeunload', () => {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ========== 启动 ==========
+  window.addEventListener('resize', resize);
+  resize();
+  updateStoneCount();
+  updateCursor(W / 2, H / 2);
+  lastTime = performance.now();
+  rafId = requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

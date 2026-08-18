@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>保险柜机械密码转盘锁 · V3 交互实验室</title>
+<style>
+  /* ============================================================
+     保险柜机械密码转盘锁 — V3 交互组件
+     主题世界：1920 年代银行金库保险柜
+     材质：黄铜、铸铁、珐琅、粗钢
+     配色：深钢灰底 + 黄铜金 + 锈蚀红 + 珐琅黑
+     ============================================================ */
+
+  :root {
+    --steel-900: #16181d;
+    --steel-800: #1e2128;
+    --steel-700: #2a2e38;
+    --steel-600: #3a3f4b;
+    --steel-500: #565c6b;
+    --steel-400: #7a8193;
+    --steel-300: #a3a9b8;
+    --steel-200: #c8ccd6;
+    --steel-100: #e5e7ec;
+
+    --brass-500: #b8893a;
+    --brass-400: #d4a24e;
+    --brass-300: #e6ba6b;
+    --brass-200: #f0d08c;
+    --brass-600: #946c29;
+    --brass-700: #6e4f1c;
+
+    --rust-500: #a63c25;
+    --rust-400: #c45036;
+    --rust-600: #7d2a19;
+
+    --enamel-black: #0a0b0e;
+    --vault-inside: #141210;
+
+    --success-green: #5a8f4c;
+
+    --dial-size: 380px;
+    --body-size: 520px;
+
+    font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--steel-900);
+    color: var(--steel-200);
+    cursor: none;
+  }
+
+  /* 钢面纹理 — 微妙的拉丝金属感 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        rgba(255,255,255,0.012) 1px,
+        transparent 2px,
+        transparent 4px
+      ),
+      radial-gradient(ellipse at 50% 40%, var(--steel-800) 0%, var(--steel-900) 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* 自定义光标容器 */
+  #cursor {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(.34,1.56,.64,1),
+                height 0.25s cubic-bezier(.34,1.56,.64,1),
+                opacity 0.2s ease;
+    will-change: transform;
+  }
+
+  #cursor svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  #cursor .cursor-ring {
+    fill: none;
+    stroke: var(--brass-300);
+    stroke-width: 1.5;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease;
+  }
+
+  #cursor .cursor-dot {
+    fill: var(--brass-300);
+    transition: fill 0.2s ease;
+  }
+
+  #cursor.state-hover {
+    width: 40px;
+    height: 40px;
+  }
+  #cursor.state-hover .cursor-ring {
+    stroke: var(--brass-200);
+    stroke-width: 2;
+  }
+
+  #cursor.state-grab {
+    width: 32px;
+    height: 32px;
+  }
+  #cursor.state-grab .cursor-ring {
+    stroke: var(--brass-400);
+    stroke-width: 2.5;
+  }
+  #cursor.state-grab .cursor-dot {
+    fill: var(--brass-400);
+  }
+
+  #cursor.state-detent {
+    width: 44px;
+    height: 44px;
+  }
+  #cursor.state-detent .cursor-ring {
+    stroke: var(--rust-400);
+    stroke-width: 3;
+  }
+
+  #cursor.state-success {
+    width: 52px;
+    height: 52px;
+  }
+  #cursor.state-success .cursor-ring {
+    stroke: var(--success-green);
+    stroke-width: 3;
+  }
+  #cursor.state-success .cursor-dot {
+    fill: var(--success-green);
+  }
+
+  #cursor-label {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(20px, -50%);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--brass-300);
+    pointer-events: none;
+    z-index: 9999;
+    font-family: "Noto Serif SC", serif;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  #cursor-label.visible { opacity: 1; }
+
+  /* 展区容器 */
+  .lab-stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  /* 展区标题 */
+  .lab-header {
+    position: absolute;
+    top: 36px;
+    left: 48px;
+    z-index: 10;
+  }
+  .lab-header .exhibit-number {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--steel-500);
+    margin-bottom: 8px;
+    font-family: "Courier New", monospace;
+  }
+  .lab-header h1 {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--steel-100);
+    letter-spacing: 6px;
+    margin-bottom: 4px;
+  }
+  .lab-header .subtitle {
+    font-size: 12px;
+    color: var(--steel-400);
+    letter-spacing: 2px;
+  }
+
+  /* 展区说明（右下） */
+  .lab-footer {
+    position: absolute;
+    bottom: 32px;
+    right: 48px;
+    text-align: right;
+    z-index: 10;
+  }
+  .lab-footer .hint-title {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--steel-500);
+    margin-bottom: 6px;
+    font-family: "Courier New", monospace;
+  }
+  .lab-footer .hint-text {
+    font-size: 13px;
+    color: var(--steel-300);
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+
+  /* 保险柜主体 */
+  .safe-assembly {
+    position: relative;
+    width: var(--body-size);
+    height: var(--body-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 保险柜门体（外层方-圆角） */
+  .safe-door {
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    background:
+      /* 顶边高光 */
+      linear-gradient(180deg,
+        rgba(255,255,255,0.08) 0%,
+        rgba(255,255,255,0.02) 8%,
+        transparent 20%
+      ),
+      /* 底暗影 */
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(0,0,0,0.5) 0%, transparent 60%),
+      /* 主体钢面 */
+      linear-gradient(145deg, #2a2e38 0%, #1e2128 50%, #2a2e38 100%);
+    box-shadow:
+      0 2px 0 rgba(255,255,255,0.06) inset,
+      0 -2px 0 rgba(0,0,0,0.4) inset,
+      0 20px 60px rgba(0,0,0,0.6),
+      0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* 门板边框 — 铆钉装饰 */
+  .safe-door::before {
+    content: "";
+    position: absolute;
+    inset: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+    pointer-events: none;
+  }
+
+  /* 四角铆钉 */
+  .rivet {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #4a4f5b, #1a1d24 70%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.1) inset,
+      0 -1px 0 rgba(0,0,0,0.6) inset;
+    z-index: 2;
+  }
+  .rivet.tl { top: 24px; left: 24px; }
+  .rivet.tr { top: 24px; right: 24px; }
+  .rivet.bl { bottom: 24px; left: 24px; }
+  .rivet.br { bottom: 24px; right: 24px; }
+
+  /* 门内凹圆 — 转盘嵌槽 */
+  .dial-recess {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--dial-size) + 60px);
+    height: calc(var(--dial-size) + 60px);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 40% 35%,
+        #14161b 0%,
+        #0d0f14 55%,
+        #08090c 100%
+      );
+    box-shadow:
+      0 4px 12px rgba(0,0,0,0.7) inset,
+      0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  /* 转盘外圈（黄铜环） */
+  .dial-outer-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--dial-size);
+    height: var(--dial-size);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 45% 40%,
+        var(--brass-300) 0%,
+        var(--brass-500) 40%,
+        var(--brass-700) 75%,
+        var(--brass-600) 100%
+      );
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.5),
+      0 -1px 0 rgba(255,255,255,0.15) inset,
+      0 2px 2px rgba(0,0,0,0.3) inset;
+    z-index: 3;
+  }
+
+  /* 转盘本体（可旋转的内圈，带刻度数字） */
+  .dial-wheel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--dial-size) - 36px);
+    height: calc(var(--dial-size) - 36px);
+    transform: translate(-50%, -50%) rotate(0deg);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 40% 35%,
+        #1a1c22 0%,
+        #121318 60%,
+        #0a0b0e 100%
+      );
+    box-shadow:
+      0 2px 6px rgba(0,0,0,0.6) inset,
+      0 -1px 0 rgba(255,255,255,0.05) inset;
+    z-index: 4;
+    will-change: transform;
+    /* 旋转由 JS 控制，不用 CSS transition */
+  }
+
+  /* 刻度 */
+  .dial-wheel .tick {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 12px;
+    background: var(--brass-400);
+    transform-origin: 50% calc(var(--dial-size) / 2 - 18px);
+    transform: translate(-50%, -50%) rotate(calc(var(--i) * 3.6deg)) translateY(calc(-1 * (var(--dial-size) / 2 - 24px)));
+    opacity: 0.6;
+  }
+  .dial-wheel .tick.major {
+    width: 3px;
+    height: 18px;
+    opacity: 1;
+    background: var(--brass-300);
+  }
+  .dial-wheel .tick.decade {
+    width: 4px;
+    height: 22px;
+    opacity: 1;
+    background: var(--brass-200);
+    box-shadow: 0 0 3px rgba(240, 208, 140, 0.3);
+  }
+
+  /* 数字 */
+  .dial-wheel .number {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--brass-200);
+    font-family: "Courier New", "Noto Serif SC", monospace;
+    transform-origin: center;
+    transform: translate(-50%, -50%) rotate(calc(var(--i) * -36deg)) translateY(calc(-1 * (var(--dial-size) / 2 - 58px))) rotate(calc(var(--i) * 36deg));
+    letter-spacing: 0;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    user-select: none;
+  }
+
+  /* 转盘中心旋钮 */
+  .dial-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 96px;
+    height: 96px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 40% 35%,
+        var(--brass-300) 0%,
+        var(--brass-500) 45%,
+        var(--brass-700) 80%,
+        var(--brass-600) 100%
+      );
+    box-shadow:
+      0 3px 8px rgba(0,0,0,0.5),
+      0 -1px 0 rgba(255,255,255,0.2) inset,
+      0 2px 2px rgba(0,0,0,0.2) inset;
+    z-index: 6;
+    cursor: none;
+  }
+
+  /* 旋钮滚花纹理 */
+  .dial-knob::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background:
+      repeating-conic-gradient(
+        from 0deg,
+        rgba(0,0,0,0.25) 0deg 1.5deg,
+        transparent 1.5deg 3deg
+      );
+    mask-image: radial-gradient(circle, black 60%, transparent 72%);
+    -webkit-mask-image: radial-gradient(circle, black 60%, transparent 72%);
+  }
+
+  /* 旋钮中心徽章 */
+  .dial-knob::after {
+    content: "MOSLER";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, var(--brass-300), var(--brass-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: var(--brass-700);
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.3) inset,
+      0 -1px 0 rgba(255,255,255,0.2) inset;
+  }
+
+  /* 上方指示箭头（对准刻度） */
+  .dial-pointer {
+    position: absolute;
+    top: calc(50% - var(--dial-size) / 2 - 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 12px solid var(--rust-400);
+    z-index: 7;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+    transition: transform 0.08s cubic-bezier(.34,1.56,.64,1);
+  }
+  .dial-pointer.tick {
+    transform: translateX(-50%) translateY(3px);
+  }
+
+  /* 密码显示屏（门上方） */
+  .combo-display {
+    position: absolute;
+    top: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    z-index: 5;
+  }
+
+  .combo-slot {
+    width: 48px;
+    height: 36px;
+    background: linear-gradient(180deg, #0d0e12 0%, #16181d 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Courier New", monospace;
+    font-size: 18px;
+    color: var(--steel-400);
+    letter-spacing: 1px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4) inset;
+    position: relative;
+    overflow: hidden;
+  }
+  .combo-slot::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    height: 1px;
+    background: rgba(0,0,0,0.6);
+  }
+  .combo-slot.active {
+    color: var(--brass-300);
+    border-color: var(--brass-600);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.4) inset,
+      0 0 6px rgba(184, 137, 58, 0.2);
+  }
+  .combo-slot.unlocked {
+    color: var(--success-green);
+    border-color: var(--success-green);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.4) inset,
+      0 0 8px rgba(90, 143, 76, 0.3);
+  }
+  .combo-slot .arrow {
+    position: absolute;
+    bottom: -2px;
+    right: 2px;
+    font-size: 9px;
+    color: var(--steel-500);
+  }
+  .combo-slot.active .arrow { color: var(--brass-400); }
+
+  /* 方向指示 — 显示当前该往哪转 */
+  .direction-indicator {
+    position: absolute;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--steel-400);
+    z-index: 5;
+    font-family: "Courier New", monospace;
+  }
+  .direction-indicator .dir-arrow {
+    display: inline-block;
+    margin: 0 6px;
+    color: var(--brass-400);
+    transition: transform 0.3s ease;
+  }
+
+  /* 锁栓 */
+  .bolt-mechanism {
+    position: absolute;
+    top: 50%;
+    right: -30px;
+    transform: translateY(-50%);
+    width: 80px;
+    height: 60px;
+    z-index: 2;
+  }
+  .bolt-bar {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 64px;
+    height: 22px;
+    transform: translateY(-50%) translateX(0);
+    background: linear-gradient(180deg, #4a4f5b, #2a2e38 50%, #1e2128);
+    border-radius: 3px 6px 6px 3px;
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.4),
+      0 1px 0 rgba(255,255,255,0.1) inset;
+    transition: transform 0.8s cubic-bezier(.22,1,.36,1);
+  }
+  .bolt-bar::before {
+    content: "";
+    position: absolute;
+    top: 4px; left: 8px; right: 8px;
+    height: 2px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 1px;
+  }
+  .bolt-bar::after {
+    content: "";
+    position: absolute;
+    bottom: 4px; left: 8px; right: 8px;
+    height: 2px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 1px;
+  }
+  .safe-door.unlocked .bolt-bar {
+    transform: translateY(-50%) translateX(40px);
+  }
+
+  /* 锁舌座 */
+  .bolt-strike {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 20px;
+    height: 50px;
+    transform: translateY(-50%);
+    background: linear-gradient(90deg, #1a1d24, #0d0f14);
+    border-radius: 0 4px 4px 0;
+    box-shadow:
+      1px 0 2px rgba(0,0,0,0.5),
+      -1px 0 0 rgba(255,255,255,0.05) inset;
+  }
+
+  /* 重置按钮 */
+  .reset-btn {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 20px;
+    background: transparent;
+    border: 1px solid var(--steel-600);
+    color: var(--steel-400);
+    font-size: 12px;
+    letter-spacing: 3px;
+    border-radius: 2px;
+    cursor: none;
+    font-family: "Courier New", monospace;
+    transition: all 0.25s ease;
+    z-index: 10;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .reset-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .reset-btn:hover {
+    border-color: var(--brass-500);
+    color: var(--brass-300);
+  }
+
+  /* 左侧状态区 */
+  .status-panel {
+    position: absolute;
+    left: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: var(--steel-500);
+    letter-spacing: 2px;
+    line-height: 2.2;
+  }
+  .status-panel .status-label {
+    color: var(--steel-500);
+    font-size: 10px;
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+  }
+  .status-panel .status-value {
+    color: var(--steel-300);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .status-panel .status-value.current {
+    color: var(--brass-300);
+    font-size: 20px;
+    letter-spacing: 1px;
+  }
+
+  /* 成功状态 — 门缝光 */
+  .safe-door.unlocked::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    box-shadow:
+      inset 0 0 30px rgba(184, 137, 58, 0.15),
+      inset 2px 0 0 rgba(184, 137, 58, 0.2);
+    pointer-events: none;
+    animation: doorGlow 2s ease-out;
+  }
+  @keyframes doorGlow {
+    0% { box-shadow: inset 0 0 0px rgba(184,137,58,0); }
+    30% { box-shadow: inset 0 0 50px rgba(184,137,58,0.3); }
+    100% { box-shadow: inset 0 0 30px rgba(184,137,58,0.15), inset 2px 0 0 rgba(184,137,58,0.2); }
+  }
+
+  /* 震动反馈（detent 时） */
+  .safe-assembly.shake {
+    animation: dialShake 0.08s ease-out;
+  }
+  @keyframes dialShake {
+    0% { transform: translateX(0); }
+    25% { transform: translateX(0.8px); }
+    75% { transform: translateX(-0.8px); }
+    100% { transform: translateX(0); }
+  }
+
+  @keyframes snapPulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.008); }
+    100% { transform: scale(1); }
+  }
+
+  /* 展区编号装饰 */
+  .specimen-tag {
+    position: absolute;
+    top: 36px;
+    right: 48px;
+    text-align: right;
+    z-index: 10;
+    font-family: "Courier New", monospace;
+  }
+  .specimen-tag .tag-line {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--steel-500);
+    margin-bottom: 4px;
+  }
+  .specimen-tag .tag-year {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--steel-400);
+  }
+
+  /* 减少动效模式 */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    #cursor { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div id="cursor">
+  <svg viewBox="0 0 24 24">
+    <circle class="cursor-ring" cx="12" cy="12" r="10" />
+    <circle class="cursor-dot" cx="12" cy="12" r="2" />
+  </svg>
+</div>
+<div id="cursor-label">拖拽旋转</div>
+
+<!-- 主舞台 -->
+<div class="lab-stage">
+
+  <!-- 左上：标题 -->
+  <div class="lab-header">
+    <div class="exhibit-number">EXHIBIT 03</div>
+    <h1>机械密码锁</h1>
+    <div class="subtitle">MECHANICAL COMBINATION LOCK · 1927</div>
+  </div>
+
+  <!-- 右上：编号 -->
+  <div class="specimen-tag">
+    <div class="tag-line">SPECIMEN</div>
+    <div class="tag-year">No. M-1927-083</div>
+  </div>
+
+  <!-- 左下：状态 -->
+  <div class="status-panel">
+    <div class="status-label">当前刻度</div>
+    <div class="status-value current" id="current-value">00</div>
+    <div class="status-label">步骤</div>
+    <div class="status-value" id="step-indicator">第 1 组</div>
+    <div class="status-label">方向</div>
+    <div class="status-value" id="direction-indicator">顺时针</div>
+    <div class="status-label">状态</div>
+    <div class="status-value" id="lock-status">锁定</div>
+  </div>
+
+  <!-- 保险柜主体 -->
+  <div class="safe-assembly" id="safe-assembly">
+
+    <!-- 锁栓 -->
+    <div class="bolt-mechanism">
+      <div class="bolt-bar" id="bolt-bar"></div>
+      <div class="bolt-strike"></div>
+    </div>
+
+    <!-- 门体 -->
+    <div class="safe-door" id="safe-door">
+      <div class="rivet tl"></div>
+      <div class="rivet tr"></div>
+      <div class="rivet bl"></div>
+      <div class="rivet br"></div>
+
+      <!-- 密码显示槽 -->
+      <div class="combo-display" id="combo-display">
+        <div class="combo-slot active" data-slot="0">
+          --<span class="arrow">→</span>
+        </div>
+        <div class="combo-slot" data-slot="1">--</div>
+        <div class="combo-slot" data-slot="2">--</div>
+      </div>
+
+      <!-- 转盘嵌槽 -->
+      <div class="dial-recess"></div>
+
+      <!-- 转盘外圈（固定黄铜环） -->
+      <div class="dial-outer-ring"></div>
+
+      <!-- 指示箭头（固定在正上方） -->
+      <div class="dial-pointer" id="dial-pointer"></div>
+
+      <!-- 转盘本体（旋转） -->
+      <div class="dial-wheel" id="dial-wheel">
+        <!-- 刻度由 JS 生成 -->
+      </div>
+
+      <!-- 中心旋钮 -->
+      <div class="dial-knob" id="dial-knob"></div>
+
+      <!-- 方向提示 -->
+      <div class="direction-indicator" id="direction-text">
+        <span class="dir-arrow">↻</span> 顺时针至第一组
+      </div>
+
+      <!-- 重置按钮 -->
+      <button class="reset-btn" id="reset-btn">重新上锁</button>
+    </div>
+  </div>
+
+  <!-- 右下：说明 -->
+  <div class="lab-footer">
+    <div class="hint-title">操作指南</div>
+    <div class="hint-text">
+      按住转盘拖拽旋转<br>
+      顺时针转至第一组密码<br>
+      逆时针转至第二组<br>
+      顺时针转至第三组<br>
+      三组对齐则锁栓开启
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================
+     保险柜机械密码转盘锁
+     三组密码：右 → 左 → 右
+     物理模型：角动量 + 摩擦 + detent 棘轮吸附
+     五层反馈：pre-contact → contact → continuous → threshold → release
+     ========================================================= */
+
+  // —— 配置 ——
+  const CONFIG = {
+    totalTicks: 100,          // 100 个刻度（0-99）
+    degreesPerTick: 360 / 100, // 每刻度 3.6 度
+    friction: 0.92,           // 摩擦系数（惯性衰减）
+    detentStrength: 0.18,     // 棘轮吸附强度（弹簧力）
+    detentDamping: 0.6,       // 棘轮阻尼
+    grabRadius: 180,          // 拖拽有效半径（px）
+    minAngularVelocity: 0.01, // 最小角速度（停止阈值）
+    // 三组密码（右-左-右）
+    combination: [37, 68, 14],
+    tolerance: 1,             // 容差（±1 刻度）
+  };
+
+  // —— 元素引用 ——
+  const cursorEl = document.getElementById("cursor");
+  const cursorLabel = document.getElementById("cursor-label");
+  const dialWheel = document.getElementById("dial-wheel");
+  const dialKnob = document.getElementById("dial-knob");
+  const dialPointer = document.getElementById("dial-pointer");
+  const safeDoor = document.getElementById("safe-door");
+  const safeAssembly = document.getElementById("safe-assembly");
+  const boltBar = document.getElementById("bolt-bar");
+  const comboDisplay = document.getElementById("combo-display");
+  const resetBtn = document.getElementById("reset-btn");
+  const currentValueEl = document.getElementById("current-value");
+  const stepIndicatorEl = document.getElementById("step-indicator");
+  const directionIndicatorEl = document.getElementById("direction-indicator");
+  const lockStatusEl = document.getElementById("lock-status");
+  const directionText = document.getElementById("direction-text");
+
+  // —— 生成刻度与数字 ——
+  function buildDialTicks() {
+    const frag = document.createDocumentFragment();
+
+    // 100 个刻度
+    for (let i = 0; i < 100; i++) {
+      const tick = document.createElement("div");
+      tick.className = "tick";
+      if (i % 10 === 0) tick.classList.add("decade");
+      else if (i % 5 === 0) tick.classList.add("major");
+      tick.style.setProperty("--i", i);
+      frag.appendChild(tick);
+    }
+
+    // 10 个数字（0,10,20...90）
+    for (let i = 0; i < 10; i++) {
+      const num = document.createElement("div");
+      num.className = "number";
+      num.textContent = (i * 10).toString().padStart(2, "0");
+      num.style.setProperty("--i", i);
+      frag.appendChild(num);
+    }
+
+    dialWheel.appendChild(frag);
+  }
+  buildDialTicks();
+
+  // —— 状态 ——
+  const state = {
+    // 光标
+    cursorX: window.innerWidth / 2,
+    cursorY: window.innerHeight / 2,
+    cursorTargetX: window.innerWidth / 2,
+    cursorTargetY: window.innerHeight / 2,
+    cursorState: "idle", // idle | hover | grab | detent | success
+
+    // 转盘角度（度）— 正值 = 顺时针（CSS rotate 正值是顺时针）
+    angle: 0,
+    angularVelocity: 0,
+
+    // 拖拽状态
+    isDragging: false,
+    dragStartAngle: 0,      // 拖拽开始时光标相对于中心的角度
+    dragStartDialAngle: 0,  // 拖拽开始时转盘的角度
+    lastMouseAngle: 0,
+    lastMoveTime: 0,
+    velocitySample: [],     // 采样最近几次速度，用于惯性
+
+    // 密码进度
+    currentStep: 0,         // 0: 第一组(右)  1: 第二组(左)  2: 第三组(右)
+    // 方向规则：1=顺时针(正角度方向)  -1=逆时针(负角度方向)
+    stepDirections: [1, -1, 1], // 右→左→右
+    unlocked: false,
+
+    // 追踪用
+    prevTick: 0,            // 上一帧的刻度值（浮点）
+    tickDirection: 0,       // 当前旋转方向 1=正(顺时) -1=逆时
+
+    // detent 反馈
+    lastDetentTick: -1,
+
+    // RAF
+    rafId: null,
+    lastFrameTime: 0,
+    visible: true,
+    reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  };
+
+  // —— 工具函数 ——
+  function getDialCenter() {
+    const rect = dialKnob.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }
+
+  function getAngleFromCenter(x, y) {
+    const center = getDialCenter();
+    // atan2 返回 -π 到 π，0 在右侧
+    // 转换为 0 到 360，0 在正上方（因为我们的刻度 0 在顶部）
+    const dx = x - center.x;
+    const dy = y - center.y;
+    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    // atan2 中 0 = 右(3点钟), π/2 = 下(6点钟)
+    // 我们要让 0 = 上(12点钟), 90 = 右(3点钟)
+    angle = angle + 90;
+    if (angle < 0) angle += 360;
+    return angle;
+  }
+
+  function getDistanceFromCenter(x, y) {
+    const center = getDialCenter();
+    return Math.sqrt((x - center.x) ** 2 + (y - center.y) ** 2);
+  }
+
+  // 归一化角度到 [0, 360)
+  function normalizeAngle(deg) {
+    deg = deg % 360;
+    if (deg < 0) deg += 360;
+    return deg;
+  }
+
+  // 获取当前对准指针的刻度值 (0-99)
+  // 转盘顺时针旋转，数字跟着转。指针在正上方（12点位置）。
+  // 初始时 0 在顶部。转盘顺时针转 α 度，则原来角度为 α 的刻度来到顶部。
+  // 刻度值 = angle / 3.6
+  function getCurrentTick(angle) {
+    const normalized = normalizeAngle(angle);
+    return normalized / CONFIG.degreesPerTick;
+  }
+
+  // 吸附到最近刻度（返回角度）
+  function snapToTick(angle) {
+    const tick = Math.round(angle / CONFIG.degreesPerTick);
+    return tick * CONFIG.degreesPerTick;
+  }
+
+  // 计算两角度之差（带符号，-180 ~ 180）
+  function angleDiff(a, b) {
+    let diff = a - b;
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+    return diff;
+  }
+
+  // —— 光标逻辑 ——
+  function setCursorState(s) {
+    if (state.cursorState === s) return;
+    state.cursorState = s;
+    cursorEl.classList.remove("state-hover", "state-grab", "state-detent", "state-success");
+    if (s === "hover") cursorEl.classList.add("state-hover");
+    else if (s === "grab") cursorEl.classList.add("state-grab");
+    else if (s === "detent") cursorEl.classList.add("state-detent");
+    else if (s === "success") cursorEl.classList.add("state-success");
+  }
+
+  function showCursorLabel(text) {
+    cursorLabel.textContent = text;
+    cursorLabel.classList.add("visible");
+  }
+  function hideCursorLabel() {
+    cursorLabel.classList.remove("visible");
+  }
+
+  // —— 鼠标事件 ——
+  function onMouseMove(e) {
+    state.cursorTargetX = e.clientX;
+    state.cursorTargetY = e.clientY;
+
+    // 拖拽中
+    if (state.isDragging && !state.unlocked) {
+      handleDrag(e);
+      return;
+    }
+
+    // 悬停检测
+    const dist = getDistanceFromCenter(e.clientX, e.clientY);
+    const onKnob = dist < 48; // 旋钮半径
+    const onDial = dist < 190 && dist > 48; // 转盘范围
+
+    if (state.unlocked) {
+      // 解锁后，hover 重置按钮
+      const resetRect = resetBtn.getBoundingClientRect();
+      if (e.clientX >= resetRect.left && e.clientX <= resetRect.right &&
+          e.clientY >= resetRect.top && e.clientY <= resetRect.bottom) {
+        setCursorState("hover");
+        showCursorLabel("重新上锁");
+      } else {
+        setCursorState("success");
+        hideCursorLabel();
+      }
+      return;
+    }
+
+    if (onKnob || onDial) {
+      // pre-contact & contact 层
+      setCursorState("hover");
+      showCursorLabel("按住拖拽");
+    } else {
+      setCursorState("idle");
+      hideCursorLabel();
+    }
+  }
+
+  function onMouseDown(e) {
+    if (state.unlocked) return;
+    if (e.button !== 0) return;
+
+    const dist = getDistanceFromCenter(e.clientX, e.clientY);
+    if (dist > CONFIG.grabRadius) return;
+
+    // 开始拖拽 — contact 层
+    state.isDragging = true;
+    state.dragStartDialAngle = state.angle;
+    state.lastMouseAngle = getAngleFromCenter(e.clientX, e.clientY);
+    state.lastMoveTime = performance.now();
+    state.velocitySample = [];
+    state.angularVelocity = 0;
+
+    setCursorState("grab");
+    showCursorLabel("旋转中");
+  }
+
+  function onMouseUp(e) {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+
+    // release 层 — 释放后惯性旋转
+    // 计算平均角速度
+    if (state.velocitySample.length > 0) {
+      const total = state.velocitySample.reduce((s, v) => s + v, 0);
+      state.angularVelocity = total / state.velocitySample.length;
+    }
+
+    const dist = getDistanceFromCenter(e.clientX, e.clientY);
+    if (dist < CONFIG.grabRadius) {
+      setCursorState("hover");
+      showCursorLabel("按住拖拽");
+    } else {
+      setCursorState("idle");
+      hideCursorLabel();
+    }
+  }
+
+  function handleDrag(e) {
+    const mouseAngle = getAngleFromCenter(e.clientX, e.clientY);
+    const now = performance.now();
+    const dt = now - state.lastMoveTime;
+
+    // 计算角度差（带符号）
+    let delta = mouseAngle - state.lastMouseAngle;
+    // 处理 0/360 跳变
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+
+    state.angle += delta;
+
+    // 更新方向
+    if (Math.abs(delta) > 0.01) {
+      state.tickDirection = delta > 0 ? 1 : -1;
+    }
+
+    // 记录速度采样（用于惯性）
+    if (dt > 0) {
+      const vel = delta / dt * 16; // 归一化到约 60fps 帧
+      state.velocitySample.push(vel);
+      if (state.velocitySample.length > 5) state.velocitySample.shift();
+    }
+
+    state.lastMouseAngle = mouseAngle;
+    state.lastMoveTime = now;
+
+    // 检查 detent
+    checkDetent();
+
+    // continuous 层 — 持续反馈
+    updateDialVisual();
+  }
+
+  // —— Detent（棘轮卡扣）检测 ——
+  function checkDetent() {
+    const tick = getCurrentTick(state.angle);
+    let roundedTick = Math.round(tick) % 100;
+    if (roundedTick < 0) roundedTick += 100;
+    const distFromTick = Math.abs(tick - Math.round(tick));
+
+    // 追踪方向 — 与角度变化方向一致（拖拽和惯性都适用）
+    // state.tickDirection 由 handleDrag 和 tick 循环分别维护
+
+    // 接近刻度中心时触发 detent 反馈
+    if (distFromTick < 0.12 && roundedTick !== state.lastDetentTick) {
+      state.lastDetentTick = roundedTick;
+      triggerDetentFeedback();
+    }
+  }
+
+  function triggerDetentFeedback() {
+    // threshold 层 — 每个刻度的微反馈
+    dialPointer.classList.add("tick");
+    safeAssembly.classList.remove("shake");
+    // 强制 reflow 以重启动画
+    void safeAssembly.offsetWidth;
+    safeAssembly.classList.add("shake");
+
+    // 短暂变化光标
+    if (state.cursorState === "grab") {
+      cursorEl.classList.add("state-detent");
+      setTimeout(() => {
+        if (state.cursorState === "grab") {
+          cursorEl.classList.remove("state-detent");
+        }
+      }, 60);
+    }
+
+    setTimeout(() => {
+      dialPointer.classList.remove("tick");
+    }, 80);
+
+    // 更新当前刻度显示
+    updateCurrentValueDisplay();
+
+    // 检查密码是否命中
+    checkCombinationProgress();
+  }
+
+  // —— 密码进度检查 ——
+  // 使用 tick-by-tick 穿越检测：每当经过一个整数刻度，检查是否从正确方向穿越了目标
+  function checkCombinationProgress() {
+    if (state.unlocked) return;
+    if (state.currentStep >= 3) return;
+
+    const step = state.currentStep;
+    const targetTick = CONFIG.combination[step];
+    const requiredDir = state.stepDirections[step];
+    const currentTick = state.lastDetentTick;
+
+    // 只有刚经过一个刻度时才检查
+    if (currentTick < 0) return;
+
+    // 检查当前经过的刻度是不是目标，且方向是否正确
+    if (currentTick === targetTick && state.tickDirection === requiredDir) {
+      advanceStep();
+    }
+  }
+
+  function advanceStep() {
+    const step = state.currentStep;
+    const target = CONFIG.combination[step];
+
+    // 卡入到位的手感：小幅度反弹簧回弹
+    state.angularVelocity = -state.tickDirection * 0.4;
+
+    // 视觉强化
+    safeAssembly.classList.remove("shake");
+    void safeAssembly.offsetWidth;
+    safeAssembly.style.animation = "snapPulse 0.3s cubic-bezier(.34,1.56,.64,1)";
+    setTimeout(function () { safeAssembly.style.animation = ""; }, 300);
+
+    // 更新显示
+    const slots = comboDisplay.querySelectorAll(".combo-slot");
+    slots[step].classList.remove("active");
+    slots[step].classList.add("unlocked");
+    slots[step].innerHTML = target.toString().padStart(2, "0") +
+      '<span class="arrow">✓</span>';
+
+    state.currentStep++;
+
+    if (state.currentStep >= 3) {
+      // 全部完成 — success
+      unlockSafe();
+    } else {
+      // 下一步
+      const nextSlots = comboDisplay.querySelectorAll(".combo-slot");
+      nextSlots[state.currentStep].classList.add("active");
+
+      const dir = state.stepDirections[state.currentStep] === 1 ? "顺时针" : "逆时针";
+      directionIndicatorEl.textContent = dir;
+      stepIndicatorEl.textContent = `第 ${state.currentStep + 1} 组`;
+
+      const arrowChar = state.stepDirections[state.currentStep] === 1 ? "↻" : "↺";
+      const stepNames = ["第一组", "第二组", "第三组"];
+      directionText.innerHTML = `<span class="dir-arrow">${arrowChar}</span> ${dir}至${stepNames[state.currentStep]}`;
+
+      // 成功吸附的微弹
+      triggerSnapFeedback();
+    }
+  }
+
+  function triggerSnapFeedback() {
+    // 吸附到位的弹簧感 — 轻微回弹
+    safeAssembly.classList.remove("shake");
+    void safeAssembly.offsetWidth;
+    safeAssembly.style.animation = "none";
+    safeAssembly.offsetWidth;
+    safeAssembly.style.animation = "";
+  }
+
+  function unlockSafe() {
+    state.unlocked = true;
+    safeDoor.classList.add("unlocked");
+    lockStatusEl.textContent = "已开启";
+    lockStatusEl.style.color = "var(--success-green)";
+    stepIndicatorEl.textContent = "完成";
+    directionText.innerHTML = '<span class="dir-arrow">✓</span> 锁栓已缩回';
+
+    setCursorState("success");
+    hideCursorLabel();
+
+    // 显示重置按钮
+    setTimeout(() => {
+      resetBtn.classList.add("visible");
+    }, 800);
+
+    // 成功音效（可选，用 WebAudio 生成点击声）
+    playUnlockSound();
+  }
+
+  function resetSafe() {
+    state.unlocked = false;
+    state.currentStep = 0;
+    state.angle = 0;
+    state.angularVelocity = 0;
+    state.lastDetentTick = -1;
+
+    safeDoor.classList.remove("unlocked");
+    lockStatusEl.textContent = "锁定";
+    lockStatusEl.style.color = "";
+    stepIndicatorEl.textContent = "第 1 组";
+    directionIndicatorEl.textContent = "顺时针";
+    directionText.innerHTML = '<span class="dir-arrow">↻</span> 顺时针至第一组';
+
+    const slots = comboDisplay.querySelectorAll(".combo-slot");
+    slots.forEach((slot, i) => {
+      slot.classList.remove("active", "unlocked");
+      if (i === 0) slot.classList.add("active");
+      slot.innerHTML = i === 0 ? '--<span class="arrow">→</span>' : "--";
+    });
+
+    resetBtn.classList.remove("visible");
+    updateDialVisual();
+    updateCurrentValueDisplay();
+    setCursorState("hover");
+    showCursorLabel("按住拖拽");
+  }
+
+  resetBtn.addEventListener("mousedown", function (e) {
+    e.stopPropagation();
+  });
+  resetBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    resetSafe();
+  });
+
+  // —— 音效（极简 WebAudio，无外部资源） ——
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { return null; }
+    }
+    return audioCtx;
+  }
+
+  function playUnlockSound() {
+    if (state.reducedMotion) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // 两声低沉金属 clunk
+    for (let i = 0; i < 2; i++) {
+      const t = now + i * 0.12;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(120 - i * 20, t);
+      osc.frequency.exponentialRampToValueAtTime(60, t + 0.15);
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    }
+    // 锁栓缩回的摩擦声
+    const noise = ctx.createBufferSource();
+    const noiseLen = ctx.sampleRate * 0.3;
+    const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen) * 0.3;
+    }
+    noise.buffer = noiseBuf;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.08, now + 0.2);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = "lowpass";
+    noiseFilter.frequency.value = 800;
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now + 0.2);
+  }
+
+  // —— 视觉更新 ——
+  function updateDialVisual() {
+    dialWheel.style.transform = `translate(-50%, -50%) rotate(${state.angle}deg)`;
+  }
+
+  function updateCurrentValueDisplay() {
+    const tick = getCurrentTick(state.angle);
+    const rounded = Math.round(tick) % 100;
+    currentValueEl.textContent = rounded.toString().padStart(2, "0");
+  }
+
+  // —— 主循环 ——
+  function tick(now) {
+    if (!state.visible) {
+      state.rafId = null;
+      return;
+    }
+
+    const dt = state.lastFrameTime ? (now - state.lastFrameTime) / 16.67 : 1;
+    state.lastFrameTime = now;
+
+    // 光标缓动（弹簧跟随）
+    state.cursorX += (state.cursorTargetX - state.cursorX) * 0.25 * dt;
+    state.cursorY += (state.cursorTargetY - state.cursorY) * 0.25 * dt;
+    cursorEl.style.left = state.cursorX + "px";
+    cursorEl.style.top = state.cursorY + "px";
+    cursorLabel.style.left = state.cursorX + "px";
+    cursorLabel.style.top = state.cursorY + "px";
+
+    // 非拖拽时的物理
+    if (!state.isDragging && !state.unlocked) {
+        // 摩擦衰减
+      if (Math.abs(state.angularVelocity) > CONFIG.minAngularVelocity) {
+        state.angle += state.angularVelocity * dt;
+        state.tickDirection = state.angularVelocity > 0 ? 1 : -1;
+        state.angularVelocity *= Math.pow(CONFIG.friction, dt);
+
+        // detent 吸附 — 接近刻度时轻微弹簧力
+        const tick = getCurrentTick(state.angle);
+        const roundedTick = Math.round(tick);
+        const distFromTick = tick - roundedTick; // -0.5 ~ 0.5
+
+        // 只有低速时才强吸附
+        if (Math.abs(state.angularVelocity) < 0.5) {
+          const snapForce = -distFromTick * CONFIG.degreesPerTick * CONFIG.detentStrength;
+          state.angularVelocity += snapForce * dt;
+        }
+
+        // 检测 detent
+        checkDetent();
+        updateDialVisual();
+      } else {
+        // 几乎停止时，精确吸附
+        if (Math.abs(state.angularVelocity) < CONFIG.minAngularVelocity * 0.5) {
+          const snapped = snapToTick(state.angle);
+          const diff = snapped - state.angle;
+          if (Math.abs(diff) > 0.01) {
+            state.angle += diff * 0.2 * dt;
+            state.angularVelocity *= 0.9;
+            updateDialVisual();
+          } else {
+            state.angle = snapped;
+            state.angularVelocity = 0;
+            updateDialVisual();
+          }
+        }
+      }
+    }
+
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  // —— 可见性管理 ——
+  document.addEventListener("visibilitychange", function () {
+    state.visible = !document.hidden;
+    if (state.visible && !state.rafId) {
+      state.lastFrameTime = 0;
+      state.rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // —— 事件绑定 ——
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("mouseup", onMouseUp);
+
+  // 防止拖拽时选中文本
+  document.addEventListener("selectstart", function (e) {
+    if (state.isDragging) e.preventDefault();
+  });
+
+  // 防止右键菜单在转盘上
+  dialKnob.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+  });
+
+  // 窗口大小变化时重新获取中心
+  let resizeTimer;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      getDialCenter(); // 缓存更新
+    }, 100);
+  });
+
+  // —— 初始化 ——
+  updateDialVisual();
+  updateCurrentValueDisplay();
+
+  // 开页光标在中心
+  state.cursorX = window.innerWidth / 2;
+  state.cursorY = window.innerHeight / 2;
+  state.cursorTargetX = window.innerWidth / 2;
+  state.cursorTargetY = window.innerHeight / 2;
+
+  state.rafId = requestAnimationFrame(tick);
+
+  // —— 清理 ——
+  window.addEventListener("beforeunload", function () {
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>
