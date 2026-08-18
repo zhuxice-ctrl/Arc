@@ -1,0 +1,4026 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>手冲日志 · V2</title>
+<style>
+  /* ========== DESIGN TOKENS ========== */
+  :root {
+    /* Color — Coffee Palette */
+    --brew-900: #2B1D14;   /* 深烘焙棕 */
+    --brew-800: #3D2B1F;
+    --brew-700: #5C3D2E;
+    --brew-600: #7A4E3A;
+    --brew-500: #A0633F;   /* 焦糖琥珀 */
+    --brew-400: #C28756;
+    --brew-300: #D9B089;
+    --brew-200: #E8CEB0;   /* 奶咖米色 */
+    --brew-100: #F2E3CE;
+    --cream-50:  #FAF3E7;  /* 奶白 */
+    --cream-100: #F5EBDA;
+    --cream-200: #EADFCB;
+
+    --accent: #C28756;     /* 焦糖琥珀主强调 */
+    --accent-deep: #8B5A2B;
+    --good: #6B8E5A;
+    --warn: #C28756;
+    --error: #B4533C;
+
+    /* Type */
+    --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", "SF Pro Display", sans-serif;
+    --font-mono: "SF Mono", "JetBrains Mono", "Roboto Mono", ui-monospace,
+                 Menlo, Consolas, monospace;
+
+    /* Spacing */
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+    --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+
+    /* Radius */
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 24px;
+    --r-full: 999px;
+
+    /* Motion */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-fast: 180ms;
+    --dur-base: 280ms;
+    --dur-slow: 420ms;
+
+    /* Shadow */
+    --shadow-sm: 0 1px 2px rgba(43, 29, 20, 0.08);
+    --shadow-md: 0 4px 16px rgba(43, 29, 20, 0.12);
+    --shadow-lg: 0 12px 32px rgba(43, 29, 20, 0.18);
+    --shadow-inner: inset 0 1px 2px rgba(43, 29, 20, 0.06);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-ui);
+    color: var(--brew-900);
+    background: #1a120d;
+    height: 100%;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px 0;
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  .cursor-drip {
+    position: fixed;
+    top: 0; left: 0;
+    width: 28px; height: 36px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 60ms linear;
+    will-change: transform;
+  }
+  .cursor-drip svg { width: 100%; height: 100%; display: block; }
+  .cursor-drip.state-warm svg .drip-body { fill: var(--brew-400); }
+  .cursor-drip.state-hot svg .drip-body { fill: var(--error); }
+  .cursor-drip.state-pour svg .drip-body { fill: var(--brew-500); }
+  .cursor-drip.state-pour svg { animation: drip-pulse 1.2s ease-in-out infinite; }
+  @keyframes drip-pulse {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(1.1); }
+  }
+  .cursor-ring {
+    position: fixed;
+    top: 0; left: 0;
+    width: 44px; height: 44px;
+    border: 1.5px solid var(--brew-400);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+    opacity: 0.4;
+    transition: width 200ms var(--ease-out), height 200ms var(--ease-out),
+                opacity 200ms var(--ease-out), border-color 200ms;
+  }
+  .cursor-ring.hover {
+    width: 56px; height: 56px;
+    opacity: 0.6;
+    border-color: var(--accent);
+  }
+  .cursor-ring.pressed {
+    width: 24px; height: 24px;
+    opacity: 0.8;
+  }
+
+  /* ========== PHONE SHELL ========== */
+  .phone-shell {
+    position: relative;
+    width: 390px;
+    height: 844px;
+    background: var(--cream-50);
+    border-radius: 52px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 10px #1a120d,
+      0 0 0 12px #2B1D14,
+      0 30px 80px rgba(0, 0, 0, 0.5);
+    flex-shrink: 0;
+  }
+  .notch {
+    position: absolute;
+    top: 8px; left: 50%;
+    transform: translateX(-50%);
+    width: 120px; height: 32px;
+    background: #0a0705;
+    border-radius: 20px;
+    z-index: 500;
+  }
+  .status-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px 0 32px;
+    z-index: 400;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--brew-900);
+    font-variant-numeric: tabular-nums;
+  }
+  .status-bar.dark { color: #fff; }
+  .status-bar .status-right {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 13px;
+  }
+  .status-bar .battery {
+    width: 25px; height: 12px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    position: relative;
+    display: flex; align-items: center;
+    padding: 1.5px;
+  }
+  .status-bar .battery::after {
+    content: '';
+    position: absolute;
+    right: -3px; top: 3px;
+    width: 2px; height: 4px;
+    background: currentColor;
+    border-radius: 0 1px 1px 0;
+    opacity: 0.5;
+  }
+  .status-bar .battery-level {
+    height: 100%;
+    width: 80%;
+    background: currentColor;
+    border-radius: 1px;
+  }
+
+  .home-indicator {
+    position: absolute;
+    bottom: 8px; left: 50%;
+    transform: translateX(-50%);
+    width: 134px; height: 5px;
+    background: var(--brew-900);
+    border-radius: 3px;
+    z-index: 400;
+    opacity: 0.3;
+  }
+  .home-indicator.light { background: #fff; opacity: 0.6; }
+
+  /* ========== APP CONTAINER ========== */
+  .app-container {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+  }
+  .page {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--cream-50);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform var(--dur-base) var(--ease-out);
+    z-index: 2;
+    will-change: transform;
+  }
+  .page.active { transform: translateX(0); z-index: 3; }
+  .page.behind { transform: translateX(-30%); z-index: 1; }
+  .page.modal-page {
+    top: auto;
+    height: 75%;
+    bottom: 0;
+    transform: translateY(100%);
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    transition: transform 420ms var(--ease-spring);
+  }
+  .page.modal-page.active { transform: translateY(0); }
+  .page.modal-page.behind { transform: translateY(100%); }
+
+  .page-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 32px;
+  }
+  .page-body::-webkit-scrollbar { width: 0; }
+
+  .nav-bar {
+    flex-shrink: 0;
+    height: 88px;
+    padding: 48px var(--s-5) 8px;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    position: relative;
+    background: var(--cream-50);
+    z-index: 10;
+  }
+  .nav-bar.modal-nav {
+    background: transparent;
+  }
+  .nav-title {
+    flex: 1;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--brew-900);
+  }
+  .nav-btn {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--r-full);
+    cursor: pointer;
+    color: var(--brew-700);
+    flex-shrink: 0;
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .nav-btn:active { background: var(--cream-200); }
+  .nav-btn svg { width: 22px; height: 22px; }
+  .nav-action {
+    font-size: 15px;
+    color: var(--accent-deep);
+    font-weight: 500;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .nav-action:active { background: var(--cream-200); }
+
+  .back-bar {
+    position: absolute;
+    top: 47px; left: 0;
+    width: 44px; height: 42px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 20;
+    cursor: pointer;
+  }
+  .back-bar:active { opacity: 0.6; }
+  .back-bar svg { width: 12px; height: 20px; color: var(--brew-700); }
+
+  /* ========== HOME PAGE ========== */
+  .home-hero {
+    padding: var(--s-6) var(--s-5) var(--s-5);
+    background: linear-gradient(160deg, var(--brew-700) 0%, var(--brew-900) 100%);
+    color: var(--cream-50);
+    position: relative;
+    overflow: hidden;
+  }
+  .home-hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -40px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(194,135,86,0.25) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .home-greeting {
+    font-size: 13px;
+    opacity: 0.65;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .home-date {
+    font-size: 22px;
+    font-weight: 600;
+    margin-top: 2px;
+    letter-spacing: -0.3px;
+  }
+  .home-stats {
+    display: flex; gap: var(--s-6);
+    margin-top: var(--s-5);
+  }
+  .home-stat {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .home-stat .val {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .home-stat .label {
+    font-size: 11px;
+    opacity: 0.6;
+  }
+  .start-brew-btn {
+    margin: var(--s-5) var(--s-5) var(--s-3);
+    height: 64px;
+    border-radius: var(--r-lg);
+    background: linear-gradient(135deg, var(--brew-400) 0%, var(--accent-deep) 100%);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    gap: var(--s-2);
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(139, 90, 43, 0.35);
+    transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast);
+    position: relative;
+    overflow: hidden;
+  }
+  .start-brew-btn:active {
+    transform: scale(0.97);
+    box-shadow: 0 4px 12px rgba(139, 90, 43, 0.4);
+  }
+  .start-brew-btn svg { width: 22px; height: 22px; }
+
+  .section {
+    padding: var(--s-5) var(--s-5) 0;
+  }
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--brew-800);
+    margin-bottom: var(--s-3);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .section-title .sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--brew-500);
+  }
+
+  /* Brew card */
+  .brew-card {
+    background: #fff;
+    border-radius: var(--r-md);
+    padding: var(--s-4);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--s-3);
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast);
+    position: relative;
+    overflow: hidden;
+  }
+  .brew-card:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow-md);
+  }
+  .brew-card .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(194, 135, 86, 0.25);
+    transform: scale(0);
+    animation: ripple-anim 600ms var(--ease-out);
+    pointer-events: none;
+  }
+  @keyframes ripple-anim {
+    to { transform: scale(4); opacity: 0; }
+  }
+  .brew-card-top {
+    display: flex; align-items: center; gap: var(--s-3);
+    margin-bottom: var(--s-3);
+  }
+  .brew-bean-badge {
+    width: 44px; height: 44px;
+    border-radius: var(--r-md);
+    background: linear-gradient(135deg, var(--brew-200), var(--brew-300));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: var(--brew-700);
+  }
+  .brew-bean-badge svg { width: 22px; height: 22px; }
+  .brew-card-info { flex: 1; min-width: 0; }
+  .brew-card-title {
+    font-size: 15px; font-weight: 600;
+    color: var(--brew-900);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brew-card-meta {
+    font-size: 12px;
+    color: var(--brew-500);
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brew-card-rating {
+    display: flex; align-items: center; gap: 3px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-deep);
+    flex-shrink: 0;
+  }
+  .brew-card-rating svg { width: 14px; height: 14px; }
+
+  .brew-card-params {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-1);
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--cream-200);
+  }
+  .param-pill {
+    text-align: center;
+  }
+  .param-pill .val {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--brew-800);
+    font-variant-numeric: tabular-nums;
+  }
+  .param-pill .label {
+    font-size: 10px;
+    color: var(--brew-400);
+    margin-top: 1px;
+  }
+
+  .timeline-group { margin-bottom: var(--s-3); }
+  .timeline-date {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--brew-500);
+    padding: 4px 0 8px;
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .timeline-date::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--cream-200);
+  }
+  .timeline-item {
+    display: flex; gap: var(--s-3);
+    padding: var(--s-3) 0;
+    position: relative;
+    cursor: pointer;
+    border-radius: var(--r-sm);
+    padding-left: 24px;
+  }
+  .timeline-item:active { background: var(--cream-100); }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 4px; top: 16px;
+    width: 8px; height: 8px;
+    background: var(--brew-300);
+    border-radius: 50%;
+    border: 2px solid var(--cream-50);
+    box-shadow: 0 0 0 1px var(--brew-300);
+  }
+  .timeline-item-time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--brew-500);
+    width: 40px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .timeline-item-body { flex: 1; min-width: 0; }
+  .timeline-item-name {
+    font-size: 14px; font-weight: 500;
+    color: var(--brew-800);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .timeline-item-flavors {
+    font-size: 11px;
+    color: var(--brew-400);
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .timeline-item-score {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-deep);
+    flex-shrink: 0;
+  }
+
+  /* ========== BEAN PAGE ========== */
+  .bean-list {
+    padding: var(--s-2) var(--s-5) var(--s-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+  .bean-card {
+    background: #fff;
+    border-radius: var(--r-md);
+    padding: var(--s-4);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+    display: flex; gap: var(--s-3);
+    position: relative;
+  }
+  .bean-card:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow-md);
+  }
+  .bean-card.selected {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .bean-avatar {
+    width: 52px; height: 52px;
+    border-radius: var(--r-md);
+    background: linear-gradient(135deg, var(--brew-200), var(--brew-400));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: var(--brew-800);
+  }
+  .bean-avatar svg { width: 26px; height: 26px; }
+  .bean-info { flex: 1; min-width: 0; }
+  .bean-name {
+    font-size: 15px; font-weight: 600;
+    color: var(--brew-900);
+  }
+  .bean-origin {
+    font-size: 12px;
+    color: var(--brew-500);
+    margin-top: 2px;
+  }
+  .bean-tags {
+    display: flex; gap: 4px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .bean-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--cream-100);
+    color: var(--brew-600);
+    border-radius: var(--r-full);
+    font-weight: 500;
+  }
+  .add-bean-card {
+    border: 1.5px dashed var(--brew-300);
+    background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    gap: var(--s-2);
+    padding: var(--s-5);
+    color: var(--brew-600);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .add-bean-card svg { width: 20px; height: 20px; }
+
+  /* ========== BREW PAGE (CORE) ========== */
+  .brew-param-section {
+    padding: var(--s-4) var(--s-5);
+    background: #fff;
+    margin-bottom: var(--s-3);
+  }
+  .brew-param-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--s-3);
+  }
+  .brew-param-title {
+    font-size: 14px; font-weight: 600;
+    color: var(--brew-800);
+  }
+  .brew-param-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent-deep);
+    font-variant-numeric: tabular-nums;
+  }
+  .brew-param-value .unit {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--brew-500);
+    margin-left: 2px;
+  }
+
+  /* Slider */
+  .slider-wrap { position: relative; height: 28px; }
+  .slider-track {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 6px;
+    transform: translateY(-50%);
+    background: var(--cream-200);
+    border-radius: var(--r-full);
+    overflow: hidden;
+  }
+  .slider-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--brew-400), var(--accent-deep));
+    border-radius: var(--r-full);
+    transition: width 60ms linear;
+  }
+  .slider-thumb {
+    position: absolute;
+    top: 50%;
+    width: 24px; height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 6px rgba(43, 29, 20, 0.25), var(--shadow-inner);
+    cursor: grab;
+    touch-action: none;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .slider-thumb:active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  .slider-thumb::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px; height: 8px;
+    background: var(--accent-deep);
+    border-radius: 50%;
+  }
+  .slider-ticks {
+    display: flex; justify-content: space-between;
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--brew-400);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ratio-options {
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+  }
+  .ratio-chip {
+    padding: 7px 12px;
+    border-radius: var(--r-full);
+    background: var(--cream-100);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--brew-600);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+    font-variant-numeric: tabular-nums;
+  }
+  .ratio-chip.active {
+    background: var(--brew-700);
+    color: #fff;
+  }
+
+  .grind-wheel {
+    display: flex; gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x mandatory;
+  }
+  .grind-wheel::-webkit-scrollbar { display: none; }
+  .grind-mark {
+    flex-shrink: 0;
+    width: 38px; height: 48px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px;
+    background: var(--cream-100);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    scroll-snap-align: center;
+    transition: all var(--dur-fast);
+  }
+  .grind-mark.active {
+    background: var(--brew-700);
+    color: #fff;
+  }
+  .grind-mark .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+  }
+  .grind-mark.active .dot { opacity: 1; background: var(--brew-200); }
+  .grind-mark .num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .grind-label {
+    font-size: 11px;
+    color: var(--brew-500);
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  /* Water flow timeline — CORE INTERACTION */
+  .water-timeline-section {
+    background: #fff;
+    padding: var(--s-4) var(--s-5);
+    margin-bottom: var(--s-3);
+  }
+  .timeline-visual {
+    position: relative;
+    height: 120px;
+    margin: var(--s-3) 0;
+    background: linear-gradient(180deg, var(--cream-50) 0%, var(--cream-100) 100%);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    border: 1px solid var(--cream-200);
+  }
+  .timeline-visual svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .water-stream {
+    fill: none;
+    stroke: url(#waterGradient);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .water-drip {
+    position: absolute;
+    width: 8px; height: 14px;
+    background: var(--brew-400);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, 0);
+    opacity: 0.8;
+  }
+  .segment-marker {
+    position: absolute;
+    top: 10px;
+    width: 2px;
+    height: calc(100% - 20px);
+    background: repeating-linear-gradient(
+      to bottom,
+      var(--brew-400) 0px,
+      var(--brew-400) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .segment-label {
+    position: absolute;
+    top: -2px;
+    transform: translateX(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brew-600);
+    background: var(--cream-50);
+    padding: 1px 6px;
+    border-radius: var(--r-full);
+    white-space: nowrap;
+  }
+  .segment-node {
+    position: absolute;
+    bottom: 10px;
+    width: 28px; height: 28px;
+    background: #fff;
+    border: 2px solid var(--accent-deep);
+    border-radius: 50%;
+    transform: translateX(-50%);
+    cursor: grab;
+    touch-action: none;
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(43, 29, 20, 0.2);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .segment-node:active { cursor: grabbing; }
+  .segment-node::after {
+    content: '';
+    width: 8px; height: 8px;
+    background: var(--accent-deep);
+    border-radius: 50%;
+  }
+  .segment-node-value {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-deep);
+    white-space: nowrap;
+  }
+
+  .timeline-ruler {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--brew-400);
+    margin-top: 18px;
+  }
+
+  .segments-list {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-top: var(--s-3);
+  }
+  .segment-row {
+    display: flex; align-items: center; gap: var(--s-2);
+    padding: 8px var(--s-3);
+    background: var(--cream-50);
+    border-radius: var(--r-sm);
+    font-size: 13px;
+  }
+  .segment-row .seg-name {
+    flex: 0 0 48px;
+    font-weight: 600;
+    color: var(--brew-700);
+    font-size: 12px;
+  }
+  .segment-row .seg-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--brew-800);
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 56px;
+  }
+  .segment-row .seg-water {
+    flex: 0 0 52px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--brew-500);
+    text-align: right;
+  }
+  .segment-row .seg-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--cream-200);
+    border-radius: var(--r-full);
+    overflow: hidden;
+  }
+  .segment-row .seg-bar-fill {
+    height: 100%;
+    background: var(--brew-400);
+    border-radius: var(--r-full);
+  }
+  .add-segment-btn {
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--brew-500);
+    cursor: pointer;
+    border-radius: var(--r-sm);
+  }
+  .add-segment-btn:active { background: var(--cream-200); }
+  .add-segment-btn svg { width: 14px; height: 14px; }
+
+  .total-info {
+    display: flex; justify-content: space-between;
+    padding: var(--s-3);
+    background: var(--brew-900);
+    color: var(--cream-100);
+    border-radius: var(--r-md);
+    margin-top: var(--s-3);
+  }
+  .total-info .ti-label {
+    font-size: 11px;
+    opacity: 0.6;
+  }
+  .total-info .ti-val {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-info .ti-val small {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-left: 2px;
+  }
+
+  .finish-brew-btn {
+    margin: var(--s-5);
+    height: 56px;
+    border-radius: var(--r-lg);
+    background: var(--brew-800);
+    color: var(--cream-50);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform var(--dur-fast);
+  }
+  .finish-brew-btn:active { transform: scale(0.97); background: var(--brew-700); }
+
+  /* ========== FLAVOR RATING PAGE ========== */
+  .rating-bean-hero {
+    background: linear-gradient(160deg, var(--brew-700), var(--brew-900));
+    color: var(--cream-50);
+    padding: var(--s-6) var(--s-5);
+    text-align: center;
+  }
+  .rating-bean-hero .bean-name-lg {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .rating-bean-hero .bean-origin-sm {
+    font-size: 13px;
+    opacity: 0.65;
+    margin-top: 4px;
+  }
+
+  .radar-container {
+    padding: var(--s-5);
+    display: flex; justify-content: center;
+  }
+  .radar-svg {
+    width: 240px; height: 240px;
+  }
+  .radar-grid { stroke: var(--cream-200); fill: none; stroke-width: 1; }
+  .radar-axis { stroke: var(--cream-200); stroke-width: 1; }
+  .radar-data {
+    fill: rgba(194, 135, 86, 0.25);
+    stroke: var(--accent-deep);
+    stroke-width: 2;
+    transition: all 200ms var(--ease-out);
+  }
+  .radar-dot {
+    fill: var(--accent-deep);
+    stroke: #fff;
+    stroke-width: 2;
+    cursor: grab;
+    touch-action: none;
+  }
+  .radar-label {
+    font-size: 11px;
+    fill: var(--brew-600);
+    font-weight: 500;
+  }
+
+  .flavor-sliders {
+    padding: 0 var(--s-5) var(--s-5);
+    display: flex; flex-direction: column; gap: var(--s-4);
+  }
+  .flavor-slider-row {
+    display: flex; align-items: center; gap: var(--s-3);
+  }
+  .flavor-slider-row .f-label {
+    width: 52px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--brew-700);
+  }
+  .flavor-slider-row .f-slider { flex: 1; }
+  .flavor-slider-row .f-val {
+    width: 36px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-deep);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .overall-rating {
+    margin: 0 var(--s-5) var(--s-5);
+    padding: var(--s-4);
+    background: linear-gradient(135deg, #fff8ef, #f8ead6);
+    border-radius: var(--r-md);
+    text-align: center;
+  }
+  .overall-rating .or-label {
+    font-size: 12px;
+    color: var(--brew-500);
+    margin-bottom: var(--s-2);
+  }
+  .overall-rating .or-stars {
+    display: flex; justify-content: center; gap: 6px;
+    margin-bottom: var(--s-2);
+  }
+  .overall-rating .star {
+    width: 32px; height: 32px;
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .overall-rating .star:active { transform: scale(1.2); }
+  .overall-rating .or-score {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-deep);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .flavor-tags-section {
+    padding: 0 var(--s-5) var(--s-5);
+  }
+  .flavor-tags {
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+    margin-top: var(--s-2);
+  }
+  .flavor-tag {
+    padding: 6px 12px;
+    border-radius: var(--r-full);
+    background: var(--cream-100);
+    font-size: 12px;
+    color: var(--brew-600);
+    cursor: pointer;
+    transition: all var(--dur-fast);
+    font-weight: 500;
+  }
+  .flavor-tag.active {
+    background: var(--accent-deep);
+    color: #fff;
+  }
+
+  .notes-section {
+    padding: 0 var(--s-5) var(--s-5);
+  }
+  .notes-textarea {
+    width: 100%;
+    min-height: 80px;
+    border: 1px solid var(--cream-200);
+    border-radius: var(--r-md);
+    padding: var(--s-3);
+    font-size: 14px;
+    font-family: var(--font-ui);
+    color: var(--brew-800);
+    background: #fff;
+    resize: none;
+    outline: none;
+  }
+  .notes-textarea:focus { border-color: var(--accent); }
+
+  .save-recipe-btn {
+    margin: var(--s-5);
+    height: 56px;
+    border-radius: var(--r-lg);
+    background: linear-gradient(135deg, var(--brew-400), var(--accent-deep));
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(139, 90, 43, 0.3);
+    transition: transform var(--dur-fast);
+  }
+  .save-recipe-btn:active { transform: scale(0.97); }
+  .save-recipe-btn svg { width: 20px; height: 20px; }
+
+  /* ========== RECIPE LIBRARY ========== */
+  .recipe-list {
+    padding: var(--s-3) var(--s-5) var(--s-5);
+    display: flex; flex-direction: column; gap: var(--s-3);
+  }
+  .recipe-card {
+    background: #fff;
+    border-radius: var(--r-md);
+    padding: var(--s-4);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+  }
+  .recipe-card:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow-md);
+  }
+  .recipe-card-head {
+    display: flex; align-items: center; gap: var(--s-3);
+    margin-bottom: var(--s-3);
+  }
+  .recipe-score-badge {
+    width: 44px; height: 44px;
+    border-radius: var(--r-md);
+    background: linear-gradient(135deg, var(--brew-200), var(--brew-400));
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--brew-800);
+    flex-shrink: 0;
+  }
+  .recipe-score-badge .num {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .recipe-score-badge .lbl {
+    font-size: 9px;
+    margin-top: 2px;
+    opacity: 0.7;
+  }
+  .recipe-bean-info { flex: 1; min-width: 0; }
+  .recipe-bean-name {
+    font-size: 15px; font-weight: 600;
+    color: var(--brew-900);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recipe-bean-origin {
+    font-size: 12px; color: var(--brew-500);
+    margin-top: 2px;
+  }
+  .recipe-params {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--cream-200);
+  }
+  .recipe-params .param-pill .val { font-size: 13px; }
+
+  .brew-recipe-btn {
+    margin-top: var(--s-3);
+    height: 40px;
+    border-radius: var(--r-md);
+    background: var(--brew-100);
+    color: var(--brew-800);
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--dur-fast);
+  }
+  .brew-recipe-btn:active {
+    background: var(--brew-200);
+    transform: scale(0.98);
+  }
+  .brew-recipe-btn svg { width: 16px; height: 16px; }
+
+  /* ========== DESIGN SYSTEM PAGE ========== */
+  .ds-section {
+    padding: var(--s-5);
+    border-bottom: 1px solid var(--cream-200);
+  }
+  .ds-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--brew-700);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: var(--s-3);
+  }
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .color-swatch {
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .color-swatch .swatch {
+    height: 48px;
+  }
+  .color-swatch .info {
+    padding: 6px 8px;
+    background: #fff;
+  }
+  .color-swatch .name {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brew-800);
+  }
+  .color-swatch .hex {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--brew-500);
+    margin-top: 1px;
+  }
+
+  .type-sample {
+    margin-bottom: var(--s-3);
+  }
+  .type-sample .sample {
+    color: var(--brew-900);
+    margin-bottom: 4px;
+  }
+  .type-sample .t1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .type-sample .t2 { font-size: 18px; font-weight: 600; }
+  .type-sample .t3 { font-size: 15px; font-weight: 600; }
+  .type-sample .t4 { font-size: 14px; }
+  .type-sample .tm { font-family: var(--font-mono); font-size: 16px; font-weight: 600; }
+  .type-sample .desc {
+    font-size: 11px;
+    color: var(--brew-500);
+  }
+
+  .spacing-grid {
+    display: flex; gap: 2px; align-items: flex-end;
+  }
+  .spacing-block {
+    background: var(--brew-300);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 2px;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .motion-row {
+    display: flex; gap: var(--s-3); align-items: center;
+    margin-bottom: var(--s-2);
+  }
+  .motion-demo {
+    width: 36px; height: 36px;
+    background: var(--brew-400);
+    border-radius: 50%;
+    animation: motion-bounce 1.8s ease-in-out infinite;
+  }
+  .motion-demo.spring {
+    animation: motion-spring 1.8s var(--ease-spring) infinite;
+  }
+  @keyframes motion-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+  }
+  @keyframes motion-spring {
+    0%, 100% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-24px) scale(1, 1); }
+    45% { transform: translateY(0) scale(1.15, 0.85); }
+    60% { transform: translateY(-8px) scale(0.95, 1.05); }
+    75% { transform: translateY(0) scale(1.05, 0.95); }
+  }
+  .motion-info {
+    flex: 1;
+  }
+  .motion-name {
+    font-size: 13px; font-weight: 600; color: var(--brew-800);
+  }
+  .motion-val {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--brew-500);
+  }
+
+  /* ========== API DOCS PAGE ========== */
+  .api-section {
+    padding: var(--s-5);
+    border-bottom: 1px solid var(--cream-200);
+  }
+  .api-endpoint {
+    margin-bottom: var(--s-4);
+  }
+  .api-method {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  .api-method.get { background: #e0efe0; color: #2e7d32; }
+  .api-method.post { background: #e8e0f5; color: #5e35b1; }
+  .api-method.put { background: #f5e8d0; color: #e65100; }
+  .api-method.del { background: #f5dcdc; color: #c62828; }
+  .api-path {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--brew-800);
+    word-break: break-all;
+  }
+  .api-desc {
+    font-size: 12px;
+    color: var(--brew-500);
+    margin-top: 4px;
+    padding-left: 62px;
+  }
+  .api-code-block {
+    margin-top: 8px;
+    background: var(--brew-900);
+    color: var(--brew-200);
+    padding: var(--s-3);
+    border-radius: var(--r-sm);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .api-code-block .key { color: var(--brew-300); }
+  .api-code-block .str { color: #d9b089; }
+  .api-code-block .num { color: #e8c07d; }
+  .api-code-block .comment { color: var(--brew-500); font-style: italic; }
+
+  /* ========== HALF-SHEET MODALS ========== */
+  .sheet-backdrop {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(43, 29, 20, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms var(--ease-out);
+    z-index: 100;
+  }
+  .sheet-backdrop.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: var(--cream-50);
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    transform: translateY(100%);
+    transition: transform 420ms var(--ease-spring);
+    z-index: 200;
+    max-height: 80%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 32px rgba(43, 29, 20, 0.2);
+  }
+  .sheet.show { transform: translateY(0); }
+  .sheet-grabber {
+    flex-shrink: 0;
+    padding: 10px 0 6px;
+    display: flex; justify-content: center;
+    cursor: grab;
+  }
+  .sheet-grabber::after {
+    content: '';
+    width: 36px; height: 5px;
+    background: var(--brew-300);
+    border-radius: var(--r-full);
+    opacity: 0.5;
+  }
+  .sheet-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 var(--s-5) var(--s-8);
+  }
+  .sheet-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--brew-900);
+    padding: 0 var(--s-5) var(--s-3);
+  }
+
+  /* Add Bean Form */
+  .form-group { margin-bottom: var(--s-4); }
+  .form-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--brew-600);
+    margin-bottom: 6px;
+    display: block;
+  }
+  .form-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--cream-200);
+    border-radius: var(--r-sm);
+    font-size: 14px;
+    background: #fff;
+    color: var(--brew-800);
+    outline: none;
+    font-family: var(--font-ui);
+  }
+  .form-input:focus { border-color: var(--accent); }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-3);
+  }
+  .form-submit {
+    width: 100%;
+    height: 48px;
+    border-radius: var(--r-md);
+    background: var(--brew-800);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: transform var(--dur-fast);
+  }
+  .form-submit:active { transform: scale(0.97); }
+
+  /* Recipe Detail Sheet */
+  .recipe-detail {
+    padding: 0 var(--s-5) var(--s-5);
+  }
+  .recipe-detail-hero {
+    background: linear-gradient(160deg, var(--brew-700), var(--brew-900));
+    color: var(--cream-50);
+    padding: var(--s-5);
+    border-radius: var(--r-md);
+    margin-bottom: var(--s-4);
+  }
+  .recipe-detail-hero .name {
+    font-size: 20px; font-weight: 600;
+  }
+  .recipe-detail-hero .origin {
+    font-size: 13px; opacity: 0.7; margin-top: 4px;
+  }
+  .recipe-detail-hero .score-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: var(--s-3);
+  }
+  .recipe-detail-hero .big-score {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--brew-200);
+    font-variant-numeric: tabular-nums;
+  }
+  .recipe-detail-hero .score-total {
+    font-size: 13px; opacity: 0.6;
+  }
+
+  /* Toast */
+  .toast {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translate(-50%, -20px);
+    background: var(--brew-900);
+    color: var(--cream-50);
+    padding: 10px 18px;
+    border-radius: var(--r-full);
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 300ms var(--ease-spring);
+    box-shadow: var(--shadow-lg);
+    white-space: nowrap;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  /* Fade-in animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in {
+    animation: fadeInUp 400ms var(--ease-out) both;
+  }
+  .fade-in.d1 { animation-delay: 60ms; }
+  .fade-in.d2 { animation-delay: 120ms; }
+  .fade-in.d3 { animation-delay: 180ms; }
+  .fade-in.d4 { animation-delay: 240ms; }
+
+  /* Tab bar (secondary nav for home) */
+  .tab-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 83px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--cream-200);
+    display: flex;
+    align-items: flex-start;
+    padding-top: 8px;
+    z-index: 30;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 3px;
+    padding-top: 4px;
+    cursor: pointer;
+    color: var(--brew-400);
+    transition: color var(--dur-fast);
+  }
+  .tab-item.active { color: var(--accent-deep); }
+  .tab-item svg { width: 24px; height: 24px; }
+  .tab-item .tab-label {
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .tab-bar + .page-body { padding-bottom: 83px; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: var(--s-8) var(--s-5);
+    color: var(--brew-400);
+  }
+  .empty-state svg {
+    width: 48px; height: 48px;
+    opacity: 0.4;
+    margin-bottom: var(--s-3);
+  }
+  .empty-state .msg {
+    font-size: 14px;
+    color: var(--brew-500);
+  }
+  .empty-state .sub {
+    font-size: 12px;
+    color: var(--brew-400);
+    margin-top: 4px;
+  }
+
+  /* Segmented water stream particle */
+  .water-particle {
+    position: absolute;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: var(--brew-400);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  /* Hide native cursor inside phone */
+  .phone-shell { cursor: none; }
+  .phone-shell * { cursor: none; }
+</style>
+</head>
+<body>
+
+<!-- Custom Cursor -->
+<div class="cursor-drip" id="cursorDrip">
+  <svg viewBox="0 0 28 36" fill="none">
+    <path class="drip-body" d="M14 2C14 2 4 14 4 22C4 28 8.5 34 14 34C19.5 34 24 28 24 22C24 14 14 2 14 2Z" fill="#5C3D2E"/>
+    <ellipse cx="10" cy="20" rx="3" ry="4" fill="rgba(255,255,255,0.3)"/>
+  </svg>
+</div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<div class="phone-shell" id="phoneShell">
+  <div class="notch"></div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <span id="statusTime">09:41</span>
+    <div class="status-right">
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><path d="M8.5 2.5c1.8 0 3.5.7 4.8 1.9l-1.1 1.1c-1-.9-2.3-1.4-3.7-1.4s-2.7.5-3.7 1.4L3.7 4.4C5 3.2 6.7 2.5 8.5 2.5zm0 4c1 0 1.9.4 2.6 1.1L10 8.7c-.4-.4-1-.6-1.5-.6s-1.1.2-1.5.6L5.9 7.6c.7-.7 1.6-1.1 2.6-1.1zm0 4l2-2h-4l2 2z"/></svg>
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><path d="M1 0h2v11H1V0zm4 3h2v8H5V3zm4-3h2v11H9V0zm4 5h2v6h-2V5z"/></svg>
+      <div class="battery"><div class="battery-level"></div></div>
+    </div>
+  </div>
+
+  <div class="home-indicator" id="homeIndicator"></div>
+
+  <div class="app-container" id="appContainer">
+
+    <!-- PAGE 1: HOME (今日冲煮) -->
+    <div class="page active" data-page="home" id="pageHome">
+      <div class="page-body">
+        <!-- Hero -->
+        <div class="home-hero fade-in">
+          <div class="home-greeting" id="greetingText">早上好</div>
+          <div class="home-date" id="dateText">8月19日 · 周三</div>
+          <div class="home-stats">
+            <div class="home-stat">
+              <span class="val" id="statTotal">0</span>
+              <span class="label">总冲煮次数</span>
+            </div>
+            <div class="home-stat">
+              <span class="val" id="statRecipes">0</span>
+              <span class="label">沉淀方案</span>
+            </div>
+            <div class="home-stat">
+              <span class="val" id="statBeans">0</span>
+              <span class="label">收藏豆子</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Start Brew CTA -->
+        <div class="fade-in d1">
+          <div class="start-brew-btn" id="startBrewBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v6"/><path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-8z"/>
+              <path d="M8 2v4"/><path d="M16 2v4"/><path d="M7 22v0"/><path d="M17 22v0"/>
+            </svg>
+            开始新冲煮
+          </div>
+        </div>
+
+        <!-- Recent Brew -->
+        <div class="section fade-in d2" id="recentSection">
+          <div class="section-title">
+            最近一次冲煮
+            <span class="sub">查看详情</span>
+          </div>
+          <div id="recentBrewCard"></div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="section fade-in d3">
+          <div class="section-title">
+            历史冲煮
+            <span class="sub" id="timelineCount">0 条</span>
+          </div>
+          <div id="timelineContainer"></div>
+        </div>
+
+        <div style="height: 32px;"></div>
+      </div>
+
+      <!-- Bottom Tab Bar -->
+      <div class="tab-bar">
+        <div class="tab-item active" data-tab="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z"/>
+          </svg>
+          <span class="tab-label">冲煮</span>
+        </div>
+        <div class="tab-item" data-tab="recipes" id="tabRecipes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span class="tab-label">方案库</span>
+        </div>
+        <div class="tab-item" data-tab="beans" id="tabBeans">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22c5 0 9-3.6 9-8s-4-8-9-8-9 3.6-9 8 4 8 9 8z"/>
+            <path d="M12 6c0 3.5-1.5 8 0 10"/>
+          </svg>
+          <span class="tab-label">豆子</span>
+        </div>
+        <div class="tab-item" data-tab="settings" id="tabSettings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="tab-label">设置</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: BEAN SELECTION (选豆页) -->
+    <div class="page" data-page="beans" id="pageBeans">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title">选择豆子</div>
+        <div class="nav-action" data-action="done" id="beanDoneBtn">完成</div>
+      </div>
+      <div class="page-body">
+        <div class="bean-list" id="beanList"></div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: BREW RECORD (冲煮记录 - 核心) -->
+    <div class="page" data-page="brew" id="pageBrew">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title" id="brewNavTitle">冲煮参数</div>
+        <div class="nav-action" style="width:40px;"></div>
+      </div>
+      <div class="page-body">
+
+        <!-- Selected bean -->
+        <div class="brew-param-section" id="brewBeanRow" style="cursor:pointer;">
+          <div class="brew-param-header">
+            <span class="brew-param-title">咖啡豆</span>
+            <span style="font-size:13px; color:var(--brew-500);">更换 ›</span>
+          </div>
+          <div class="bean-card" style="box-shadow:none; padding: 0; cursor:pointer;">
+            <div class="bean-avatar" style="width:44px;height:44px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22c5 0 9-3.6 9-8s-4-8-9-8-9 3.6-9 8 4 8 9 8z"/>
+              </svg>
+            </div>
+            <div class="bean-info" id="brewBeanInfo">
+              <div class="bean-name">耶加雪菲 · 科契尔</div>
+              <div class="bean-origin">埃塞俄比亚 · 水洗 · 浅烘</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dose -->
+        <div class="brew-param-section">
+          <div class="brew-param-header">
+            <span class="brew-param-title">粉量</span>
+            <span class="brew-param-value"><span id="doseVal">15</span><span class="unit">g</span></span>
+          </div>
+          <div class="slider-wrap" id="doseSlider">
+            <div class="slider-track"><div class="slider-fill" id="doseFill"></div></div>
+            <div class="slider-thumb" id="doseThumb"></div>
+          </div>
+          <div class="slider-ticks"><span>10g</span><span>15g</span><span>20g</span><span>25g</span></div>
+        </div>
+
+        <!-- Water Temp -->
+        <div class="brew-param-section">
+          <div class="brew-param-header">
+            <span class="brew-param-title">水温</span>
+            <span class="brew-param-value"><span id="tempVal">92</span><span class="unit">°C</span></span>
+          </div>
+          <div class="slider-wrap" id="tempSlider">
+            <div class="slider-track"><div class="slider-fill" id="tempFill"></div></div>
+            <div class="slider-thumb" id="tempThumb"></div>
+          </div>
+          <div class="slider-ticks"><span>85°</span><span>90°</span><span>95°</span><span>100°</span></div>
+        </div>
+
+        <!-- Ratio -->
+        <div class="brew-param-section">
+          <div class="brew-param-header">
+            <span class="brew-param-title">粉水比</span>
+            <span class="brew-param-value" id="ratioVal" style="font-size:18px;">1:15</span>
+          </div>
+          <div class="ratio-options" id="ratioOptions">
+            <div class="ratio-chip" data-ratio="1:12">1:12</div>
+            <div class="ratio-chip" data-ratio="1:13">1:13</div>
+            <div class="ratio-chip" data-ratio="1:14">1:14</div>
+            <div class="ratio-chip active" data-ratio="1:15">1:15</div>
+            <div class="ratio-chip" data-ratio="1:16">1:16</div>
+            <div class="ratio-chip" data-ratio="1:17">1:17</div>
+            <div class="ratio-chip" data-ratio="1:18">1:18</div>
+          </div>
+        </div>
+
+        <!-- Grind Size -->
+        <div class="brew-param-section">
+          <div class="brew-param-header">
+            <span class="brew-param-title">研磨度</span>
+            <span class="brew-param-value" style="font-size:18px;"><span id="grindVal">3.5</span><span class="unit">格</span></span>
+          </div>
+          <div class="grind-wheel" id="grindWheel"></div>
+          <div class="grind-label" id="grindLabel">中细研磨 · 白砂糖粗细</div>
+        </div>
+
+        <!-- Water flow timeline (CORE) -->
+        <div class="water-timeline-section">
+          <div class="brew-param-header">
+            <span class="brew-param-title">注水节奏</span>
+            <span style="font-size:12px; color:var(--brew-500);" id="totalTimeLabel">总时长 02:30</span>
+          </div>
+
+          <div class="timeline-visual" id="timelineVisual">
+            <svg viewBox="0 0 350 120" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="waterGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#C28756" stop-opacity="0.9"/>
+                  <stop offset="100%" stop-color="#7A4E3A" stop-opacity="0.7"/>
+                </linearGradient>
+              </defs>
+              <!-- Water stream path drawn by JS -->
+              <path class="water-stream" id="waterStream" d="" stroke-width="8"/>
+            </svg>
+            <!-- Segment labels / markers / nodes drawn by JS -->
+            <div id="segmentMarkers"></div>
+            <div id="segmentNodes"></div>
+            <div id="segmentLabels"></div>
+          </div>
+
+          <div class="timeline-ruler" id="timelineRuler">
+            <span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span><span>2:00</span><span>2:30</span>
+          </div>
+
+          <div class="segments-list" id="segmentsList"></div>
+
+          <div class="add-segment-btn" id="addSegmentBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            添加注水段
+          </div>
+
+          <div class="total-info">
+            <div>
+              <div class="ti-label">总注水量</div>
+              <div class="ti-val" id="totalWater">225<small>g</small></div>
+            </div>
+            <div style="text-align:right;">
+              <div class="ti-label">预计总时长</div>
+              <div class="ti-val" id="totalDuration">2:30<small>min</small></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="finish-brew-btn" id="finishBrewBtn">完成冲煮 · 进入评分</div>
+
+      </div>
+    </div>
+
+    <!-- PAGE 4: FLAVOR RATING (风味评分) -->
+    <div class="page" data-page="rating" id="pageRating">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title">风味评分</div>
+        <div style="width:40px;"></div>
+      </div>
+      <div class="page-body">
+
+        <div class="rating-bean-hero">
+          <div class="bean-name-lg" id="ratingBeanName">耶加雪菲 · 科契尔</div>
+          <div class="bean-origin-sm" id="ratingBeanOrigin">埃塞俄比亚 · 水洗 · 浅烘</div>
+        </div>
+
+        <!-- Radar chart -->
+        <div class="radar-container">
+          <svg class="radar-svg" id="radarSvg" viewBox="0 0 240 240">
+            <!-- grid polygons -->
+            <polygon class="radar-grid" points="120,40 185,78 160,152 80,152 55,78"/>
+            <polygon class="radar-grid" points="120,60 171,89 150,142 90,142 69,89"/>
+            <polygon class="radar-grid" points="120,80 157,100 140,132 100,132 83,100"/>
+            <polygon class="radar-grid" points="120,100 143,111 130,122 110,122 97,111" style="opacity:0.5"/>
+            <!-- axis lines -->
+            <line class="radar-axis" x1="120" y1="40" x2="120" y2="152"/>
+            <line class="radar-axis" x1="55" y1="78" x2="185" y2="78"/>
+            <line class="radar-axis" x1="69" y1="142" x2="171" y2="89"/>
+            <line class="radar-axis" x1="83" y1="100" x2="157" y2="100"/>
+            <line class="radar-axis" x1="80" y1="152" x2="160" y2="78"/>
+            <!-- data polygon -->
+            <polygon class="radar-data" id="radarData" points="120,50 175,85 150,140 90,138 65,82"/>
+            <!-- dots -->
+            <circle class="radar-dot" data-axis="acidity" cx="120" cy="50" r="6"/>
+            <circle class="radar-dot" data-axis="sweetness" cx="175" cy="85" r="6"/>
+            <circle class="radar-dot" data-axis="body" cx="150" cy="140" r="6"/>
+            <circle class="radar-dot" data-axis="clean" cx="90" cy="138" r="6"/>
+            <circle class="radar-dot" data-axis="aroma" cx="65" cy="82" r="6"/>
+            <!-- labels -->
+            <text class="radar-label" x="120" y="28" text-anchor="middle">酸度</text>
+            <text class="radar-label" x="200" y="82" text-anchor="start">甜度</text>
+            <text class="radar-label" x="165" y="165" text-anchor="middle">醇厚度</text>
+            <text class="radar-label" x="75" y="165" text-anchor="middle">干净度</text>
+            <text class="radar-label" x="40" y="82" text-anchor="end">香气</text>
+          </svg>
+        </div>
+
+        <!-- Flavor sliders -->
+        <div class="flavor-sliders">
+          <div class="flavor-slider-row">
+            <span class="f-label">酸度</span>
+            <div class="f-slider slider-wrap" data-flavor="acidity">
+              <div class="slider-track"><div class="slider-fill" style="width:80%"></div></div>
+              <div class="slider-thumb" style="left:80%"></div>
+            </div>
+            <span class="f-val" id="flavor-acidity">8.0</span>
+          </div>
+          <div class="flavor-slider-row">
+            <span class="f-label">甜度</span>
+            <div class="f-slider slider-wrap" data-flavor="sweetness">
+              <div class="slider-track"><div class="slider-fill" style="width:75%"></div></div>
+              <div class="slider-thumb" style="left:75%"></div>
+            </div>
+            <span class="f-val" id="flavor-sweetness">7.5</span>
+          </div>
+          <div class="flavor-slider-row">
+            <span class="f-label">醇厚度</span>
+            <div class="f-slider slider-wrap" data-flavor="body">
+              <div class="slider-track"><div class="slider-fill" style="width:70%"></div></div>
+              <div class="slider-thumb" style="left:70%"></div>
+            </div>
+            <span class="f-val" id="flavor-body">7.0</span>
+          </div>
+          <div class="flavor-slider-row">
+            <span class="f-label">干净度</span>
+            <div class="f-slider slider-wrap" data-flavor="clean">
+              <div class="slider-track"><div class="slider-fill" style="width:85%"></div></div>
+              <div class="slider-thumb" style="left:85%"></div>
+            </div>
+            <span class="f-val" id="flavor-clean">8.5</span>
+          </div>
+          <div class="flavor-slider-row">
+            <span class="f-label">香气</span>
+            <div class="f-slider slider-wrap" data-flavor="aroma">
+              <div class="slider-track"><div class="slider-fill" style="width:78%"></div></div>
+              <div class="slider-thumb" style="left:78%"></div>
+            </div>
+            <span class="f-val" id="flavor-aroma">7.8</span>
+          </div>
+        </div>
+
+        <!-- Overall rating -->
+        <div class="overall-rating">
+          <div class="or-label">综合评分</div>
+          <div class="or-stars" id="overallStars">
+            <!-- stars generated by JS -->
+          </div>
+          <div class="or-score"><span id="overallScore">8.2</span><span style="font-size:14px;color:var(--brew-500);">/10</span></div>
+        </div>
+
+        <!-- Flavor tags -->
+        <div class="flavor-tags-section">
+          <div class="section-title" style="margin-bottom:0;">风味标签</div>
+          <div class="flavor-tags" id="flavorTags">
+            <div class="flavor-tag active">柑橘</div>
+            <div class="flavor-tag active">茉莉花</div>
+            <div class="flavor-tag">蜂蜜</div>
+            <div class="flavor-tag">焦糖</div>
+            <div class="flavor-tag">莓果</div>
+            <div class="flavor-tag">红茶</div>
+            <div class="flavor-tag">坚果</div>
+            <div class="flavor-tag">巧克力</div>
+            <div class="flavor-tag">奶油</div>
+            <div class="flavor-tag">柠檬</div>
+            <div class="flavor-tag">苹果</div>
+            <div class="flavor-tag">蔗糖</div>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="notes-section">
+          <div class="section-title" style="margin-bottom:var(--s-2);">冲煮笔记</div>
+          <textarea class="notes-textarea" id="brewNotes" placeholder="记录本次冲煮的感受、调整要点、下次改进方向…"></textarea>
+        </div>
+
+        <div class="save-recipe-btn" id="saveRecipeBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+          </svg>
+          保存为冲煮方案
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PAGE 5: RECIPE LIBRARY (方案库) -->
+    <div class="page" data-page="recipes" id="pageRecipes">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title">方案库</div>
+        <div style="width:40px;"></div>
+      </div>
+      <div class="page-body">
+        <div class="recipe-list" id="recipeList"></div>
+      </div>
+    </div>
+
+    <!-- PAGE 6: DESIGN SYSTEM (设计规范) -->
+    <div class="page" data-page="design" id="pageDesign">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title">设计规范</div>
+        <div style="width:40px;"></div>
+      </div>
+      <div class="page-body">
+
+        <div class="ds-section">
+          <div class="ds-section-title">Color · 色板</div>
+          <div class="color-grid">
+            <div class="color-swatch"><div class="swatch" style="background:#2B1D14"></div><div class="info"><div class="name">深烘焙棕</div><div class="hex">brew-900 · #2B1D14</div></div></div>
+            <div class="color-swatch"><div class="swatch" style="background:#5C3D2E"></div><div class="info"><div class="name">烘焙棕</div><div class="hex">brew-700 · #5C3D2E</div></div></div>
+            <div class="color-swatch"><div class="swatch" style="background:#A0633F"></div><div class="info"><div class="name">焦糖琥珀</div><div class="hex">brew-500 · #A0633F</div></div></div>
+            <div class="color-swatch"><div class="swatch" style="background:#D9B089"></div><div class="info"><div class="name">焦糖奶</div><div class="hex">brew-300 · #D9B089</div></div></div>
+            <div class="color-swatch"><div class="swatch" style="background:#E8CEB0"></div><div class="info"><div class="name">奶咖米色</div><div class="hex">brew-200 · #E8CEB0</div></div></div>
+            <div class="color-swatch"><div class="swatch" style="background:#FAF3E7"></div><div class="info"><div class="name">奶白</div><div class="hex">cream-50 · #FAF3E7</div></div></div>
+          </div>
+        </div>
+
+        <div class="ds-section">
+          <div class="ds-section-title">Typography · 字体</div>
+          <div class="type-sample">
+            <div class="sample t1">手冲日志 · Coffee Diary</div>
+            <div class="desc">Large Title · 24/700 · UI Sans-Serif</div>
+          </div>
+          <div class="type-sample">
+            <div class="sample t2">冲煮参数面板标题</div>
+            <div class="desc">Title · 18/600 · UI Sans-Serif</div>
+          </div>
+          <div class="type-sample">
+            <div class="sample t3">豆子名称与卡片标题</div>
+            <div class="desc">Headline · 15/600 · UI Sans-Serif</div>
+          </div>
+          <div class="type-sample">
+            <div class="sample t4">正文内容，描述段落，辅助说明文字。</div>
+            <div class="desc">Body · 14/400 · UI Sans-Serif</div>
+          </div>
+          <div class="type-sample">
+            <div class="sample tm">15.0g · 92°C · 1:15 · 2:30</div>
+            <div class="desc">Mono Data · 16/600 · SF Mono / JetBrains Mono</div>
+          </div>
+        </div>
+
+        <div class="ds-section">
+          <div class="ds-section-title">Spacing · 间距系统</div>
+          <div class="spacing-grid">
+            <div class="spacing-block" style="height:4px; width:20px;">1</div>
+            <div class="spacing-block" style="height:8px; width:20px;">2</div>
+            <div class="spacing-block" style="height:12px; width:20px;">3</div>
+            <div class="spacing-block" style="height:16px; width:20px;">4</div>
+            <div class="spacing-block" style="height:24px; width:20px;">6</div>
+            <div class="spacing-block" style="height:32px; width:20px;">8</div>
+            <div class="spacing-block" style="height:40px; width:20px;">10</div>
+          </div>
+          <div style="font-size:11px; color:var(--brew-500); margin-top:8px;">
+            基于 4px 栅格，s-1 到 s-10，相邻间距 1.5x 倍率。
+          </div>
+        </div>
+
+        <div class="ds-section">
+          <div class="ds-section-title">Motion · 动效</div>
+          <div class="motion-row">
+            <div class="motion-demo"></div>
+            <div class="motion-info">
+              <div class="motion-name">Ease-Out · 缓出</div>
+              <div class="motion-val">cubic-bezier(0.22, 1, 0.36, 1) · 280ms</div>
+            </div>
+          </div>
+          <div class="motion-row">
+            <div class="motion-demo spring"></div>
+            <div class="motion-info">
+              <div class="motion-name">Spring · 弹簧</div>
+              <div class="motion-val">cubic-bezier(0.34, 1.56, 0.64, 1) · 420ms</div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--brew-500); margin-top:8px;">
+            滑块阻尼感 / 水流动画 / 页面 Push-Pop / 半屏弹层 / 方案卡涟漪反馈 / 时间线渐入。
+            支持 prefers-reduced-motion 降级。
+          </div>
+        </div>
+
+        <div class="ds-section">
+          <div class="ds-section-title">Components · 组件</div>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div>
+              <div style="font-size:12px; color:var(--brew-500); margin-bottom:6px;">主按钮 · Primary CTA</div>
+              <div style="height:52px; border-radius:18px; background:linear-gradient(135deg, #C28756, #8B5A2B); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:15px; box-shadow:0 6px 18px rgba(139,90,43,0.3);">开始新冲煮</div>
+            </div>
+            <div>
+              <div style="font-size:12px; color:var(--brew-500); margin-bottom:6px;">次按钮 · Secondary</div>
+              <div style="height:44px; border-radius:12px; background:#F2E3CE; color:#5C3D2E; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px;">按此方案冲煮</div>
+            </div>
+            <div>
+              <div style="font-size:12px; color:var(--brew-500); margin-bottom:6px;">卡片 · Card</div>
+              <div style="background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(43,29,20,0.08); display:flex; gap:12px; align-items:center;">
+                <div style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#E8CEB0,#D9B089);"></div>
+                <div style="flex:1;"><div style="font-weight:600; font-size:15px; color:#2B1D14;">耶加雪菲</div><div style="font-size:12px; color:#A0633F; margin-top:2px;">埃塞俄比亚 · 水洗</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:40px;"></div>
+      </div>
+    </div>
+
+    <!-- PAGE 7: API DOCS (接口文档) -->
+    <div class="page" data-page="api" id="pageApi">
+      <div class="nav-bar">
+        <div class="nav-btn" data-action="back">
+          <svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10 2 2 10 10 18"/>
+          </svg>
+        </div>
+        <div class="nav-title">接口文档</div>
+        <div style="width:40px;"></div>
+      </div>
+      <div class="page-body">
+
+        <div class="api-section">
+          <div class="ds-section-title">Overview</div>
+          <div style="font-size:13px; color:var(--brew-700); line-height:1.6;">
+            基础前缀：<code style="background:var(--cream-100);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px;">/api/coffee/v1</code><br>
+            认证：Bearer Token<br>
+            格式：JSON / UTF-8<br>
+            分页：page + page_size
+          </div>
+        </div>
+
+        <div class="api-section">
+          <div class="ds-section-title">Beans · 咖啡豆</div>
+
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/api/coffee/v1/beans</span>
+            <div class="api-desc">获取豆子列表，支持按产地、处理法筛选</div>
+            <div class="api-code-block"><span class="comment">// Request</span>
+GET /api/coffee/v1/beans?origin=ethiopia&process=washed
+Authorization: Bearer {token}
+
+<span class="comment">// Response 200 OK</span>
+{
+  <span class="key">"code"</span>: <span class="num">0</span>,
+  <span class="key">"data"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"bean_yirgacheffe_01"</span>,
+      <span class="key">"name"</span>: <span class="str">"耶加雪菲 · 科契尔"</span>,
+      <span class="key">"origin"</span>: <span class="str">"埃塞俄比亚"</span>,
+      <span class="key">"farm"</span>: <span class="str">"Kochere 合作社"</span>,
+      <span class="key">"process"</span>: <span class="str">"水洗"</span>,
+      <span class="key">"roast"</span>: <span class="str">"浅烘"</span>,
+      <span class="key">"altitude"</span>: <span class="str">"1900-2200m"</span>,
+      <span class="key">"flavors"</span>: [<span class="str">"柑橘"</span>, <span class="str">"茉莉"</span>, <span class="str">"柠檬"</span>]
+    }
+  ],
+  <span class="key">"total"</span>: <span class="num">12</span>
+}</div>
+          </div>
+
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/api/coffee/v1/beans</span>
+            <div class="api-desc">新增咖啡豆</div>
+            <div class="api-code-block"><span class="comment">// Request</span>
+POST /api/coffee/v1/beans
+{
+  <span class="key">"name"</span>: <span class="str">"曼特宁 · 林东"</span>,
+  <span class="key">"origin"</span>: <span class="str">"印度尼西亚"</span>,
+  <span class="key">"process"</span>: <span class="str">"湿刨"</span>,
+  <span class="key">"roast"</span>: <span class="str">"中深烘"</span>,
+  <span class="key">"flavors"</span>: [<span class="str">"草本"</span>, <span class="str">"黑巧克力"</span>]
+}
+
+<span class="comment">// Response 201 Created</span>
+{
+  <span class="key">"code"</span>: <span class="num">0</span>,
+  <span class="key">"data"</span>: { <span class="key">"id"</span>: <span class="str">"bean_mandheling_02"</span> }
+}</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <div class="ds-section-title">Brews · 冲煮记录</div>
+
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/api/coffee/v1/brews</span>
+            <div class="api-desc">冲煮记录列表，按日期倒序，分页</div>
+            <div class="api-code-block"><span class="comment">// Response 200 OK</span>
+{
+  <span class="key">"code"</span>: <span class="num">0</span>,
+  <span class="key">"data"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"brew_20240819_01"</span>,
+      <span class="key">"bean_id"</span>: <span class="str">"bean_yirgacheffe_01"</span>,
+      <span class="key">"bean_name"</span>: <span class="str">"耶加雪菲 · 科契尔"</span>,
+      <span class="key">"dose_g"</span>: <span class="num">15</span>,
+      <span class="key">"temp_c"</span>: <span class="num">92</span>,
+      <span class="key">"ratio"</span>: <span class="str">"1:15"</span>,
+      <span class="key">"grind"</span>: <span class="num">3.5</span>,
+      <span class="key">"total_water_g"</span>: <span class="num">225</span>,
+      <span class="key">"segments"</span>: [...],
+      <span class="key">"rating"</span>: { <span class="key">"overall"</span>: <span class="num">8.2</span>, ... },
+      <span class="key">"created_at"</span>: <span class="str">"2024-08-19T09:30:00+08:00"</span>
+    }
+  ],
+  <span class="key">"total"</span>: <span class="num">24</span>
+}</div>
+          </div>
+
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/api/coffee/v1/brews</span>
+            <div class="api-desc">创建冲煮记录</div>
+            <div class="api-code-block"><span class="comment">// Request</span>
+{
+  <span class="key">"bean_id"</span>: <span class="str">"bean_yirgacheffe_01"</span>,
+  <span class="key">"dose_g"</span>: <span class="num">15</span>,
+  <span class="key">"temp_c"</span>: <span class="num">92</span>,
+  <span class="key">"ratio"</span>: <span class="str">"1:15"</span>,
+  <span class="key">"grind"</span>: <span class="num">3.5</span>,
+  <span class="key">"segments"</span>: [
+    { <span class="key">"name"</span>: <span class="str">"闷蒸"</span>, <span class="key">"time_s"</span>: <span class="num">30</span>, <span class="key">"water_g"</span>: <span class="num">30</span> },
+    { <span class="key">"name"</span>: <span class="str">"一段"</span>, <span class="key">"time_s"</span>: <span class="num">60</span>, <span class="key">"water_g"</span>: <span class="num">120</span> },
+    { <span class="key">"name"</span>: <span class="str">"二段"</span>, <span class="key">"time_s"</span>: <span class="num">60</span>, <span class="key">"water_g"</span>: <span class="num">75</span> }
+  ],
+  <span class="key">"rating"</span>: {
+    <span class="key">"acidity"</span>: <span class="num">8.0</span>, <span class="key">"sweetness"</span>: <span class="num">7.5</span>,
+    <span class="key">"body"</span>: <span class="num">7.0</span>, <span class="key">"clean"</span>: <span class="num">8.5</span>,
+    <span class="key">"aroma"</span>: <span class="num">7.8</span>, <span class="key">"overall"</span>: <span class="num">8.2</span>
+  },
+  <span class="key">"tags"</span>: [<span class="str">"柑橘"</span>, <span class="str">"茉莉"</span>],
+  <span class="key">"notes"</span>: <span class="str">"..."</span>
+}</div>
+          </div>
+
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/api/coffee/v1/brews/:id</span>
+            <div class="api-desc">获取单条冲煮记录详情</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <div class="ds-section-title">Recipes · 冲煮方案</div>
+
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/api/coffee/v1/recipes</span>
+            <div class="api-desc">方案库列表，可按评分 / 豆子筛选</div>
+          </div>
+
+          <div class="api-endpoint">
+            <span class="api-method get">GET</span>
+            <span class="api-path">/api/coffee/v1/recipes/:id</span>
+            <div class="api-desc">获取方案详情（含完整参数与历史评分）</div>
+          </div>
+
+          <div class="api-endpoint">
+            <span class="api-method post">POST</span>
+            <span class="api-path">/api/coffee/v1/recipes</span>
+            <div class="api-desc">从冲煮记录生成方案（保留最佳评分）</div>
+            <div class="api-code-block"><span class="comment">// Request</span>
+{
+  <span class="key">"brew_id"</span>: <span class="str">"brew_20240819_01"</span>,
+  <span class="key">"name"</span>: <span class="str">"耶加雪菲经典三段式"</span>
+}
+
+<span class="comment">// Response 201</span>
+{ <span class="key">"code"</span>: <span class="num">0</span>, <span class="key">"data"</span>: { <span class="key">"id"</span>: <span class="str">"recipe_01"</span> } }</div>
+          </div>
+        </div>
+
+        <div style="height:40px;"></div>
+      </div>
+    </div>
+
+    <!-- Sheet Backdrop -->
+    <div class="sheet-backdrop" id="sheetBackdrop"></div>
+
+    <!-- SHEET: Add Bean -->
+    <div class="sheet" id="sheetAddBean">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-title">新增咖啡豆</div>
+      <div class="sheet-body">
+        <div class="form-group">
+          <label class="form-label">豆子名称</label>
+          <input class="form-input" id="newBeanName" placeholder="如：耶加雪菲 · 科契尔" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">产地</label>
+            <input class="form-input" id="newBeanOrigin" placeholder="埃塞俄比亚" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">处理法</label>
+            <input class="form-input" id="newBeanProcess" placeholder="水洗 / 日晒 / 蜜处理" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">烘焙度</label>
+            <input class="form-input" id="newBeanRoast" placeholder="浅烘 / 中烘 / 深烘" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">风味（逗号分隔）</label>
+            <input class="form-input" id="newBeanFlavors" placeholder="柑橘,茉莉,蜂蜜" />
+          </div>
+        </div>
+        <button class="form-submit" id="submitNewBean">添加豆子</button>
+      </div>
+    </div>
+
+    <!-- SHEET: Recipe Detail -->
+    <div class="sheet" id="sheetRecipeDetail" style="max-height: 85%;">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-title">方案详情</div>
+      <div class="sheet-body" id="recipeDetailBody"></div>
+    </div>
+
+    <!-- SHEET: Settings -->
+    <div class="sheet" id="sheetSettings">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-title">设置</div>
+      <div class="sheet-body">
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <div class="bean-card" style="box-shadow:none; background:var(--cream-50);" id="goDesignBtn">
+            <div class="bean-avatar" style="background:linear-gradient(135deg,#E8CEB0,#D9B089); width:40px; height:40px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6M7 12H1m15.5-7.5l-4.2 4.2M7.7 16.3l-4.2 4.2m0-17l4.2 4.2m8.6 8.6l4.2 4.2"/>
+              </svg>
+            </div>
+            <div class="bean-info">
+              <div class="bean-name">设计规范</div>
+              <div class="bean-origin">色板 / 字体 / 间距 / 组件 / 动效</div>
+            </div>
+          </div>
+          <div class="bean-card" style="box-shadow:none; background:var(--cream-50);" id="goApiBtn">
+            <div class="bean-avatar" style="background:linear-gradient(135deg,#F2E3CE,#E8CEB0); width:40px; height:40px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+              </svg>
+            </div>
+            <div class="bean-info">
+              <div class="bean-name">接口文档</div>
+              <div class="bean-origin">/api/coffee/v1/* 完整接口</div>
+            </div>
+          </div>
+          <div class="bean-card" style="box-shadow:none; background:var(--cream-50);" id="resetDataBtn">
+            <div class="bean-avatar" style="background:linear-gradient(135deg,#F5DCDC,#E8B0A0); width:40px; height:40px; color:#B4533C;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>
+              </svg>
+            </div>
+            <div class="bean-info">
+              <div class="bean-name" style="color:#B4533C;">重置数据</div>
+              <div class="bean-origin">清空本地冲煮记录与方案库</div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center; margin-top:24px; font-size:11px; color:var(--brew-400);">
+          手冲日志 V2 · build 2.0.0
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">操作成功</div>
+
+  </div>
+</div>
+
+<script>
+/* ========== DATA LAYER ========== */
+const STORAGE_KEY = 'coffee_diary_v2';
+
+const DEFAULT_DATA = {
+  beans: [
+    {
+      id: 'bean_yirgacheffe',
+      name: '耶加雪菲 · 科契尔',
+      origin: '埃塞俄比亚',
+      process: '水洗',
+      roast: '浅烘',
+      altitude: '1900-2200m',
+      flavors: ['柑橘', '茉莉', '柠檬', '蜂蜜']
+    },
+    {
+      id: 'bean_sidamo',
+      name: '西达摩 · 古吉',
+      origin: '埃塞俄比亚',
+      process: '日晒',
+      roast: '浅烘',
+      altitude: '2000-2200m',
+      flavors: ['莓果', '蓝莓', '发酵香', '红酒感']
+    },
+    {
+      id: 'bean_colombia',
+      name: '哥伦比亚 · 慧兰',
+      origin: '哥伦比亚',
+      process: '水洗',
+      roast: '中烘',
+      altitude: '1700-1900m',
+      flavors: ['焦糖', '坚果', '巧克力', '红苹果']
+    },
+    {
+      id: 'bean_mandheling',
+      name: '曼特宁 · 林东',
+      origin: '印度尼西亚',
+      process: '湿刨',
+      roast: '中深烘',
+      altitude: '1200-1500m',
+      flavors: ['草本', '黑巧克力', '松木', '焦糖']
+    }
+  ],
+  brews: [
+    {
+      id: 'brew_001',
+      beanId: 'bean_yirgacheffe',
+      beanName: '耶加雪菲 · 科契尔',
+      beanOrigin: '埃塞俄比亚 · 水洗 · 浅烘',
+      dose: 15,
+      temp: 92,
+      ratio: '1:15',
+      grind: 3.5,
+      segments: [
+        { name: '闷蒸', time: 30, water: 30 },
+        { name: '一段', time: 60, water: 120 },
+        { name: '二段', time: 60, water: 75 }
+      ],
+      totalWater: 225,
+      totalTime: 150,
+      rating: { acidity: 8.2, sweetness: 7.8, body: 6.8, clean: 8.5, aroma: 8.0, overall: 8.2 },
+      tags: ['柑橘', '茉莉花', '蜂蜜'],
+      notes: '第一段注水稍快，花香明显；下次尝试降低水温到90°C看甜感是否提升。',
+      createdAt: Date.now() - 3600 * 1000 * 2 // 2小时前
+    },
+    {
+      id: 'brew_002',
+      beanId: 'bean_colombia',
+      beanName: '哥伦比亚 · 慧兰',
+      beanOrigin: '哥伦比亚 · 水洗 · 中烘',
+      dose: 16,
+      temp: 90,
+      ratio: '1:14',
+      grind: 4.0,
+      segments: [
+        { name: '闷蒸', time: 30, water: 32 },
+        { name: '一段', time: 75, water: 128 },
+        { name: '二段', time: 45, water: 64 }
+      ],
+      totalWater: 224,
+      totalTime: 150,
+      rating: { acidity: 6.5, sweetness: 8.0, body: 8.2, clean: 7.5, aroma: 7.8, overall: 7.8 },
+      tags: ['焦糖', '坚果', '巧克力'],
+      notes: '甜感扎实，坚果余韵长。中烘豆用稍粗研磨流速更均匀。',
+      createdAt: Date.now() - 3600 * 1000 * 26 // 昨天
+    },
+    {
+      id: 'brew_003',
+      beanId: 'bean_sidamo',
+      beanName: '西达摩 · 古吉',
+      beanOrigin: '埃塞俄比亚 · 日晒 · 浅烘',
+      dose: 14,
+      temp: 93,
+      ratio: '1:16',
+      grind: 3.0,
+      segments: [
+        { name: '闷蒸', time: 35, water: 28 },
+        { name: '一段', time: 55, water: 112 },
+        { name: '二段', time: 60, water: 84 }
+      ],
+      totalWater: 224,
+      totalTime: 150,
+      rating: { acidity: 8.5, sweetness: 7.2, body: 6.5, clean: 7.0, aroma: 9.0, overall: 7.9 },
+      tags: ['莓果', '蓝莓', '发酵香'],
+      notes: '日晒豆香气爆炸，蓝莓和红酒感突出。干净度略低于水洗豆，属正常。',
+      createdAt: Date.now() - 3600 * 1000 * 50 // 前天
+    }
+  ],
+  recipes: [
+    {
+      id: 'recipe_001',
+      brewId: 'brew_001',
+      beanId: 'bean_yirgacheffe',
+      beanName: '耶加雪菲 · 科契尔',
+      beanOrigin: '埃塞俄比亚 · 水洗 · 浅烘',
+      name: '耶加雪菲经典三段式',
+      dose: 15,
+      temp: 92,
+      ratio: '1:15',
+      grind: 3.5,
+      segments: [
+        { name: '闷蒸', time: 30, water: 30 },
+        { name: '一段', time: 60, water: 120 },
+        { name: '二段', time: 60, water: 75 }
+      ],
+      totalWater: 225,
+      totalTime: 150,
+      rating: { acidity: 8.2, sweetness: 7.8, body: 6.8, clean: 8.5, aroma: 8.0, overall: 8.2 },
+      tags: ['柑橘', '茉莉花', '蜂蜜'],
+      notes: '万能入门配方，酸甜平衡，花香明显。',
+      createdAt: Date.now() - 3600 * 1000 * 2
+    },
+    {
+      id: 'recipe_002',
+      brewId: 'brew_002',
+      beanId: 'bean_colombia',
+      beanName: '哥伦比亚 · 慧兰',
+      beanOrigin: '哥伦比亚 · 水洗 · 中烘',
+      name: '哥伦比亚坚果甜感方',
+      dose: 16,
+      temp: 90,
+      ratio: '1:14',
+      grind: 4.0,
+      segments: [
+        { name: '闷蒸', time: 30, water: 32 },
+        { name: '一段', time: 75, water: 128 },
+        { name: '二段', time: 45, water: 64 }
+      ],
+      totalWater: 224,
+      totalTime: 150,
+      rating: { acidity: 6.5, sweetness: 8.0, body: 8.2, clean: 7.5, aroma: 7.8, overall: 7.8 },
+      tags: ['焦糖', '坚果', '巧克力'],
+      notes: '中深烘豆甜感路线，低温慢萃。',
+      createdAt: Date.now() - 3600 * 1000 * 26
+    }
+  ],
+  stats: {
+    totalBrews: 3,
+    totalRecipes: 2
+  }
+};
+
+let appData = loadData();
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return JSON.parse(JSON.stringify(DEFAULT_DATA));
+}
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+  } catch (e) { /* ignore */ }
+}
+
+function resetData() {
+  appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  saveData();
+}
+
+/* ========== NAVIGATION STACK ========== */
+const pages = document.querySelectorAll('.page');
+const pageStack = ['home'];
+
+function goTo(pageId, opts = {}) {
+  const target = document.getElementById('page' + pageId.charAt(0).toUpperCase() + pageId.slice(1));
+  if (!target) return;
+
+  const currentId = pageStack[pageStack.length - 1];
+  if (currentId === pageId) return;
+
+  // Push to stack if not going back
+  if (opts.back) {
+    pageStack.pop();
+  } else {
+    pageStack.push(pageId);
+  }
+
+  pages.forEach(p => {
+    p.classList.remove('active', 'behind');
+    const pId = p.dataset.page;
+    if (pId === pageId) {
+      p.classList.add('active');
+    } else if (pId === currentId && !opts.back) {
+      p.classList.add('behind');
+    }
+  });
+
+  // Status bar text color adjustment for dark hero pages
+  const statusBar = document.getElementById('statusBar');
+  const homeIndicator = document.getElementById('homeIndicator');
+  if (['home', 'rating'].includes(pageId)) {
+    // pages with dark top — but actually only home hero is dark, nav is light
+    // leave light since nav bars are light
+  }
+
+  // Scroll to top
+  const body = target.querySelector('.page-body');
+  if (body) body.scrollTop = 0;
+
+  // Update tab bar
+  updateTabBar(pageId);
+
+  // Refresh content
+  if (pageId === 'home') renderHome();
+  if (pageId === 'beans') renderBeans();
+  if (pageId === 'brew') renderBrew();
+  if (pageId === 'rating') renderRating();
+  if (pageId === 'recipes') renderRecipes();
+}
+
+function goBack() {
+  if (pageStack.length <= 1) return;
+  const prevPage = pageStack[pageStack.length - 2];
+  goTo(prevPage, { back: true });
+}
+
+function updateTabBar(pageId) {
+  const tabs = document.querySelectorAll('.tab-item');
+  tabs.forEach(t => {
+    const tab = t.dataset.tab;
+    t.classList.toggle('active', tab === pageId);
+  });
+}
+
+// Back buttons
+document.querySelectorAll('.nav-btn[data-action="back"]').forEach(btn => {
+  btn.addEventListener('click', goBack);
+});
+
+// Tab bar navigation (non-home tabs open as pages)
+document.getElementById('tabRecipes').addEventListener('click', () => goTo('recipes'));
+document.getElementById('tabBeans').addEventListener('click', () => goTo('beans'));
+document.getElementById('tabSettings').addEventListener('click', () => openSheet('sheetSettings'));
+document.querySelector('.tab-item[data-tab="home"]').addEventListener('click', () => {
+  while (pageStack.length > 1) pageStack.pop();
+  goTo('home');
+});
+
+/* ========== CUSTOM CURSOR ========== */
+const cursorDrip = document.getElementById('cursorDrip');
+const cursorRing = document.getElementById('cursorRing');
+const phoneShell = document.getElementById('phoneShell');
+let cursorX = 195, cursorY = 422;
+let cursorState = 'default';
+
+function updateCursor(x, y) {
+  cursorX = x; cursorY = y;
+  cursorDrip.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+  cursorRing.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+}
+
+phoneShell.addEventListener('mousemove', (e) => {
+  const rect = phoneShell.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  updateCursor(x, y);
+
+  // Hover detection
+  const target = e.target;
+  const isClickable = target.closest('button, .nav-btn, .nav-action, .start-brew-btn, .finish-brew-btn, .save-recipe-btn, .bean-card, .brew-card, .timeline-item, .recipe-card, .ratio-chip, .grind-mark, .slider-thumb, .segment-node, .radar-dot, .flavor-tag, .star, .add-segment-btn, .brew-recipe-btn, .tab-item, .sheet-grabber, .add-bean-card, .form-submit');
+  cursorRing.classList.toggle('hover', !!isClickable);
+});
+
+phoneShell.addEventListener('mousedown', () => {
+  cursorRing.classList.add('pressed');
+});
+phoneShell.addEventListener('mouseup', () => {
+  cursorRing.classList.remove('pressed');
+});
+
+// Set cursor state
+function setCursorState(state) {
+  cursorState = state;
+  cursorDrip.className = 'cursor-drip state-' + state;
+}
+
+/* ========== TOAST ========== */
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+/* ========== SHEETS ========== */
+const sheetBackdrop = document.getElementById('sheetBackdrop');
+let currentSheet = null;
+
+function openSheet(id) {
+  const sheet = document.getElementById(id);
+  if (!sheet) return;
+  sheetBackdrop.classList.add('show');
+  sheet.classList.add('show');
+  currentSheet = id;
+}
+function closeSheet() {
+  if (!currentSheet) return;
+  const sheet = document.getElementById(currentSheet);
+  sheetBackdrop.classList.remove('show');
+  if (sheet) sheet.classList.remove('show');
+  currentSheet = null;
+}
+sheetBackdrop.addEventListener('click', closeSheet);
+
+// Settings sheet actions
+document.getElementById('goDesignBtn').addEventListener('click', () => {
+  closeSheet();
+  setTimeout(() => goTo('design'), 200);
+});
+document.getElementById('goApiBtn').addEventListener('click', () => {
+  closeSheet();
+  setTimeout(() => goTo('api'), 200);
+});
+document.getElementById('resetDataBtn').addEventListener('click', () => {
+  resetData();
+  closeSheet();
+  showToast('数据已重置');
+  renderHome();
+});
+
+/* ========== HOME PAGE ========== */
+function renderHome() {
+  // Greeting
+  const now = new Date();
+  const hour = now.getHours();
+  let greeting = '早上好';
+  if (hour >= 11 && hour < 14) greeting = '中午好';
+  else if (hour >= 14 && hour < 18) greeting = '下午好';
+  else if (hour >= 18 || hour < 5) greeting = '晚上好';
+  document.getElementById('greetingText').textContent = greeting;
+  document.getElementById('dateText').textContent =
+    `${now.getMonth() + 1}月${now.getDate()}日 · ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
+
+  // Stats
+  document.getElementById('statTotal').textContent = appData.brews.length;
+  document.getElementById('statRecipes').textContent = appData.recipes.length;
+  document.getElementById('statBeans').textContent = appData.beans.length;
+
+  // Recent brew
+  const recentCard = document.getElementById('recentBrewCard');
+  if (appData.brews.length > 0) {
+    const recent = appData.brews[0];
+    recentCard.innerHTML = `
+      <div class="brew-card" onclick="openBrewDetail('${recent.id}')">
+        <div class="brew-card-top">
+          <div class="brew-bean-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22c5 0 9-3.6 9-8s-4-8-9-8-9 3.6-9 8 4 8 9 8z"/>
+            </svg>
+          </div>
+          <div class="brew-card-info">
+            <div class="brew-card-title">${recent.beanName}</div>
+            <div class="brew-card-meta">${recent.beanOrigin} · ${timeAgo(recent.createdAt)}</div>
+          </div>
+          <div class="brew-card-rating">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 15,9 22,9.3 16.5,14.2 18.2,21 12,17.3 5.8,21 7.5,14.2 2,9.3 9,9"/></svg>
+            ${recent.rating.overall.toFixed(1)}
+          </div>
+        </div>
+        <div class="brew-card-params">
+          <div class="param-pill"><div class="val">${recent.dose}g</div><div class="label">粉量</div></div>
+          <div class="param-pill"><div class="val">${recent.temp}°</div><div class="label">水温</div></div>
+          <div class="param-pill"><div class="val">${recent.ratio}</div><div class="label">粉水比</div></div>
+          <div class="param-pill"><div class="val">${recent.grind}</div><div class="label">研磨</div></div>
+        </div>
+      </div>
+    `;
+  } else {
+    recentCard.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v6m0 10v6m11-11h-6M7 12H1m15.5-7.5l-4.2 4.2M7.7 16.3l-4.2 4.2m0-17l4.2 4.2m8.6 8.6l4.2 4.2"/>
+        </svg>
+        <div class="msg">还没有冲煮记录</div>
+        <div class="sub">点击上方按钮开始你的第一冲</div>
+      </div>
+    `;
+  }
+
+  // Timeline
+  const timeline = document.getElementById('timelineContainer');
+  document.getElementById('timelineCount').textContent = `${appData.brews.length} 条`;
+
+  if (appData.brews.length === 0) {
+    timeline.innerHTML = `
+      <div class="empty-state" style="padding: 32px 0;">
+        <div class="msg">暂无历史记录</div>
+      </div>
+    `;
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  appData.brews.forEach(b => {
+    const d = new Date(b.createdAt);
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(b);
+  });
+
+  let html = '';
+  Object.keys(groups).forEach(key => {
+    const d = new Date(key);
+    const label = formatDate(d);
+    html += `<div class="timeline-group">
+      <div class="timeline-date">${label}</div>`;
+    groups[key].forEach(b => {
+      const t = new Date(b.createdAt);
+      const timeStr = `${padZero(t.getHours())}:${padZero(t.getMinutes())}`;
+      html += `
+        <div class="timeline-item" onclick="openBrewDetail('${b.id}')">
+          <div class="timeline-item-time">${timeStr}</div>
+          <div class="timeline-item-body">
+            <div class="timeline-item-name">${b.beanName}</div>
+            <div class="timeline-item-flavors">${b.tags.join(' · ')}</div>
+          </div>
+          <div class="timeline-item-score">${b.rating.overall.toFixed(1)}</div>
+        </div>
+      `;
+    });
+    html += '</div>';
+  });
+  timeline.innerHTML = html;
+}
+
+function formatDate(d) {
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return '今天';
+  if (d.toDateString() === yesterday.toDateString()) return '昨天';
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+function padZero(n) { return n < 10 ? '0' + n : '' + n; }
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min}分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}小时前`;
+  const day = Math.floor(hr / 24);
+  return `${day}天前`;
+}
+
+function openBrewDetail(id) {
+  const brew = appData.brews.find(b => b.id === id);
+  if (!brew) return;
+  // Open recipe-like detail sheet
+  const body = document.getElementById('recipeDetailBody');
+  body.innerHTML = buildBrewDetailHTML(brew);
+  openSheet('sheetRecipeDetail');
+}
+
+function buildBrewDetailHTML(brew) {
+  const segmentsHTML = brew.segments.map((s, i) => `
+    <div class="segment-row">
+      <span class="seg-name">${s.name}</span>
+      <span class="seg-value">${formatTime(s.time)}</span>
+      <div class="seg-bar"><div class="seg-bar-fill" style="width:${s.water / brew.totalWater * 100}%"></div></div>
+      <span class="seg-water">${s.water}g</span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="recipe-detail-hero">
+      <div class="name">${brew.beanName}</div>
+      <div class="origin">${brew.beanOrigin}</div>
+      <div class="score-row">
+        <div class="big-score">${brew.rating.overall.toFixed(1)}</div>
+        <div class="score-total">/ 10 综合评分</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 16px;">
+      <div class="param-pill"><div class="val">${brew.dose}g</div><div class="label">粉量</div></div>
+      <div class="param-pill"><div class="val">${brew.temp}°</div><div class="label">水温</div></div>
+      <div class="param-pill"><div class="val">${brew.ratio}</div><div class="label">粉水比</div></div>
+      <div class="param-pill"><div class="val">${brew.grind}</div><div class="label">研磨</div></div>
+    </div>
+    <div style="font-size: 13px; font-weight: 600; color: var(--brew-800); margin-bottom: 8px;">注水节奏</div>
+    <div style="margin-bottom: 16px;">${segmentsHTML}</div>
+    <div style="font-size: 13px; font-weight: 600; color: var(--brew-800); margin-bottom: 8px;">风味评分</div>
+    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 16px;">
+      <div class="param-pill"><div class="val">${brew.rating.acidity.toFixed(1)}</div><div class="label">酸度</div></div>
+      <div class="param-pill"><div class="val">${brew.rating.sweetness.toFixed(1)}</div><div class="label">甜度</div></div>
+      <div class="param-pill"><div class="val">${brew.rating.body.toFixed(1)}</div><div class="label">醇厚</div></div>
+      <div class="param-pill"><div class="val">${brew.rating.clean.toFixed(1)}</div><div class="label">干净</div></div>
+      <div class="param-pill"><div class="val">${brew.rating.aroma.toFixed(1)}</div><div class="label">香气</div></div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <span style="font-size:13px; font-weight:600; color:var(--brew-800);">风味标签 · </span>
+      <span style="font-size:12px; color:var(--brew-500);">${brew.tags.join('、')}</span>
+    </div>
+    ${brew.notes ? `<div style="background:var(--cream-100); padding:12px; border-radius:8px; font-size:13px; color:var(--brew-700); line-height:1.6; margin-top:12px;">${brew.notes}</div>` : ''}
+    <div style="margin-top:20px;" class="brew-recipe-btn" onclick="brewFromBrew('${brew.id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v6m0 10v6m11-11h-6M7 12H1m15.5-7.5l-4.2 4.2M7.7 16.3l-4.2 4.2m0-17l4.2 4.2m8.6 8.6l4.2 4.2"/>
+      </svg>
+      按此参数再次冲煮
+    </div>
+  `;
+}
+
+function brewFromBrew(id) {
+  const brew = appData.brews.find(b => b.id === id);
+  if (!brew) return;
+  currentBrew = JSON.parse(JSON.stringify(brew));
+  currentBrew.id = 'brew_draft_' + Date.now();
+  closeSheet();
+  setTimeout(() => goTo('brew'), 200);
+}
+
+// Start brew button
+document.getElementById('startBrewBtn').addEventListener('click', () => {
+  // Reset to defaults
+  const defaultBean = appData.beans[0];
+  currentBrew = {
+    id: 'brew_draft_' + Date.now(),
+    beanId: defaultBean.id,
+    beanName: defaultBean.name,
+    beanOrigin: `${defaultBean.origin} · ${defaultBean.process} · ${defaultBean.roast}`,
+    dose: 15,
+    temp: 92,
+    ratio: '1:15',
+    grind: 3.5,
+    segments: [
+      { name: '闷蒸', time: 30, water: 30 },
+      { name: '一段', time: 60, water: 120 },
+      { name: '二段', time: 60, water: 75 }
+    ],
+    totalWater: 225,
+    totalTime: 150,
+    rating: { acidity: 7.5, sweetness: 7.5, body: 7.0, clean: 8.0, aroma: 7.5, overall: 7.6 },
+    tags: [],
+    notes: ''
+  };
+  goTo('brew');
+});
+
+/* ========== BEAN PAGE ========== */
+let selectedBeanId = null;
+let beanSelectionMode = 'browse'; // 'browse' or 'select'
+
+function renderBeans() {
+  const list = document.getElementById('beanList');
+  let html = '';
+
+  appData.beans.forEach(bean => {
+    const isSelected = bean.id === selectedBeanId;
+    html += `
+      <div class="bean-card ${isSelected ? 'selected' : ''}" data-bean-id="${bean.id}">
+        <div class="bean-avatar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22c5 0 9-3.6 9-8s-4-8-9-8-9 3.6-9 8 4 8 9 8z"/>
+            <path d="M12 6c0 3.5-1.5 8 0 10"/>
+          </svg>
+        </div>
+        <div class="bean-info">
+          <div class="bean-name">${bean.name}</div>
+          <div class="bean-origin">${bean.origin} · ${bean.process} · ${bean.roast}</div>
+          <div class="bean-tags">
+            ${bean.flavors.slice(0, 3).map(f => `<span class="bean-tag">${f}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+    <div class="bean-card add-bean-card" id="addBeanCardBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      新增咖啡豆
+    </div>
+  `;
+
+  list.innerHTML = html;
+
+  // Bind bean card clicks
+  list.querySelectorAll('.bean-card[data-bean-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.dataset.beanId;
+      if (beanSelectionMode === 'select') {
+        selectedBeanId = id;
+        renderBeans();
+      } else {
+        // browse mode - just select visually (toast info)
+        const bean = appData.beans.find(b => b.id === id);
+        showToast(`${bean.name}`);
+      }
+    });
+  });
+
+  // Add bean card
+  document.getElementById('addBeanCardBtn').addEventListener('click', () => openSheet('sheetAddBean'));
+}
+
+// Bean done button (in select mode)
+document.getElementById('beanDoneBtn').addEventListener('click', () => {
+  if (beanSelectionMode === 'select' && selectedBeanId) {
+    const bean = appData.beans.find(b => b.id === selectedBeanId);
+    if (bean) {
+      currentBrew.beanId = bean.id;
+      currentBrew.beanName = bean.name;
+      currentBrew.beanOrigin = `${bean.origin} · ${bean.process} · ${bean.roast}`;
+    }
+    goBack();
+  } else {
+    goBack();
+  }
+});
+
+// Add bean submit
+document.getElementById('submitNewBean').addEventListener('click', () => {
+  const name = document.getElementById('newBeanName').value.trim();
+  const origin = document.getElementById('newBeanOrigin').value.trim();
+  const process = document.getElementById('newBeanProcess').value.trim();
+  const roast = document.getElementById('newBeanRoast').value.trim();
+  const flavorsStr = document.getElementById('newBeanFlavors').value.trim();
+
+  if (!name) { showToast('请输入豆子名称'); return; }
+
+  const flavors = flavorsStr ? flavorsStr.split(/[,，]/).map(s => s.trim()).filter(Boolean) : [];
+  const newBean = {
+    id: 'bean_' + Date.now(),
+    name,
+    origin: origin || '未知产地',
+    process: process || '未知',
+    roast: roast || '中烘',
+    altitude: '',
+    flavors
+  };
+  appData.beans.unshift(newBean);
+  saveData();
+
+  // Clear form
+  document.getElementById('newBeanName').value = '';
+  document.getElementById('newBeanOrigin').value = '';
+  document.getElementById('newBeanProcess').value = '';
+  document.getElementById('newBeanRoast').value = '';
+  document.getElementById('newBeanFlavors').value = '';
+
+  closeSheet();
+  showToast('豆子已添加');
+  renderBeans();
+});
+
+/* ========== BREW PAGE (CORE) ========== */
+let currentBrew = null;
+let waterAnimFrame = null;
+let isDraggingNode = false;
+let dragNodeIndex = -1;
+
+function renderBrew() {
+  if (!currentBrew) return;
+
+  // Bean info
+  document.getElementById('brewBeanInfo').innerHTML = `
+    <div class="bean-name">${currentBrew.beanName}</div>
+    <div class="bean-origin">${currentBrew.beanOrigin}</div>
+  `;
+
+  // Set sliders
+  setSlider('dose', currentBrew.dose, 10, 25);
+  setSlider('temp', currentBrew.temp, 85, 100);
+
+  // Ratio
+  document.querySelectorAll('#ratioOptions .ratio-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.ratio === currentBrew.ratio);
+  });
+  document.getElementById('ratioVal').textContent = currentBrew.ratio;
+
+  // Grind wheel
+  renderGrindWheel();
+  document.getElementById('grindVal').textContent = currentBrew.grind.toFixed(1);
+  updateGrindLabel();
+
+  // Segments & timeline
+  renderSegments();
+  renderTimeline();
+}
+
+// Click bean row → change bean
+document.getElementById('brewBeanRow').addEventListener('click', () => {
+  selectedBeanId = currentBrew.beanId;
+  beanSelectionMode = 'select';
+  goTo('beans');
+});
+
+// Slider setup
+function setSlider(name, value, min, max) {
+  const pct = (value - min) / (max - min) * 100;
+  document.getElementById(name + 'Fill').style.width = pct + '%';
+  document.getElementById(name + 'Thumb').style.left = pct + '%';
+  document.getElementById(name + 'Val').textContent = value;
+}
+
+function setupSlider(name, min, max, step, onChange) {
+  const track = document.getElementById(name + 'Slider');
+  const thumb = document.getElementById(name + 'Thumb');
+  const fill = document.getElementById(name + 'Fill');
+  const valEl = document.getElementById(name + 'Val');
+  let dragging = false;
+
+  function updateFromEvent(e) {
+    const rect = track.getBoundingClientRect();
+    let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    x = Math.max(0, Math.min(rect.width, x));
+    const pct = x / rect.width;
+    let value = min + pct * (max - min);
+    value = Math.round(value / step) * step;
+    value = Math.max(min, Math.min(max, value));
+
+    const displayPct = (value - min) / (max - min) * 100;
+    fill.style.width = displayPct + '%';
+    thumb.style.left = displayPct + '%';
+    valEl.textContent = value;
+
+    onChange(value);
+
+    // Cursor state based on temp
+    if (name === 'temp') {
+      if (value >= 95) setCursorState('hot');
+      else if (value >= 90) setCursorState('warm');
+      else setCursorState('default');
+    }
+  }
+
+  thumb.addEventListener('mousedown', (e) => {
+    dragging = true;
+    e.preventDefault();
+  });
+  thumb.addEventListener('touchstart', (e) => {
+    dragging = true;
+    e.preventDefault();
+  }, { passive: false });
+
+  track.addEventListener('mousedown', (e) => {
+    dragging = true;
+    updateFromEvent(e);
+  });
+  track.addEventListener('touchstart', (e) => {
+    dragging = true;
+    updateFromEvent(e);
+  }, { passive: true });
+
+  document.addEventListener('mousemove', (e) => {
+    if (dragging) updateFromEvent(e);
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (dragging) updateFromEvent(e);
+  }, { passive: true });
+
+  document.addEventListener('mouseup', () => { dragging = false; setCursorState('default'); });
+  document.addEventListener('touchend', () => { dragging = false; });
+}
+
+// Dose slider
+setupSlider('dose', 10, 25, 0.5, (val) => {
+  if (currentBrew) {
+    currentBrew.dose = val;
+    updateTotalWater();
+  }
+});
+
+// Temp slider
+setupSlider('temp', 85, 100, 1, (val) => {
+  if (currentBrew) currentBrew.temp = val;
+});
+
+// Ratio chips
+document.querySelectorAll('#ratioOptions .ratio-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#ratioOptions .ratio-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentBrew.ratio = chip.dataset.ratio;
+    document.getElementById('ratioVal').textContent = chip.dataset.ratio;
+    updateTotalWater();
+  });
+});
+
+function updateTotalWater() {
+  if (!currentBrew) return;
+  const ratioParts = currentBrew.ratio.split(':');
+  const ratio = parseInt(ratioParts[1]);
+  const targetWater = Math.round(currentBrew.dose * ratio);
+
+  // Redistribute water proportionally across segments
+  const currentTotal = currentBrew.segments.reduce((s, seg) => s + seg.water, 0);
+  if (currentTotal > 0) {
+    let accumulated = 0;
+    currentBrew.segments.forEach((seg, i) => {
+      if (i === currentBrew.segments.length - 1) {
+        seg.water = targetWater - accumulated;
+      } else {
+        seg.water = Math.round(seg.water / currentTotal * targetWater);
+        accumulated += seg.water;
+      }
+    });
+  }
+  currentBrew.totalWater = targetWater;
+  document.getElementById('totalWater').innerHTML = targetWater + '<small>g</small>';
+  renderSegments();
+  renderTimeline();
+}
+
+// Grind wheel
+function renderGrindWheel() {
+  const wheel = document.getElementById('grindWheel');
+  let html = '';
+  for (let i = 1; i <= 8; i += 0.5) {
+    const isActive = Math.abs(i - currentBrew.grind) < 0.1;
+    const isInt = Number.isInteger(i);
+    html += `
+      <div class="grind-mark ${isActive ? 'active' : ''}" data-grind="${i}">
+        <div class="dot" style="${isInt ? '' : 'width:4px;height:4px;'}"></div>
+        <div class="num">${isInt ? i : ''}</div>
+      </div>
+    `;
+  }
+  wheel.innerHTML = html;
+
+  wheel.querySelectorAll('.grind-mark').forEach(mark => {
+    mark.addEventListener('click', () => {
+      currentBrew.grind = parseFloat(mark.dataset.grind);
+      document.getElementById('grindVal').textContent = currentBrew.grind.toFixed(1);
+      renderGrindWheel();
+      updateGrindLabel();
+    });
+  });
+}
+
+function updateGrindLabel() {
+  const g = currentBrew.grind;
+  let label = '';
+  if (g <= 2) label = '细研磨 · 面粉粗细';
+  else if (g <= 3) label = '中细研磨 · 细砂糖粗细';
+  else if (g <= 4.5) label = '中研磨 · 白砂糖粗细';
+  else if (g <= 6) label = '中粗研磨 · 粗砂糖粗细';
+  else label = '粗研磨 · 海盐粗细';
+  document.getElementById('grindLabel').textContent = label;
+}
+
+/* === WATER TIMELINE (CORE INTERACTION) === */
+
+function renderSegments() {
+  const list = document.getElementById('segmentsList');
+  let html = '';
+  let cumTime = 0;
+  currentBrew.segments.forEach((seg, i) => {
+    cumTime += seg.time;
+    const pct = seg.water / currentBrew.totalWater * 100;
+    html += `
+      <div class="segment-row">
+        <span class="seg-name">${seg.name}</span>
+        <span class="seg-value">${formatTime(seg.time)}</span>
+        <div class="seg-bar"><div class="seg-bar-fill" style="width:${pct}%"></div></div>
+        <span class="seg-water">${seg.water}g</span>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+
+  // Update total
+  const totalTime = currentBrew.segments.reduce((s, seg) => s + seg.time, 0);
+  currentBrew.totalTime = totalTime;
+  document.getElementById('totalDuration').innerHTML = formatTime(totalTime) + '<small>min</small>';
+  document.getElementById('totalTimeLabel').textContent = '总时长 ' + formatTime(totalTime);
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return padZero(m) + ':' + padZero(s);
+}
+
+function renderTimeline() {
+  const container = document.getElementById('timelineVisual');
+  const markers = document.getElementById('segmentMarkers');
+  const nodes = document.getElementById('segmentNodes');
+  const labels = document.getElementById('segmentLabels');
+  const streamPath = document.getElementById('waterStream');
+
+  const totalTime = currentBrew.totalTime;
+  const w = 350; // svg width
+  const h = 120; // svg height
+
+  // Build stream path
+  // Water stream: a wavy line that flows from top-left to bottom-right
+  // Flow rate (thickness) corresponds to water per second in each segment
+  let cumTime = 0;
+  let d = '';
+  let prevX = 0, prevY = h * 0.25;
+
+  // Draw each segment as a curved portion
+  const segments = currentBrew.segments;
+  let pathParts = [];
+  let markerHTML = '';
+  let nodeHTML = '';
+  let labelHTML = '';
+
+  // For simplicity, segments are laid out horizontally over time
+  // Water stream flows from top-left downwards and rightwards
+  // Flow rate = water / time → affects stroke-width visualised as wave amplitude
+
+  let currentX = 0;
+  segments.forEach((seg, i) => {
+    const segWidth = (seg.time / totalTime) * w;
+    const endX = currentX + segWidth;
+    const flowRate = seg.water / seg.time; // g/s
+    // Amplitude: higher flow rate = bigger wave (thicker visual)
+    const amplitude = Math.min(30, 8 + flowRate * 3);
+    const midX = currentX + segWidth / 2;
+
+    // Start y for this segment
+    const startY = h * 0.2 + i * (h * 0.08);
+    const endY = h * 0.25 + (i + 1) * (h * 0.06);
+    if (endY > h * 0.85) endY = h * 0.85;
+
+    // Sine-wave-like path through the segment
+    const controlY1 = startY - amplitude;
+    const controlY2 = endY + amplitude;
+
+    if (i === 0) {
+      pathParts.push(`M ${currentX} ${startY}`);
+    }
+    // Smooth curve through segment
+    pathParts.push(`C ${currentX + segWidth * 0.25} ${controlY1}, ${currentX + segWidth * 0.75} ${controlY2}, ${endX} ${endY}`);
+
+    // Segment marker (dashed line) at segment boundary (after first segment)
+    if (i > 0) {
+      const pct = currentX / w * 100;
+      markerHTML += `<div class="segment-marker" style="left:${pct}%"></div>`;
+    }
+
+    // Segment label at midpoint
+    const midPct = midX / w * 100;
+    labelHTML += `<div class="segment-label" style="left:${midPct}%">${seg.name}</div>`;
+
+    // Node at end of segment (draggable)
+    const nodePct = endX / w * 100;
+    nodeHTML += `
+      <div class="segment-node" data-node="${i}" style="left:${nodePct}%; bottom:${h - endY - 14}px;">
+        <div class="segment-node-value">${seg.water}g</div>
+      </div>
+    `;
+
+    currentX = endX;
+  });
+
+  streamPath.setAttribute('d', pathParts.join(' '));
+
+  // Stroke width based on average flow
+  const avgFlow = currentBrew.totalWater / totalTime;
+  const strokeWidth = Math.max(4, Math.min(12, avgFlow * 1.8));
+  streamPath.setAttribute('stroke-width', strokeWidth);
+
+  markers.innerHTML = markerHTML;
+  labels.innerHTML = labelHTML;
+  nodes.innerHTML = nodeHTML;
+
+  // Bind node drag
+  nodes.querySelectorAll('.segment-node').forEach(node => {
+    const idx = parseInt(node.dataset.node);
+    node.addEventListener('mousedown', (e) => startNodeDrag(idx, e));
+    node.addEventListener('touchstart', (e) => startNodeDrag(idx, e), { passive: false });
+  });
+
+  // Animate water particles
+  startWaterAnimation();
+}
+
+function startNodeDrag(idx, e) {
+  isDraggingNode = true;
+  dragNodeIndex = idx;
+  setCursorState('pour');
+  e.preventDefault();
+}
+
+document.addEventListener('mousemove', handleNodeDrag);
+document.addEventListener('touchmove', handleNodeDrag, { passive: false });
+document.addEventListener('mouseup', endNodeDrag);
+document.addEventListener('touchend', endNodeDrag);
+
+function handleNodeDrag(e) {
+  if (!isDraggingNode || !currentBrew) return;
+  const visual = document.getElementById('timelineVisual');
+  const rect = visual.getBoundingClientRect();
+  let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  x = Math.max(10, Math.min(rect.width - 10, x));
+  const pct = x / rect.width;
+  const totalTime = currentBrew.totalTime;
+
+  // Convert position to time
+  const newTime = Math.max(10, Math.round(pct * totalTime / 5) * 5);
+
+  // Adjust this segment's time (relative to previous cum time)
+  let prevCum = 0;
+  for (let i = 0; i < dragNodeIndex; i++) prevCum += currentBrew.segments[i].time;
+
+  const remainingAfter = totalTime - prevCum - currentBrew.segments[dragNodeIndex].time;
+  let segTime = newTime - prevCum;
+  segTime = Math.max(10, Math.min(totalTime - prevCum - 10, segTime));
+
+  // Adjust water proportionally
+  const oldTime = currentBrew.segments[dragNodeIndex].time;
+  const oldWater = currentBrew.segments[dragNodeIndex].water;
+  // Keep ratio somewhat but adjust total... actually let's keep total water fixed (dose ratio),
+  // and redistribute water between this and remaining segments by time ratio
+  currentBrew.segments[dragNodeIndex].time = segTime;
+
+  // Redistribute remaining time to next segments proportionally
+  const nextSegments = currentBrew.segments.slice(dragNodeIndex + 1);
+  const nextTotalTime = nextSegments.reduce((s, seg) => s + seg.time, 0);
+  const newNextTotal = totalTime - prevCum - segTime;
+  if (nextTotalTime > 0 && nextSegments.length > 0) {
+    let acc = 0;
+    nextSegments.forEach((seg, i) => {
+      if (i === nextSegments.length - 1) {
+        seg.time = Math.max(5, Math.round(newNextTotal - acc));
+      } else {
+        seg.time = Math.max(5, Math.round(seg.time / nextTotalTime * newNextTotal));
+        acc += seg.time;
+      }
+    });
+  }
+
+  // Update water amounts proportionally to time for each segment, keeping total fixed
+  const totalWater = currentBrew.totalWater;
+  const totalTimeNow = currentBrew.segments.reduce((s, seg) => s + seg.time, 0);
+  let accWater = 0;
+  currentBrew.segments.forEach((seg, i) => {
+    if (i === currentBrew.segments.length - 1) {
+      seg.water = totalWater - accWater;
+    } else {
+      seg.water = Math.round(seg.time / totalTimeNow * totalWater);
+      accWater += seg.water;
+    }
+  });
+
+  renderSegments();
+  renderTimeline();
+}
+
+function endNodeDrag() {
+  if (isDraggingNode) {
+    isDraggingNode = false;
+    dragNodeIndex = -1;
+    setCursorState('default');
+  }
+}
+
+/* === Water flow animation === */
+let particlePool = [];
+let lastParticleTime = 0;
+
+function startWaterAnimation() {
+  // Clean up old animation
+  if (waterAnimFrame) cancelAnimationFrame(waterAnimFrame);
+  // Clear existing particles from DOM
+  document.querySelectorAll('.water-particle').forEach(p => p.remove());
+  particlePool = [];
+
+  function animate(timestamp) {
+    if (!document.getElementById('pageBrew').classList.contains('active')) {
+      waterAnimFrame = requestAnimationFrame(animate);
+      return;
+    }
+
+    const visual = document.getElementById('timelineVisual');
+    if (!visual) { waterAnimFrame = requestAnimationFrame(animate); return; }
+
+    // Spawn particle periodically
+    if (timestamp - lastParticleTime > 120) {
+      spawnWaterParticle(visual);
+      lastParticleTime = timestamp;
+    }
+
+    // Update particles
+    const w = visual.offsetWidth;
+    const h = visual.offsetHeight;
+    const totalTime = currentBrew ? currentBrew.totalTime : 150;
+
+    particlePool = particlePool.filter(p => {
+      p.progress += p.speed;
+      if (p.progress >= 1) return false;
+
+      // Calculate position along the stream path
+      const path = document.getElementById('waterStream');
+      if (!path) return false;
+      const pathLen = path.getTotalLength();
+      const point = path.getPointAtLength(p.progress * pathLen);
+
+      p.el.style.left = point.x + 'px';
+      p.el.style.top = point.y + 'px';
+      p.el.style.opacity = Math.sin(p.progress * Math.PI) * 0.8;
+      return true;
+    });
+
+    waterAnimFrame = requestAnimationFrame(animate);
+  }
+  waterAnimFrame = requestAnimationFrame(animate);
+}
+
+function spawnWaterParticle(container) {
+  if (!currentBrew || currentBrew.segments.length === 0) return;
+  const particle = document.createElement('div');
+  particle.className = 'water-particle';
+  // Slight size variation based on total flow
+  const size = 2 + Math.random() * 3;
+  particle.style.width = size + 'px';
+  particle.style.height = size + 'px';
+  container.appendChild(particle);
+
+  particlePool.push({
+    el: particle,
+    progress: 0,
+    speed: 0.004 + Math.random() * 0.004 // varied speed
+  });
+}
+
+// Add segment button
+document.getElementById('addSegmentBtn').addEventListener('click', () => {
+  if (!currentBrew) return;
+  const names = ['三段', '四段', '五段', '六段'];
+  const nextIdx = currentBrew.segments.length - 1;
+  const name = names[Math.max(0, nextIdx - 1)] || ('段' + (currentBrew.segments.length));
+
+  // Add new segment with 20s, water proportionally deducted from last
+  const lastSeg = currentBrew.segments[currentBrew.segments.length - 1];
+  const newTime = 30;
+  const newWater = Math.round(lastSeg.water * 0.4);
+  lastSeg.water -= newWater;
+  lastSeg.time = Math.max(20, lastSeg.time - 20);
+
+  currentBrew.segments.push({ name, time: newTime, water: newWater });
+  currentBrew.totalTime = currentBrew.segments.reduce((s, seg) => s + seg.time, 0);
+
+  renderSegments();
+  renderTimeline();
+  showToast('已添加注水段');
+});
+
+// Finish brew button
+document.getElementById('finishBrewBtn').addEventListener('click', () => {
+  if (!currentBrew) return;
+  // Calculate overall rating average from default
+  goTo('rating');
+});
+
+/* ========== RATING PAGE ========== */
+let overallRating = 8.2;
+
+function renderRating() {
+  if (!currentBrew) return;
+  document.getElementById('ratingBeanName').textContent = currentBrew.beanName;
+  document.getElementById('ratingBeanOrigin').textContent = currentBrew.beanOrigin;
+
+  // Update sliders from currentBrew.rating
+  updateFlavorSlider('acidity', currentBrew.rating.acidity);
+  updateFlavorSlider('sweetness', currentBrew.rating.sweetness);
+  updateFlavorSlider('body', currentBrew.rating.body);
+  updateFlavorSlider('clean', currentBrew.rating.clean);
+  updateFlavorSlider('aroma', currentBrew.rating.aroma);
+
+  updateRadar();
+  renderOverallStars();
+  updateOverallFromAverage();
+
+  // Notes
+  document.getElementById('brewNotes').value = currentBrew.notes || '';
+
+  // Flavor tags - mark active ones based on currentBrew.tags
+  document.querySelectorAll('#flavorTags .flavor-tag').forEach(tag => {
+    tag.classList.toggle('active', currentBrew.tags.includes(tag.textContent));
+  });
+}
+
+function updateFlavorSlider(name, val) {
+  const pct = val / 10 * 100;
+  const slider = document.querySelector(`.f-slider[data-flavor="${name}"]`);
+  if (!slider) return;
+  slider.querySelector('.slider-fill').style.width = pct + '%';
+  slider.querySelector('.slider-thumb').style.left = pct + '%';
+  document.getElementById('flavor-' + name).textContent = val.toFixed(1);
+}
+
+// Setup flavor sliders
+document.querySelectorAll('.f-slider').forEach(slider => {
+  const flavor = slider.dataset.flavor;
+  const track = slider;
+  const thumb = slider.querySelector('.slider-thumb');
+  const fill = slider.querySelector('.slider-fill');
+  let dragging = false;
+
+  function updateFromEvent(e) {
+    const rect = track.getBoundingClientRect();
+    let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    x = Math.max(0, Math.min(rect.width, x));
+    const pct = x / rect.width;
+    let value = Math.round(pct * 10 * 2) / 2; // 0.5 step
+    value = Math.max(0, Math.min(10, value));
+
+    fill.style.width = (value / 10 * 100) + '%';
+    thumb.style.left = (value / 10 * 100) + '%';
+    document.getElementById('flavor-' + flavor).textContent = value.toFixed(1);
+
+    if (currentBrew) {
+      currentBrew.rating[flavor] = value;
+      updateRadar();
+      updateOverallFromAverage();
+    }
+  }
+
+  thumb.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); });
+  thumb.addEventListener('touchstart', (e) => { dragging = true; e.preventDefault(); }, { passive: false });
+  track.addEventListener('mousedown', (e) => { dragging = true; updateFromEvent(e); });
+  track.addEventListener('touchstart', (e) => { dragging = true; updateFromEvent(e); }, { passive: true });
+
+  document.addEventListener('mousemove', (e) => { if (dragging) updateFromEvent(e); });
+  document.addEventListener('touchmove', (e) => { if (dragging) updateFromEvent(e); }, { passive: true });
+  document.addEventListener('mouseup', () => { dragging = false; });
+  document.addEventListener('touchend', () => { dragging = false; });
+});
+
+// Radar update
+function updateRadar() {
+  if (!currentBrew) return;
+  const r = currentBrew.rating;
+  // Center is at 120, 120. Max radius = 80 (from y=40 to center y=120)
+  // Axes: top(acidity), right-top(sweetness), right-bottom(body), left-bottom(clean), left-top(aroma)
+  const cx = 120, cy = 120;
+  const maxR = 80;
+
+  function pointFor(angleDeg, value) {
+    const rad = (angleDeg - 90) * Math.PI / 180;
+    const radius = (value / 10) * maxR;
+    return [cx + radius * Math.cos(rad), cy + radius * Math.sin(rad)];
+  }
+
+  const pAcidity = pointFor(0, r.acidity);
+  const pSweet = pointFor(72, r.sweetness);
+  const pBody = pointFor(144, r.body);
+  const pClean = pointFor(216, r.clean);
+  const pAroma = pointFor(288, r.aroma);
+
+  const dataEl = document.getElementById('radarData');
+  dataEl.setAttribute('points',
+    `${pAcidity[0]},${pAcidity[1]} ${pSweet[0]},${pSweet[1]} ${pBody[0]},${pBody[1]} ${pClean[0]},${pClean[1]} ${pAroma[0]},${pAroma[1]}`
+  );
+
+  // Update dots
+  const dots = document.querySelectorAll('.radar-dot');
+  const positions = [pAcidity, pSweet, pBody, pClean, pAroma];
+  dots.forEach((dot, i) => {
+    dot.setAttribute('cx', positions[i][0]);
+    dot.setAttribute('cy', positions[i][1]);
+  });
+}
+
+// Radar dot drag
+document.querySelectorAll('.radar-dot').forEach(dot => {
+  let dragging = false;
+  const axis = dot.dataset.axis;
+  const svg = document.getElementById('radarSvg');
+
+  function angleForAxis(a) {
+    const map = { acidity: 0, sweetness: 72, body: 144, clean: 216, aroma: 288 };
+    return map[a];
+  }
+
+  function updateFromEvent(e) {
+    const rect = svg.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const svgW = rect.width, svgH = rect.height;
+    const cx = svgW / 2, cy = svgH / 2;
+    const maxR = svgW * 80 / 240;
+
+    // Constrain to axis direction
+    const angleRad = (angleForAxis(axis) - 90) * Math.PI / 180;
+    // Project point onto axis direction
+    const dx = x - cx, dy = y - cy;
+    const axisX = Math.cos(angleRad), axisY = Math.sin(angleRad);
+    let proj = dx * axisX + dy * axisY;
+    proj = Math.max(0, Math.min(maxR, proj));
+
+    const value = Math.round((proj / maxR) * 10 * 2) / 2;
+    if (currentBrew) {
+      currentBrew.rating[axis] = value;
+      updateFlavorSlider(axis, value);
+      updateRadar();
+      updateOverallFromAverage();
+    }
+  }
+
+  dot.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); });
+  dot.addEventListener('touchstart', (e) => { dragging = true; e.preventDefault(); }, { passive: false });
+  document.addEventListener('mousemove', (e) => { if (dragging) updateFromEvent(e); });
+  document.addEventListener('touchmove', (e) => { if (dragging) updateFromEvent(e); }, { passive: true });
+  document.addEventListener('mouseup', () => { dragging = false; });
+  document.addEventListener('touchend', () => { dragging = false; });
+});
+
+// Overall rating
+function updateOverallFromAverage() {
+  if (!currentBrew) return;
+  const r = currentBrew.rating;
+  const avg = (r.acidity + r.sweetness + r.body + r.clean + r.aroma) / 5;
+  r.overall = Math.round(avg * 10) / 10;
+  document.getElementById('overallScore').textContent = r.overall.toFixed(1);
+  renderOverallStars();
+}
+
+function renderOverallStars() {
+  const container = document.getElementById('overallStars');
+  if (!currentBrew) return;
+  const score = currentBrew.rating.overall;
+  const starCount = 5;
+  const fullStars = Math.floor(score / 2);
+  const hasHalf = (score / 2 - fullStars) >= 0.25 && (score / 2 - fullStars) < 0.75;
+
+  let html = '';
+  for (let i = 0; i < starCount; i++) {
+    let fillColor;
+    if (i < fullStars) fillColor = '#C28756';
+    else if (i === fullStars && hasHalf) fillColor = 'url(#halfGrad)';
+    else fillColor = '#E8CEB0';
+
+    html += `
+      <svg class="star" data-star="${i + 1}" viewBox="0 0 24 24" style="width:32px;height:32px;">
+        <defs>
+          <linearGradient id="halfGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="50%" stop-color="#C28756"/>
+            <stop offset="50%" stop-color="#E8CEB0"/>
+          </linearGradient>
+        </defs>
+        <polygon points="12,2 15,9 22,9.3 16.5,14.2 18.2,21 12,17.3 5.8,21 7.5,14.2 2,9.3 9,9"
+                 fill="${fillColor}" stroke="none"/>
+      </svg>
+    `;
+  }
+  container.innerHTML = html;
+
+  // Star click
+  container.querySelectorAll('.star').forEach((star, i) => {
+    star.addEventListener('click', () => {
+      if (!currentBrew) return;
+      const newScore = (i + 1) * 2;
+      currentBrew.rating.overall = newScore;
+      document.getElementById('overallScore').textContent = newScore.toFixed(1);
+      renderOverallStars();
+    });
+  });
+}
+
+// Flavor tags
+document.querySelectorAll('#flavorTags .flavor-tag').forEach(tag => {
+  tag.addEventListener('click', () => {
+    if (!currentBrew) return;
+    const name = tag.textContent;
+    const idx = currentBrew.tags.indexOf(name);
+    if (idx >= 0) currentBrew.tags.splice(idx, 1);
+    else currentBrew.tags.push(name);
+    tag.classList.toggle('active');
+  });
+});
+
+// Notes
+document.getElementById('brewNotes').addEventListener('input', (e) => {
+  if (currentBrew) currentBrew.notes = e.target.value;
+});
+
+// Save recipe button
+document.getElementById('saveRecipeBtn').addEventListener('click', () => {
+  if (!currentBrew) return;
+
+  // Create brew record
+  const brew = {
+    id: 'brew_' + Date.now(),
+    beanId: currentBrew.beanId,
+    beanName: currentBrew.beanName,
+    beanOrigin: currentBrew.beanOrigin,
+    dose: currentBrew.dose,
+    temp: currentBrew.temp,
+    ratio: currentBrew.ratio,
+    grind: currentBrew.grind,
+    segments: JSON.parse(JSON.stringify(currentBrew.segments)),
+    totalWater: currentBrew.totalWater,
+    totalTime: currentBrew.totalTime,
+    rating: JSON.parse(JSON.stringify(currentBrew.rating)),
+    tags: [...currentBrew.tags],
+    notes: currentBrew.notes,
+    createdAt: Date.now()
+  };
+  appData.brews.unshift(brew);
+
+  // Create recipe
+  const recipe = {
+    id: 'recipe_' + Date.now(),
+    brewId: brew.id,
+    beanId: brew.beanId,
+    beanName: brew.beanName,
+    beanOrigin: brew.beanOrigin,
+    name: `${brew.beanName.split('·')[0].trim()}方案`,
+    dose: brew.dose,
+    temp: brew.temp,
+    ratio: brew.ratio,
+    grind: brew.grind,
+    segments: brew.segments,
+    totalWater: brew.totalWater,
+    totalTime: brew.totalTime,
+    rating: brew.rating,
+    tags: brew.tags,
+    notes: brew.notes,
+    createdAt: Date.now()
+  };
+  appData.recipes.unshift(recipe);
+  saveData();
+
+  // Pop back to home
+  while (pageStack.length > 1) pageStack.pop();
+  goTo('home');
+  showToast('冲煮完成 · 已存入方案库');
+});
+
+/* ========== RECIPE LIBRARY ========== */
+function renderRecipes() {
+  const list = document.getElementById('recipeList');
+
+  if (appData.recipes.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <div class="msg">还没有沉淀的方案</div>
+        <div class="sub">完成冲煮并评分后，可保存为方案</div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  appData.recipes.forEach(r => {
+    html += `
+      <div class="recipe-card" data-recipe-id="${r.id}">
+        <div class="recipe-card-head">
+          <div class="recipe-score-badge">
+            <div class="num">${r.rating.overall.toFixed(1)}</div>
+            <div class="lbl">评分</div>
+          </div>
+          <div class="recipe-bean-info">
+            <div class="recipe-bean-name">${r.name}</div>
+            <div class="recipe-bean-origin">${r.beanName}</div>
+          </div>
+        </div>
+        <div class="recipe-params">
+          <div class="param-pill"><div class="val">${r.dose}g</div><div class="label">粉量</div></div>
+          <div class="param-pill"><div class="val">${r.temp}°</div><div class="label">水温</div></div>
+          <div class="param-pill"><div class="val">${r.ratio}</div><div class="label">粉水比</div></div>
+          <div class="param-pill"><div class="val">${r.grind}</div><div class="label">研磨</div></div>
+        </div>
+        <div class="brew-recipe-btn" data-brew-recipe="${r.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v6"/><path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-8z"/>
+            <path d="M8 2v4"/><path d="M16 2v4"/>
+          </svg>
+          按此方案冲煮
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+
+  // Recipe card click → detail sheet
+  list.querySelectorAll('.recipe-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('[data-brew-recipe]')) return;
+      const id = card.dataset.recipeId;
+      openRecipeDetail(id);
+    });
+  });
+
+  // Brew recipe buttons
+  list.querySelectorAll('[data-brew-recipe]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.brewRecipe;
+      brewFromRecipe(id);
+    });
+  });
+}
+
+function openRecipeDetail(id) {
+  const recipe = appData.recipes.find(r => r.id === id);
+  if (!recipe) return;
+  const body = document.getElementById('recipeDetailBody');
+
+  const segmentsHTML = recipe.segments.map((s, i) => `
+    <div class="segment-row">
+      <span class="seg-name">${s.name}</span>
+      <span class="seg-value">${formatTime(s.time)}</span>
+      <div class="seg-bar"><div class="seg-bar-fill" style="width:${s.water / recipe.totalWater * 100}%"></div></div>
+      <span class="seg-water">${s.water}g</span>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div class="recipe-detail-hero">
+      <div class="name">${recipe.name}</div>
+      <div class="origin">${recipe.beanName}</div>
+      <div class="score-row">
+        <div class="big-score">${recipe.rating.overall.toFixed(1)}</div>
+        <div class="score-total">/ 10 综合评分</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 16px;">
+      <div class="param-pill"><div class="val">${recipe.dose}g</div><div class="label">粉量</div></div>
+      <div class="param-pill"><div class="val">${recipe.temp}°</div><div class="label">水温</div></div>
+      <div class="param-pill"><div class="val">${recipe.ratio}</div><div class="label">粉水比</div></div>
+      <div class="param-pill"><div class="val">${recipe.grind}</div><div class="label">研磨</div></div>
+    </div>
+    <div style="font-size: 13px; font-weight: 600; color: var(--brew-800); margin-bottom: 8px;">注水节奏</div>
+    <div style="margin-bottom: 16px;">${segmentsHTML}</div>
+    <div style="font-size: 13px; font-weight: 600; color: var(--brew-800); margin-bottom: 8px;">风味评分</div>
+    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 16px;">
+      <div class="param-pill"><div class="val">${recipe.rating.acidity.toFixed(1)}</div><div class="label">酸度</div></div>
+      <div class="param-pill"><div class="val">${recipe.rating.sweetness.toFixed(1)}</div><div class="label">甜度</div></div>
+      <div class="param-pill"><div class="val">${recipe.rating.body.toFixed(1)}</div><div class="label">醇厚</div></div>
+      <div class="param-pill"><div class="val">${recipe.rating.clean.toFixed(1)}</div><div class="label">干净</div></div>
+      <div class="param-pill"><div class="val">${recipe.rating.aroma.toFixed(1)}</div><div class="label">香气</div></div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <span style="font-size:13px; font-weight:600; color:var(--brew-800);">风味标签 · </span>
+      <span style="font-size:12px; color:var(--brew-500);">${recipe.tags.join('、')}</span>
+    </div>
+    ${recipe.notes ? `<div style="background:var(--cream-100); padding:12px; border-radius:8px; font-size:13px; color:var(--brew-700); line-height:1.6; margin-top:12px;">${recipe.notes}</div>` : ''}
+    <div style="margin-top:20px;" class="brew-recipe-btn" onclick="brewFromRecipe('${recipe.id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v6"/><path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-8z"/>
+      </svg>
+      按此方案冲煮
+    </div>
+  `;
+  openSheet('sheetRecipeDetail');
+}
+
+function brewFromRecipe(id) {
+  const recipe = appData.recipes.find(r => r.id === id);
+  if (!recipe) return;
+  currentBrew = {
+    id: 'brew_draft_' + Date.now(),
+    beanId: recipe.beanId,
+    beanName: recipe.beanName,
+    beanOrigin: recipe.beanOrigin,
+    dose: recipe.dose,
+    temp: recipe.temp,
+    ratio: recipe.ratio,
+    grind: recipe.grind,
+    segments: JSON.parse(JSON.stringify(recipe.segments)),
+    totalWater: recipe.totalWater,
+    totalTime: recipe.totalTime,
+    rating: JSON.parse(JSON.stringify(recipe.rating)),
+    tags: [...recipe.tags],
+    notes: ''
+  };
+  closeSheet();
+  setTimeout(() => goTo('brew'), 200);
+  showToast('已载入方案参数');
+}
+
+/* ========== RIPPLE EFFECT ========== */
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('.brew-card, .recipe-card');
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const ripple = document.createElement('span');
+  ripple.className = 'ripple';
+  ripple.style.left = x + 'px';
+  ripple.style.top = y + 'px';
+  ripple.style.width = ripple.style.height = '20px';
+  card.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+});
+
+/* ========== CLOCK ========== */
+function updateClock() {
+  const now = new Date();
+  const timeStr = padZero(now.getHours()) + ':' + padZero(now.getMinutes());
+  document.getElementById('statusTime').textContent = timeStr;
+}
+updateClock();
+setInterval(updateClock, 30000);
+
+/* ========== PAGE VISIBILITY PAUSE ========== */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (waterAnimFrame) cancelAnimationFrame(waterAnimFrame);
+    waterAnimFrame = null;
+  } else {
+    // Resume
+    if (document.getElementById('pageBrew').classList.contains('active')) {
+      startWaterAnimation();
+    }
+  }
+});
+
+/* ========== INITIAL RENDER ========== */
+renderHome();
+
+// Position cursor initially
+updateCursor(195, 422);
+
+// Set initial cursor state
+setCursorState('default');
+
+/* ========== UPGRADE DECLARATION ========== */
+function announceUpgrade() {
+  try {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  } catch (e) { /* ignore */ }
+}
+announceUpgrade();
+if (document.readyState !== 'complete') {
+  window.addEventListener('load', announceUpgrade, { once: true });
+}
+</script>
+
+</body>
+</html>

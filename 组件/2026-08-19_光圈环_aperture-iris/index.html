@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>光圈环 · 镜头光圈叶片机械连杆</title>
+<style>
+  /* ===== 全局样式 ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #14110E;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #E8E2D0;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: none;
+  }
+
+  /* ===== 场景舞台 ===== */
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* ===== 景深背景（实景） ===== */
+  .scene-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    transition: filter 0.05s linear;
+    will-change: filter;
+  }
+
+  .scene-layer {
+    position: absolute;
+    inset: 0;
+    will-change: filter;
+    transition: filter 0.05s linear;
+  }
+
+  /* 前景层 — 始终清晰 */
+  .scene-foreground {
+    z-index: 2;
+    filter: blur(0px);
+  }
+
+  /* 中景层 — 随孔径变化 */
+  .scene-midground {
+    z-index: 1;
+  }
+
+  /* 背景层 — 随孔径变化最大 */
+  .scene-background {
+    z-index: 0;
+  }
+
+  /* 用 CSS 绘制一个室内暗房场景：窗户+书架+桌面物件 */
+  .scene-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse at 50% 35%, rgba(232, 160, 74, 0.15) 0%, transparent 55%),
+      linear-gradient(180deg, #1A1511 0%, #0E0B09 100%);
+  }
+
+  /* 窗户光 */
+  .window-light {
+    position: absolute;
+    top: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    height: 320px;
+    background: linear-gradient(180deg, 
+      rgba(232, 160, 74, 0.25) 0%, 
+      rgba(184, 137, 61, 0.12) 60%,
+      rgba(184, 137, 61, 0.04) 100%);
+    border-radius: 4px;
+    box-shadow: 0 0 80px rgba(232, 160, 74, 0.1);
+  }
+
+  .window-frame {
+    position: absolute;
+    top: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    height: 320px;
+    border: 3px solid rgba(138, 135, 128, 0.3);
+    border-radius: 4px;
+  }
+
+  .window-frame::before,
+  .window-frame::after {
+    content: '';
+    position: absolute;
+    background: rgba(138, 135, 128, 0.3);
+  }
+
+  .window-frame::before {
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+  }
+
+  .window-frame::after {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+  }
+
+  /* 书架 */
+  .shelf {
+    position: absolute;
+    top: 18%;
+    left: 12%;
+    width: 160px;
+    height: 260px;
+  }
+
+  .shelf-row {
+    position: absolute;
+    width: 100%;
+    height: 80px;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 0 6px;
+    border-bottom: 2px solid rgba(107, 79, 31, 0.4);
+  }
+
+  .shelf-row:nth-child(1) { top: 0; }
+  .shelf-row:nth-child(2) { top: 90px; }
+  .shelf-row:nth-child(3) { top: 180px; }
+
+  .book {
+    flex: 1;
+    border-radius: 1px;
+    opacity: 0.7;
+  }
+
+  .book-1 { height: 70%; background: #6B4F1F; }
+  .book-2 { height: 85%; background: #8A6B2D; }
+  .book-3 { height: 65%; background: #4A3815; flex: 0.8; }
+  .book-4 { height: 78%; background: #7A5A25; flex: 1.2; }
+  .book-5 { height: 60%; background: #5A4418; }
+  .book-6 { height: 72%; background: #6B4F1F; flex: 0.9; }
+
+  /* 桌面 */
+  .desk {
+    position: absolute;
+    bottom: 15%;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background: linear-gradient(90deg, #2A1F14 0%, #3A2A1A 50%, #2A1F14 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  /* 桌面物件：相机 */
+  .desk-camera {
+    position: absolute;
+    bottom: calc(15% + 12px);
+    right: 18%;
+    width: 80px;
+    height: 55px;
+  }
+
+  .camera-body {
+    position: absolute;
+    bottom: 0;
+    width: 80px;
+    height: 40px;
+    background: linear-gradient(180deg, #2A2825 0%, #1A1815 100%);
+    border-radius: 4px;
+    border: 1px solid #3A3530;
+  }
+
+  .camera-lens-top {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 28px;
+    background: linear-gradient(90deg, #3A3530 0%, #5A554D 50%, #3A3530 100%);
+    border-radius: 3px;
+    border: 1px solid #4A4540;
+  }
+
+  .camera-lens-ring {
+    position: absolute;
+    bottom: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 4px;
+    background: #B8893D;
+    border-radius: 1px;
+  }
+
+  /* 桌面物件：胶卷筒 */
+  .film-roll {
+    position: absolute;
+    bottom: calc(15% + 12px);
+    left: 22%;
+    width: 24px;
+    height: 35px;
+    background: linear-gradient(90deg, #3A3530 0%, #5A554D 50%, #3A3530 100%);
+    border-radius: 3px;
+    border: 1px solid #4A4540;
+  }
+
+  .film-roll::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #1A1815;
+    border: 1px solid #6B5A3A;
+  }
+
+  .film-roll-label {
+    position: absolute;
+    bottom: 5px;
+    left: 2px;
+    right: 2px;
+    height: 8px;
+    background: #B8893D;
+    border-radius: 1px;
+  }
+
+  /* 桌面物件：放大镜 */
+  .loupe {
+    position: absolute;
+    bottom: calc(15% + 16px);
+    left: 32%;
+    width: 40px;
+    height: 45px;
+  }
+
+  .loupe-lens {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(184, 137, 61, 0.2) 0%, rgba(107, 79, 31, 0.4) 70%, #3A2A1A 100%);
+    border: 3px solid #B8893D;
+    box-shadow: inset 0 0 8px rgba(232, 200, 128, 0.3);
+  }
+
+  .loupe-handle {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%) rotate(-15deg);
+    width: 6px;
+    height: 18px;
+    background: #6B4F1F;
+    border-radius: 2px;
+  }
+
+  /* ===== 镜头容器 ===== */
+  .lens-wrapper {
+    position: relative;
+    z-index: 10;
+    width: 520px;
+    height: 520px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lens-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  /* ===== 光圈环交互区域 ===== */
+  .aperture-ring-area {
+    cursor: none;
+    touch-action: none;
+  }
+
+  /* ===== 信息面板 ===== */
+  .info-panel {
+    position: fixed;
+    left: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    pointer-events: none;
+  }
+
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .info-label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: rgba(232, 226, 208, 0.5);
+    text-transform: uppercase;
+    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+  }
+
+  .info-value {
+    font-size: 36px;
+    font-weight: 300;
+    color: #E8E2D0;
+    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .info-value .f-prefix {
+    font-size: 20px;
+    color: rgba(232, 226, 208, 0.6);
+    margin-right: 2px;
+  }
+
+  .info-sub {
+    font-size: 12px;
+    color: rgba(232, 226, 208, 0.4);
+    font-family: -apple-system, "PingFang SC", sans-serif;
+  }
+
+  /* ===== 右侧操作说明 ===== */
+  .guide-panel {
+    position: fixed;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    pointer-events: none;
+    max-width: 180px;
+  }
+
+  .guide-title {
+    font-size: 13px;
+    color: #B8893D;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+
+  .guide-item {
+    font-size: 12px;
+    color: rgba(232, 226, 208, 0.6);
+    line-height: 1.6;
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .guide-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8A8780;
+  }
+
+  .guide-item.active::before {
+    background: #E8A04A;
+    box-shadow: 0 0 8px #E8A04A;
+  }
+
+  /* ===== 顶部标题 ===== */
+  .header {
+    position: fixed;
+    top: 32px;
+    left: 40px;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .header h1 {
+    font-size: 14px;
+    font-weight: 500;
+    color: #E8E2D0;
+    letter-spacing: 0.05em;
+  }
+
+  .header .sub {
+    font-size: 11px;
+    color: rgba(232, 226, 208, 0.4);
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+
+  /* ===== 底部档位指示 ===== */
+  .fstop-indicator {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    pointer-events: none;
+  }
+
+  .fstop-tick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 42px;
+    transition: opacity 0.2s;
+  }
+
+  .fstop-tick .tick-line {
+    width: 1px;
+    height: 12px;
+    background: rgba(138, 135, 128, 0.4);
+    transition: all 0.2s;
+  }
+
+  .fstop-tick .tick-label {
+    font-size: 10px;
+    color: rgba(232, 226, 208, 0.4);
+    font-family: ui-monospace, "SF Mono", monospace;
+    transition: all 0.2s;
+  }
+
+  .fstop-tick.active .tick-line {
+    height: 20px;
+    background: #E8A04A;
+    box-shadow: 0 0 8px rgba(232, 160, 74, 0.6);
+  }
+
+  .fstop-tick.active .tick-label {
+    color: #E8C880;
+    font-weight: 500;
+  }
+
+  /* ===== 自定义光标 ===== */
+  .custom-cursor {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.08s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                width 0.15s ease,
+                height 0.15s ease,
+                opacity 0.2s ease;
+    will-change: left, top, transform;
+  }
+
+  .cursor-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid #E8E2D0;
+    border-radius: 50%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .cursor-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 3px;
+    background: #E8A04A;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: background 0.2s, width 0.15s, height 0.15s;
+  }
+
+  .custom-cursor.hover .cursor-ring {
+    border-color: #E8A04A;
+    box-shadow: 0 0 12px rgba(232, 160, 74, 0.5);
+  }
+
+  .custom-cursor.hover .cursor-dot {
+    width: 5px;
+    height: 5px;
+  }
+
+  .custom-cursor.grabbing {
+    width: 32px;
+    height: 32px;
+  }
+
+  .custom-cursor.grabbing .cursor-ring {
+    border-color: #B8893D;
+    border-width: 3px;
+    box-shadow: 0 0 16px rgba(184, 137, 61, 0.6);
+  }
+
+  .custom-cursor.grabbing .cursor-dot {
+    background: #E8C880;
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-cursor.hidden {
+    opacity: 0;
+  }
+
+  /* ===== 通光孔光晕 ===== */
+  .aperture-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, 
+      rgba(232, 160, 74, 0.9) 0%, 
+      rgba(232, 160, 74, 0.4) 30%,
+      rgba(232, 160, 74, 0.1) 60%,
+      transparent 80%);
+    pointer-events: none;
+    will-change: width, height, opacity;
+    z-index: 5;
+    mix-blend-mode: screen;
+  }
+
+  /* ===== 减少动画偏好 ===== */
+  @media (prefers-reduced-motion: reduce) {
+    .custom-cursor { display: none; }
+    body { cursor: default; }
+    .scene-layer { transition: none; }
+    .aperture-glow { transition: none; }
+  }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 900px) {
+    .lens-wrapper { width: 380px; height: 380px; }
+    .info-panel { left: 20px; gap: 16px; }
+    .info-value { font-size: 28px; }
+    .guide-panel { right: 20px; max-width: 140px; }
+    .guide-item { font-size: 11px; }
+  }
+
+  @media (max-width: 600px) {
+    .lens-wrapper { width: 300px; height: 300px; }
+    .info-panel { 
+      top: auto; 
+      bottom: 80px; 
+      left: 20px;
+      transform: none;
+      flex-direction: row;
+      gap: 24px;
+    }
+    .guide-panel { display: none; }
+    .header { top: 20px; left: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 自定义光标 ===== -->
+<div class="custom-cursor" id="customCursor">
+  <div class="cursor-ring"></div>
+  <div class="cursor-dot"></div>
+</div>
+
+<!-- ===== 场景舞台 ===== -->
+<div class="stage">
+
+  <!-- 景深背景（远景-最模糊） -->
+  <div class="scene-bg">
+    <div class="scene-layer scene-background" id="sceneBg">
+      <div class="window-light"></div>
+      <div class="window-frame"></div>
+      <div class="shelf">
+        <div class="shelf-row">
+          <div class="book book-1"></div>
+          <div class="book book-2"></div>
+          <div class="book book-3"></div>
+          <div class="book book-4"></div>
+        </div>
+        <div class="shelf-row">
+          <div class="book book-5"></div>
+          <div class="book book-6"></div>
+          <div class="book book-2"></div>
+          <div class="book book-1"></div>
+        </div>
+        <div class="shelf-row">
+          <div class="book book-3"></div>
+          <div class="book book-4"></div>
+          <div class="book book-5"></div>
+          <div class="book book-6"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中景（中等模糊） -->
+    <div class="scene-layer scene-midground" id="sceneMid">
+      <div class="desk"></div>
+      <div class="film-roll">
+        <div class="film-roll-label"></div>
+      </div>
+      <div class="loupe">
+        <div class="loupe-lens"></div>
+        <div class="loupe-handle"></div>
+      </div>
+      <div class="desk-camera">
+        <div class="camera-body"></div>
+        <div class="camera-lens-top"></div>
+        <div class="camera-lens-ring"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 顶部标题 ===== -->
+  <div class="header">
+    <h1>光圈环 · 机械连杆实验室</h1>
+    <div class="sub">Aperture Iris — Cam Linkage Mechanism</div>
+  </div>
+
+  <!-- ===== 左侧信息面板 ===== -->
+  <div class="info-panel">
+    <div class="info-item">
+      <div class="info-label">光圈值</div>
+      <div class="info-value">
+        <span class="f-prefix">f/</span><span id="fstopValue">2.8</span>
+      </div>
+      <div class="info-sub" id="fstopDesc">标准人像</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">孔径比</div>
+      <div class="info-value" style="font-size: 24px;" id="apertureRatio">36%</div>
+      <div class="info-sub">最大通光占比</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">景深</div>
+      <div class="info-value" style="font-size: 24px;" id="dofValue">浅</div>
+      <div class="info-sub">背景虚化程度</div>
+    </div>
+  </div>
+
+  <!-- ===== 右侧操作说明 ===== -->
+  <div class="guide-panel">
+    <div class="guide-title">操作指南</div>
+    <div class="guide-item" id="guideHover">悬停光圈环，感受金属温度</div>
+    <div class="guide-item" id="guideDrag">按住并拖动，叶片随动开合</div>
+    <div class="guide-item" id="guideDetent">越过档位，磁吸咬合咔哒</div>
+    <div class="guide-item" id="guideRelease">松开手指，阻尼余震停稳</div>
+  </div>
+
+  <!-- ===== 镜头组件 ===== -->
+  <div class="lens-wrapper">
+    <!-- 通光孔光晕 -->
+    <div class="aperture-glow" id="apertureGlow"></div>
+    
+    <svg class="lens-svg" viewBox="-260 -260 520 520" id="lensSvg">
+      <defs>
+        <!-- 黄铜叶片渐变 -->
+        <linearGradient id="brassBlade" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#E8C880"/>
+          <stop offset="35%" stop-color="#B8893D"/>
+          <stop offset="70%" stop-color="#8A6B2D"/>
+          <stop offset="100%" stop-color="#6B4F1F"/>
+        </linearGradient>
+        
+        <!-- 叶片高光条 -->
+        <linearGradient id="bladeHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="transparent"/>
+          <stop offset="50%" stop-color="rgba(232, 200, 128, 0.4)"/>
+          <stop offset="100%" stop-color="transparent"/>
+        </linearGradient>
+
+        <!-- 钢环渐变（拉丝质感） -->
+        <linearGradient id="steelRing" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#5A554D"/>
+          <stop offset="20%" stop-color="#8A8780"/>
+          <stop offset="40%" stop-color="#C8C5BD"/>
+          <stop offset="50%" stop-color="#A8A59D"/>
+          <stop offset="60%" stop-color="#C8C5BD"/>
+          <stop offset="80%" stop-color="#6A6760"/>
+          <stop offset="100%" stop-color="#4A4742"/>
+        </linearGradient>
+
+        <!-- 外环外圈 -->
+        <radialGradient id="ringOuter" cx="50%" cy="50%" r="50%">
+          <stop offset="90%" stop-color="#3A3530"/>
+          <stop offset="95%" stop-color="#5A554D"/>
+          <stop offset="100%" stop-color="#2A2825"/>
+        </radialGradient>
+
+        <!-- 内环内圈（镜筒内壁暗角） -->
+        <radialGradient id="lensInner" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#1A1511"/>
+          <stop offset="70%" stop-color="#14110E"/>
+          <stop offset="100%" stop-color="#0A0806"/>
+        </radialGradient>
+
+        <!-- 档位刻度高亮 -->
+        <filter id="glow-amber" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+
+        <!-- 叶片阴影 -->
+        <filter id="bladeShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="1" dy="1" stdDeviation="1.5" flood-color="#0A0806" flood-opacity="0.6"/>
+        </filter>
+      </defs>
+
+      <!-- 镜筒外圈底座 -->
+      <circle cx="0" cy="0" r="240" fill="#1A1815" stroke="#3A3530" stroke-width="2"/>
+      
+      <!-- 拉丝钢外环（光圈环本体 — 可拖拽） -->
+      <g class="aperture-ring-area" id="apertureRing">
+        <circle cx="0" cy="0" r="220" fill="url(#ringOuter)" stroke="#4A4742" stroke-width="1"/>
+        <circle cx="0" cy="0" r="210" fill="none" stroke="url(#steelRing)" stroke-width="18"/>
+        <circle cx="0" cy="0" r="201" fill="none" stroke="#3A3530" stroke-width="1"/>
+        <circle cx="0" cy="0" r="229" fill="none" stroke="#3A3530" stroke-width="1"/>
+        
+        <!-- 环上拉丝纹理（细密刻线） -->
+        <g id="ringKnurls" opacity="0.3"></g>
+
+        <!-- 环上 f 档刻度标记（随环旋转） -->
+        <g id="ringMarkers"></g>
+
+        <!-- 环上的把手/凸起（拖动指示点） -->
+        <g id="ringHandle">
+          <rect x="-6" y="-228" width="12" height="20" rx="3" fill="#B8893D"/>
+          <rect x="-4" y="-226" width="8" height="6" rx="1" fill="#E8C880" opacity="0.6"/>
+        </g>
+      </g>
+
+      <!-- 固定参考标记（不随环转动） -->
+      <g id="fixedReference">
+        <polygon points="0,-240 -5,-232 5,-232" fill="#E8A04A" filter="url(#glow-amber)"/>
+      </g>
+
+      <!-- 叶片组件（在环内侧） -->
+      <g id="bladesGroup" filter="url(#bladeShadow)"></g>
+
+      <!-- 镜筒内圈（暗角效果） -->
+      <circle cx="0" cy="0" r="185" fill="none" stroke="#0A0806" stroke-width="3" opacity="0.5"/>
+
+      <!-- 内侧 f 档数字（固定，环转动时对照） -->
+      <g id="fstopNumbers"></g>
+    </svg>
+  </div>
+
+  <!-- ===== 底部档位指示 ===== -->
+  <div class="fstop-indicator" id="fstopIndicator"></div>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== 配置 =====
+  const CONFIG = {
+    // f 档定义：8档，从 f/1.4 到 f/16
+    fStops: [1.4, 2, 2.8, 4, 5.6, 8, 11, 16],
+    // f 档中文名/描述
+    fStopDescs: [
+      '全开柔光',
+      '浅景人像',
+      '标准人像',
+      '街拍常用',
+      '风光起步',
+      '经典风光',
+      '深景风光',
+      '针孔级深'
+    ],
+    // 旋转角度范围（度）：f/1.4 对应 0°，f/16 对应 最大角度
+    rotationRange: 68,
+    // 叶片数量
+    bladeCount: 8,
+    // 叶片内缘枢轴半径（固定枢轴点到中心的距离）
+    bladePivotRadius: 165,
+    // 叶片长度相关
+    bladeOuterLength: 85,
+    bladeInnerLength: 65,
+    bladeWidth: 38,
+    // 最大最小孔径半径
+    apertureMaxR: 145,
+    apertureMinR: 16,
+    // 磁吸强度
+    detentStrength: 0.35,
+    detentRange: 0.08, // 档位吸附作用范围（占总行程比例）
+    // 阻尼弹簧参数
+    springK: 0.18,
+    damping: 0.82,
+    // 减少动画
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  };
+
+  // ===== 状态 =====
+  const state = {
+    // 当前光圈环角度（度）
+    ringAngle: 24, // 初始位置：f/2.8 附近
+    // 目标角度（磁吸吸附用）
+    targetAngle: 24,
+    // 弹簧振动物理
+    velocity: 0,
+    // 拖拽状态
+    isDragging: false,
+    dragStartAngle: 0,
+    dragStartPointerAngle: 0,
+    // 是否处于释放余震
+    isReleasing: false,
+    // 上一次经过的档位（用于咔哒检测）
+    lastDetentIndex: -1,
+    // 是否悬停在环上
+    isHovering: false,
+    // 呼吸相位
+    breathPhase: 0,
+    // 动画帧
+    rafId: null,
+    isVisible: true,
+    // WebAudio
+    audioCtx: null,
+  };
+
+  // ===== DOM 引用 =====
+  const el = {
+    lensSvg: document.getElementById('lensSvg'),
+    apertureRing: document.getElementById('apertureRing'),
+    bladesGroup: document.getElementById('bladesGroup'),
+    ringKnurls: document.getElementById('ringKnurls'),
+    ringMarkers: document.getElementById('ringMarkers'),
+    ringHandle: document.getElementById('ringHandle'),
+    fstopNumbers: document.getElementById('fstopNumbers'),
+    apertureGlow: document.getElementById('apertureGlow'),
+    sceneBg: document.getElementById('sceneBg'),
+    sceneMid: document.getElementById('sceneMid'),
+    fstopValue: document.getElementById('fstopValue'),
+    fstopDesc: document.getElementById('fstopDesc'),
+    apertureRatio: document.getElementById('apertureRatio'),
+    dofValue: document.getElementById('dofValue'),
+    fstopIndicator: document.getElementById('fstopIndicator'),
+    customCursor: document.getElementById('customCursor'),
+    guideHover: document.getElementById('guideHover'),
+    guideDrag: document.getElementById('guideDrag'),
+    guideDetent: document.getElementById('guideDetent'),
+    guideRelease: document.getElementById('guideRelease'),
+  };
+
+  // ===== 工具函数 =====
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function mapRange(v, inMin, inMax, outMin, outMax) {
+    return outMin + (outMax - outMin) * ((v - inMin) / (inMax - inMin));
+  }
+  function degToRad(d) { return d * Math.PI / 180; }
+  function radToDeg(r) { return r * 180 / Math.PI; }
+
+  // 角度归一化到 [-PI, PI]
+  function normalizeAngleRad(angle) {
+    while (angle > Math.PI) angle -= Math.PI * 2;
+    while (angle < -Math.PI) angle += Math.PI * 2;
+    return angle;
+  }
+
+  // 将环角度 (0 - rotationRange) 映射到 f-stop 索引附近的值
+  function angleToFindex(angle) {
+    const t = clamp(angle / CONFIG.rotationRange, 0, 1);
+    return t * (CONFIG.fStops.length - 1);
+  }
+
+  function findexToAngle(fi) {
+    const t = fi / (CONFIG.fStops.length - 1);
+    return t * CONFIG.rotationRange;
+  }
+
+  // 获取当前 f 值（连续插值）
+  function getCurrentF(angle) {
+    const fi = angleToFindex(angle);
+    const i = Math.floor(fi);
+    const t = fi - i;
+    if (i >= CONFIG.fStops.length - 1) return CONFIG.fStops[CONFIG.fStops.length - 1];
+    if (i < 0) return CONFIG.fStops[0];
+    // 用对数插值，因为 f-stop 是几何级数
+    const f1 = CONFIG.fStops[i];
+    const f2 = CONFIG.fStops[i + 1];
+    return f1 * Math.pow(f2 / f1, t);
+  }
+
+  // 获取当前最近的档位索引
+  function getNearestDetent(angle) {
+    let nearest = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < CONFIG.fStops.length; i++) {
+      const da = findexToAngle(i);
+      const dist = Math.abs(angle - da);
+      if (dist < minDist) { minDist = dist; nearest = i; }
+    }
+    return nearest;
+  }
+
+  // 孔径半径 (0 = 最小, 1 = 最大)
+  function getApertureRadius(angle) {
+    const t = clamp(angle / CONFIG.rotationRange, 0, 1);
+    // f 值越大孔径越小：f/1.4 最大, f/16 最小
+    // 孔径与 1/f 成正比
+    const f = getCurrentF(angle);
+    const normalized = (1 / f - 1 / CONFIG.fStops[CONFIG.fStops.length - 1]) / 
+                       (1 / CONFIG.fStops[0] - 1 / CONFIG.fStops[CONFIG.fStops.length - 1]);
+    return CONFIG.apertureMinR + normalized * (CONFIG.apertureMaxR - CONFIG.apertureMinR);
+  }
+
+  // ===== 初始化 SVG 元素 =====
+  function initRingKnurls() {
+    // 生成环上的细密拉丝纹理
+    const knurls = [];
+    const count = 180;
+    const rOuter = 221;
+    const rInner = 201;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const x1 = Math.cos(angle) * rInner;
+      const y1 = Math.sin(angle) * rInner;
+      const x2 = Math.cos(angle) * rOuter;
+      const y2 = Math.sin(angle) * rOuter;
+      knurls.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#2A2825" stroke-width="0.5"/>`);
+    }
+    el.ringKnurls.innerHTML = knurls.join('');
+  }
+
+  function initRingMarkers() {
+    // 环上的 f 档刻度标记（随环转动）
+    const markers = [];
+    for (let i = 0; i < CONFIG.fStops.length; i++) {
+      const angle = findexToAngle(i);
+      // 环上的刻度线（径向）
+      const rad = degToRad(-90 + angle);
+      const r1 = 224;
+      const r2 = 214;
+      const x1 = Math.cos(rad) * r1;
+      const y1 = Math.sin(rad) * r1;
+      const x2 = Math.cos(rad) * r2;
+      const y2 = Math.sin(rad) * r2;
+      markers.push(`<line class="ring-marker" data-index="${i}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#C8C5BD" stroke-width="${i % 2 === 0 ? 1.5 : 1}" opacity="0.7"/>`);
+    }
+    el.ringMarkers.innerHTML = markers.join('');
+  }
+
+  function initFstopNumbers() {
+    // 固定在内侧的 f 档数字（不随环转动，作为对照参考）
+    const nums = [];
+    for (let i = 0; i < CONFIG.fStops.length; i++) {
+      const angle = findexToAngle(i);
+      const rad = degToRad(-90 + angle);
+      const r = 190;
+      const x = Math.cos(rad) * r;
+      const y = Math.sin(rad) * r;
+      const fVal = CONFIG.fStops[i];
+      const rot = angle; // 让文字沿径向排列
+      nums.push(`<text class="fstop-number" data-index="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" 
+        fill="#8A8780" font-size="10" font-family="ui-monospace, monospace" 
+        text-anchor="middle" dominant-baseline="middle"
+        transform="rotate(${rot}, ${x.toFixed(1)}, ${y.toFixed(1)})"
+        opacity="0.5">${fVal}</text>`);
+    }
+    el.fstopNumbers.innerHTML = nums.join('');
+  }
+
+  function initBlades() {
+    // 创建 8 片黄铜叶片
+    // 每片叶片：围绕枢轴点旋转的梯形 + 内缘尖端
+    // 叶片形状：从外端（pivot点外侧）向内延伸，内缘是切边
+    const blades = [];
+    const bladeAngleStep = 360 / CONFIG.bladeCount;
+    
+    for (let i = 0; i < CONFIG.bladeCount; i++) {
+      const baseAngle = i * bladeAngleStep;
+      const pivotR = CONFIG.bladePivotRadius;
+      const pivotX = Math.cos(degToRad(baseAngle)) * pivotR;
+      const pivotY = Math.sin(degToRad(baseAngle)) * pivotR;
+      
+      // 叶片相对枢轴点的局部坐标
+      // 叶片沿径向（从中心向外）排布
+      // 内端朝向中心，外端在枢轴点外侧
+      const outerW = CONFIG.bladeWidth;       // 外端宽度
+      const innerW = CONFIG.bladeWidth * 0.6; // 内端宽度（稍窄）
+      const outerL = 18;                      // 枢轴点向外延伸
+      const innerL = CONFIG.bladeInnerLength; // 枢轴点向内延伸
+      
+      // 叶片梯形（局部坐标：x 沿宽度方向，y 沿长度方向，y负=向内）
+      const path = [
+        // 外端
+        `M ${-outerW/2} ${outerL}`,
+        `L ${outerW/2} ${outerL}`,
+        // 外侧边 -> 内端
+        `L ${innerW/2} ${-innerL}`,
+        // 内端切边（斜切，形成花瓣状）
+        `L ${innerW/2 - 6} ${-innerL - 4}`,
+        `L ${-innerW/2 + 2} ${-innerL + 8}`,
+        // 内侧边回来
+        `L ${-outerW/2} ${outerL}`,
+        'Z'
+      ].join(' ');
+      
+      blades.push(`
+        <g class="blade" data-index="${i}" data-base-angle="${baseAngle}" 
+           transform="translate(${pivotX.toFixed(1)}, ${pivotY.toFixed(1)}) rotate(${baseAngle + 90})">
+          <path d="${path}" fill="url(#brassBlade)" stroke="#5A4418" stroke-width="0.8"/>
+          <!-- 叶片高光条纹 -->
+          <path d="M ${-outerW/2 + 6} ${outerL - 4} L ${innerW/2 - 10} ${-innerL + 12}" 
+                stroke="url(#bladeHighlight)" stroke-width="3" fill="none" opacity="0.5"/>
+          <!-- 枢轴点销钉 -->
+          <circle cx="0" cy="0" r="3.5" fill="#4A3815" stroke="#E8C880" stroke-width="0.8"/>
+          <circle cx="0" cy="0" r="1.5" fill="#1A1511"/>
+          <!-- 凸轮销钉（靠近外端，与环上的槽啮合） -->
+          <circle cx="0" cy="${outerL - 8}" r="2.5" fill="#C8C5BD" stroke="#6A6760" stroke-width="0.5"/>
+        </g>
+      `);
+    }
+    el.bladesGroup.innerHTML = blades.join('');
+  }
+
+  function initFstopIndicator() {
+    // 底部档位指示条
+    const ticks = [];
+    for (let i = 0; i < CONFIG.fStops.length; i++) {
+      ticks.push(`
+        <div class="fstop-tick" data-index="${i}">
+          <div class="tick-line"></div>
+          <div class="tick-label">${CONFIG.fStops[i]}</div>
+        </div>
+      `);
+    }
+    el.fstopIndicator.innerHTML = ticks.join('');
+  }
+
+  // ===== 更新叶片位置（凸轮连杆传动） =====
+  function updateBlades(angle) {
+    const apertureR = getApertureRadius(angle);
+    const pivotR = CONFIG.bladePivotRadius;
+    const bladeAngleStep = 360 / CONFIG.bladeCount;
+    const innerL = CONFIG.bladeInnerLength;
+    
+    // 每片叶片绕其枢轴点旋转一定角度，使内缘到达孔径半径
+    // 简化模型：叶片内缘点到中心距离 = apertureR
+    // 枢轴点在半径 pivotR 处，角度 baseAngle
+    // 叶片内缘点相对枢轴点：向内延伸 innerL
+    // 叶片旋转 deltaAngle 后，内缘点位置变化
+    // 
+    // 简化：我们直接根据目标孔径反推每片叶片需要的旋转角
+    // 叶片内缘尖端到中心的距离应等于 apertureR（近似）
+    // 内缘尖端相对枢轴点向内偏移 innerL
+    // 当叶片沿径向时（0旋转），尖端在 pivotR - innerL 处
+    // 当叶片旋转 alpha 时，尖端距离中心的距离可用余弦定理计算
+    
+    const blades = el.bladesGroup.querySelectorAll('.blade');
+    blades.forEach((blade, i) => {
+      const baseAngle = i * bladeAngleStep;
+      
+      // 计算需要的叶片旋转角，使内缘到中心距离 = apertureR
+      // 设叶片绕枢轴点旋转 alpha（正=顺时针，叶片张开/关闭）
+      // 枢轴点 P：(pivotR * cos(base), pivotR * sin(base))
+      // 内缘点 Q 相对 P：沿叶片方向向内 innerL
+      // 叶片方向（0度时）= 朝向中心 = baseAngle + 180
+      // 旋转 alpha 后，Q 相对 P 的方向 = baseAngle + 180 + alpha
+      // Q 位置 = P + innerL * 方向向量
+      // |Q| = apertureR
+      //
+      // 用余弦定理：
+      // apertureR² = pivotR² + innerL² - 2 * pivotR * innerL * cos(alpha_ref)
+      // 其中 alpha_ref 是叶片径向与 PQ 的夹角
+      // 当 alpha = 0（完全径向），cos = 1（PQ 完全沿径向向内）
+      // 当 alpha 增大，cos 减小，Q 离中心更远
+      
+      // 我们希望 |Q| = apertureR
+      // 用简化反推：
+      const rA = apertureR;
+      const rP = pivotR;
+      const L = innerL;
+      
+      // 余弦定理：rA² = rP² + L² - 2*rP*L*cos(alphaRad)
+      // cos(alphaRad) = (rP² + L² - rA²) / (2 * rP * L)
+      let cosA = (rP * rP + L * L - rA * rA) / (2 * rP * L);
+      cosA = clamp(cosA, -1, 1);
+      const alphaRad = Math.acos(cosA);
+      const alphaDeg = radToDeg(alphaRad);
+      
+      // alpha = 0 时叶片沿径向（孔径最大）
+      // alpha > 0 时叶片向顺时针方向偏转（孔径缩小）
+      // 因为每片叶片在不同的 baseAngle，所以偏转方向不同
+      // 实际实现：每片叶片都绕自己的枢轴点旋转 alphaDeg
+      // 旋转方向：顺时针（使内缘向相邻叶片的下方滑动）
+      
+      // 叶片组的总 transform = translate(pivot) rotate(baseAngle + 90 + alpha)
+      // baseAngle + 90 是初始朝向（让叶片沿径向，内端指向中心）
+      const rotation = baseAngle + 90 + alphaDeg;
+      
+      blade.setAttribute('transform', 
+        `translate(${Math.cos(degToRad(baseAngle)) * pivotR}, ${Math.sin(degToRad(baseAngle)) * pivotR}) rotate(${rotation})`
+      );
+    });
+  }
+
+  // ===== 更新光圈环旋转 =====
+  function updateRingRotation(angle) {
+    el.apertureRing.setAttribute('transform', `rotate(${angle})`);
+  }
+
+  // ===== 更新通光光晕 =====
+  function updateGlow(angle) {
+    const apertureR = getApertureRadius(angle);
+    const size = apertureR * 2 * 1.3; // SVG 坐标，需考虑缩放
+    // 镜头 wrapper 是 520px，SVG viewBox 也是 520，所以 1:1
+    el.apertureGlow.style.width = size + 'px';
+    el.apertureGlow.style.height = size + 'px';
+    
+    // 亮度与孔径成正比，但最大时不过曝
+    const t = clamp(angle / CONFIG.rotationRange, 0, 1);
+    // f/1.4 最亮, f/16 最暗 — 等等，不对！
+    // angle=0 -> f/1.4 -> 大孔径 -> 最亮
+    // angle=rotationRange -> f/16 -> 小孔径 -> 最暗
+    const brightnessFactor = 1 - t * 0.85;
+    el.apertureGlow.style.opacity = (0.6 * brightnessFactor + 0.1).toFixed(3);
+  }
+
+  // ===== 更新景深 =====
+  function updateDOF(angle) {
+    const t = clamp(angle / CONFIG.rotationRange, 0, 1);
+    // t = 0: f/1.4, 大光圈, 浅景深, 强虚化
+    // t = 1: f/16, 小光圈, 深景深, 全清晰
+    
+    // 背景层虚化最大
+    const bgBlur = lerp(12, 0.5, t);
+    // 中景层次之
+    const midBlur = lerp(6, 0.3, t);
+    
+    el.sceneBg.style.filter = `blur(${bgBlur.toFixed(1)}px)`;
+    el.sceneMid.style.filter = `blur(${midBlur.toFixed(1)}px)`;
+  }
+
+  // ===== 更新信息面板 =====
+  function updateInfoPanel(angle) {
+    const f = getCurrentF(angle);
+    // 保留一位小数或整数显示
+    const fStr = f >= 10 ? f.toFixed(0) : f.toFixed(1);
+    el.fstopValue.textContent = fStr;
+    
+    // 描述
+    const nearest = getNearestDetent(angle);
+    el.fstopDesc.textContent = CONFIG.fStopDescs[nearest];
+    
+    // 孔径比
+    const r = getApertureRadius(angle);
+    const ratio = ((r / CONFIG.apertureMaxR) * 100).toFixed(0);
+    el.apertureRatio.textContent = ratio + '%';
+    
+    // 景深文字
+    const t = clamp(angle / CONFIG.rotationRange, 0, 1);
+    let dofText;
+    if (t < 0.2) dofText = '极浅';
+    else if (t < 0.4) dofText = '浅';
+    else if (t < 0.6) dofText = '中';
+    else if (t < 0.8) dofText = '深';
+    else dofText = '极深';
+    el.dofValue.textContent = dofText;
+    
+    // 底部档位高亮
+    const ticks = el.fstopIndicator.querySelectorAll('.fstop-tick');
+    ticks.forEach((tick, i) => {
+      if (i === nearest) tick.classList.add('active');
+      else tick.classList.remove('active');
+    });
+    
+    // SVG 上的 f 档数字高亮
+    const nums = el.fstopNumbers.querySelectorAll('.fstop-number');
+    nums.forEach((num, i) => {
+      if (i === nearest) {
+        num.setAttribute('fill', '#E8C880');
+        num.setAttribute('opacity', '1');
+        num.setAttribute('font-weight', '500');
+      } else {
+        num.setAttribute('fill', '#8A8780');
+        num.setAttribute('opacity', '0.5');
+        num.setAttribute('font-weight', 'normal');
+      }
+    });
+    
+    // 环上刻度高亮
+    const markers = el.ringMarkers.querySelectorAll('.ring-marker');
+    markers.forEach((m, i) => {
+      if (i === nearest) {
+        m.setAttribute('stroke', '#E8A04A');
+        m.setAttribute('stroke-width', '2');
+        m.setAttribute('opacity', '1');
+      } else {
+        m.setAttribute('stroke', '#C8C5BD');
+        m.setAttribute('stroke-width', i % 2 === 0 ? '1.5' : '1');
+        m.setAttribute('opacity', '0.7');
+      }
+    });
+  }
+
+  // ===== 磁吸吸附力 =====
+  function applyDetentForce(angle) {
+    // 找到最近的档位，如果在吸附范围内，施加吸附力
+    let nearestIdx = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < CONFIG.fStops.length; i++) {
+      const da = findexToAngle(i);
+      const dist = Math.abs(angle - da);
+      if (dist < minDist) { minDist = dist; nearestIdx = i; }
+    }
+    
+    const rangeDeg = CONFIG.detentRange * CONFIG.rotationRange;
+    if (minDist < rangeDeg && minDist > 0.01) {
+      const target = findexToAngle(nearestIdx);
+      const dir = target > angle ? 1 : -1;
+      // 非线性吸附：越近越强
+      const strength = CONFIG.detentStrength * (1 - minDist / rangeDeg);
+      return { force: dir * strength, detentIndex: nearestIdx, crossed: false };
+    }
+    return { force: 0, detentIndex: nearestIdx, crossed: false };
+  }
+
+  // ===== 咔哒声 =====
+  function playClick(volume) {
+    if (CONFIG.reducedMotion) return;
+    if (!state.audioCtx) {
+      try {
+        state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { return; }
+    }
+    const ctx = state.audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.03);
+    
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(volume || 0.08, ctx.currentTime + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.08);
+  }
+
+  // 检测是否跨越档位
+  function checkDetentCrossing(prevAngle, newAngle) {
+    const prevIdx = getNearestDetent(prevAngle);
+    const newIdx = getNearestDetent(newAngle);
+    if (prevIdx !== newIdx) {
+      // 跨越了档位
+      playClick(0.06);
+      return newIdx;
+    }
+    return -1;
+  }
+
+  // ===== 主循环 =====
+  function tick(timestamp) {
+    if (!state.isVisible) {
+      state.rafId = requestAnimationFrame(tick);
+      return;
+    }
+    
+    // 呼吸效果（悬停时）
+    if (state.isHovering && !state.isDragging) {
+      state.breathPhase += 0.03;
+      const breath = Math.sin(state.breathPhase) * 0.5 + 0.5;
+      // 环的微高亮呼吸
+      el.ringHandle.setAttribute('opacity', (0.8 + breath * 0.2).toFixed(2));
+    } else {
+      el.ringHandle.setAttribute('opacity', '1');
+    }
+    
+    // 阻尼弹簧余震（释放后）
+    if (state.isReleasing) {
+      // 弹簧物理：向目标角度收敛
+      const targetAngle = state.targetAngle;
+      const displacement = targetAngle - state.ringAngle;
+      
+      // 弹簧加速度
+      const springAccel = displacement * CONFIG.springK;
+      state.velocity += springAccel;
+      state.velocity *= CONFIG.damping;
+      
+      state.ringAngle += state.velocity;
+      
+      // 检测停止条件
+      if (Math.abs(state.velocity) < 0.02 && Math.abs(displacement) < 0.05) {
+        state.ringAngle = targetAngle;
+        state.velocity = 0;
+        state.isReleasing = false;
+        // 最终稳定时的微脉冲
+        if (!CONFIG.reducedMotion) {
+          pulseAtRest();
+        }
+      }
+    }
+    
+    // 应用所有视觉更新
+    updateRingRotation(state.ringAngle);
+    updateBlades(state.ringAngle);
+    updateGlow(state.ringAngle);
+    updateDOF(state.ringAngle);
+    updateInfoPanel(state.ringAngle);
+    
+    // 操作指南高亮
+    updateGuideHighlight();
+    
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  // 稳定时的微脉冲效果（孔径微闪）
+  function pulseAtRest() {
+    // 简单的一次性脉冲——直接用 glow 的短暂增强
+    const originalOpacity = parseFloat(el.apertureGlow.style.opacity) || 0.5;
+    let pulse = 0;
+    const pulseDuration = 300;
+    const startTime = performance.now();
+    
+    function pulseStep(now) {
+      const t = (now - startTime) / pulseDuration;
+      if (t >= 1) {
+        el.apertureGlow.style.opacity = originalOpacity.toFixed(3);
+        return;
+      }
+      // 快速上升，缓慢衰减
+      const pulseAmt = Math.sin(t * Math.PI) * 0.15;
+      el.apertureGlow.style.opacity = (originalOpacity + pulseAmt).toFixed(3);
+      requestAnimationFrame(pulseStep);
+    }
+    requestAnimationFrame(pulseStep);
+  }
+
+  // ===== 操作指南高亮 =====
+  function updateGuideHighlight() {
+    el.guideHover.classList.toggle('active', state.isHovering && !state.isDragging);
+    el.guideDrag.classList.toggle('active', state.isDragging);
+    el.guideDetent.classList.toggle('active', state.isDragging);
+    el.guideRelease.classList.toggle('active', state.isReleasing);
+  }
+
+  // ===== 拖拽交互 =====
+  function getPointerAngle(clientX, clientY) {
+    const rect = el.lensSvg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx);
+  }
+
+  function onPointerDown(e) {
+    e.preventDefault();
+    state.isDragging = true;
+    state.isReleasing = false;
+    state.velocity = 0;
+    
+    const pointerAngle = getPointerAngle(e.clientX, e.clientY);
+    state.dragStartPointerAngle = pointerAngle;
+    state.dragStartAngle = state.ringAngle;
+    
+    el.apertureRing.setPointerCapture(e.pointerId);
+    el.customCursor.classList.add('grabbing');
+    
+    // 初次接触反馈：咔哒一声
+    playClick(0.04);
+    
+    // 记录初始档位
+    state.lastDetentIndex = getNearestDetent(state.ringAngle);
+  }
+
+  function onPointerMove(e) {
+    if (!state.isDragging) return;
+    
+    const pointerAngle = getPointerAngle(e.clientX, e.clientY);
+    let angleDelta = radToDeg(normalizeAngleRad(pointerAngle - state.dragStartPointerAngle));
+    
+    // 新的环角度
+    let newAngle = state.dragStartAngle + angleDelta;
+    
+    // 限制范围
+    newAngle = clamp(newAngle, -5, CONFIG.rotationRange + 5);
+    
+    // 应用磁吸（拖拽时也有轻微吸附感）
+    const oldAngle = state.ringAngle;
+    const detent = applyDetentForce(newAngle);
+    newAngle += detent.force;
+    newAngle = clamp(newAngle, 0, CONFIG.rotationRange);
+    
+    state.ringAngle = newAngle;
+    
+    // 检测过档
+    const crossed = checkDetentCrossing(oldAngle, newAngle);
+    if (crossed >= 0) {
+      state.lastDetentIndex = crossed;
+    }
+  }
+
+  function onPointerUp(e) {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+    
+    el.apertureRing.releasePointerCapture && el.apertureRing.releasePointerCapture(e.pointerId);
+    el.customCursor.classList.remove('grabbing');
+    
+    // 松手：磁吸到最近档位 + 阻尼余震
+    const nearestIdx = getNearestDetent(state.ringAngle);
+    state.targetAngle = findexToAngle(nearestIdx);
+    
+    if (CONFIG.reducedMotion) {
+      // 直接吸附
+      state.ringAngle = state.targetAngle;
+      state.isReleasing = false;
+    } else {
+      // 计算初速度（从当前速度延续）
+      // 根据位移给一个初始冲量，模拟松手时的惯性
+      const displacement = state.targetAngle - state.ringAngle;
+      state.velocity = displacement * 0.3;
+      state.isReleasing = true;
+    }
+    
+    // 最终咔哒
+    playClick(0.08);
+  }
+
+  function onPointerEnter() {
+    state.isHovering = true;
+    el.customCursor.classList.add('hover');
+  }
+
+  function onPointerLeave() {
+    state.isHovering = false;
+    el.customCursor.classList.remove('hover');
+  }
+
+  // ===== 自定义光标 =====
+  function initCustomCursor() {
+    if (CONFIG.reducedMotion) return;
+    
+    let cursorX = window.innerWidth / 2;
+    let cursorY = window.innerHeight / 2;
+    let targetX = cursorX;
+    let targetY = cursorY;
+    
+    // 初始居中
+    el.customCursor.style.left = cursorX + 'px';
+    el.customCursor.style.top = cursorY + 'px';
+    
+    document.addEventListener('pointermove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    }, { passive: true });
+    
+    // RAF 平滑跟随
+    function cursorTick() {
+      if (!state.isVisible) {
+        requestAnimationFrame(cursorTick);
+        return;
+      }
+      // 阻尼跟随
+      cursorX += (targetX - cursorX) * 0.35;
+      cursorY += (targetY - cursorY) * 0.35;
+      el.customCursor.style.left = cursorX + 'px';
+      el.customCursor.style.top = cursorY + 'px';
+      requestAnimationFrame(cursorTick);
+    }
+    requestAnimationFrame(cursorTick);
+    
+    // 隐藏系统光标
+    document.body.style.cursor = 'none';
+    
+    // 离开窗口时隐藏
+    document.addEventListener('mouseleave', () => {
+      el.customCursor.classList.add('hidden');
+    });
+    document.addEventListener('mouseenter', () => {
+      el.customCursor.classList.remove('hidden');
+    });
+  }
+
+  // ===== 可见性暂停 =====
+  function initVisibilityHandler() {
+    document.addEventListener('visibilitychange', () => {
+      state.isVisible = !document.hidden;
+      if (document.hidden) {
+        // 停止释放动画等
+        if (state.isReleasing) {
+          state.ringAngle = state.targetAngle;
+          state.isReleasing = false;
+          state.velocity = 0;
+        }
+      }
+    });
+  }
+
+  // ===== 页面卸载清理 =====
+  function initCleanup() {
+    window.addEventListener('beforeunload', () => {
+      if (state.rafId) cancelAnimationFrame(state.rafId);
+      if (state.audioCtx) state.audioCtx.close();
+    });
+  }
+
+  // ===== 初始化 =====
+  function init() {
+    initRingKnurls();
+    initRingMarkers();
+    initFstopNumbers();
+    initBlades();
+    initFstopIndicator();
+    initCustomCursor();
+    initVisibilityHandler();
+    initCleanup();
+    
+    // 绑定拖拽事件
+    el.apertureRing.addEventListener('pointerdown', onPointerDown);
+    el.apertureRing.addEventListener('pointermove', onPointerMove);
+    el.apertureRing.addEventListener('pointerup', onPointerUp);
+    el.apertureRing.addEventListener('pointercancel', onPointerUp);
+    el.apertureRing.addEventListener('pointerenter', onPointerEnter);
+    el.apertureRing.addEventListener('pointerleave', onPointerLeave);
+    
+    // 确保初始值正确
+    const nearest = getNearestDetent(state.ringAngle);
+    state.targetAngle = findexToAngle(nearest);
+    
+    // 启动主循环
+    state.rafId = requestAnimationFrame(tick);
+    
+    // 宣告可升级
+    function announceUpgrade() {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+  }
+
+  // 启动
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>
