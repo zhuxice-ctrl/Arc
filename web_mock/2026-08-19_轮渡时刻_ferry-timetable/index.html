@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>长江轮渡时刻表 · 江上渡口</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ===== Design Tokens ===== */
+:root {
+  /* Palette: 雾白 / 船铁墨青 / 信号橙 */
+  --fog-white: #F2EFEA;
+  --fog-mist: #E8E5DF;
+  --steel-ink: #1C262B;
+  --steel-deep: #2A373E;
+  --steel-mid: #3D4E57;
+  --steel-light: #6B7E87;
+  --signal-orange: #E8743B;
+  --signal-orange-dim: #C96230;
+  --signal-amber: #F2A65A;
+
+  /* River band states (continuous interpolation handled by JS) */
+  --river-dawn-top: #E8E5DF;
+  --river-dawn-bottom: #BFC7CC;
+  --river-day-top: #A9B8BF;
+  --river-day-bottom: #6B7E87;
+  --river-dusk-top: #D48A5A;
+  --river-dusk-bottom: #6B4A3E;
+  --river-night-top: #1E2A33;
+  --river-night-bottom: #0D1418;
+
+  /* Current river colors (JS writes these) */
+  --river-top: var(--river-dawn-top);
+  --river-bottom: var(--river-day-bottom);
+  --river-signal: var(--signal-orange);
+
+  /* Typography */
+  --font-display: 'Noto Serif SC', serif;
+  --font-body: 'Noto Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Spacing */
+  --pad-x: 32px;
+  --pad-y: 20px;
+  --gutter: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--fog-white);
+  color: var(--steel-ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* ===== Custom Cursor ===== */
+.custom-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--steel-ink);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+  mix-blend-mode: difference;
+}
+
+.custom-cursor.dragging {
+  width: 40px;
+  height: 40px;
+  background: var(--signal-orange);
+  border-color: var(--signal-orange);
+  mix-blend-mode: normal;
+}
+
+.custom-cursor.dragging::after {
+  content: '⇔';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--fog-white);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ===== App Shell ===== */
+.app {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* ===== Top Bar ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--pad-y) var(--pad-x);
+  border-bottom: 1px solid var(--steel-mid);
+  background: var(--fog-white);
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  position: relative;
+}
+
+.brand-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.brand-text {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--steel-ink);
+}
+
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--steel-light);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 12px;
+  color: var(--steel-mid);
+  font-family: var(--font-mono);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--steel-light);
+  text-transform: uppercase;
+}
+
+.meta-value {
+  color: var(--steel-ink);
+  font-weight: 500;
+}
+
+/* ===== Time Scrubber Section ===== */
+.time-scrubber-section {
+  position: relative;
+  padding: 24px var(--pad-x) 12px;
+  background: var(--fog-white);
+  z-index: 10;
+  border-bottom: 1px solid var(--steel-mid);
+}
+
+.scrubber-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.scrubber-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--steel-ink);
+  letter-spacing: 1px;
+}
+
+.scrubber-time {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--steel-ink);
+  letter-spacing: 2px;
+}
+
+.scrubber-time .ampm {
+  font-size: 14px;
+  color: var(--steel-light);
+  margin-left: 4px;
+}
+
+.scrubber-track-wrap {
+  position: relative;
+  padding: 16px 0 12px;
+}
+
+.scrubber-track {
+  position: relative;
+  height: 4px;
+  background: var(--fog-mist);
+  border-radius: 2px;
+  cursor: none;
+}
+
+.scrubber-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--steel-mid);
+  border-radius: 2px;
+  transition: background 0.3s ease;
+  pointer-events: none;
+}
+
+.scrubber-cursor {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--signal-orange);
+  border: 3px solid var(--fog-white);
+  box-shadow: 0 2px 8px rgba(28,38,43,0.25);
+  cursor: grab;
+  z-index: 5;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.scrubber-cursor:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 0 4px 16px rgba(232,116,59,0.5);
+}
+
+.scrubber-cursor.dragging {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.3);
+  box-shadow: 0 6px 20px rgba(232,116,59,0.6);
+}
+
+/* Hour ticks */
+.hour-ticks {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 24px;
+  margin-top: 4px;
+}
+
+.hour-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--steel-light);
+}
+
+.hour-tick .tick-line {
+  width: 1px;
+  height: 6px;
+  background: var(--steel-light);
+  opacity: 0.5;
+}
+
+.hour-tick.major .tick-line {
+  height: 10px;
+  opacity: 1;
+  background: var(--steel-mid);
+}
+
+.hour-tick.major {
+  color: var(--steel-mid);
+  font-size: 11px;
+}
+
+/* Time anchors */
+.time-anchors {
+  display: flex;
+  gap: 8px;
+  margin-top: 36px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.time-anchor {
+  padding: 6px 14px;
+  background: var(--fog-mist);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--steel-mid);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.time-anchor:hover {
+  background: var(--steel-mid);
+  color: var(--fog-white);
+}
+
+.time-anchor.active {
+  background: var(--steel-ink);
+  color: var(--fog-white);
+  border-color: var(--steel-ink);
+}
+
+.time-anchor .anchor-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+/* ===== Main Content Grid ===== */
+.main-content {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+  min-height: 0;
+}
+
+/* ===== Route List (Sidebar) ===== */
+.route-sidebar {
+  background: var(--fog-white);
+  border-right: 1px solid var(--steel-mid);
+  padding: 24px 0;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--fog-mist);
+  margin-bottom: 8px;
+}
+
+.sidebar-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--steel-ink);
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.sidebar-sub {
+  font-size: 11px;
+  color: var(--steel-light);
+}
+
+.route-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.route-item:hover {
+  background: var(--fog-mist);
+}
+
+.route-item.active {
+  background: var(--fog-mist);
+  border-left-color: var(--signal-orange);
+}
+
+.route-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--steel-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fog-white);
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.route-item.active .route-icon {
+  background: var(--signal-orange);
+}
+
+.route-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.route-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--steel-ink);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.route-meta {
+  font-size: 11px;
+  color: var(--steel-light);
+  display: flex;
+  gap: 8px;
+}
+
+.route-meta span {
+  white-space: nowrap;
+}
+
+.route-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--steel-light);
+  flex-shrink: 0;
+}
+
+.route-item.active .route-status {
+  background: var(--signal-orange);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ===== Schedule Area ===== */
+.schedule-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+/* River Band */
+.river-band {
+  position: relative;
+  height: 140px;
+  background: linear-gradient(180deg, var(--river-top) 0%, var(--river-bottom) 100%);
+  overflow: hidden;
+  transition: background 0.8s ease;
+}
+
+.river-band::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 60px,
+    rgba(255,255,255,0.03) 60px,
+    rgba(255,255,255,0.03) 120px
+  );
+  animation: riverFlow 8s linear infinite;
+}
+
+@keyframes riverFlow {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-120px); }
+}
+
+/* Boat silhouette on river */
+.river-boat {
+  position: absolute;
+  bottom: 24px;
+  width: 48px;
+  height: 24px;
+  animation: boatFloat 4s ease-in-out infinite;
+}
+
+.river-boat svg {
+  width: 100%;
+  height: 100%;
+  fill: var(--steel-ink);
+  opacity: 0.6;
+}
+
+.boat-1 { left: 15%; animation-delay: 0s; }
+.boat-2 { left: 45%; animation-delay: -1.5s; width: 36px; height: 18px; bottom: 30px; }
+.boat-3 { left: 78%; animation-delay: -3s; width: 56px; height: 28px; bottom: 18px; }
+
+@keyframes boatFloat {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-4px) rotate(1deg); }
+}
+
+/* Dock lights */
+.dock-lights {
+  position: absolute;
+  bottom: 8px;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  justify-content: space-between;
+}
+
+.dock-light {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal-orange);
+  opacity: 0;
+  transition: opacity 1.5s ease;
+  box-shadow: 0 0 8px var(--signal-orange);
+}
+
+.dock-light.on {
+  opacity: 0.8;
+  animation: lightBlink 3s ease-in-out infinite;
+}
+
+@keyframes lightBlink {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.3; }
+}
+
+/* Sun/Moon indicator */
+.sky-indicator {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fog-white);
+  opacity: 0.7;
+}
+
+.sky-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--signal-amber);
+  box-shadow: 0 0 12px var(--signal-amber);
+  transition: all 0.6s ease;
+}
+
+/* Schedule Table */
+.schedule-panel {
+  flex: 1;
+  padding: 20px var(--pad-x);
+  overflow-y: auto;
+  background: var(--fog-white);
+}
+
+.schedule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fog-mist);
+}
+
+.schedule-route-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--steel-ink);
+}
+
+.schedule-route-detail {
+  font-size: 12px;
+  color: var(--steel-light);
+  margin-top: 2px;
+}
+
+.schedule-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--steel-light);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot.upcoming { background: var(--signal-orange); }
+.legend-dot.available { background: var(--steel-mid); }
+.legend-dot.passed { background: var(--steel-light); opacity: 0.3; }
+
+/* Schedule table */
+.schedule-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.schedule-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--steel-light);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fog-mist);
+  font-family: var(--font-mono);
+}
+
+.schedule-table tbody tr {
+  transition: all 0.5s ease;
+  border-bottom: 1px solid var(--fog-mist);
+  position: relative;
+}
+
+.schedule-table tbody td {
+  padding: 14px 12px;
+  font-size: 13px;
+  color: var(--steel-mid);
+  vertical-align: middle;
+}
+
+.schedule-table tbody tr.passed td {
+  color: var(--steel-light);
+  opacity: 0.4;
+  text-decoration: line-through;
+  text-decoration-color: var(--steel-light);
+}
+
+.schedule-table tbody tr.upcoming td {
+  color: var(--steel-ink);
+}
+
+.schedule-table tbody tr.upcoming {
+  background: rgba(232, 116, 59, 0.06);
+}
+
+.schedule-table tbody tr.upcoming::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--signal-orange);
+}
+
+.schedule-table tbody tr.current td {
+  color: var(--steel-ink);
+  font-weight: 500;
+}
+
+.schedule-table tbody tr.current {
+  background: rgba(232, 116, 59, 0.12);
+}
+
+.schedule-table tbody tr.current::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--signal-orange);
+  animation: currentPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes currentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.shift-time {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--steel-ink);
+}
+
+tr.passed .shift-time {
+  color: var(--steel-light);
+  font-weight: 400;
+}
+
+.shift-from, .shift-to {
+  font-size: 12px;
+}
+
+.shift-arrow {
+  color: var(--steel-light);
+  margin: 0 4px;
+  font-size: 10px;
+}
+
+.shift-duration {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--steel-mid);
+}
+
+.shift-fare {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--steel-ink);
+  font-weight: 500;
+}
+
+.shift-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 4px;
+  background: var(--fog-mist);
+  color: var(--steel-mid);
+}
+
+.shift-type.car-ferry {
+  background: rgba(232, 116, 59, 0.1);
+  color: var(--signal-orange-dim);
+}
+
+.shift-type.express {
+  background: rgba(28, 38, 43, 0.08);
+  color: var(--steel-deep);
+}
+
+/* Next departure highlight */
+.next-departure {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--steel-ink);
+  color: var(--fog-white);
+  border-radius: 4px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.next-departure::after {
+  content: '';
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--signal-orange);
+  opacity: 0.15;
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+  0%, 100% { transform: scale(1); opacity: 0.15; }
+  50% { transform: scale(1.1); opacity: 0.25; }
+}
+
+.next-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--signal-orange);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.next-time {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: 2px;
+}
+
+.next-info {
+  font-size: 12px;
+  color: var(--steel-light);
+  margin-top: 2px;
+}
+
+.next-countdown {
+  margin-left: auto;
+  text-align: right;
+}
+
+.countdown-value {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  color: var(--signal-orange);
+  font-weight: 500;
+}
+
+.countdown-unit {
+  font-size: 11px;
+  color: var(--steel-light);
+  margin-left: 2px;
+}
+
+/* ===== Footer ===== */
+.footer {
+  padding: 12px var(--pad-x);
+  background: var(--steel-ink);
+  color: var(--steel-light);
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+}
+
+.footer a {
+  color: var(--steel-light);
+  text-decoration: none;
+  margin-left: 16px;
+  transition: color 0.2s ease;
+}
+
+.footer a:hover {
+  color: var(--fog-white);
+}
+
+/* ===== Info cards (below table) ===== */
+.info-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--fog-mist);
+}
+
+.info-card {
+  padding: 16px;
+  background: var(--fog-mist);
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.info-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(28, 38, 43, 0.1);
+}
+
+.info-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--steel-mid);
+  transition: background 0.3s ease;
+}
+
+.info-card:hover::before {
+  background: var(--signal-orange);
+}
+
+.info-card-icon {
+  font-size: 20px;
+  margin-bottom: 8px;
+  display: flex;
+}
+
+.info-card-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: var(--steel-mid);
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.info-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--steel-ink);
+  margin-bottom: 4px;
+}
+
+.info-card-desc {
+  font-size: 11px;
+  color: var(--steel-light);
+  line-height: 1.5;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1024px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+  .route-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--steel-mid);
+    padding: 12px 0;
+    max-height: 200px;
+  }
+  .sidebar-header {
+    padding: 0 20px 8px;
+  }
+  .route-list-horizontal {
+    display: flex;
+    gap: 8px;
+    padding: 0 20px;
+    overflow-x: auto;
+  }
+  .route-item {
+    flex-direction: column;
+    padding: 10px 14px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    min-width: 120px;
+  }
+  .route-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--signal-orange);
+  }
+  .info-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --pad-x: 16px;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .topbar-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .scrubber-time {
+    font-size: 22px;
+  }
+  .schedule-route-title {
+    font-size: 16px;
+  }
+  .next-departure {
+    flex-wrap: wrap;
+  }
+  .next-countdown {
+    width: 100%;
+    text-align: left;
+    margin-left: 0;
+    margin-top: 8px;
+  }
+  .info-cards {
+    grid-template-columns: 1fr;
+  }
+  .schedule-table thead {
+    display: none;
+  }
+  .schedule-table tbody tr {
+    display: block;
+    padding: 12px;
+    border-bottom: 1px solid var(--fog-mist);
+  }
+  .schedule-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border: none;
+  }
+  .schedule-table tbody td::before {
+    content: attr(data-label);
+    font-size: 10px;
+    color: var(--steel-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .custom-cursor {
+    display: none;
+  }
+  html, body {
+    cursor: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .next-time {
+    font-size: 24px;
+  }
+  .countdown-value {
+    font-size: 20px;
+  }
+  .time-anchors {
+    gap: 6px;
+  }
+  .time-anchor {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .river-band::before {
+    animation: none;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="custom-cursor" id="customCursor"></div>
+
+<div class="app">
+
+  <!-- Top Bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 18 L8 10 L14 18 L20 6 L26 18" stroke="#1C262B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="20" cy="6" r="2" fill="#E8743B"/>
+          <path d="M2 22 H26" stroke="#1C262B" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-text">江上渡口</div>
+        <div class="brand-sub">YANGTZE FERRY</div>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <div class="meta-item">
+        <span class="meta-label">今日</span>
+        <span class="meta-value" id="todayDate">2026.08.19 周三</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">天气</span>
+        <span class="meta-value">多云转晴 28°</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">通航状态</span>
+        <span class="meta-value" style="color: var(--signal-orange);">正常通航</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Time Scrubber -->
+  <section class="time-scrubber-section">
+    <div class="scrubber-header">
+      <div class="scrubber-title">时刻游标 · 拖动查看当日班次</div>
+      <div class="scrubber-time" id="scrubberTime">
+        08:30<span class="ampm">上午</span>
+      </div>
+    </div>
+    <div class="scrubber-track-wrap">
+      <div class="scrubber-track" id="scrubberTrack">
+        <div class="scrubber-fill" id="scrubberFill"></div>
+        <div class="scrubber-cursor" id="scrubberCursor"></div>
+        <div class="hour-ticks" id="hourTicks"></div>
+      </div>
+    </div>
+    <div class="time-anchors" id="timeAnchors">
+      <button class="time-anchor" data-hour="6">早班<span class="anchor-time">06:00</span></button>
+      <button class="time-anchor" data-hour="8">通勤高峰<span class="anchor-time">08:00</span></button>
+      <button class="time-anchor" data-hour="12">午间<span class="anchor-time">12:00</span></button>
+      <button class="time-anchor active" data-hour="14">午后<span class="anchor-time">14:00</span></button>
+      <button class="time-anchor" data-hour="18">晚归<span class="anchor-time">18:00</span></button>
+      <button class="time-anchor" data-hour="21">夜航<span class="anchor-time">21:00</span></button>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- Route Sidebar -->
+    <aside class="route-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">航线选择</div>
+        <div class="sidebar-sub">共 4 条航线 · 26 个班次</div>
+      </div>
+      <div class="route-list" id="routeList">
+        <!-- routes injected by JS -->
+      </div>
+    </aside>
+
+    <!-- Schedule Area -->
+    <section class="schedule-area">
+
+      <!-- River Band -->
+      <div class="river-band" id="riverBand">
+        <div class="sky-indicator">
+          <div class="sky-dot" id="skyDot"></div>
+          <span id="skyLabel">午后</span>
+        </div>
+        <div class="river-boat boat-1">
+          <svg viewBox="0 0 48 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 16 Q6 20 12 20 L36 20 Q42 20 46 16 L44 14 L4 14 Z"/>
+            <path d="M20 14 L22 6 L26 6 L28 14"/>
+            <path d="M23 7 L30 9 L23 11" opacity="0.7"/>
+          </svg>
+        </div>
+        <div class="river-boat boat-2">
+          <svg viewBox="0 0 36 18" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 12 Q4 15 8 15 L28 15 Q32 15 35 12 L33 10.5 L3 10.5 Z"/>
+            <rect x="14" y="5" width="8" height="5.5"/>
+          </svg>
+        </div>
+        <div class="river-boat boat-3">
+          <svg viewBox="0 0 56 28" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 18 Q6 24 14 24 L42 24 Q50 24 54 18 L52 16 L4 16 Z"/>
+            <rect x="18" y="6" width="20" height="10" rx="1"/>
+            <rect x="22" y="2" width="6" height="4"/>
+          </svg>
+        </div>
+        <div class="dock-lights" id="dockLights">
+          <!-- lights injected by JS -->
+        </div>
+      </div>
+
+      <!-- Schedule Panel -->
+      <div class="schedule-panel">
+
+        <!-- Next Departure -->
+        <div class="next-departure">
+          <div>
+            <div class="next-label">下一班</div>
+            <div class="next-time" id="nextTime">14:30</div>
+            <div class="next-info" id="nextInfo">中山码头 → 浦口码头 · 航程 12 分钟</div>
+          </div>
+          <div class="next-countdown">
+            <div class="countdown-value" id="countdownValue">12</div>
+            <div class="countdown-unit">分钟后开船</div>
+          </div>
+        </div>
+
+        <div class="schedule-header">
+          <div>
+            <div class="schedule-route-title" id="routeTitle">宁浦线 · 中山码头 — 浦口码头</div>
+            <div class="schedule-route-detail" id="routeDetail">全程 2.8 公里 · 航程约 12 分钟 · 票价 2 元</div>
+          </div>
+          <div class="schedule-legend">
+            <div class="legend-item">
+              <span class="legend-dot upcoming"></span>
+              <span>即将开船</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot available"></span>
+              <span>今日可乘</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot passed"></span>
+              <span>已过班次</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule Table -->
+        <table class="schedule-table">
+          <thead>
+            <tr>
+              <th style="width: 100px;">开船时间</th>
+              <th>航线</th>
+              <th style="width: 80px;">航程</th>
+              <th style="width: 70px;">票价</th>
+              <th style="width: 100px;">类型</th>
+              <th style="width: 80px;">状态</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleBody">
+            <!-- shifts injected by JS -->
+          </tbody>
+        </table>
+
+        <!-- Info Cards -->
+        <div class="info-cards">
+          <div class="info-card">
+            <div class="info-card-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 2 L2 7 L12 12 L22 7 Z"/><path d="M2 17 L12 22 L22 17"/><path d="M2 12 L12 17 L22 12"/></svg>
+            </div>
+            <div class="info-card-title">乘船须知</div>
+            <div class="info-card-desc">请提前 5 分钟检票，末班船提前 3 分钟停止售票。携带自行车需另购票。</div>
+          </div>
+          <div class="info-card">
+            <div class="info-card-icon">
+              <svg viewBox="0 0 24 24"><path d="M3 3 H21 V21 H3 Z"/><path d="M3 9 H21"/><path d="M9 3 V21"/></svg>
+            </div>
+            <div class="info-card-title">码头导航</div>
+            <div class="info-card-desc">中山码头：地铁 1 号线至鼓楼站转乘 34 路公交。浦口码头：步行 5 分钟可达浦口火车站。</div>
+          </div>
+          <div class="info-card">
+            <div class="info-card-icon">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7 V12 L16 14" stroke-linecap="round"/></svg>
+            </div>
+            <div class="info-card-title">延误公告</div>
+            <div class="info-card-desc">大雾、雷雨等恶劣天气可能临时停航。建议出行前查看实时通航信息。</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div>长江轮渡时刻表 © 2026 · 江上渡口</div>
+    <div>
+      <a href="#">服务热线</a>
+      <a href="#">失物招领</a>
+      <a href="#">意见反馈</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== Data: Real Yangtze River Ferry Routes (Nanjing area, real names) =====
+  const routes = [
+    {
+      id: 'ningpu',
+      name: '宁浦线',
+      from: '中山码头',
+      to: '浦口码头',
+      distance: '2.8 公里',
+      duration: '约 12 分钟',
+      fare: '¥2',
+      icon: '宁',
+      description: '南京最经典的过江轮渡线，连接中山码头与百年浦口火车站。',
+      shifts: [
+        { time: '05:00', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '05:40', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '06:20', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '07:00', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '07:40', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '08:20', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '09:00', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '10:30', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '12:00', type: '普通', carFerry: true, duration: 12, express: false },
+        { time: '14:00', type: '普通', carFerry: true, duration: 12, express: false },
+        { time: '14:30', type: '快速', carFerry: false, duration: 8, express: true },
+        { time: '15:30', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '17:00', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '18:30', type: '普通', carFerry: false, duration: 12, express: false },
+        { time: '20:00', type: '夜航', carFerry: false, duration: 12, express: false },
+        { time: '21:30', type: '末班', carFerry: false, duration: 12, express: false },
+      ]
+    },
+    {
+      id: 'yanjiang',
+      name: '燕江线',
+      from: '燕子矶码头',
+      to: '八卦洲码头',
+      distance: '3.5 公里',
+      duration: '约 15 分钟',
+      fare: '¥3',
+      icon: '燕',
+      description: '从燕子矶景区登船，俯瞰幕府山与长江二桥的壮丽景色。',
+      shifts: [
+        { time: '06:30', type: '普通', carFerry: true, duration: 15, express: false },
+        { time: '08:00', type: '普通', carFerry: false, duration: 15, express: false },
+        { time: '10:00', type: '观光', carFerry: false, duration: 20, express: false },
+        { time: '14:00', type: '普通', carFerry: true, duration: 15, express: false },
+        { time: '16:30', type: '观光', carFerry: false, duration: 20, express: false },
+        { time: '18:00', type: '普通', carFerry: false, duration: 15, express: false },
+        { time: '19:30', type: '夜航', carFerry: false, duration: 15, express: false },
+      ]
+    },
+    {
+      id: 'wuhuang',
+      name: '五黄线',
+      from: '五马渡码头',
+      to: '黄天荡码头',
+      distance: '4.2 公里',
+      duration: '约 18 分钟',
+      fare: '¥5',
+      icon: '五',
+      description: '连接幕燕滨江风光带与江北新区，适合骑行与自驾游。',
+      shifts: [
+        { time: '07:00', type: '载车', carFerry: true, duration: 18, express: false },
+        { time: '09:30', type: '载车', carFerry: true, duration: 18, express: false },
+        { time: '11:30', type: '载车', carFerry: true, duration: 18, express: false },
+        { time: '14:30', type: '载车', carFerry: true, duration: 18, express: false },
+        { time: '16:30', type: '载车', carFerry: true, duration: 18, express: false },
+        { time: '18:30', type: '末班', carFerry: true, duration: 18, express: false },
+      ]
+    },
+    {
+      id: 'longtan',
+      name: '龙仪线',
+      from: '龙潭码头',
+      to: '仪征码头',
+      distance: '6.8 公里',
+      duration: '约 25 分钟',
+      fare: '¥8',
+      icon: '龙',
+      description: '跨市轮渡航线，连接南京龙潭港与扬州仪征，通勤与货运两用。',
+      shifts: [
+        { time: '06:00', type: '载车', carFerry: true, duration: 25, express: false },
+        { time: '08:30', type: '快速', carFerry: false, duration: 18, express: true },
+        { time: '11:00', type: '载车', carFerry: true, duration: 25, express: false },
+        { time: '14:00', type: '载车', carFerry: true, duration: 25, express: false },
+        { time: '16:30', type: '快速', carFerry: false, duration: 18, express: true },
+        { time: '19:00', type: '末班', carFerry: true, duration: 25, express: false },
+      ]
+    }
+  ];
+
+  // ===== State =====
+  let currentRouteId = 'ningpu';
+  let currentHour = 14;
+  let currentMinute = 30;
+  let isDragging = false;
+  let rafId = null;
+  let riverRafId = null;
+  let targetHour = 14;
+  let targetMinute = 30;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ===== DOM refs =====
+  const scrubberTrack = document.getElementById('scrubberTrack');
+  const scrubberCursor = document.getElementById('scrubberCursor');
+  const scrubberFill = document.getElementById('scrubberFill');
+  const scrubberTime = document.getElementById('scrubberTime');
+  const hourTicks = document.getElementById('hourTicks');
+  const timeAnchors = document.getElementById('timeAnchors');
+  const routeList = document.getElementById('routeList');
+  const scheduleBody = document.getElementById('scheduleBody');
+  const routeTitle = document.getElementById('routeTitle');
+  const routeDetail = document.getElementById('routeDetail');
+  const riverBand = document.getElementById('riverBand');
+  const nextTime = document.getElementById('nextTime');
+  const nextInfo = document.getElementById('nextInfo');
+  const countdownValue = document.getElementById('countdownValue');
+  const skyDot = document.getElementById('skyDot');
+  const skyLabel = document.getElementById('skyLabel');
+  const dockLights = document.getElementById('dockLights');
+  const customCursor = document.getElementById('customCursor');
+
+  // ===== Custom Cursor =====
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let cursorTargetX = cursorX;
+  let cursorTargetY = cursorY;
+
+  function updateCursor() {
+    cursorX += (cursorTargetX - cursorX) * 0.2;
+    cursorY += (cursorTargetY - cursorY) * 0.2;
+    customCursor.style.left = cursorX + 'px';
+    customCursor.style.top = cursorY + 'px';
+    if (!reduceMotion) {
+      requestAnimationFrame(updateCursor);
+    }
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+    if (reduceMotion) {
+      cursorX = e.clientX;
+      cursorY = e.clientY;
+      customCursor.style.left = cursorX + 'px';
+      customCursor.style.top = cursorY + 'px';
+    }
+  });
+
+  if (!reduceMotion) {
+    updateCursor();
+  }
+
+  // Hide custom cursor on touch devices
+  if ('ontouchstart' in window) {
+    customCursor.style.display = 'none';
+    document.body.style.cursor = 'auto';
+  }
+
+  // ===== Build hour ticks =====
+  function buildHourTicks() {
+    const ticks = [];
+    for (let h = 0; h <= 24; h++) {
+      const isMajor = h % 3 === 0;
+      const left = (h / 24) * 100;
+      const label = h.toString().padStart(2, '0') + ':00';
+      ticks.push(`<div class="hour-tick ${isMajor ? 'major' : ''}" style="left: ${left}%">
+        <span class="tick-line"></span>
+        ${isMajor ? `<span>${label}</span>` : ''}
+      </div>`);
+    }
+    hourTicks.innerHTML = ticks.join('');
+  }
+
+  // ===== Build dock lights =====
+  function buildDockLights() {
+    const lights = [];
+    for (let i = 0; i < 8; i++) {
+      lights.push(`<div class="dock-light" style="animation-delay: ${i * 0.4}s"></div>`);
+    }
+    dockLights.innerHTML = lights.join('');
+  }
+
+  // ===== Build route list =====
+  function buildRouteList() {
+    const items = routes.map(function(route) {
+      const totalShifts = route.shifts.length;
+      return `
+        <div class="route-item ${route.id === currentRouteId ? 'active' : ''}" data-route="${route.id}">
+          <div class="route-icon">${route.icon}</div>
+          <div class="route-info">
+            <div class="route-name">${route.name}</div>
+            <div class="route-meta">
+              <span>${route.from} → ${route.to}</span>
+            </div>
+            <div class="route-meta">
+              <span>${totalShifts} 班</span>
+              <span>${route.fare}</span>
+            </div>
+          </div>
+          <div class="route-status"></div>
+        </div>
+      `;
+    }).join('');
+    routeList.innerHTML = items;
+
+    // Add click handlers
+    document.querySelectorAll('.route-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        const routeId = this.getAttribute('data-route');
+        if (routeId !== currentRouteId) {
+          currentRouteId = routeId;
+          buildRouteList();
+          renderSchedule();
+        }
+      });
+    });
+  }
+
+  // ===== Time utilities =====
+  function timeToMinutes(timeStr) {
+    const parts = timeStr.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  }
+
+  function currentTotalMinutes() {
+    return currentHour * 60 + currentMinute;
+  }
+
+  function formatTime(h, m) {
+    return h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+  }
+
+  function getAmPm(h) {
+    if (h >= 0 && h < 6) return '凌晨';
+    if (h >= 6 && h < 9) return '早晨';
+    if (h >= 9 && h < 12) return '上午';
+    if (h === 12) return '正午';
+    if (h > 12 && h < 18) return '下午';
+    if (h >= 18 && h < 21) return '傍晚';
+    return '夜间';
+  }
+
+  // ===== River color interpolation =====
+  // Key times: dawn(5-7), day(8-16), dusk(17-19), night(20-4)
+  const riverColors = {
+    night: { top: [30, 42, 51], bottom: [13, 20, 24], signal: [242, 166, 90] },
+    dawn: { top: [232, 229, 223], bottom: [191, 199, 204], signal: [242, 166, 90] },
+    day: { top: [169, 184, 191], bottom: [107, 126, 135], signal: [232, 116, 59] },
+    dusk: { top: [212, 138, 90], bottom: [107, 74, 62], signal: [242, 166, 90] },
+  };
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function lerpColor(c1, c2, t) {
+    return [
+      Math.round(lerp(c1[0], c2[0], t)),
+      Math.round(lerp(c1[1], c2[1], t)),
+      Math.round(lerp(c1[2], c2[2], t)),
+    ];
+  }
+
+  function rgb(arr) {
+    return `rgb(${arr[0]}, ${arr[1]}, ${arr[2]})`;
+  }
+
+  function getRiverState(totalMinutes) {
+    // Define transition segments
+    // 0-4: night
+    // 4-6: night -> dawn
+    // 6-8: dawn
+    // 8-9: dawn -> day
+    // 9-16: day
+    // 16-18: day -> dusk
+    // 18-19: dusk
+    // 19-21: dusk -> night
+    // 21-24: night
+
+    const h = totalMinutes / 60;
+    let from, to, t;
+
+    if (h < 4) {
+      return { ...riverColors.night, phase: 'night' };
+    } else if (h < 6) {
+      from = riverColors.night; to = riverColors.dawn; t = (h - 4) / 2;
+    } else if (h < 8) {
+      return { ...riverColors.dawn, phase: 'dawn' };
+    } else if (h < 9) {
+      from = riverColors.dawn; to = riverColors.day; t = (h - 8) / 1;
+    } else if (h < 16) {
+      return { ...riverColors.day, phase: 'day' };
+    } else if (h < 18) {
+      from = riverColors.day; to = riverColors.dusk; t = (h - 16) / 2;
+    } else if (h < 19) {
+      return { ...riverColors.dusk, phase: 'dusk' };
+    } else if (h < 21) {
+      from = riverColors.dusk; to = riverColors.night; t = (h - 19) / 2;
+    } else {
+      return { ...riverColors.night, phase: 'night' };
+    }
+
+    return {
+      top: lerpColor(from.top, to.top, t),
+      bottom: lerpColor(from.bottom, to.bottom, t),
+      signal: lerpColor(from.signal, to.signal, t),
+      phase: 'transition'
+    };
+  }
+
+  function updateRiverColors(totalMinutes) {
+    const state = getRiverState(totalMinutes);
+    riverBand.style.setProperty('--river-top', rgb(state.top));
+    riverBand.style.setProperty('--river-bottom', rgb(state.bottom));
+
+    // Update sky label
+    const h = totalMinutes / 60;
+    let label = '午后';
+    let dotColor = 'var(--signal-amber)';
+    if (h < 5) { label = '深夜'; dotColor = '#B0BEC5'; }
+    else if (h < 7) { label = '黎明'; dotColor = '#FFB74D'; }
+    else if (h < 9) { label = '清晨'; dotColor = '#FFCC80'; }
+    else if (h < 11) { label = '上午'; dotColor = '#FFF59D'; }
+    else if (h < 13) { label = '正午'; dotColor = '#FFE082'; }
+    else if (h < 16) { label = '午后'; dotColor = 'var(--signal-amber)'; }
+    else if (h < 18) { label = '日落'; dotColor = 'var(--signal-orange)'; }
+    else if (h < 20) { label = '黄昏'; dotColor = '#FF7043'; }
+    else if (h < 22) { label = '入夜'; dotColor = '#90A4AE'; }
+    else { label = '夜航'; dotColor = '#78909C'; }
+
+    skyLabel.textContent = label;
+    skyDot.style.background = dotColor;
+    skyDot.style.boxShadow = `0 0 12px ${dotColor}`;
+
+    // Dock lights: on at dusk/night
+    const lights = dockLights.querySelectorAll('.dock-light');
+    const isNight = h < 6 || h >= 18;
+    const isDusk = h >= 16 && h < 18;
+    lights.forEach(function(light, i) {
+      if (isNight) {
+        light.classList.add('on');
+        light.style.animationDelay = (i * 0.4) + 's';
+      } else if (isDusk) {
+        // Gradually turn on during dusk
+        const duskProgress = (h - 16) / 2;
+        if (i < Math.floor(duskProgress * lights.length) + 1) {
+          light.classList.add('on');
+        } else {
+          light.classList.remove('on');
+        }
+      } else {
+        light.classList.remove('on');
+      }
+    });
+  }
+
+  // ===== Update scrubber position =====
+  function updateScrubberUI() {
+    const pct = (currentHour * 60 + currentMinute) / (24 * 60) * 100;
+    scrubberCursor.style.left = pct + '%';
+    scrubberFill.style.width = pct + '%';
+    scrubberTime.innerHTML = formatTime(currentHour, currentMinute) +
+      '<span class="ampm">' + getAmPm(currentHour) + '</span>';
+  }
+
+  // ===== Render schedule =====
+  function renderSchedule() {
+    const route = routes.find(function(r) { return r.id === currentRouteId; });
+    if (!route) return;
+
+    routeTitle.textContent = route.name + ' · ' + route.from + ' — ' + route.to;
+    routeDetail.textContent = '全程 ' + route.distance + ' · 航程 ' + route.duration + ' · 票价 ' + route.fare;
+
+    const now = currentTotalMinutes();
+
+    const rows = route.shifts.map(function(shift) {
+      const shiftMins = timeToMinutes(shift.time);
+      const diff = shiftMins - now;
+      let status = 'available';
+      let statusText = '待发';
+
+      if (diff < 0) {
+        status = 'passed';
+        statusText = '已发船';
+      } else if (diff <= 15) {
+        status = 'current';
+        statusText = '即将开船';
+      } else if (diff <= 60) {
+        status = 'upcoming';
+        statusText = '临近';
+      }
+
+      const typeClass = shift.carFerry ? 'car-ferry' : (shift.express ? 'express' : '');
+      const typeLabel = shift.type;
+
+      return `
+        <tr class="${status}" data-shift="${shift.time}">
+          <td data-label="开船时间"><span class="shift-time">${shift.time}</span></td>
+          <td data-label="航线">
+            <span class="shift-from">${route.from}</span>
+            <span class="shift-arrow">→</span>
+            <span class="shift-to">${route.to}</span>
+          </td>
+          <td data-label="航程"><span class="shift-duration">${shift.duration} 分钟</span></td>
+          <td data-label="票价"><span class="shift-fare">${route.fare}</span></td>
+          <td data-label="类型"><span class="shift-type ${typeClass}">${typeLabel}</span></td>
+          <td data-label="状态">${statusText}</td>
+        </tr>
+      `;
+    }).join('');
+
+    scheduleBody.innerHTML = rows;
+
+    // Update next departure
+    const nextShift = route.shifts.find(function(s) {
+      return timeToMinutes(s.time) >= now;
+    });
+
+    if (nextShift) {
+      nextTime.textContent = nextShift.time;
+      nextInfo.textContent = route.from + ' → ' + route.to + ' · 航程 ' + nextShift.duration + ' 分钟';
+      const minutesAway = timeToMinutes(nextShift.time) - now;
+      countdownValue.textContent = minutesAway;
+    } else {
+      nextTime.textContent = '——';
+      nextInfo.textContent = '今日班次已全部发船';
+      countdownValue.textContent = '—';
+    }
+  }
+
+  // ===== Drag interaction =====
+  function handleDragStart(e) {
+    isDragging = true;
+    scrubberCursor.classList.add('dragging');
+    customCursor.classList.add('dragging');
+    handleDragMove(e);
+  }
+
+  function handleDragMove(e) {
+    if (!isDragging) return;
+    const rect = scrubberTrack.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    let x = clientX - rect.left;
+    x = Math.max(0, Math.min(rect.width, x));
+    const pct = x / rect.width;
+    const totalMinutes = Math.round(pct * 24 * 60);
+    currentHour = Math.floor(totalMinutes / 60);
+    currentMinute = totalMinutes % 60;
+
+    updateScrubberUI();
+    updateRiverColors(currentTotalMinutes());
+    renderSchedule();
+    updateActiveAnchor();
+  }
+
+  function handleDragEnd() {
+    isDragging = false;
+    scrubberCursor.classList.remove('dragging');
+    customCursor.classList.remove('dragging');
+  }
+
+  scrubberCursor.addEventListener('mousedown', handleDragStart);
+  scrubberTrack.addEventListener('mousedown', function(e) {
+    // Click on track to jump
+    handleDragStart(e);
+    setTimeout(handleDragEnd, 50);
+  });
+  document.addEventListener('mousemove', handleDragMove);
+  document.addEventListener('mouseup', handleDragEnd);
+
+  // Touch support
+  scrubberCursor.addEventListener('touchstart', handleDragStart, { passive: true });
+  scrubberTrack.addEventListener('touchstart', function(e) {
+    handleDragStart(e);
+  }, { passive: true });
+  document.addEventListener('touchmove', handleDragMove, { passive: true });
+  document.addEventListener('touchend', handleDragEnd);
+
+  // Hover cursor on draggable area
+  scrubberTrack.addEventListener('mouseenter', function() {
+    customCursor.style.width = '28px';
+    customCursor.style.height = '28px';
+  });
+  scrubberTrack.addEventListener('mouseleave', function() {
+    if (!isDragging) {
+      customCursor.style.width = '';
+      customCursor.style.height = '';
+    }
+  });
+
+  // ===== Time anchors =====
+  function updateActiveAnchor() {
+    const anchors = timeAnchors.querySelectorAll('.time-anchor');
+    anchors.forEach(function(btn) {
+      const h = parseInt(btn.getAttribute('data-hour'), 10);
+      if (currentHour === h) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  timeAnchors.addEventListener('click', function(e) {
+    const btn = e.target.closest('.time-anchor');
+    if (!btn) return;
+    const hour = parseInt(btn.getAttribute('data-hour'), 10);
+    animateToTime(hour, 0);
+  });
+
+  function animateToTime(targetH, targetM) {
+    const startH = currentHour;
+    const startM = currentMinute;
+    const startTotal = startH * 60 + startM;
+    const endTotal = targetH * 60 + targetM;
+    const diff = endTotal - startTotal;
+    const duration = 600;
+    const startTime = performance.now();
+
+    function step(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / duration);
+      // easeOutCubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const currentTotal = Math.round(startTotal + diff * eased);
+      currentHour = Math.floor(currentTotal / 60);
+      currentMinute = currentTotal % 60;
+
+      updateScrubberUI();
+      updateRiverColors(currentTotalMinutes());
+      renderSchedule();
+      updateActiveAnchor();
+
+      if (t < 1 && !isDragging) {
+        requestAnimationFrame(step);
+      }
+    }
+
+    if (reduceMotion) {
+      currentHour = targetH;
+      currentMinute = targetM;
+      updateScrubberUI();
+      updateRiverColors(currentTotalMinutes());
+      renderSchedule();
+      updateActiveAnchor();
+    } else {
+      requestAnimationFrame(step);
+    }
+  }
+
+  // ===== Initialize =====
+  function init() {
+    buildHourTicks();
+    buildDockLights();
+    buildRouteList();
+    updateScrubberUI();
+    updateRiverColors(currentTotalMinutes());
+    renderSchedule();
+    updateActiveAnchor();
+
+    // Set today's date
+    const today = new Date();
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    document.getElementById('todayDate').textContent =
+      today.getFullYear() + '.' +
+      String(today.getMonth() + 1).padStart(2, '0') + '.' +
+      String(today.getDate()).padStart(2, '0') + ' ' +
+      weekdays[today.getDay()];
+  }
+
+  // Pause RAF when tab not visible
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      if (rafId) cancelAnimationFrame(rafId);
+    }
+  });
+
+  init();
+
+  // Announce upgrade availability
+  function announceUpgrade() {
+    window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+})();
+</script>
+</body>
+</html>
