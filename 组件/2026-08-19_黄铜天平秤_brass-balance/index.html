@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" string="true">interactive-prototype">
+<title>黄铜天平秤 · 物理交互组件</title>
+<style>
+  /* ===== 基础 ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --brass-light: #E8C97A;
+    --brass-mid:   #C9A24A;
+    --brass-deep:  #8B6914;
+    --brass-dark:  #5C4510;
+    --brass-shadow:#3A2A08;
+    --wood-light:  #8B6239;
+    --wood-mid:    #6B4423;
+    --wood-deep:   #3E2817;
+    --marble-light:#E8E2D5;
+    --marble-mid:  #B8B0A0;
+    --marble-deep: #7A7266;
+    --velvet-dark: #2A1810;
+    --velvet-mid:  #3D2418;
+    --cream:       #F5E6D0;
+    --ink:         #2A1F15;
+    --gold-glow:   rgba(232, 201, 122, 0.4);
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #4A3420 0%, #2A1810 60%, #140C06 100%);
+    font-family: "Songti SC", "STSong", "SimSun", serif;
+    color: var(--cream);
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ===== 自定义光标：黄铜镊子 ===== */
+  .cursor {
+    position: fixed;
+    top: 0; left: 0;
+    width: 28px; height: 44px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -2px);
+    transition: transform 0.08s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
+  }
+  .cursor.grabbing {
+    transform: translate(-50%, -2px) scale(0.92);
+  }
+  .cursor svg { width: 100%; height: 100%; overflow: visible; }
+
+  /* ===== 环境光 ===== */
+  .ambient-light {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 20%, rgba(232, 201, 122, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 20% 80%, rgba(139, 105, 20, 0.06) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 80%, rgba(139, 105, 20, 0.06) 0%, transparent 40%);
+    animation: ambientBreath 6s ease-in-out infinite;
+  }
+  @keyframes ambientBreath {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+  }
+
+  /* ===== 标题 ===== */
+  .header {
+    position: fixed;
+    top: 32px; left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 8px;
+    color: var(--brass-light);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 20px var(--gold-glow);
+  }
+  .header .sub {
+    margin-top: 6px;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--marble-mid);
+    font-style: italic;
+  }
+
+  /* ===== 说明面板 ===== */
+  .info-panel {
+    position: fixed;
+    left: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 200px;
+    padding: 20px;
+    background: rgba(42, 24, 16, 0.7);
+    border: 1px solid rgba(232, 201, 122, 0.2);
+    border-radius: 4px;
+    backdrop-filter: blur(6px);
+    z-index: 10;
+  }
+  .info-panel h2 {
+    font-size: 14px;
+    color: var(--brass-light);
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(232, 201, 122, 0.3);
+  }
+  .info-panel .row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--cream);
+    line-height: 1.6;
+  }
+  .info-panel .row .label {
+    color: var(--marble-mid);
+    letter-spacing: 1px;
+  }
+  .info-panel .row .value {
+    color: var(--brass-light);
+    font-feature-settings: "tnum";
+  }
+  .info-panel .tip {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(232, 201, 122, 0.15);
+    font-size: 11px;
+    color: var(--marble-mid);
+    line-height: 1.8;
+  }
+  .info-panel .tip b {
+    color: var(--brass-mid);
+    font-weight: normal;
+  }
+
+  /* ===== 天平秤容器 ===== */
+  .scale-stage {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 620px;
+    height: 520px;
+  }
+
+  /* 底座（大理石） */
+  .base {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 260px;
+    height: 50px;
+    background:
+      linear-gradient(180deg, var(--marble-light) 0%, var(--marble-mid) 40%, var(--marble-deep) 100%);
+    border-radius: 6px 6px 4px 4px;
+    box-shadow:
+      0 20px 40px rgba(0,0,0,0.5),
+      inset 0 2px 0 rgba(255,255,255,0.4),
+      inset 0 -3px 6px rgba(0,0,0,0.3);
+  }
+  .base::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(ellipse at 30% 30%, rgba(255,255,255,0.3) 0%, transparent 40%),
+      radial-gradient(ellipse at 70% 60%, rgba(0,0,0,0.15) 0%, transparent 30%);
+    pointer-events: none;
+  }
+  /* 底座纹路 */
+  .base::after {
+    content: '';
+    position: absolute;
+    inset: 5px 8px;
+    border-radius: 2px;
+    background:
+      linear-gradient(85deg, transparent 40%, rgba(122, 114, 102, 0.3) 45%, transparent 50%),
+      linear-gradient(95deg, transparent 60%, rgba(122, 114, 102, 0.2) 65%, transparent 70%);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* 立柱（黄铜） */
+  .pillar {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22px;
+    height: 200px;
+    background: linear-gradient(90deg,
+      var(--brass-shadow) 0%,
+      var(--brass-dark) 15%,
+      var(--brass-deep) 35%,
+      var(--brass-mid) 50%,
+      var(--brass-deep) 65%,
+      var(--brass-dark) 85%,
+      var(--brass-shadow) 100%);
+    border-radius: 3px 3px 0 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .pillar::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -4px;
+    width: 30px; height: 14px;
+    background: linear-gradient(180deg, var(--brass-light) 0%, var(--brass-mid) 50%, var(--brass-dark) 100%);
+    border-radius: 2px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+
+  /* 横梁枢轴点 */
+  .pivot {
+    position: absolute;
+    top: 146px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px; height: 18px;
+    background: radial-gradient(circle at 35% 35%, var(--brass-light), var(--brass-deep) 60%, var(--brass-shadow));
+    border-radius: 50%;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.5),
+      inset 0 -2px 4px rgba(0,0,0,0.4),
+      inset 0 2px 3px rgba(255,255,255,0.3);
+    z-index: 5;
+  }
+  .pivot::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px; height: 6px;
+    background: radial-gradient(circle, var(--brass-shadow), var(--brass-dark));
+    border-radius: 50%;
+  }
+
+  /* 横梁 */
+  .beam-wrap {
+    position: absolute;
+    top: 155px;
+    left: 50%;
+    width: 0; height: 0;
+    z-index: 4;
+  }
+  .beam {
+    position: absolute;
+    top: -6px;
+    left: -240px;
+    width: 480px;
+    height: 12px;
+    background: linear-gradient(180deg,
+      var(--brass-light) 0%,
+      var(--brass-mid) 30%,
+      var(--brass-deep) 55%,
+      var(--brass-dark) 80%,
+      var(--brass-shadow) 100%);
+    border-radius: 2px;
+    box-shadow:
+      0 4px 12px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.4),
+      inset 0 -1px 2px rgba(0,0,0,0.3);
+    transform-origin: 50% 50%;
+  }
+  .beam::before {
+    content: '';
+    position: absolute;
+    top: 2px; left: 6px; right: 6px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+  }
+
+  /* 刻度 */
+  .scale-marks {
+    position: absolute;
+    top: -6px;
+    left: -240px;
+    width: 480px;
+    height: 12px;
+    transform-origin: 50% 50%;
+    pointer-events: none;
+  }
+  .scale-marks i {
+    position: absolute;
+    top: -4px;
+    width: 1px;
+    height: 6px;
+    background: var(--brass-shadow);
+    opacity: 0.7;
+  }
+  .scale-marks i.major {
+    top: -6px;
+    height: 9px;
+    width: 1.5px;
+  }
+
+  /* 指针 */
+  .pointer {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 50px;
+    background: linear-gradient(180deg, var(--brass-light), var(--brass-deep));
+    transform-origin: 50% 100%;
+    z-index: 3;
+  }
+  .pointer::before {
+    content: '';
+    position: absolute;
+    top: -4px; left: -3px;
+    width: 8px; height: 8px;
+    background: var(--brass-light);
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  }
+
+  /* 刻度盘 */
+  .dial {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 26px;
+    background: rgba(42, 24, 16, 0.8);
+    border: 1px solid var(--brass-deep);
+    border-radius: 13px;
+    z-index: 2;
+    overflow: hidden;
+  }
+  .dial::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    height: 1px;
+    background: var(--brass-light);
+    opacity: 0.5;
+  }
+  .dial::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: var(--brass-light);
+    opacity: 0.8;
+  }
+
+  /* 吊绳 + 托盘 */
+  .hanger {
+    position: absolute;
+    top: 0;
+    width: 100px;
+    height: 160px;
+    transform-origin: 50% 0%;
+  }
+  .hanger.left { left: -240px; }
+  .hanger.right { right: -240px; }
+
+  .ropes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110px;
+    pointer-events: none;
+  }
+  .rope {
+    position: absolute;
+    top: 0;
+    width: 1.5px;
+    height: 110px;
+    background: linear-gradient(180deg, var(--brass-mid), var(--brass-deep));
+    transform-origin: 50% 0%;
+    box-shadow: 0 0 2px rgba(0,0,0,0.3);
+  }
+  .rope.left-rope { left: 15px; }
+  .rope.right-rope { right: 15px; }
+  .rope.mid-rope { left: 50%; transform: translateX(-50%); }
+
+  /* 托盘 */
+  .tray {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 22px;
+    background: linear-gradient(180deg,
+      var(--brass-light) 0%,
+      var(--brass-mid) 30%,
+      var(--brass-deep) 60%,
+      var(--brass-shadow) 100%);
+    border-radius: 50% / 70% 70% 30% 30%;
+    box-shadow:
+      0 6px 16px rgba(0,0,0,0.4),
+      inset 0 2px 4px rgba(255,255,255,0.3),
+      inset 0 -4px 8px rgba(0,0,0,0.3);
+  }
+  .tray::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 10px; right: 10px;
+    height: 2px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 50%;
+  }
+  .tray-inner {
+    position: absolute;
+    top: 4px;
+    left: 12px; right: 12px;
+    height: 10px;
+    background: radial-gradient(ellipse at 50% 30%, var(--velvet-mid), var(--velvet-dark));
+    border-radius: 50%;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+  }
+
+  /* 砝码台（左侧放砝码的地方） */
+  .weight-bench {
+    position: fixed;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 160px;
+    padding: 16px;
+    background: rgba(42, 24, 16, 0.7);
+    border: 1px solid rgba(232, 201, 122, 0.2);
+    border-radius: 4px;
+    backdrop-filter: blur(6px);
+    z-index: 10;
+  }
+  .weight-bench h2 {
+    font-size: 13px;
+    color: var(--brass-light);
+    letter-spacing: 3px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(232, 201, 122, 0.3);
+    text-align: center;
+  }
+  .weight-shelf {
+    position: relative;
+    height: 40px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--brass-deep);
+    border-radius: 2px;
+  }
+  .weight-shelf::before {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 10%; right: 10%;
+    height: 4px;
+    background: linear-gradient(180deg, var(--wood-light), var(--wood-deep));
+    border-radius: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+
+  /* 砝码 */
+  .weight {
+    position: relative;
+    cursor: none;
+    transition: transform 0.15s ease, filter 0.15s ease;
+    z-index: 20;
+  }
+  .weight:hover {
+    filter: brightness(1.15) drop-shadow(0 0 6px var(--gold-glow));
+    transform: translateY(-3px);
+  }
+  .weight.dragging {
+    filter: brightness(1.2) drop-shadow(0 0 12px var(--gold-glow));
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .weight.placed {
+    position: absolute;
+    z-index: 6;
+  }
+  .weight-body {
+    background: linear-gradient(180deg,
+      var(--brass-light) 0%,
+      var(--brass-mid) 25%,
+      var(--brass-deep) 55%,
+      var(--brass-dark) 85%,
+      var(--brass-shadow) 100%);
+    border-radius: 4px 4px 2px 2px;
+    box-shadow:
+      0 3px 8px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.4),
+      inset 0 -2px 4px rgba(0,0,0,0.3);
+    position: relative;
+  }
+  .weight-body::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 9px;
+    font-weight: bold;
+    color: var(--brass-shadow);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+    font-family: "Georgia", serif;
+    letter-spacing: -0.5px;
+  }
+  .weight-knob {
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 6px;
+    background: linear-gradient(180deg, var(--brass-light), var(--brass-mid) 50%, var(--brass-deep));
+    border-radius: 3px 3px 1px 1px;
+    box-shadow:
+      0 -1px 2px rgba(255,255,255,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .weight-base {
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110%;
+    height: 3px;
+    background: linear-gradient(180deg, var(--brass-deep), var(--brass-shadow));
+    border-radius: 0 0 2px 2px;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.3);
+  }
+
+  .weight.w10 .weight-body { width: 32px; height: 28px; }
+  .weight.w20 .weight-body { width: 38px; height: 34px; }
+  .weight.w50 .weight-body { width: 44px; height: 40px; }
+  .weight.w100 .weight-body { width: 50px; height: 46px; }
+  .weight.w200 .weight-body { width: 56px; height: 52px; }
+
+  /* 底部控制 */
+  .controls {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    z-index: 10;
+  }
+  .btn {
+    padding: 10px 24px;
+    background: linear-gradient(180deg, var(--brass-mid), var(--brass-deep));
+    border: 1px solid var(--brass-dark);
+    border-radius: 3px;
+    color: var(--cream);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 3px;
+    cursor: none;
+    transition: all 0.2s ease;
+    box-shadow:
+      0 4px 12px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .btn:hover {
+    background: linear-gradient(180deg, var(--brass-light), var(--brass-mid));
+    box-shadow:
+      0 6px 16px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.4),
+      0 0 20px var(--gold-glow);
+    transform: translateY(-1px);
+  }
+  .btn:active {
+    transform: translateY(1px);
+    box-shadow:
+      0 2px 6px rgba(0,0,0,0.4),
+      inset 0 1px 2px rgba(0,0,0,0.2);
+  }
+
+  /* 平衡指示 */
+  .balance-status {
+    position: absolute;
+    top: -56px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--marble-mid);
+    letter-spacing: 2px;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+    z-index: 4;
+  }
+  .balance-status.balanced {
+    color: var(--brass-light);
+    text-shadow: 0 0 10px var(--gold-glow);
+  }
+
+  /* 粉尘粒子 */
+  .dust {
+    position: fixed;
+    width: 3px; height: 3px;
+    background: var(--brass-light);
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  /* 落灰感 */
+  .veil {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(20, 12, 6, 0.4) 100%);
+    z-index: 50;
+  }
+
+  /* 铭牌 */
+  .nameplate {
+    position: absolute;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 14px;
+    background: linear-gradient(180deg, var(--brass-mid), var(--brass-deep));
+    border: 1px solid var(--brass-dark);
+    border-radius: 2px;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--brass-shadow);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    z-index: 3;
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient-light"></div>
+<div class="veil"></div>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor">
+  <svg viewBox="0 0 28 44" fill="none">
+    <defs>
+      <linearGradient id="brassGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3A2A08"/>
+        <stop offset="30%" stop-color="#8B6914"/>
+        <stop offset="50%" stop-color="#E8C97A"/>
+        <stop offset="70%" stop-color="#8B6914"/>
+        <stop offset="100%" stop-color="#3A2A08"/>
+      </linearGradient>
+    </defs>
+    <!-- 镊子左片 -->
+    <path d="M10 0 L10 28 L6 42" stroke="url(#brassGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- 镊子右片 -->
+    <path d="M18 0 L18 28 L22 42" stroke="url(#brassGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- 顶端连接 -->
+    <path d="M10 0 Q14 -2 18 0" stroke="url(#brassGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- 高光 -->
+    <path d="M12 4 L12 26" stroke="rgba(255,255,255,0.3)" stroke-width="0.8" stroke-linecap="round"/>
+    <path d="M16 4 L16 26" stroke="rgba(255,255,255,0.3)" stroke-width="0.8" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<!-- 标题 -->
+<div class="header">
+  <h1>黄铜天平秤</h1>
+  <div class="sub">Brass Balance · Art Design Lab</div>
+</div>
+
+<!-- 左侧信息面板 -->
+<div class="info-panel">
+  <h2>秤量状态</h2>
+  <div class="row"><span class="label">左盘</span><span class="value" id="leftWeight">0 g</span></div>
+  <div class="row"><span class="label">右盘</span><span class="value" id="rightWeight">0 g</span></div>
+  <div class="row"><span class="label">差值</span><span class="value" id="diffWeight">0 g</span></div>
+  <div class="row"><span class="label">倾角</span><span class="value" id="angleVal">0.0°</span></div>
+  <div class="tip">
+    拖动砝码至任意托盘，<br>
+    观察天平在<b>弹簧-阻尼</b>模型下的<br>
+    真实振荡与回稳过程。<br><br>
+    双击砝码可放回原位。
+  </div>
+</div>
+
+<!-- 右侧砝码台 -->
+<div class="weight-bench">
+  <h2>砝码组</h2>
+  <div class="weight-shelf" id="shelf1">
+    <div class="weight w10" data-weight="10" data-label="10g">
+      <div class="weight-knob"></div>
+      <div class="weight-body" data-label="10g"></div>
+      <div class="weight-base"></div>
+    </div>
+    <div class="weight w20" data-weight="20" data-label="20g">
+      <div class="weight-knob"></div>
+      <div class="weight-body" data-label="20g"></div>
+      <div class="weight-base"></div>
+    </div>
+    <div class="weight w50" data-weight="50" data-label="50g">
+      <div class="weight-knob"></div>
+      <div class="weight-body" data-label="50g"></div>
+      <div class="weight-base"></div>
+    </div>
+  </div>
+  <div class="weight-shelf" id="shelf2">
+    <div class="weight w100" data-weight="100" data-label="100g">
+      <div class="weight-knob"></div>
+      <div class="weight-body" data-label="100g"></div>
+      <div class="weight-base"></div>
+    </div>
+    <div class="weight w200" data-weight="200" data-label="200g">
+      <div class="weight-knob"></div>
+      <div class="weight-body" data-label="200g"></div>
+      <div class="weight-base"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 天平秤主体 -->
+<div class="scale-stage" id="scaleStage">
+  <!-- 平衡状态 -->
+  <div class="balance-status" id="balanceStatus">待称量</div>
+
+  <!-- 刻度盘 -->
+  <div class="dial"></div>
+
+  <!-- 横梁 -->
+  <div class="beam-wrap" id="beamWrap">
+    <div class="beam" id="beam"></div>
+    <div class="scale-marks" id="scaleMarks"></div>
+
+    <!-- 左吊架 -->
+    <div class="hanger left" id="hangerLeft">
+      <div class="ropes">
+        <div class="rope left-rope" id="ropeL1"></div>
+        <div class="rope mid-rope" id="ropeL2"></div>
+        <div class="rope right-rope" id="ropeL3"></div>
+      </div>
+      <div class="tray" id="trayLeft">
+        <div class="tray-inner"></div>
+      </div>
+    </div>
+
+    <!-- 右吊架 -->
+    <div class="hanger right" id="hangerRight">
+      <div class="ropes">
+        <div class="rope left-rope" id="ropeR1"></div>
+        <div class="rope mid-rope" id="ropeR2"></div>
+        <div class="rope right-rope" id="ropeR3"></div>
+      </div>
+      <div class="tray" id="trayRight">
+        <div class="tray-inner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 指针 -->
+  <div class="pointer" id="pointer"></div>
+
+  <!-- 枢轴 -->
+  <div class="pivot"></div>
+
+  <!-- 立柱 -->
+  <div class="pillar"></div>
+
+  <!-- 铭牌 -->
+  <div class="nameplate">ART · LAB · NO.03</div>
+
+  <!-- 底座 -->
+  <div class="base"></div>
+</div>
+
+<!-- 控制按钮 -->
+<div class="controls">
+  <button class="btn" id="resetBtn">归零</button>
+  <button class="btn" id="taresBtn">校准</button>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== 自定义光标 =====
+  const cursor = document.getElementById('cursor');
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let targetX = cursorX;
+  let targetY = cursorY;
+
+  function updateCursorPos() {
+    cursor.style.left = cursorX + 'px';
+    cursor.style.top = cursorY + 'px';
+  }
+  updateCursorPos();
+
+  document.addEventListener('mousemove', function(e) {
+    targetX = e.clientX;
+    targetY = e.clientY;
+  }, { passive: true });
+
+  // 光标平滑跟随
+  let rafId = null;
+  function animateCursor() {
+    const dx = targetX - cursorX;
+    const dy = targetY - cursorY;
+    cursorX += dx * 0.25;
+    cursorY += dy * 0.25;
+    updateCursorPos();
+    rafId = requestAnimationFrame(animateCursor);
+  }
+  animateCursor();
+
+  // ===== 生成刻度 =====
+  const scaleMarks = document.getElementById('scaleMarks');
+  for (let i = 0; i <= 40; i++) {
+    const mark = document.createElement('i');
+    const x = i * 12; // 480px / 40 = 12px per mark
+    mark.style.left = x + 'px';
+    if (i % 5 === 0) mark.className = 'major';
+    scaleMarks.appendChild(mark);
+  }
+
+  // ===== 物理模型：弹簧-阻尼 =====
+  // angle: 当前倾角（度），正值向右倾斜
+  // angularVelocity: 角速度
+  const physics = {
+    angle: 0,
+    angularVelocity: 0,
+    leftMass: 0,   // 左盘质量 g
+    rightMass: 0,  // 右盘质量 g
+    beamLength: 240, // 横梁半长 px
+    stiffness: 0.08, // 回复刚度（模拟刀口摩擦的回复）
+    damping: 0.92,   // 阻尼系数
+    gravityFactor: 0.015, // 质量差转扭矩的系数
+    maxAngle: 25,    // 最大倾角
+    resting: true,
+    restingThreshold: 0.005,
+  };
+
+  // DOM 引用
+  const beam = document.getElementById('beam');
+  const marksEl = document.getElementById('scaleMarks');
+  const hangerLeft = document.getElementById('hangerLeft');
+  const hangerRight = document.getElementById('hangerRight');
+  const pointer = document.getElementById('pointer');
+  const balanceStatus = document.getElementById('balanceStatus');
+  const leftWeightEl = document.getElementById('leftWeight');
+  const rightWeightEl = document.getElementById('rightWeight');
+  const diffWeightEl = document.getElementById('diffWeight');
+  const angleValEl = document.getElementById('angleVal');
+  const scaleStage = document.getElementById('scaleStage');
+
+  // ===== 砝码管理 =====
+  // 每个砝码: { el, weight, location: 'shelf'|'left'|'right'|'dragging', origX, origY }
+  const weights = [];
+  const weightEls = document.querySelectorAll('.weight');
+
+  weightEls.forEach(function(el, idx) {
+    const w = parseFloat(el.dataset.weight);
+    const rect = el.getBoundingClientRect();
+    weights.push({
+      el: el,
+      weight: w,
+      location: 'shelf',
+      origParent: el.parentElement,
+      origNextSibling: el.nextElementSibling,
+      placedIndex: 0,
+    });
+
+    // 绑定拖拽
+    el.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      startDrag(weights[idx], e.clientX, e.clientY);
+    });
+
+    // 双击放回
+    el.addEventListener('dblclick', function(e) {
+      e.preventDefault();
+      returnWeight(weights[idx]);
+    });
+  });
+
+  // 重新记录原位（窗口尺寸变化后）
+  function recordOrigins() {
+    weights.forEach(function(w) {
+      if (w.location === 'shelf') {
+        const rect = w.el.getBoundingClientRect();
+        w.origX = rect.left + rect.width / 2;
+        w.origY = rect.top + rect.height / 2;
+      }
+    });
+  }
+  setTimeout(recordOrigins, 100);
+  window.addEventListener('resize', function() {
+    recordOrigins();
+    updatePlacedWeights();
+  });
+
+  // ===== 拖拽系统 =====
+  let dragging = null;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let didDrag = false;
+
+  function startDrag(w, clientX, clientY) {
+    if (w.location === 'dragging') return;
+
+    dragging = w;
+    didDrag = false;
+    dragStartX = clientX;
+    dragStartY = clientY;
+
+    const rect = w.el.getBoundingClientRect();
+    dragOffsetX = clientX - rect.left - rect.width / 2;
+    dragOffsetY = clientY - rect.top - rect.height / 2;
+
+    // 从当前位置移除，变成绝对定位
+    w.el.classList.add('dragging');
+    w.prevLocation = w.location;
+    w.location = 'dragging';
+
+    // 移到 body 顶层
+    document.body.appendChild(w.el);
+    w.el.style.position = 'fixed';
+    w.el.style.left = (clientX - dragOffsetX - rect.width / 2) + 'px';
+    w.el.style.top = (clientY - dragOffsetY - rect.height / 2) + 'px';
+
+    cursor.classList.add('grabbing');
+
+    // 从托盘移除质量计算
+    recalcMass();
+    triggerSwing(w.prevLocation === 'left' || w.prevLocation === 'right' ? 2 : 0.5);
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+
+    const rect = dragging.el.getBoundingClientRect();
+    dragging.el.style.left = (e.clientX - dragOffsetX - rect.width / 2) + 'px';
+    dragging.el.style.top = (e.clientY - dragOffsetY - rect.height / 2) + 'px';
+  }, { passive: true });
+
+  document.addEventListener('mouseup', function(e) {
+    if (!dragging) return;
+    cursor.classList.remove('grabbing');
+    endDrag(e.clientX, e.clientY);
+  });
+
+  function endDrag(clientX, clientY) {
+    const w = dragging;
+    if (!w) return;
+
+    w.el.classList.remove('dragging');
+
+    // 检测是否落在托盘上
+    const leftTrayRect = getTrayRect('left');
+    const rightTrayRect = getTrayRect('right');
+
+    const wRect = w.el.getBoundingClientRect();
+    const wCx = wRect.left + wRect.width / 2;
+    const wCy = wRect.top + wRect.height / 2;
+
+    let placed = false;
+
+    if (isInside(wCx, wCy, leftTrayRect)) {
+      placeWeight(w, 'left');
+      placed = true;
+    } else if (isInside(wCx, wCy, rightTrayRect)) {
+      placeWeight(w, 'right');
+      placed = true;
+    }
+
+    if (!placed) {
+      // 返回原位
+      returnWeight(w);
+    }
+
+    dragging = null;
+    didDrag = false;
+  }
+
+  function isInside(x, y, rect) {
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
+  function getTrayRect(side) {
+    const trayEl = side === 'left' ? document.getElementById('trayLeft') : document.getElementById('trayRight');
+    return trayEl.getBoundingClientRect();
+  }
+
+  function placeWeight(w, side) {
+    w.location = side;
+    w.side = side;
+
+    const trayEl = side === 'left' ? document.getElementById('trayLeft') : document.getElementById('trayRight');
+    trayEl.appendChild(w.el);
+    w.el.style.position = '';
+    w.el.style.left = '';
+    w.el.style.top = '';
+    w.el.classList.add('placed');
+
+    // 排列砝码（堆叠在托盘中央）
+    arrangeTrayWeights(side);
+
+    recalcMass();
+
+    // 放置动画冲击
+    const impulse = w.weight * 0.05;
+    physics.angularVelocity += side === 'left' ? -impulse : impulse;
+    physics.resting = false;
+    spawnDust(side);
+  }
+
+  function arrangeTrayWeights(side) {
+    const trayEl = side === 'left' ? document.getElementById('trayLeft') : document.getElementById('trayRight');
+    const placed = trayEl.querySelectorAll('.weight.placed');
+    const sorted = Array.from(placed).sort(function(a, b) {
+      return parseFloat(a.dataset.weight) - parseFloat(b.dataset.weight);
+    });
+
+    let bottomOffset = 16; // 距离托盘底部
+    sorted.forEach(function(el) {
+      const h = el.offsetHeight || 30;
+      el.style.bottom = bottomOffset + 'px';
+      el.style.left = '50%';
+      el.style.transform = 'translateX(-50%)';
+      bottomOffset += h * 0.65;
+    });
+  }
+
+  function returnWeight(w) {
+    if (w.location === 'shelf') return;
+
+    // 动画回原位
+    const startRect = w.el.getBoundingClientRect();
+    const endRect = { left: w.origX - startRect.width / 2, top: w.origY - startRect.height / 2 };
+
+    // 临时浮动
+    if (w.location !== 'dragging') {
+      document.body.appendChild(w.el);
+      w.el.style.position = 'fixed';
+      w.el.style.left = startRect.left + 'px';
+      w.el.style.top = startRect.top + 'px';
+      w.el.classList.remove('placed');
+    }
+
+    w.el.style.bottom = '';
+    w.el.style.transform = '';
+
+    // 用 CSS 过渡飞回
+    w.el.style.transition = 'left 0.4s cubic-bezier(0.3, 0.8, 0.4, 1), top 0.4s cubic-bezier(0.3, 0.8, 0.4, 1), transform 0.4s';
+    requestAnimationFrame(function() {
+      w.el.style.left = endRect.left + 'px';
+      w.el.style.top = endRect.top + 'px';
+    });
+
+    setTimeout(function() {
+      w.el.style.transition = '';
+      w.el.style.position = '';
+      w.el.style.left = '';
+      w.el.style.top = '';
+      w.el.classList.remove('dragging', 'placed');
+      w.location = 'shelf';
+      w.side = null;
+
+      // 放回原 shelf
+      if (w.origNextSibling) {
+        w.origParent.insertBefore(w.el, w.origNextSibling);
+      } else {
+        w.origParent.appendChild(w.el);
+      }
+
+      recalcMass();
+    }, 400);
+  }
+
+  function recalcMass() {
+    let left = 0, right = 0;
+    weights.forEach(function(w) {
+      if (w.location === 'left') left += w.weight;
+      if (w.location === 'right') right += w.weight;
+    });
+    physics.leftMass = left;
+    physics.rightMass = right;
+
+    leftWeightEl.textContent = left.toFixed(0) + ' g';
+    rightWeightEl.textContent = right.toFixed(0) + ' g';
+    diffWeightEl.textContent = Math.abs(right - left).toFixed(0) + ' g';
+
+    physics.resting = false;
+  }
+
+  function updatePlacedWeights() {
+    arrangeTrayWeights('left');
+    arrangeTrayWeights('right');
+  }
+
+  // ===== 粉尘粒子 =====
+  function spawnDust(side) {
+    const trayEl = side === 'left' ? document.getElementById('trayLeft') : document.getElementById('trayRight');
+    const rect = trayEl.getBoundingClientRect();
+    const count = 5 + Math.floor(Math.random() * 4);
+
+    for (let i = 0; i < count; i++) {
+      const dust = document.createElement('div');
+      dust.className = 'dust';
+      const size = 1 + Math.random() * 2.5;
+      dust.style.width = size + 'px';
+      dust.style.height = size + 'px';
+      dust.style.left = (rect.left + rect.width * (0.3 + Math.random() * 0.4)) + 'px';
+      dust.style.top = (rect.top + 2) + 'px';
+      document.body.appendChild(dust);
+
+      const dx = (Math.random() - 0.5) * 40;
+      const dy = -10 - Math.random() * 20;
+      const dur = 600 + Math.random() * 600;
+      const startOpacity = 0.6 + Math.random() * 0.4;
+      const startTime = performance.now();
+
+      function animateDust(now) {
+        const t = (now - startTime) / dur;
+        if (t >= 1) {
+          dust.remove();
+          return;
+        }
+        const ease = 1 - Math.pow(1 - t, 2);
+        dust.style.transform = 'translate(' + (dx * ease) + 'px, ' + (dy * ease + 15 * t * t) + 'px)';
+        dust.style.opacity = (startOpacity * (1 - t)).toFixed(3);
+        requestAnimationFrame(animateDust);
+      }
+      requestAnimationFrame(animateDust);
+    }
+  }
+
+  // ===== 物理循环 =====
+  let physicsRunning = true;
+  let lastTime = performance.now();
+
+  function physicsLoop(now) {
+    if (!physicsRunning) return;
+
+    const dt = Math.min((now - lastTime) / 16.67, 3); // 以 60fps 为单位，限幅
+    lastTime = now;
+
+    // 质量差产生扭矩 -> 角加速度
+    const massDiff = physics.rightMass - physics.leftMass;
+    const torque = massDiff * physics.gravityFactor;
+
+    // 回复力（居中趋势，模拟刀口摩擦的自稳）
+    const springForce = -physics.angle * physics.stiffness;
+
+    // 角加速度 = 扭矩 + 回复力
+    const angularAccel = torque + springForce;
+
+    // 更新角速度
+    physics.angularVelocity += angularAccel * dt;
+    // 阻尼
+    physics.angularVelocity *= Math.pow(physics.damping, dt);
+
+    // 更新角度
+    physics.angle += physics.angularVelocity * dt;
+
+    // 限幅
+    if (physics.angle > physics.maxAngle) {
+      physics.angle = physics.maxAngle;
+      physics.angularVelocity *= -0.3; // 弹性反弹
+    }
+    if (physics.angle < -physics.maxAngle) {
+      physics.angle = -physics.maxAngle;
+      physics.angularVelocity *= -0.3;
+    }
+
+    // 静止检测
+    if (Math.abs(physics.angularVelocity) < physics.restingThreshold &&
+        Math.abs(physics.angle) < physics.restingThreshold * 2) {
+      if (!physics.resting) {
+        physics.resting = true;
+        physics.angularVelocity = 0;
+      }
+    } else {
+      physics.resting = false;
+    }
+
+    // 应用到 DOM
+    applyAngle(physics.angle);
+
+    requestAnimationFrame(physicsLoop);
+  }
+
+  function triggerSwing(amount) {
+    physics.angularVelocity += (Math.random() - 0.5) * amount;
+    physics.resting = false;
+  }
+
+  function applyAngle(a) {
+    // 角度直接用（模拟角度单位）
+    const deg = a * 3; // 放大显示效果
+    const degClamped = Math.max(-physics.maxAngle, Math.min(physics.maxAngle, deg));
+
+    // 横梁旋转
+    beam.style.transform = 'rotate(' + degClamped + 'deg)';
+    marksEl.style.transform = 'rotate(' + degClamped + 'deg)';
+
+    // 吊架保持垂直 + 随横梁端点上下移动
+    // 横梁端点的垂直位移 = beamLength * sin(angle_rad)
+    const angleRad = degClamped * Math.PI / 180;
+    const vertOffsetLeft = physics.beamLength * Math.sin(angleRad);
+    const vertOffsetRight = -physics.beamLength * Math.sin(angleRad);
+
+    hangerLeft.style.transform = 'translateY(' + vertOffsetLeft + 'px) rotate(' + (-degClamped) + 'deg)';
+    hangerRight.style.transform = 'translateY(' + vertOffsetRight + 'px) rotate(' + (-degClamped) + 'deg)';
+
+    // 指针摆动（略微放大）
+    pointer.style.transform = 'translateX(-50%) rotate(' + (degClamped * 1.2) + 'deg)';
+
+    // 更新数值
+    angleValEl.textContent = degClamped.toFixed(1) + '°';
+
+    // 平衡状态
+    if (physics.resting) {
+      if (Math.abs(physics.rightMass - physics.leftMass) < 0.1 && physics.leftMass + physics.rightMass > 0) {
+        balanceStatus.textContent = '完美平衡';
+        balanceStatus.classList.add('balanced');
+      } else if (physics.leftMass === 0 && physics.rightMass === 0) {
+        balanceStatus.textContent = '待称量';
+        balanceStatus.classList.remove('balanced');
+      } else if (degClamped > 0.5) {
+        balanceStatus.textContent = '右盘较重';
+        balanceStatus.classList.remove('balanced');
+      } else if (degClamped < -0.5) {
+        balanceStatus.textContent = '左盘较重';
+        balanceStatus.classList.remove('balanced');
+      } else {
+        balanceStatus.textContent = '趋于平衡';
+        balanceStatus.classList.remove('balanced');
+      }
+    } else {
+      balanceStatus.classList.remove('balanced');
+      if (physics.angularVelocity > 0.1) {
+        balanceStatus.textContent = '向右倾斜…';
+      } else if (physics.angularVelocity < -0.1) {
+        balanceStatus.textContent = '向左倾斜…';
+      } else {
+        balanceStatus.textContent = '振荡中…';
+      }
+    }
+
+    // 绳索随倾斜微张（微变形）
+    const ropeStretch = Math.abs(degClamped) * 0.5;
+    document.getElementById('ropeL1').style.transform = 'rotate(' + (degClamped * 0.3 + ropeStretch * 0.1) + 'deg)';
+    document.getElementById('ropeL3').style.transform = 'rotate(' + (degClamped * 0.3 - ropeStretch * 0.1) + 'deg)';
+    document.getElementById('ropeR1').style.transform = 'rotate(' + (-degClamped * 0.3 + ropeStretch * 0.1) + 'deg)';
+    document.getElementById('ropeR3').style.transform = 'rotate(' + (-degClamped * 0.3 - ropeStretch * 0.1) + 'deg)';
+  }
+
+  requestAnimationFrame(physicsLoop);
+
+  // ===== 控制按钮 =====
+  document.getElementById('resetBtn').addEventListener('click', function() {
+    // 所有砝码回原位
+    weights.forEach(function(w) {
+      if (w.location !== 'shelf' && w.location !== 'dragging') {
+        returnWeight(w);
+      }
+    });
+    // 轻推一下
+    triggerSwing(3);
+  });
+
+  document.getElementById('taresBtn').addEventListener('click', function() {
+    // 校准：快速归零角度
+    physics.angularVelocity *= 0.1;
+    physics.angle *= 0.1;
+    triggerSwing(0.5);
+
+    // 按钮按压反馈
+    const btn = document.getElementById('taresBtn');
+    btn.style.transform = 'scale(0.95)';
+    setTimeout(function() { btn.style.transform = ''; }, 150);
+  });
+
+  // ===== 悬停微交互 =====
+  // 横梁悬停微亮
+  const beamWrap = document.getElementById('beamWrap');
+  document.querySelector('.beam').addEventListener('mouseenter', function() {
+    beam.style.filter = 'brightness(1.08)';
+  });
+  document.querySelector('.beam').addEventListener('mouseleave', function() {
+    beam.style.filter = '';
+  });
+
+  // 底座悬停
+  document.querySelector('.base').addEventListener('mouseenter', function() {
+    document.querySelector('.base').style.filter = 'brightness(1.05)';
+  });
+  document.querySelector('.base').addEventListener('mouseleave', function() {
+    document.querySelector('.base').style.filter = '';
+  });
+
+  // ===== 可见性暂停 =====
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      physicsRunning = false;
+    } else {
+      if (!physicsRunning) {
+        physicsRunning = true;
+        lastTime = performance.now();
+        requestAnimationFrame(physicsLoop);
+      }
+    }
+  });
+
+  // ===== 页面卸载清理 =====
+  window.addEventListener('beforeunload', function() {
+    physicsRunning = false;
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ===== 初始微扰动 =====
+  setTimeout(function() {
+    triggerSwing(1.5);
+  }, 800);
+
+  // ===== 按钮光标样式适配 =====
+  document.querySelectorAll('.btn').forEach(function(btn) {
+    btn.addEventListener('mouseenter', function() {
+      cursor.style.transform = 'translate(-50%, -2px) scale(1.1)';
+    });
+    btn.addEventListener('mouseleave', function() {
+      cursor.style.transform = 'translate(-50%, -2px)';
+    });
+  });
+
+})();
+</script>
+
+</body>
+</html>
