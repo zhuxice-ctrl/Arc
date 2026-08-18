@@ -52,3 +52,5 @@ cd 2026-08-16_苔藓盆景志_mossbox
 python3 -m http.server 8090
 # 浏览器打开 http://127.0.0.1:8090
 ```
+
+形态：原生 App

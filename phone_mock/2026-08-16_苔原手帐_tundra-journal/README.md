@@ -30,3 +30,5 @@
 ## 技术栈
 
 HTML + React 18（CDN）+ Babel standalone 内联 JSX + Canvas 环形进度；Tweaks 面板 7 项实时调节（主色/动效强度/粒子密度/光标/深色/字体密度/音效）；支持 prefers-reduced-motion。
+
+形态：原生 App

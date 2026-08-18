@@ -50,3 +50,5 @@ https://dcniaqwtmoca.feishu.cn/page/SEmOmTUQRdnhl7arkHQcNH9cnHe
 ## 本地运行
 
 直接用浏览器打开 `index.html`；或 `python3 -m http.server` 后访问。
+
+形态：原生 App

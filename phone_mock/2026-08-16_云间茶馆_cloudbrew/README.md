@@ -33,3 +33,5 @@ https://dcniaqwtmoca.feishu.cn/page/Qx1emL7hwdQULja3JCvcwcyRn3e
 
 ## 技术栈
 HTML + 内联 CSS + React (Babel standalone 内联 JSX)。
+
+形态：原生 App

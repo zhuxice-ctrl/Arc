@@ -43,3 +43,5 @@ visibilitychange 自动暂停 RAF、reduced-motion 降级、定时器统一管�
 ## 技术栈
 
 React 18 + Babel Standalone，多 jsx 模块，纯前端无后端。
+
+形态：原生 App

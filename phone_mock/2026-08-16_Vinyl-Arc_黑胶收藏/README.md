@@ -49,3 +49,5 @@
 ## 技术栈
 
 React (JSX) · 纯前端 · localStorage 持久化
+
+形态：原生 App

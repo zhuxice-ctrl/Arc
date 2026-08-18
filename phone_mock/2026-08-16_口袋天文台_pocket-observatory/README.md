@@ -85,3 +85,5 @@ https://dcniaqwtmoca.feishu.cn/page/O8XHmAhwOdCzyBad8hgcpCBTnNh
 python3 -m http.server 8080
 # 访问 http://localhost:8080/index.html
 ```
+
+形态：原生 App

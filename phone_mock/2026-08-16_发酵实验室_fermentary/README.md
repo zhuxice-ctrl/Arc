@@ -31,3 +31,5 @@
 ## 技术栈
 
 React 18 + Babel Standalone + 纯 CSS，无构建步骤。
+
+形态：原生 App

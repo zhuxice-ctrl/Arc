@@ -54,3 +54,5 @@
 ## 技术栈
 
 React（内联 JSX + Babel standalone）、Canvas 2D 粒子系统、CSS 变量主题、手机外壳框架、prefers-reduced-motion 降级
+
+形态：原生 App

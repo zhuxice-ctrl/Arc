@@ -38,3 +38,5 @@ https://dcniaqwtmoca.feishu.cn/page/WrhUmqKbRdmxRsa3HhQc6jvVn2f
 ## 技术栈
 
 React 18 + Babel Standalone（CDN），统一手机外壳 + 多页切换，单 HTML 文件。
+
+形态：原生 App

@@ -41,3 +41,5 @@ https://dcniaqwtmoca.feishu.cn/page/FRoqmPyrhd1g7taVpREcsbDxnuc
 
 ## 技术栈
 HTML + 内联 CSS + React（Babel standalone 内联 JSX）+ Playfair Display / Inter / JetBrains Mono。
+
+形态：原生 App

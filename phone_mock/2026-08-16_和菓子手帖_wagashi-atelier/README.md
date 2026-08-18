@@ -36,3 +36,5 @@ https://dcniaqwtmoca.feishu.cn/page/G3rgmK6QhdDK1zahGW1clUg5n9b
 ## 技术栈
 
 纯前端单文件：HTML + 内联 CSS + 内联 Babel JSX，无外部 JSX 引用。
+
+形态：原生 App

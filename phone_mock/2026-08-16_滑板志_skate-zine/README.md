@@ -33,3 +33,5 @@ https://dcniaqwtmoca.feishu.cn/page/ORwFmbqMYdBlimaAVw2ciCZrn0c
 ## 技术栈
 
 React 18 + Babel standalone（JSX 全内联）+ 原生 RAF 动效。运行于妙搭 html 应用。
+
+形态：原生 App
