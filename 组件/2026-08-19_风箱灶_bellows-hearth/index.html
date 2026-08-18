@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" string="true">interactive-prototype">
+<title>风箱灶 · 拟物交互</title>
+<style>
+  :root {
+    --charcoal: #1a1410;
+    --charcoal-light: #2a211a;
+    --ash: #3d322a;
+    --chestnut-dark: #4a2817;
+    --chestnut: #6b3a1f;
+    --chestnut-light: #8b5a2b;
+    --chestnut-hl: #a67540;
+    --leather: #5c3d2a;
+    --leather-dark: #3d2618;
+    --lime-white: #f5f1e8;
+    --flame-core: #fff5c2;
+    --flame-yellow: #ffb347;
+    --flame-orange: #ff6b1a;
+    --flame-red: #d4340a;
+    --ember: #c2410c;
+    --iron: #5a5048;
+    --iron-dark: #3a3430;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--charcoal);
+    font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+    color: var(--lime-white);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 背景：石灰墙 + 土地面 */
+  .scene-bg {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 120%, #2a1f15 0%, var(--charcoal) 60%),
+      linear-gradient(180deg, #e8e2d5 0%, #d4cec0 35%, #8a7b68 55%, #4a3a2a 70%, #2a1f15 100%);
+    background-blend-mode: multiply;
+    opacity: 1;
+  }
+
+  .scene-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 85%, rgba(255, 120, 30, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: block;
+    touch-action: none;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: none;
+  }
+
+  /* 状态文字层 */
+  .hud {
+    position: fixed;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .hud-title {
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+
+  .hud-title .main {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    color: var(--lime-white);
+    opacity: 0.75;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  .hud-title .sub {
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    color: var(--lime-white);
+    opacity: 0.4;
+    margin-top: 6px;
+  }
+
+  .hud-guide {
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+    letter-spacing: 0.2em;
+    color: var(--lime-white);
+    opacity: 0.5;
+    transition: opacity 0.6s ease;
+  }
+
+  .hud-guide.hide { opacity: 0; }
+
+  .hud-left {
+    left: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .hud-right {
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: flex-end;
+  }
+
+  .gauge {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .gauge-label {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    opacity: 0.5;
+  }
+
+  .gauge-value {
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+    color: var(--flame-orange);
+    text-shadow: 0 0 12px rgba(255,107,26,0.3);
+  }
+
+  .gauge-value.water { color: #c8d8e8; }
+  .gauge-value.water.boiling { color: var(--flame-yellow); }
+
+  .gauge-bar {
+    width: 120px;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .gauge-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--flame-orange);
+    border-radius: 2px;
+    transition: width 0.1s linear, background 0.3s;
+    box-shadow: 0 0 8px var(--flame-orange);
+  }
+
+  .gauge-bar-fill.water {
+    background: #a8b8c8;
+    box-shadow: 0 0 8px rgba(168,184,200,0.3);
+  }
+
+  .gauge-bar-fill.water.boiling {
+    background: var(--flame-yellow);
+    box-shadow: 0 0 10px var(--flame-yellow);
+  }
+
+  .fire-state {
+    font-size: 14px;
+    letter-spacing: 0.3em;
+    opacity: 0.6;
+    padding: 4px 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 2px;
+  }
+
+  .fire-state.wu-huo { color: var(--flame-yellow); border-color: rgba(255,179,71,0.3); }
+  .fire-state.bao-ran { color: var(--flame-red); border-color: rgba(212,52,10,0.5); animation: flashBaoRan 0.15s ease; }
+
+  @keyframes flashBaoRan {
+    0% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  /* 自定义光标 */
+  .custom-cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 28px;
+    height: 28px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.15s ease, height 0.15s ease, opacity 0.2s ease;
+    will-change: transform;
+  }
+
+  .custom-cursor svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .custom-cursor.hovering {
+    width: 36px;
+    height: 36px;
+  }
+
+  .custom-cursor.grabbing {
+    width: 22px;
+    height: 22px;
+  }
+
+  .custom-cursor.hidden { opacity: 0; }
+
+  /* 减少动效降级 */
+  @media (prefers-reduced-motion: reduce) {
+    canvas { cursor: grab; }
+    .custom-cursor { display: none; }
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="scene-bg"></div>
+<div id="stage">
+  <canvas id="cv"></canvas>
+</div>
+
+<!-- 状态 HUD -->
+<div class="hud hud-title">
+  <div class="main">风 箱 灶</div>
+  <div class="sub">栗木风箱 · 柴灶 · 一锅清水</div>
+</div>
+
+<div class="hud hud-left">
+  <div class="gauge">
+    <div class="gauge-label">火 候</div>
+    <div class="gauge-value" id="fireValue">文火</div>
+    <div class="gauge-bar"><div class="gauge-bar-fill" id="fireBar"></div></div>
+  </div>
+</div>
+
+<div class="hud hud-right">
+  <div class="gauge">
+    <div class="gauge-label">水 温</div>
+    <div class="gauge-value water" id="waterValue">28°</div>
+    <div class="gauge-bar"><div class="gauge-bar-fill water" id="waterBar"></div></div>
+  </div>
+</div>
+
+<div class="hud hud-guide" id="guideText">抓住拉杆，来回推拉</div>
+
+<!-- 自定义光标 -->
+<div class="custom-cursor" id="cursor">
+  <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="14" cy="14" r="10" stroke="#f5f1e8" stroke-width="1.5" opacity="0.8"/>
+    <circle cx="14" cy="14" r="3" fill="#f5f1e8" opacity="0.9"/>
+    <line x1="14" y1="2" x2="14" y2="7" stroke="#f5f1e8" stroke-width="1.5" opacity="0.6"/>
+    <line x1="14" y1="21" x2="14" y2="26" stroke="#f5f1e8" stroke-width="1.5" opacity="0.6"/>
+    <line x1="2" y1="14" x2="7" y2="14" stroke="#f5f1e8" stroke-width="1.5" opacity="0.6"/>
+    <line x1="21" y1="14" x2="26" y2="14" stroke="#f5f1e8" stroke-width="1.5" opacity="0.6"/>
+  </svg>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================
+  //  风箱灶 · 拟物交互组件
+  //  纯 Vanilla JS / Canvas 2D / 无外部依赖
+  // ============================================================
+
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const cursorEl = document.getElementById('cursor');
+  const guideEl = document.getElementById('guideText');
+  const fireValueEl = document.getElementById('fireValue');
+  const fireBarEl = document.getElementById('fireBar');
+  const waterValueEl = document.getElementById('waterValue');
+  const waterBarEl = document.getElementById('waterBar');
+
+  // ---- 物理与状态参数 ----
+  const ROD = {
+    x: 0,           // 当前位置（px，相对中心基准）
+    v: 0,           // 速度
+    minX: -180,     // 最内（推到底）
+    maxX: 120,      // 最外（拉到头）
+    restX: 80,      // 静止位置（偏外，表示风箱自然张开）
+    k: 120,         // 弹簧劲度
+    damping: 6,     // 阻尼系数
+    mass: 1.2,      // 质量
+    grabbed: false,
+    grabOffset: 0,
+    proximity: 0,   // 0~1 光标接近程度
+    wobble: 0,      // 呼吸微抖
+  };
+
+  const FIRE = {
+    intensity: 0.15,    // 0~1 当前火势（文火基线 0.15）
+    targetIntensity: 0.15,
+    airVelocity: 0,     // 瞬时气流速度（正比于 rod 推入速度）
+    airAccum: 0,        // 累计风量
+    burstThreshold: 1.0, // 爆燃阈值
+    burstTimer: 0,      // 爆燃脉冲
+    shake: 0,           // 锅体震动
+    embers: [],         // 余烬粒子
+    flames: [],         // 火焰粒子
+    sparks: [],         // 火星粒子
+    airStreaks: [],     // 气流线
+  };
+
+  const WATER = {
+    temp: 28,       // 水温
+    boiling: false,
+    bubbles: [],
+  };
+
+  // 输入状态
+  const input = {
+    mx: 0, my: 0,
+    px: 0, py: 0,   // 上一帧位置
+    pressed: false,
+  };
+
+  // 尺寸
+  let W = 0, H = 0, DPR = 1;
+  let centerX = 0, centerY = 0;
+
+  // RAF 控制
+  let rafId = null;
+  let lastTime = 0;
+  let visible = true;
+
+  // ---- 初始化尺寸 ----
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cv.width = W * DPR;
+    cv.height = H * DPR;
+    cv.style.width = W + 'px';
+    cv.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    centerX = W * 0.5;
+    centerY = H * 0.55;
+  }
+
+  // ---- 粒子池 ----
+  function makeParticle() {
+    return { x:0, y:0, vx:0, vy:0, life:0, maxLife:1, size:0, seed:0, active:false };
+  }
+
+  function spawnFireParticle() {
+    let p = FIRE.flames.find(p => !p.active);
+    if (!p) { p = makeParticle(); FIRE.flames.push(p); }
+    p.active = true;
+    // 从灶口位置喷出
+    const fireBaseX = centerX + 180;
+    const fireBaseY = centerY + 20;
+    p.x = fireBaseX + (Math.random() - 0.5) * 50;
+    p.y = fireBaseY + Math.random() * 10;
+    p.vx = (Math.random() - 0.5) * 20;
+    p.vy = -60 - Math.random() * 120 * FIRE.intensity;
+    p.life = 0;
+    p.maxLife = 0.6 + Math.random() * 0.8;
+    p.size = 15 + Math.random() * 25;
+    p.seed = Math.random() * 1000;
+    return p;
+  }
+
+  function spawnSpark() {
+    let p = FIRE.sparks.find(p => !p.active);
+    if (!p) { p = makeParticle(); FIRE.sparks.push(p); }
+    p.active = true;
+    const fireBaseX = centerX + 180;
+    const fireBaseY = centerY + 10;
+    p.x = fireBaseX + (Math.random() - 0.5) * 40;
+    p.y = fireBaseY;
+    p.vx = (Math.random() - 0.5) * 80;
+    p.vy = -200 - Math.random() * 300;
+    p.life = 0;
+    p.maxLife = 0.8 + Math.random() * 1.5;
+    p.size = 1.5 + Math.random() * 2;
+    p.seed = Math.random() * 1000;
+    return p;
+  }
+
+  function spawnEmber() {
+    let p = FIRE.embers.find(p => !p.active);
+    if (!p) { p = makeParticle(); FIRE.embers.push(p); }
+    p.active = true;
+    const fireBaseX = centerX + 180;
+    const fireBaseY = centerY + 35;
+    p.x = fireBaseX + (Math.random() - 0.5) * 60;
+    p.y = fireBaseY + Math.random() * 15;
+    p.vx = (Math.random() - 0.5) * 5;
+    p.vy = -5 - Math.random() * 10;
+    p.life = 0;
+    p.maxLife = 2 + Math.random() * 3;
+    p.size = 2 + Math.random() * 3;
+    p.seed = Math.random() * 1000;
+    return p;
+  }
+
+  function spawnAirStreak() {
+    let p = FIRE.airStreaks.find(p => !p.active);
+    if (!p) { p = makeParticle(); FIRE.airStreaks.push(p); }
+    p.active = true;
+    // 从风箱气嘴喷出
+    const nozzleX = centerX + 60 + ROD.x * 0.3;
+    const nozzleY = centerY + 15;
+    p.x = nozzleX;
+    p.y = nozzleY + (Math.random() - 0.5) * 12;
+    p.vx = 200 + Math.random() * 150;
+    p.vy = (Math.random() - 0.5) * 20;
+    p.life = 0;
+    p.maxLife = 0.3 + Math.random() * 0.3;
+    p.size = 0.5 + Math.random();
+    p.seed = Math.random();
+    return p;
+  }
+
+  function spawnBubble() {
+    let p = WATER.bubbles.find(p => !p.active);
+    if (!p) { p = makeParticle(); WATER.bubbles.push(p); }
+    p.active = true;
+    const potCX = centerX + 180;
+    const potTop = centerY - 90;
+    p.x = potCX + (Math.random() - 0.5) * 70;
+    p.y = potTop - 10 + Math.random() * 20;
+    p.vx = (Math.random() - 0.5) * 10;
+    p.vy = -30 - Math.random() * 40;
+    p.life = 0;
+    p.maxLife = 0.8 + Math.random() * 1.2;
+    p.size = 2 + Math.random() * 4;
+    p.seed = Math.random();
+    return p;
+  }
+
+  // ---- 计算风箱拉杆的屏幕位置 ----
+  function getRodScreenX() {
+    // 拉杆把手中心 X
+    return centerX - 140 + ROD.x;
+  }
+  function getRodScreenY() {
+    return centerY + 15;
+  }
+
+  // ---- 输入处理 ----
+  function onMouseMove(e) {
+    input.px = input.mx;
+    input.py = input.my;
+    input.mx = e.clientX;
+    input.my = e.clientY;
+
+    // 自定义光标
+    cursorEl.style.transform = `translate(${input.mx}px, ${input.my}px) translate(-50%, -50%)`;
+
+    // 接近检测
+    const rodX = getRodScreenX();
+    const rodY = getRodScreenY();
+    const dx = input.mx - rodX;
+    const dy = input.my - rodY;
+    const dist = Math.hypot(dx, dy);
+    const hoverRange = 80;
+    ROD.proximity = Math.max(0, 1 - dist / hoverRange);
+
+    if (ROD.proximity > 0.1 && !ROD.grabbed) {
+      cursorEl.classList.add('hovering');
+    } else if (!ROD.grabbed) {
+      cursorEl.classList.remove('hovering');
+    }
+
+    // 抓取中的位置映射
+    if (ROD.grabbed) {
+      const targetX = input.mx - ROD.grabOffset - (centerX - 140);
+      // 直接赋值给"目标"，物理层会带惯性跟上
+      ROD.targetX = Math.max(ROD.minX, Math.min(ROD.maxX, targetX));
+    }
+  }
+
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    if (ROD.proximity > 0.3) {
+      ROD.grabbed = true;
+      ROD.grabOffset = input.mx - getRodScreenX();
+      ROD.targetX = ROD.x;
+      cursorEl.classList.add('grabbing');
+      cursorEl.classList.remove('hovering');
+      guideEl.classList.add('hide');
+      // 咬合感：拉杆微沉
+      ROD.settlePulse = 1;
+    }
+  }
+
+  function onMouseUp(e) {
+    if (e.button !== 0) return;
+    if (ROD.grabbed) {
+      ROD.grabbed = false;
+      cursorEl.classList.remove('grabbing');
+    }
+  }
+
+  function onVisibilityChange() {
+    visible = !document.hidden;
+    if (visible && !rafId) {
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+
+  // ---- 物理更新 ----
+  function updatePhysics(dt) {
+    // 拉杆物理：弹簧-阻尼-质量系统
+    let force = 0;
+    if (ROD.grabbed) {
+      // 被抓取：朝目标位置的强弹簧（模拟手的控制）
+      const dx = (ROD.targetX !== undefined ? ROD.targetX : ROD.restX) - ROD.x;
+      force += dx * 800;  // 强弹簧，跟随手
+      force += -ROD.v * 20; // 手部阻尼
+    } else {
+      // 释放：回到静止位置的弹簧
+      const dx = ROD.restX - ROD.x;
+      force += dx * ROD.k;
+      force += -ROD.v * ROD.damping;
+    }
+
+    // 皮革摩擦（非线性阻尼，速度越高阻尼越大但有上限）
+    const friction = Math.min(Math.abs(ROD.v) * 2, 30);
+    force += -Math.sign(ROD.v) * friction;
+
+    // 积分
+    const acc = force / ROD.mass;
+    ROD.v += acc * dt;
+    ROD.x += ROD.v * dt;
+
+    // 端点限位 + 回弹
+    if (ROD.x < ROD.minX) {
+      ROD.x = ROD.minX;
+      if (ROD.v < 0) {
+        ROD.v = -ROD.v * 0.3; // 回弹
+      }
+    }
+    if (ROD.x > ROD.maxX) {
+      ROD.x = ROD.maxX;
+      if (ROD.v > 0) {
+        ROD.v = -ROD.v * 0.3;
+      }
+    }
+
+    // 气流速度：推入（x 减小）时为正，拉出（x 增大）时为负（进气）
+    // 归一化：最大速度时 ~ 1
+    FIRE.airVelocity = Math.max(0, -ROD.v / 200);
+    // 拉出时少许负向（火焰回落）
+    if (ROD.v > 0) {
+      FIRE.airVelocity = -Math.min(ROD.v / 300, 0.3);
+    }
+
+    // 累计风量（只算推入的正风量）
+    const airIn = Math.max(0, -ROD.v * dt) / 50;
+    FIRE.airAccum += airIn;
+    // 自然衰减
+    FIRE.airAccum = Math.max(0, FIRE.airAccum - dt * 0.08);
+
+    // 火势：实时映射气流速度 + 基础文火
+    // 推入时上升，拉出时稍回落，有惯性
+    const baseFire = 0.12; // 文火基线
+    const airEffect = FIRE.airVelocity * 1.5;
+    FIRE.targetIntensity = baseFire + Math.max(0, airEffect);
+
+    // 爆燃检测
+    if (FIRE.airAccum > FIRE.burstThreshold && FIRE.burstTimer <= 0) {
+      FIRE.burstTimer = 0.8;
+      FIRE.targetIntensity = 1.3;
+      FIRE.airAccum = FIRE.burstThreshold * 0.6; // 保留部分风量
+      FIRE.shake = 1;
+      // 爆燃时生成大量火星
+      for (let i = 0; i < 30; i++) spawnSpark();
+      triggerBaoRanUI();
+    }
+
+    // 爆燃脉冲衰减
+    if (FIRE.burstTimer > 0) {
+      FIRE.burstTimer -= dt;
+      FIRE.targetIntensity = Math.max(FIRE.targetIntensity, 0.7 + FIRE.burstTimer * 0.5);
+    }
+
+    // 火势平滑（带惯性，不瞬间跳变）
+    const fireSpeed = ROD.grabbed ? 8 : 2;
+    FIRE.intensity += (FIRE.targetIntensity - FIRE.intensity) * Math.min(1, fireSpeed * dt);
+    FIRE.intensity = Math.max(0.08, Math.min(1.5, FIRE.intensity));
+
+    // 震动脉冲衰减
+    FIRE.shake = Math.max(0, FIRE.shake - dt * 3);
+
+    // 接近时的呼吸微抖
+    ROD.wobble += dt;
+
+    // 水温：火势越强升温越快，自然散热
+    const heating = (FIRE.intensity - 0.15) * 15 * dt;
+    const cooling = (WATER.temp - 25) * 0.01 * dt;
+    WATER.temp += Math.max(0, heating) - cooling;
+    WATER.temp = Math.min(100, Math.max(28, WATER.temp));
+
+    // 沸腾检测
+    if (WATER.temp >= 99.5 && !WATER.boiling) {
+      WATER.boiling = true;
+      waterValueEl.classList.add('boiling');
+      waterBarEl.classList.add('boiling');
+    } else if (WATER.temp < 95 && WATER.boiling) {
+      WATER.boiling = false;
+      waterValueEl.classList.remove('boiling');
+      waterBarEl.classList.remove('boiling');
+    }
+
+    // 沉降脉冲
+    if (ROD.settlePulse) {
+      ROD.settlePulse = Math.max(0, ROD.settlePulse - dt * 5);
+    }
+  }
+
+  // ---- 粒子更新 ----
+  function updateParticles(dt) {
+    // 火焰粒子
+    const fireRate = FIRE.intensity * 80 + 5; // 每秒生成数
+    if (Math.random() < fireRate * dt) spawnFireParticle();
+
+    for (let i = 0; i < FIRE.flames.length; i++) {
+      const p = FIRE.flames[i];
+      if (!p.active) continue;
+      p.life += dt;
+      if (p.life >= p.maxLife) { p.active = false; continue; }
+      // 受气流影响（向上 + 抖动）
+      p.vy += -200 * dt * FIRE.intensity;
+      p.vx += Math.sin(p.seed + p.life * 8) * 40 * dt;
+      p.vx += (Math.random() - 0.5) * 20 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+
+    // 火星粒子
+    const sparkRate = FIRE.intensity * 15 + 2;
+    if (Math.random() < sparkRate * dt) spawnSpark();
+
+    for (let i = 0; i < FIRE.sparks.length; i++) {
+      const p = FIRE.sparks[i];
+      if (!p.active) continue;
+      p.life += dt;
+      if (p.life >= p.maxLife) { p.active = false; continue; }
+      p.vy += 80 * dt; // 重力
+      p.vx += (Math.random() - 0.5) * 30 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+
+    // 余烬粒子
+    const emberRate = 3 + FIRE.intensity * 5;
+    if (Math.random() < emberRate * dt) spawnEmber();
+
+    for (let i = 0; i < FIRE.embers.length; i++) {
+      const p = FIRE.embers[i];
+      if (!p.active) continue;
+      p.life += dt;
+      if (p.life >= p.maxLife) { p.active = false; continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 5 * dt; // 缓慢下沉
+    }
+
+    // 气流线（仅推入时）
+    if (FIRE.airVelocity > 0.1) {
+      const streakRate = FIRE.airVelocity * 40;
+      if (Math.random() < streakRate * dt) spawnAirStreak();
+    }
+
+    for (let i = 0; i < FIRE.airStreaks.length; i++) {
+      const p = FIRE.airStreaks[i];
+      if (!p.active) continue;
+      p.life += dt;
+      if (p.life >= p.maxLife) { p.active = false; continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 1 - dt * 2; // 减速
+    }
+
+    // 气泡
+    if (WATER.boiling) {
+      const bubbleRate = 20 + (WATER.temp - 99) * 50;
+      if (Math.random() < bubbleRate * dt) spawnBubble();
+    } else if (WATER.temp > 70) {
+      if (Math.random() < (WATER.temp - 70) * 0.3 * dt) spawnBubble();
+    }
+
+    for (let i = 0; i < WATER.bubbles.length; i++) {
+      const p = WATER.bubbles[i];
+      if (!p.active) continue;
+      p.life += dt;
+      if (p.life >= p.maxLife) { p.active = false; continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 15 * dt; // 上升加速
+      p.vx += (Math.random() - 0.5) * 10 * dt;
+      p.size += dt * 2; // 上升中变大
+    }
+  }
+
+  // ---- UI 更新 ----
+  function updateUI() {
+    // 火候状态
+    const intensity = FIRE.intensity;
+    let state = '文火';
+    let stateClass = '';
+    if (FIRE.burstTimer > 0.5) {
+      state = '爆燃';
+      stateClass = 'bao-ran';
+    } else if (intensity > 0.6) {
+      state = '武火';
+      stateClass = 'wu-huo';
+    } else if (intensity > 0.3) {
+      state = '中火';
+    }
+    fireValueEl.textContent = state;
+    fireValueEl.className = 'gauge-value';
+    if (stateClass) fireValueEl.classList.add(stateClass);
+
+    const firePct = Math.min(100, intensity * 100);
+    fireBarEl.style.width = firePct + '%';
+
+    // 水温
+    waterValueEl.textContent = Math.round(WATER.temp) + '°';
+    const waterPct = ((WATER.temp - 28) / 72) * 100;
+    waterBarEl.style.width = Math.min(100, waterPct) + '%';
+  }
+
+  function triggerBaoRanUI() {
+    fireValueEl.classList.remove('bao-ran');
+    void fireValueEl.offsetWidth;
+    fireValueEl.classList.add('bao-ran');
+    fireValueEl.textContent = '爆燃';
+  }
+
+  // ============================================================
+  //  渲染
+  // ============================================================
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    // 地面阴影
+    drawGroundShadow();
+
+    // 灶（先画后面的部分）
+    drawStoveBody();
+
+    // 锅（在火焰前面）
+    drawPot();
+
+    // 火焰 + 火星 + 余烬
+    drawFire();
+
+    // 灶口前沿
+    drawStoveFront();
+
+    // 风箱
+    drawBellows();
+
+    // 拉杆把手
+    drawRodHandle();
+
+    // 气流线（在风箱前方）
+    drawAirStreaks();
+
+    // 整体震动偏移（爆燃时）
+    // 已通过各元素内部 shake 偏移实现
+  }
+
+  // ---- 地面阴影 ----
+  function drawGroundShadow() {
+    const grad = ctx.createRadialGradient(
+      centerX + 100, centerY + 80, 20,
+      centerX + 100, centerY + 80, 300
+    );
+    grad.addColorStop(0, 'rgba(0,0,0,0.4)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, centerY + 20, W, H - centerY);
+  }
+
+  // ---- 灶体 ----
+  function drawStoveBody() {
+    const sx = centerX + 100; // 灶中心
+    const sy = centerY + 40;
+    const sw = 220;  // 灶宽
+    const sh = 160;  // 灶高
+
+    const shakeX = FIRE.shake * (Math.random() - 0.5) * 6;
+    const shakeY = FIRE.shake * (Math.random() - 0.5) * 4;
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // 灶身（砖灰）
+    ctx.fillStyle = '#4a3f35';
+    // 梯形
+    ctx.beginPath();
+    ctx.moveTo(sx - sw/2, sy + sh/2);
+    ctx.lineTo(sx + sw/2, sy + sh/2);
+    ctx.lineTo(sx + sw/2 - 15, sy - sh/2);
+    ctx.lineTo(sx - sw/2 + 15, sy - sh/2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 灶身上部（稍浅）
+    ctx.fillStyle = '#5a4f43';
+    ctx.beginPath();
+    ctx.moveTo(sx - sw/2 + 15, sy - sh/2);
+    ctx.lineTo(sx + sw/2 - 15, sy - sh/2);
+    ctx.lineTo(sx + sw/2 - 25, sy - sh/2 + 30);
+    ctx.lineTo(sx - sw/2 + 25, sy - sh/2 + 30);
+    ctx.closePath();
+    ctx.fill();
+
+    // 灶口（内部黑暗）
+    const mouthX = sx;
+    const mouthY = sy + 10;
+    const mouthW = 100;
+    const mouthH = 60;
+
+    // 灶口外框（拱型）
+    ctx.fillStyle = '#2a211a';
+    ctx.beginPath();
+    ctx.moveTo(mouthX - mouthW/2, mouthY + mouthH/2);
+    ctx.lineTo(mouthX - mouthW/2, mouthY - mouthH/2 + 15);
+    ctx.quadraticCurveTo(mouthX, mouthY - mouthH/2 - 10, mouthX + mouthW/2, mouthY - mouthH/2 + 15);
+    ctx.lineTo(mouthX + mouthW/2, mouthY + mouthH/2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 灶口内部 glow（火势映射）
+    const glowIntensity = Math.min(1, FIRE.intensity * 0.8);
+    const glowGrad = ctx.createRadialGradient(
+      mouthX, mouthY + 10, 5,
+      mouthX, mouthY + 10, mouthW * 0.8
+    );
+    glowGrad.addColorStop(0, `rgba(255, 140, 30, ${0.9 * glowIntensity})`);
+    glowGrad.addColorStop(0.5, `rgba(255, 80, 10, ${0.5 * glowIntensity})`);
+    glowGrad.addColorStop(1, 'rgba(40, 10, 5, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(mouthX - mouthW, mouthY - mouthH, mouthW * 2, mouthH * 2);
+
+    ctx.restore();
+  }
+
+  // ---- 灶口前沿 ----
+  function drawStoveFront() {
+    const sx = centerX + 100;
+    const sy = centerY + 40;
+
+    const shakeX = FIRE.shake * (Math.random() - 0.5) * 6;
+    const shakeY = FIRE.shake * (Math.random() - 0.5) * 4;
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // 灶口下沿（积灰台）
+    ctx.fillStyle = '#3d322a';
+    ctx.fillRect(sx - 70, sy + 35, 140, 12);
+
+    // 灶口边沿高光
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(sx - 70, sy + 35, 140, 2);
+
+    // 铁锅圈
+    ctx.fillStyle = '#2a2420';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 50, 85, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#3a3430';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 52, 80, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ---- 火焰 ----
+  function drawFire() {
+    const baseX = centerX + 180;
+    const baseY = centerY + 20;
+
+    const shakeX = FIRE.shake * (Math.random() - 0.5) * 6;
+    const shakeY = FIRE.shake * (Math.random() - 0.5) * 4;
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // 整体光晕（底层）
+    const glowR = 80 + FIRE.intensity * 60;
+    const glowGrad = ctx.createRadialGradient(baseX, baseY, 10, baseX, baseY, glowR);
+    glowGrad.addColorStop(0, `rgba(255, 160, 40, ${0.4 * FIRE.intensity})`);
+    glowGrad.addColorStop(0.5, `rgba(255, 80, 15, ${0.2 * FIRE.intensity})`);
+    glowGrad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(baseX - glowR, baseY - glowR * 1.5, glowR * 2, glowR * 2);
+
+    // 火焰主体（用多个粒子叠加，additive 混合）
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (let i = 0; i < FIRE.flames.length; i++) {
+      const p = FIRE.flames[i];
+      if (!p.active) continue;
+
+      const lifeRatio = p.life / p.maxLife;
+      const alpha = (1 - lifeRatio) * 0.8;
+      const size = p.size * (1 + lifeRatio * 0.5);
+
+      // 颜色从白黄 → 橙 → 红
+      let r, g, b;
+      if (lifeRatio < 0.3) {
+        r = 255; g = 240 + (1 - lifeRatio/0.3) * 15; b = 150;
+      } else if (lifeRatio < 0.6) {
+        const t = (lifeRatio - 0.3) / 0.3;
+        r = 255; g = Math.floor(200 - t * 80); b = Math.floor(80 - t * 60);
+      } else {
+        const t = (lifeRatio - 0.6) / 0.4;
+        r = Math.floor(200 - t * 50); g = Math.floor(50 - t * 40); b = 10;
+      }
+
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+      grad.addColorStop(0.5, `rgba(${r},${Math.floor(g*0.7)},${b},${alpha*0.5})`);
+      grad.addColorStop(1, `rgba(${Math.floor(r*0.5)},0,0,0)`);
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 火星（小点）
+    for (let i = 0; i < FIRE.sparks.length; i++) {
+      const p = FIRE.sparks[i];
+      if (!p.active) continue;
+      const lifeRatio = p.life / p.maxLife;
+      const alpha = (1 - lifeRatio) * 0.9;
+
+      ctx.fillStyle = `rgba(255, ${180 + Math.random() * 50}, 50, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 拖尾
+      ctx.strokeStyle = `rgba(255, 180, 50, ${alpha * 0.4})`;
+      ctx.lineWidth = p.size * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.02, p.y - p.vy * 0.02);
+      ctx.stroke();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 余烬（暗红，在灶底）
+    for (let i = 0; i < FIRE.embers.length; i++) {
+      const p = FIRE.embers[i];
+      if (!p.active) continue;
+      const lifeRatio = p.life / p.maxLife;
+      const flicker = 0.5 + 0.5 * Math.sin(p.seed + p.life * 6);
+      const alpha = (1 - lifeRatio * 0.7) * flicker * 0.8;
+
+      ctx.fillStyle = `rgba(194, 65, 12, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 偶尔亮一下
+      if (flicker > 0.85) {
+        ctx.fillStyle = `rgba(255, 180, 60, ${alpha * 0.6})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // ---- 锅 ----
+  function drawPot() {
+    const sx = centerX + 180; // 锅中心
+    const sy = centerY - 60;
+
+    const shakeX = FIRE.shake * (Math.random() - 0.5) * 4;
+    const shakeY = FIRE.shake * (Math.random() - 0.5) * 3;
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // 锅体（铸铁锅，半球形）
+    const potR = 80;
+
+    // 锅底阴影
+    const bottomGrad = ctx.createRadialGradient(sx, sy + 20, 10, sx, sy + 20, potR + 10);
+    bottomGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
+    bottomGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bottomGrad;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 30, potR + 10, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 锅身
+    const potGrad = ctx.createLinearGradient(sx - potR, sy, sx + potR, sy);
+    potGrad.addColorStop(0, '#2a2420');
+    potGrad.addColorStop(0.3, '#4a4038');
+    potGrad.addColorStop(0.5, '#5a5048');
+    potGrad.addColorStop(0.7, '#4a4038');
+    potGrad.addColorStop(1, '#2a2420');
+    ctx.fillStyle = potGrad;
+
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 20, potR, potR * 0.7, 0, 0, Math.PI, true); // 上半圆（半球）
+    ctx.lineTo(sx + potR, sy - 10);
+    ctx.ellipse(sx, sy - 10, potR, 18, 0, 0, Math.PI, true); // 锅口
+    ctx.lineTo(sx - potR, sy + 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // 锅口加厚
+    ctx.fillStyle = '#3a3430';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 10, potR, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#4a4238';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 12, potR - 3, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 水面
+    const waterLevel = -10 - 8; // 略低于锅口
+    const waterTempRatio = (WATER.temp - 28) / 72;
+    const waterR = potR - 8;
+
+    // 水颜色（随温度变）
+    const waterGrad = ctx.createRadialGradient(sx - 10, sy + waterLevel - 5, 5, sx, sy + waterLevel, waterR);
+    const waterLightness = 40 + waterTempRatio * 20;
+    waterGrad.addColorStop(0, `rgba(180, 200, 210, 0.9)`);
+    waterGrad.addColorStop(0.7, `rgba(${80 + waterTempRatio*40}, ${100 + waterTempRatio*30}, ${120 + waterTempRatio*20}, 0.85)`);
+    waterGrad.addColorStop(1, `rgba(40, 60, 80, 0.9)`);
+    ctx.fillStyle = waterGrad;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + waterLevel, waterR, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 水面高光
+    ctx.fillStyle = `rgba(255,255,255,${0.1 + waterTempRatio * 0.1})`;
+    ctx.beginPath();
+    ctx.ellipse(sx - 20, sy + waterLevel - 2, 30, 4, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 气泡
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < WATER.bubbles.length; i++) {
+      const p = WATER.bubbles[i];
+      if (!p.active) continue;
+      const lifeRatio = p.life / p.maxLife;
+      const alpha = (1 - lifeRatio) * 0.6;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 沸腾蒸汽
+    if (WATER.boiling) {
+      ctx.globalCompositeOperation = 'screen';
+      for (let i = 0; i < 5; i++) {
+        const steamX = sx + (Math.sin(Date.now()/500 + i) * 30);
+        const steamY = sy - 20 - i * 15 - (Date.now()/20 + i*30) % 40;
+        const steamGrad = ctx.createRadialGradient(steamX, steamY, 0, steamX, steamY, 20 + i * 5);
+        steamGrad.addColorStop(0, 'rgba(255,255,255,0.3)');
+        steamGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = steamGrad;
+        ctx.beginPath();
+        ctx.arc(steamX, steamY, 20 + i * 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // 锅的两侧耳朵
+    ctx.fillStyle = '#3a3430';
+    ctx.beginPath();
+    ctx.ellipse(sx - potR - 5, sy + 10, 8, 12, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(sx + potR + 5, sy + 10, 8, 12, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ---- 风箱 ----
+  function drawBellows() {
+    const baseX = centerX - 140;
+    const baseY = centerY;
+    const rodX = ROD.x;
+    const compression = (ROD.maxX - ROD.x) / (ROD.maxX - ROD.minX); // 0=全拉, 1=全推
+
+    const settleY = ROD.settlePulse ? ROD.settlePulse * 3 : 0;
+
+    ctx.save();
+    ctx.translate(0, settleY);
+
+    // 风箱主体宽度随压缩变化
+    const bodyWidth = 180 - compression * 60;
+    const bodyHeight = 90;
+    const leftX = baseX - bodyWidth / 2 + rodX * 0.15;
+    const rightX = baseX + bodyWidth / 2 + rodX * 0.6;
+    const topY = baseY - bodyHeight / 2;
+    const bottomY = baseY + bodyHeight / 2;
+
+    // 风箱下部支架（木腿）
+    ctx.fillStyle = '#3d2618';
+    ctx.fillRect(leftX + 15, bottomY, 10, 35);
+    ctx.fillRect(rightX - 25, bottomY, 10, 35);
+
+    // 上木板
+    const woodGrad = ctx.createLinearGradient(0, topY, 0, topY + 20);
+    woodGrad.addColorStop(0, '#a67540');
+    woodGrad.addColorStop(0.5, '#8b5a2b');
+    woodGrad.addColorStop(1, '#6b3a1f');
+    ctx.fillStyle = woodGrad;
+
+    // 上板（有弧度）
+    ctx.beginPath();
+    ctx.moveTo(leftX, topY + 15);
+    ctx.quadraticCurveTo(leftX + bodyWidth * 0.1, topY, leftX + bodyWidth * 0.3, topY + 5);
+    ctx.lineTo(rightX - bodyWidth * 0.3, topY + 5);
+    ctx.quadraticCurveTo(rightX - bodyWidth * 0.1, topY, rightX, topY + 15);
+    ctx.lineTo(rightX, topY + 20);
+    ctx.lineTo(leftX, topY + 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // 下木板
+    ctx.fillStyle = '#5c3d2a';
+    ctx.beginPath();
+    ctx.moveTo(leftX, bottomY - 15);
+    ctx.quadraticCurveTo(leftX + bodyWidth * 0.1, bottomY, leftX + bodyWidth * 0.3, bottomY - 5);
+    ctx.lineTo(rightX - bodyWidth * 0.3, bottomY - 5);
+    ctx.quadraticCurveTo(rightX - bodyWidth * 0.1, bottomY, rightX, bottomY - 15);
+    ctx.lineTo(rightX, bottomY - 20);
+    ctx.lineTo(leftX, bottomY - 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // 皮革风囊（中间部分）
+    const leatherTop = topY + 18;
+    const leatherBottom = bottomY - 18;
+    const leatherLeft = leftX + 5;
+    const leatherRight = rightX - 5;
+
+    // 皮革褶皱（随压缩增加褶皱数）
+    const foldCount = 4 + Math.floor(compression * 4);
+    const foldWidth = (leatherRight - leatherLeft) / foldCount;
+
+    ctx.fillStyle = '#4a3020';
+    ctx.beginPath();
+    ctx.moveTo(leatherLeft, leatherTop);
+
+    // 上边缘波浪形褶皱
+    for (let i = 0; i <= foldCount; i++) {
+      const fx = leatherLeft + i * foldWidth;
+      const fy = leatherTop + (i % 2 === 0 ? 0 : -8);
+      if (i === 0) ctx.lineTo(fx, fy);
+      else ctx.quadraticCurveTo(fx - foldWidth/2, leatherTop - 4, fx, fy);
+    }
+
+    // 右侧向下
+    ctx.lineTo(leatherRight, leatherBottom);
+
+    // 下边缘波浪形褶皱
+    for (let i = foldCount; i >= 0; i--) {
+      const fx = leatherLeft + i * foldWidth;
+      const fy = leatherBottom + (i % 2 === 0 ? 0 : 8);
+      ctx.quadraticCurveTo(fx + foldWidth/2, leatherBottom + 4, fx, fy);
+    }
+
+    // 左侧回到起点
+    ctx.lineTo(leatherLeft, leatherTop);
+    ctx.closePath();
+    ctx.fill();
+
+    // 皮革高光
+    ctx.strokeStyle = 'rgba(166, 117, 64, 0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < foldCount; i++) {
+      const fx = leatherLeft + i * foldWidth;
+      ctx.beginPath();
+      ctx.moveTo(fx, leatherTop - 4);
+      ctx.lineTo(fx, leatherBottom + 4);
+      ctx.stroke();
+    }
+
+    // 气嘴（右侧出风口）
+    const nozzleX = rightX;
+    const nozzleY = baseY + 15;
+    ctx.fillStyle = '#3d2618';
+    ctx.fillRect(nozzleX - 5, nozzleY - 8, 25, 16);
+    ctx.fillStyle = '#5c3d2a';
+    ctx.fillRect(nozzleX - 5, nozzleY - 6, 25, 4);
+
+    // 气口内部（暗）
+    ctx.fillStyle = '#1a0f08';
+    ctx.fillRect(nozzleX + 15, nozzleY - 5, 6, 10);
+
+    // 左侧端盖（固定板）
+    ctx.fillStyle = '#5c3d2a';
+    ctx.fillRect(leftX - 8, topY + 5, 8, bodyHeight - 10);
+    ctx.fillStyle = '#4a2817';
+    ctx.fillRect(leftX - 8, topY + 5, 3, bodyHeight - 10);
+
+    // 右侧端盖（活动板，随拉杆移动）
+    const rightPlateX = rightX - 5;
+    ctx.fillStyle = '#6b3a1f';
+    ctx.fillRect(rightPlateX, topY + 5, 8, bodyHeight - 10);
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(rightPlateX + 5, topY + 5, 3, bodyHeight - 10);
+
+    // 木板铆钉
+    ctx.fillStyle = '#2a1810';
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(leftX + 12 + i * 18, topY + 12, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(rightX - 12 - i * 18, topY + 12, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // ---- 拉杆把手 ----
+  function drawRodHandle() {
+    const rodX = getRodScreenX();
+    const rodY = getRodScreenY();
+
+    const settleY = ROD.settlePulse ? ROD.settlePulse * 3 : 0;
+
+    // 接近时的呼吸光影
+    if (ROD.proximity > 0.05 && !ROD.grabbed) {
+      const pulse = 0.5 + 0.5 * Math.sin(ROD.wobble * 3);
+      const glowR = 30 + pulse * 10 + ROD.proximity * 20;
+      const glowGrad = ctx.createRadialGradient(rodX, rodY, 5, rodX, rodY, glowR);
+      glowGrad.addColorStop(0, `rgba(255, 220, 150, ${0.3 * ROD.proximity})`);
+      glowGrad.addColorStop(1, 'rgba(255, 180, 80, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(rodX, rodY, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate(0, settleY);
+
+    // 拉杆杆身（从右侧风箱延伸出来）
+    const rightPlateX = centerX - 140 + ROD.x * 0.6 + 90;
+    const rodLength = rodX - rightPlateX;
+    if (rodLength > 0) {
+      // 木杆
+      const rodGrad = ctx.createLinearGradient(0, rodY - 4, 0, rodY + 4);
+      rodGrad.addColorStop(0, '#8b5a2b');
+      rodGrad.addColorStop(0.5, '#6b3a1f');
+      rodGrad.addColorStop(1, '#4a2817');
+      ctx.fillStyle = rodGrad;
+      ctx.fillRect(rightPlateX, rodY - 5, rodLength, 10);
+
+      // 木纹
+      ctx.strokeStyle = 'rgba(74, 40, 23, 0.3)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(rightPlateX + i * 20, rodY - 4);
+        ctx.lineTo(rightPlateX + i * 20 + 10, rodY + 4);
+        ctx.stroke();
+      }
+    }
+
+    // 把手（球形/圆柱形）
+    const handleR = 18;
+    const handleX = rodX;
+    const handleY = rodY;
+
+    // 把手阴影
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(handleX + 2, handleY + handleR + 5, handleR * 0.8, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 把手主体
+    const handleGrad = ctx.createRadialGradient(
+      handleX - 5, handleY - 5, 2,
+      handleX, handleY, handleR
+    );
+    handleGrad.addColorStop(0, '#a67540');
+    handleGrad.addColorStop(0.4, '#8b5a2b');
+    handleGrad.addColorStop(0.8, '#5c3d2a');
+    handleGrad.addColorStop(1, '#3d2618');
+    ctx.fillStyle = handleGrad;
+    ctx.beginPath();
+    ctx.arc(handleX, handleY, handleR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 把手顶部高光
+    ctx.fillStyle = 'rgba(255, 220, 180, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(handleX - 5, handleY - 8, 6, 4, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 金属箍
+    ctx.fillStyle = '#8a7a5a';
+    ctx.fillRect(handleX - handleR, handleY - 2, handleR * 2, 4);
+    ctx.fillStyle = '#c2b28a';
+    ctx.fillRect(handleX - handleR, handleY - 2, handleR * 2, 1);
+
+    // 抓取状态的咬合感（皮革压痕感）
+    if (ROD.grabbed) {
+      ctx.strokeStyle = 'rgba(255,200,120,0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(handleX, handleY, handleR + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ---- 气流线 ----
+  function drawAirStreaks() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 240, 200, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < FIRE.airStreaks.length; i++) {
+      const p = FIRE.airStreaks[i];
+      if (!p.active) continue;
+      const lifeRatio = p.life / p.maxLife;
+      const alpha = (1 - lifeRatio) * 0.5;
+
+      ctx.strokeStyle = `rgba(255, 245, 220, ${alpha})`;
+      ctx.lineWidth = p.size;
+      ctx.beginPath();
+      ctx.moveTo(p.x - p.vx * 0.03, p.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ============================================================
+  //  主循环
+  // ============================================================
+
+  function loop(now) {
+    if (!visible) { rafId = null; return; }
+
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    updatePhysics(dt);
+    updateParticles(dt);
+    updateUI();
+    render();
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // ============================================================
+  //  初始化
+  // ============================================================
+
+  function init() {
+    resize();
+
+    // 初始化光标位置到屏幕中央
+    input.mx = W / 2;
+    input.my = H / 2;
+    cursorEl.style.transform = `translate(${input.mx}px, ${input.my}px) translate(-50%, -50%)`;
+
+    // 初始化水位状态
+    updateUI();
+
+    // 事件绑定
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('resize', resize);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // 启动循环
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(loop);
+
+    // 预生成一些余烬粒子
+    for (let i = 0; i < 15; i++) {
+      const p = spawnEmber();
+      p.life = Math.random() * p.maxLife;
+    }
+  }
+
+  // 清理（防止内存泄漏）
+  window.addEventListener('beforeunload', function() {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // 启动
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>

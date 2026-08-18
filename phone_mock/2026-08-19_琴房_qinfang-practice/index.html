@@ -1,0 +1,3313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>琴房 · 原生 App V2</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #1a1410;
+    font-family: 'Noto Sans SC', -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    cursor: none;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(180,140,90,0.12), transparent 60%),
+      radial-gradient(ellipse at 70% 80%, rgba(120,80,50,0.1), transparent 60%),
+      #1a1410;
+  }
+
+  /* ── Custom Cursor (Brass Gold Dot) ── */
+  .custom-cursor {
+    position: fixed;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #f4d487, #c99a3e 60%, #8b6914);
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.15), 0 0 12px rgba(201,154,62,0.55);
+    pointer-events: none;
+    z-index: 99999;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
+    will-change: left, top, width, height;
+  }
+  .custom-cursor.hover {
+    width: 22px;
+    height: 22px;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.2), 0 0 20px rgba(201,154,62,0.7);
+  }
+  .custom-cursor.drag {
+    width: 18px;
+    height: 18px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .custom-cursor { transition: none; }
+  }
+
+  .stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+  .stage-title {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 15px;
+    color: #c99a3e;
+    letter-spacing: 3px;
+    opacity: 0.7;
+  }
+
+  /* Breathing pulse for metronome beat */
+  @keyframes beat-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.008); }
+  }
+  .beat-breathing {
+    animation: beat-pulse var(--beat-duration, 1s) ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .beat-breathing { animation: none; }
+  }
+
+  /* Stamp animation */
+  @keyframes stamp-down {
+    0% { transform: translateY(-40px) scale(1.2) rotate(-8deg); opacity: 0; }
+    50% { transform: translateY(5px) scale(0.95) rotate(-2deg); opacity: 1; }
+    70% { transform: translateY(-2px) scale(1.02) rotate(-1deg); }
+    100% { transform: translateY(0) scale(1) rotate(-3deg); opacity: 1; }
+  }
+  @keyframes stamp-ink-spread {
+    0% { transform: scale(0.8); opacity: 0; }
+    40% { transform: scale(1.05); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .stamp-enter {
+    animation: stamp-down 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  }
+  .stamp-ink {
+    animation: stamp-ink-spread 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) 0.2s both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stamp-enter, .stamp-ink { animation: none; opacity: 1; transform: translateY(0) scale(1) rotate(-3deg); }
+  }
+
+  /* Page transitions */
+  .page-enter {
+    animation: page-slide-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes page-slide-in {
+    from { transform: translateX(100%); opacity: 0.5; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter { animation: none; }
+  }
+
+  /* Sheet paper flip */
+  @keyframes sheet-flip {
+    0% { transform: rotateY(0deg); opacity: 1; }
+    50% { transform: rotateY(-90deg); opacity: 0.3; }
+    100% { transform: rotateY(0deg); opacity: 1; }
+  }
+  .sheet-flip {
+    animation: sheet-flip 0.5s ease-in-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet-flip { animation: none; }
+  }
+
+  /* Number flip (BPM counter) */
+  .digit-flip {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+  .digit-flip.flip {
+    animation: digit-turn 0.2s ease;
+  }
+  @keyframes digit-turn {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-6px); opacity: 0.3; }
+    51% { transform: translateY(6px); opacity: 0.3; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .digit-flip.flip { animation: none; }
+  }
+
+  /* Pendulum rod + weight */
+  .pendulum-wrap {
+    position: relative;
+    width: 100%;
+    height: 320px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    perspective: 600px;
+    user-select: none;
+    touch-action: none;
+  }
+  .pendulum-pivot {
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #e8c87a, #a67c20);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    z-index: 5;
+  }
+  .pendulum-rod {
+    position: absolute;
+    top: 6px;
+    width: 2.5px;
+    background: linear-gradient(180deg, #b89040, #8a6a1e);
+    transform-origin: top center;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .pendulum-weight {
+    position: absolute;
+    width: 42px;
+    height: 54px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg,
+      #e8c87a 0%, #c99a3e 20%, #8b6914 50%,
+      #c99a3e 80%, #e8c87a 100%);
+    border-radius: 8px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.5),
+      inset 0 -1px 0 rgba(0,0,0,0.3),
+      0 3px 8px rgba(0,0,0,0.35);
+    cursor: grab;
+    z-index: 3;
+  }
+  .pendulum-weight:active { cursor: grabbing; }
+  .pendulum-weight::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 2px;
+    background: rgba(0,0,0,0.25);
+    border-radius: 1px;
+  }
+
+  /* Tuner dial */
+  .tuner-dial {
+    position: relative;
+    width: 240px;
+    height: 240px;
+    margin: 0 auto;
+  }
+  .tuner-dial-inner {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #f5ead2 0%, #e8d9b8 70%, #d4c29a 100%);
+    box-shadow:
+      inset 0 2px 8px rgba(0,0,0,0.1),
+      0 4px 20px rgba(0,0,0,0.25);
+  }
+  .tuner-needle {
+    position: absolute;
+    bottom: 50%;
+    left: 50%;
+    width: 3px;
+    height: 95px;
+    background: linear-gradient(180deg, #2a2420 0%, #4a3a2c 100%);
+    transform-origin: bottom center;
+    border-radius: 2px 2px 0 0;
+    box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    will-change: transform;
+  }
+  .tuner-needle::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #c99a3e, #6b4d0e);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  /* Practice card */
+  .practice-card {
+    background: #f5edd9;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .practice-card:active {
+    transform: scale(0.98);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .practice-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, #c99a3e, #8b6914);
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 83px;
+    background: rgba(42, 32, 24, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 0.5px solid rgba(201, 154, 62, 0.2);
+    display: flex;
+    padding-bottom: 28px;
+    z-index: 5;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: rgba(245, 237, 217, 0.5);
+    font-size: 11px;
+    transition: color 0.2s ease;
+    cursor: pointer;
+  }
+  .tab-item.active {
+    color: #c99a3e;
+  }
+  .tab-item svg {
+    width: 24px;
+    height: 24px;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .tab-item.active svg {
+    transform: translateY(-2px);
+  }
+
+  /* Progress bar */
+  .progress-track {
+    height: 6px;
+    background: rgba(42, 32, 24, 0.15);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #c99a3e, #e8c87a);
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Beat indicator dot */
+  .beat-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #6b4d0e;
+    transition: transform 0.08s ease, background 0.08s ease, box-shadow 0.08s ease;
+  }
+  .beat-dot.active {
+    transform: scale(1.5);
+    background: #c99a3e;
+    box-shadow: 0 0 12px rgba(201, 154, 62, 0.8);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .beat-dot.active { transform: scale(1); box-shadow: none; }
+  }
+
+  /* Streak flame */
+  .streak-flame {
+    display: inline-block;
+    animation: flicker 2s ease-in-out infinite;
+    transform-origin: bottom center;
+  }
+  @keyframes flicker {
+    0%, 100% { transform: scaleY(1) scaleX(1); }
+    25% { transform: scaleY(1.08) scaleX(0.95); }
+    50% { transform: scaleY(0.95) scaleX(1.05); }
+    75% { transform: scaleY(1.04) scaleX(0.98); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .streak-flame { animation: none; }
+  }
+
+  /* Ripple effect for buttons */
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-ripple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+    opacity: 0;
+    transform: scale(0);
+    transition: opacity 0.3s, transform 0.5s;
+  }
+  .btn-ripple:active::after {
+    opacity: 1;
+    transform: scale(2);
+    transition: 0s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-ripple::after { transition: none; }
+  }
+
+  /* Scroll styling */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* Chart bar animation */
+  .chart-bar {
+    transform-origin: bottom;
+    animation: bar-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes bar-grow {
+    from { transform: scaleY(0); }
+    to { transform: scaleY(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chart-bar { animation: none; }
+  }
+
+  /* Note staff lines visual */
+  .staff-lines {
+    position: absolute;
+    inset: 0;
+    opacity: 0.06;
+    pointer-events: none;
+  }
+  .staff-lines div {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: #2a2420;
+  }
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="custom-cursor" id="cursor"></div>
+
+<div class="stage">
+  <div class="stage-title">琴 房 · 原 生 App</div>
+  <div id="root"></div>
+</div>
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ──────────────────────────────────────────────────────────
+// Utility: reduce motion check
+// ──────────────────────────────────────────────────────────
+const prefersReducedMotion = typeof window !== 'undefined' &&
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ──────────────────────────────────────────────────────────
+// Data: Real repertoire list
+// ──────────────────────────────────────────────────────────
+const REPERTOIRE = [
+  {
+    id: 1,
+    title: '渔舟唱晚',
+    composer: '娄树华',
+    targetBars: 72,
+    currentBars: 58,
+    proficiency: 80,
+    instrument: '古筝',
+    difficulty: '中级',
+    lastPracticed: '昨日',
+    practiceTime: 28,
+    notes: '快板部分衔接需加强',
+    sections: ['慢板起兴', '中板推进', '快板高潮'],
+  },
+  {
+    id: 2,
+    title: '茉莉花',
+    composer: '江苏民歌',
+    targetBars: 48,
+    currentBars: 42,
+    proficiency: 87,
+    instrument: '古筝',
+    difficulty: '初级',
+    lastPracticed: '三日前',
+    practiceTime: 15,
+    notes: '颤音均匀度待提升',
+    sections: ['主题呈示', '变奏一', '变奏二'],
+  },
+  {
+    id: 3,
+    title: '阳关三叠',
+    composer: '古曲',
+    targetBars: 96,
+    currentBars: 34,
+    proficiency: 35,
+    instrument: '古琴',
+    difficulty: '高级',
+    lastPracticed: '今日',
+    practiceTime: 32,
+    notes: '二叠开始练习',
+    sections: ['一叠·清和节当春', '二叠·旨酒·赠言', '三叠·长亭·别离'],
+  },
+];
+
+const WEEK_STATS = [
+  { day: '一', minutes: 45, completed: true },
+  { day: '二', minutes: 30, completed: true },
+  { day: '三', minutes: 60, completed: true },
+  { day: '四', minutes: 25, completed: true },
+  { day: '五', minutes: 50, completed: true },
+  { day: '六', minutes: 40, completed: true },
+  { day: '日', minutes: 0, completed: false },
+];
+
+// ──────────────────────────────────────────────────────────
+// Icons
+// ──────────────────────────────────────────────────────────
+const Icon = {
+  Home: ({ active }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.8}>
+      <path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9z"
+        fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.2 : 0}/>
+    </svg>
+  ),
+  Tuner: ({ active }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.8}>
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7v5l3 2" strokeLinecap="round"/>
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2" strokeLinecap="round"/>
+    </svg>
+  ),
+  Stats: ({ active }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.8}>
+      <rect x="4" y="12" width="4" height="8" rx="1" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.2 : 0}/>
+      <rect x="10" y="8" width="4" height="12" rx="1" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.2 : 0}/>
+      <rect x="16" y="4" width="4" height="16" rx="1" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.2 : 0}/>
+    </svg>
+  ),
+  Profile: ({ active }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.8}>
+      <circle cx="12" cy="8" r="4" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.2 : 0}/>
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" strokeLinecap="round"/>
+    </svg>
+  ),
+  Back: () => (
+    <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
+      <path d="M10 2L2 10l8 8" stroke="currentColor" strokeWidth="2.5"
+        strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  Play: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5v14l11-7z"/>
+    </svg>
+  ),
+  Pause: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="5" width="4" height="14" rx="1"/>
+      <rect x="14" y="5" width="4" height="14" rx="1"/>
+    </svg>
+  ),
+  Check: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 13l4 4L19 7"/>
+    </svg>
+  ),
+  Flame: () => (
+    <svg width="20" height="24" viewBox="0 0 20 24" fill="none">
+      <path d="M10 2C10 8 4 10 4 16c0 3.3 2.7 6 6 6s6-2.7 6-6c0-4-3-6-6-14z"
+        fill="url(#flameGrad)"/>
+      <defs>
+        <linearGradient id="flameGrad" x1="10" y1="2" x2="10" y2="22" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f4d487"/>
+          <stop offset="0.5" stopColor="#e08a2a"/>
+          <stop offset="1" stopColor="#c95520"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  ),
+  Metronome: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M6 21h12l-2-9H8L6 21z"/>
+      <path d="M10 12l2-5 2 5" strokeLinecap="round"/>
+      <circle cx="12" cy="18" r="1.5" fill="currentColor"/>
+    </svg>
+  ),
+};
+
+// ──────────────────────────────────────────────────────────
+// Pendulum (Metronome) — signature component with physics
+// ──────────────────────────────────────────────────────────
+function PendulumMetronome({ bpm, setBpm, isPlaying, onBeat }) {
+  const wrapRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartWeightY = useRef(0);
+  const weightYRef = useRef(200); // px from pivot
+  const angleRef = useRef(0);
+  const angularVelRef = useRef(0);
+  const rafRef = useRef(null);
+  const lastBeatSideRef = useRef(0); // -1 left, 1 right, 0 none
+  const beatTimerRef = useRef(null);
+  const prevBpmRef = useRef(bpm);
+  const visibleRef = useRef(true);
+
+  // Weight position corresponds to BPM
+  // Higher weight (closer to pivot) = faster = higher BPM
+  // Physics: T = 2π√(L/g), BPM ∝ 1/√L
+  // Map: weightY in [60, 260]px → BPM in [208, 40]
+  const weightYFromBpm = useCallback((bpmVal) => {
+    const minY = 60, maxY = 260;
+    const minBpm = 40, maxBpm = 208;
+    // BPM is proportional to 1/sqrt(L)
+    const t = (1 / Math.sqrt(bpmVal) - 1 / Math.sqrt(maxBpm)) /
+              (1 / Math.sqrt(minBpm) - 1 / Math.sqrt(maxBpm));
+    return minY + t * (maxY - minY);
+  }, []);
+
+  const bpmFromWeightY = useCallback((y) => {
+    const minY = 60, maxY = 260;
+    const minBpm = 40, maxBpm = 208;
+    const t = (y - minY) / (maxY - minY);
+    const invSqrt = 1 / Math.sqrt(maxBpm) + t * (1 / Math.sqrt(minBpm) - 1 / Math.sqrt(maxBpm));
+    return Math.round(1 / (invSqrt * invSqrt));
+  }, []);
+
+  // Initialize weight position
+  useEffect(() => {
+    weightYRef.current = weightYFromBpm(bpm);
+  }, [bpm, weightYFromBpm]);
+
+  // Pendulum physics loop
+  useEffect(() => {
+    if (!isPlaying || dragging) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    let lastTime = performance.now();
+    const maxAngle = Math.PI / 5; // ~36 degrees
+
+    // Natural frequency based on BPM
+    // For simple pendulum: ω = √(g/L). We want beats per minute = frequency * 60
+    // Each full swing (left-right-left) has 2 beats (at each endpoint)
+    // BPM = 2 * f * 60 = 120 * ω/(2π) = 60ω/π → ω = BPM * π / 60
+    const naturalOmega = bpm * Math.PI / 60;
+
+    const tick = (now) => {
+      if (!visibleRef.current) {
+        lastTime = now;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      // Simple pendulum: θ'' = -ω² * sin(θ)
+      // But we want constant amplitude with "power" to simulate metronome spring
+      // Use a modified equation with sustained amplitude
+      const angle = angleRef.current;
+      const omega = angularVelRef.current;
+
+      // Non-linear pendulum with slight drive to maintain amplitude
+      const alpha = -naturalOmega * naturalOmega * Math.sin(angle);
+      // Add small damping that's countered by amplitude-dependent drive
+      const damping = 0.3;
+      const drive = Math.abs(angle) < maxAngle * 0.3 ? 0.5 : 0;
+
+      angularVelRef.current = omega + (alpha - damping * omega + drive * Math.sign(omega) * (1 - Math.abs(angle)/maxAngle)) * dt;
+      angleRef.current = angle + angularVelRef.current * dt;
+
+      // Clamp and detect beats at endpoints
+      if (angleRef.current > maxAngle) {
+        angleRef.current = maxAngle;
+        angularVelRef.current = -Math.abs(angularVelRef.current) * 0.85;
+        if (lastBeatSideRef.current !== 1) {
+          lastBeatSideRef.current = 1;
+          if (onBeat) onBeat();
+        }
+      }
+      if (angleRef.current < -maxAngle) {
+        angleRef.current = -maxAngle;
+        angularVelRef.current = Math.abs(angularVelRef.current) * 0.85;
+        if (lastBeatSideRef.current !== -1) {
+          lastBeatSideRef.current = -1;
+          if (onBeat) onBeat();
+        }
+      }
+
+      // Apply rotation to DOM
+      const rod = wrapRef.current?.querySelector('.pendulum-rod');
+      const weight = wrapRef.current?.querySelector('.pendulum-weight');
+      const deg = angleRef.current * (180 / Math.PI);
+      if (rod) rod.style.transform = `rotate(${deg}deg)`;
+      if (weight) {
+        const y = weightYRef.current;
+        weight.style.top = `${y - 27}px`;
+        weight.style.transform = `translateX(-50%) rotate(${deg}deg)`;
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    // Start from small angle
+    angleRef.current = maxAngle * 0.8;
+    angularVelRef.current = 0;
+    lastBeatSideRef.current = 0;
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isPlaying, dragging, bpm, onBeat]);
+
+  // Visibility handling
+  useEffect(() => {
+    const handle = () => { visibleRef.current = !document.hidden; };
+    document.addEventListener('visibilitychange', handle);
+    return () => document.removeEventListener('visibilitychange', handle);
+  }, []);
+
+  // Reset angle when not playing
+  useEffect(() => {
+    if (!isPlaying && !dragging) {
+      angleRef.current = 0;
+      const rod = wrapRef.current?.querySelector('.pendulum-rod');
+      const weight = wrapRef.current?.querySelector('.pendulum-weight');
+      if (rod) rod.style.transform = 'rotate(0deg)';
+      if (weight) weight.style.transform = 'translateX(-50%) rotate(0deg)';
+    }
+  }, [isPlaying, dragging]);
+
+  // Drag handlers (high-frequency mouse events → direct DOM)
+  const handleWeightPointerDown = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    dragStartY.current = e.clientY;
+    dragStartWeightY.current = weightYRef.current;
+    document.body.style.cursor = 'none';
+    // Reset pendulum to center when dragging
+    angleRef.current = 0;
+    angularVelRef.current = 0;
+  }, []);
+
+  const handlePointerMove = useCallback((e) => {
+    if (!dragging) return;
+    const dy = e.clientY - dragStartY.current;
+    let newY = dragStartWeightY.current + dy;
+    newY = Math.max(60, Math.min(260, newY));
+    weightYRef.current = newY;
+
+    const newBpm = bpmFromWeightY(newY);
+    if (newBpm !== prevBpmRef.current) {
+      prevBpmRef.current = newBpm;
+      setBpm(newBpm);
+    }
+
+    // Direct DOM update
+    const weight = wrapRef.current?.querySelector('.pendulum-weight');
+    if (weight) {
+      weight.style.top = `${newY - 27}px`;
+    }
+  }, [dragging, bpmFromWeightY, setBpm]);
+
+  const handlePointerUp = useCallback(() => {
+    if (!dragging) return;
+    setDragging(false);
+  }, [dragging]);
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [dragging, handlePointerMove, handlePointerUp]);
+
+  return (
+    <div className="pendulum-wrap" ref={wrapRef}>
+      <div className="pendulum-pivot" />
+      <div className="pendulum-rod" style={{ height: `${weightYRef.current + 10}px` }} />
+      <div
+        className="pendulum-weight"
+        style={{ top: `${weightYRef.current - 27}px` }}
+        onPointerDown={handleWeightPointerDown}
+      />
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Tuner Dial
+// ──────────────────────────────────────────────────────────
+function TunerDial({ cents = 0, note = 'A', freq = 440, active = false }) {
+  const dialRef = useRef(null);
+  const rafRef = useRef(null);
+  const needleAngleRef = useRef(0);
+  const targetAngleRef = useRef(0);
+  const visibleRef = useRef(true);
+
+  // Map cents to angle: -50 to +50 cents → -90 to +90 degrees
+  const centsToAngle = (c) => {
+    return Math.max(-90, Math.min(90, c * 1.8));
+  };
+
+  useEffect(() => {
+    targetAngleRef.current = centsToAngle(cents);
+  }, [cents]);
+
+  useEffect(() => {
+    if (!active) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      const needle = dialRef.current?.querySelector('.tuner-needle');
+      if (needle) needle.style.transform = 'translateX(-50%) rotate(0deg)';
+      return;
+    }
+
+    let lastTime = performance.now();
+    const damping = 6; // damping coefficient
+    const stiffness = 40; // spring stiffness
+
+    const tick = (now) => {
+      if (!visibleRef.current) {
+        lastTime = now;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      // Spring-damper system toward target
+      const error = targetAngleRef.current - needleAngleRef.current;
+      const velocity = (error * stiffness - damping * 0) * dt; // simplified damped spring
+      // Use proper approach with velocity tracking
+      if (!tick.velocity) tick.velocity = 0;
+
+      const acceleration = stiffness * error - damping * tick.velocity;
+      tick.velocity += acceleration * dt;
+      needleAngleRef.current += tick.velocity * dt;
+
+      const needle = dialRef.current?.querySelector('.tuner-needle');
+      if (needle) {
+        needle.style.transform = `translateX(-50%) rotate(${needleAngleRef.current}deg)`;
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [active]);
+
+  useEffect(() => {
+    const handle = () => { visibleRef.current = !document.hidden; };
+    document.addEventListener('visibilitychange', handle);
+    return () => document.removeEventListener('visibilitychange', handle);
+  }, []);
+
+  const inTune = Math.abs(cents) < 5;
+
+  return (
+    <div className="tuner-dial" ref={dialRef}>
+      <div className="tuner-dial-inner">
+        {/* Scale marks */}
+        {[-50, -40, -30, -20, -10, -5, 0, 5, 10, 20, 30, 40, 50].map((c, i) => {
+          const angle = centsToAngle(c);
+          const isMajor = c % 10 === 0;
+          const isCenter = c === 0;
+          const isGreen = Math.abs(c) <= 5;
+          return (
+            <div key={i} style={{
+              position: 'absolute',
+              bottom: '50%',
+              left: '50%',
+              width: isMajor ? 2 : 1,
+              height: isMajor ? 14 : 8,
+              background: isGreen ? '#2e7d32' : (isCenter ? '#c99a3e' : 'rgba(42,32,24,0.5)'),
+              transformOrigin: 'bottom center',
+              transform: `translateX(-50%) rotate(${angle}deg)`,
+              marginBottom: 8,
+            }} />
+          );
+        })}
+        {/* Number labels */}
+        {[-50, -25, 0, 25, 50].map((c, i) => {
+          const angle = centsToAngle(c);
+          const rad = (angle - 90) * Math.PI / 180;
+          const r = 95;
+          const x = 120 + r * Math.cos(rad);
+          const y = 120 + r * Math.sin(rad);
+          return (
+            <div key={i} style={{
+              position: 'absolute',
+              left: x,
+              top: y,
+              transform: 'translate(-50%, -50%)',
+              fontSize: 10,
+              fontWeight: 600,
+              color: c === 0 ? '#c99a3e' : 'rgba(42,32,24,0.5)',
+              fontFamily: '"Noto Serif SC", serif',
+            }}>{c}</div>
+          );
+        })}
+      </div>
+      <div className="tuner-needle" style={{ transform: 'translateX(-50%) rotate(0deg)' }} />
+      {/* Center note display */}
+      <div style={{
+        position: 'absolute',
+        bottom: 30,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: 36,
+          fontWeight: 700,
+          color: inTune ? '#2e7d32' : '#2a2420',
+          fontFamily: '"Noto Serif SC", serif',
+          lineHeight: 1,
+          transition: 'color 0.2s',
+        }}>{note}</div>
+        <div style={{
+          fontSize: 12,
+          color: 'rgba(42,32,24,0.5)',
+          marginTop: 2,
+        }}>{freq.toFixed(1)} Hz</div>
+      </div>
+      {/* In-tune indicator */}
+      {inTune && active && (
+        <div style={{
+          position: 'absolute',
+          top: -8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '4px 12px',
+          background: '#2e7d32',
+          color: '#f5edd9',
+          borderRadius: 12,
+          fontSize: 12,
+          fontWeight: 600,
+          animation: 'stamp-ink-spread 0.3s ease',
+        }}>
+          准了
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Stamp / Check-in component
+// ──────────────────────────────────────────────────────────
+function PracticeStamp({ date, piece, duration }) {
+  const [stamped, setStamped] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setStamped(true), 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div style={{
+      position: 'relative',
+      width: 160,
+      height: 160,
+      margin: '0 auto',
+    }}>
+      {/* Ink mark on paper */}
+      {stamped && (
+        <div className="stamp-ink" style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          border: '3px solid #8b2020',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#8b2020',
+          fontFamily: '"Noto Serif SC", serif',
+          opacity: 0.85,
+          transform: 'rotate(-3deg)',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>练习打卡</div>
+          <div style={{ fontSize: 10, opacity: 0.8 }}>{date}</div>
+          <div style={{
+            width: 80, height: 1,
+            background: '#8b2020',
+            margin: '6px 0',
+            opacity: 0.5,
+          }} />
+          <div style={{ fontSize: 12, fontWeight: 600 }}>{piece}</div>
+          <div style={{ fontSize: 10, opacity: 0.8 }}>{duration}分钟</div>
+        </div>
+      )}
+      {/* Stamp (coming down) */}
+      {!stamped && (
+        <div className="stamp-enter" style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          border: '3px solid #8b2020',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#8b2020',
+          fontFamily: '"Noto Serif SC", serif',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>练习打卡</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Digit flip display
+// ──────────────────────────────────────────────────────────
+function DigitDisplay({ value, className = '' }) {
+  const digits = String(value).split('');
+  const [flipKey, setFlipKey] = useState(0);
+  const prevValue = useRef(value);
+
+  useEffect(() => {
+    if (prevValue.current !== value) {
+      prevValue.current = value;
+      setFlipKey(k => k + 1);
+    }
+  }, [value]);
+
+  return (
+    <div className={className} style={{ display: 'inline-flex', gap: 2 }}>
+      {digits.map((d, i) => (
+        <span
+          key={`${flipKey}-${i}`}
+          className="digit-flip flip"
+          style={{ fontVariantNumeric: 'tabular-nums' }}
+        >
+          {d}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// App Shell — iOS device wrapper with TabBar + navigation
+// ──────────────────────────────────────────────────────────
+function App() {
+  const [activeTab, setActiveTab] = useState('home');
+  const [navStack, setNavStack] = useState([]); // stack of page routes for each tab
+  const [pageKey, setPageKey] = useState(0);
+  const [beating, setBeating] = useState(false);
+  const [beatDuration, setBeatDuration] = useState(1);
+  const beatDebounceRef = useRef(null);
+
+  const handleBeat = useCallback(() => {
+    // Prevent timer stacking: clear previous beat pulse
+    if (beatDebounceRef.current) clearTimeout(beatDebounceRef.current);
+    setBeating(true);
+    beatDebounceRef.current = setTimeout(() => setBeating(false), 100);
+  }, []);
+
+  const pushPage = useCallback((page) => {
+    setNavStack(prev => [...prev, page]);
+    setPageKey(k => k + 1);
+  }, []);
+
+  const popPage = useCallback(() => {
+    setNavStack(prev => prev.slice(0, -1));
+  }, []);
+
+  const switchTab = useCallback((tab) => {
+    if (activeTab === tab) {
+      // Pop to root
+      setNavStack([]);
+    }
+    setActiveTab(tab);
+  }, [activeTab]);
+
+  const currentPage = navStack.length > 0
+    ? navStack[navStack.length - 1]
+    : { type: 'tab-root' };
+
+  return (
+    <div style={{
+      width: 390, height: 844,
+      borderRadius: 48, overflow: 'hidden',
+      position: 'relative',
+      background: '#F2F2F7',
+      border: '1px solid #DEE0E3',
+      fontFamily: '"Noto Sans SC", -apple-system, system-ui, sans-serif',
+      WebkitFontSmoothing: 'antialiased',
+      '--ios-safe-top': '62px',
+      '--ios-safe-bottom': '34px',
+      '--beat-duration': `${beatDuration}s`,
+      isolation: 'isolate',
+    }}
+      className={beating && activeTab === 'home' && navStack.length === 0 ? '' : ''}
+    >
+      {/* Dynamic Island */}
+      <div style={{
+        position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+        width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50,
+      }} />
+
+      {/* Status Bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <div style={{
+          display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+          padding: '21px 24px 19px', boxSizing: 'border-box',
+          position: 'relative', width: '100%',
+        }}>
+          <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+            <span style={{
+              fontFamily: '-apple-system, system-ui', fontWeight: 590,
+              fontSize: 17, lineHeight: '22px', color: '#2a2420',
+            }}>9:41</span>
+          </div>
+          <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+            <svg width="19" height="12" viewBox="0 0 19 12">
+              <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill="#2a2420"/>
+              <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill="#2a2420"/>
+              <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill="#2a2420"/>
+              <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill="#2a2420"/>
+            </svg>
+            <svg width="17" height="12" viewBox="0 0 17 12">
+              <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill="#2a2420"/>
+              <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill="#2a2420"/>
+              <circle cx="8.5" cy="10.5" r="1.5" fill="#2a2420"/>
+            </svg>
+            <svg width="27" height="13" viewBox="0 0 27 13">
+              <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="#2a2420" strokeOpacity="0.35" fill="none"/>
+              <rect x="2" y="2" width="20" height="9" rx="2" fill="#2a2420"/>
+              <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill="#2a2420" fillOpacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        paddingTop: 62,
+        paddingBottom: 83,
+      }}>
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#f5edd9' }}>
+          {navStack.length === 0 ? (
+            <TabContent
+              tab={activeTab}
+              pushPage={pushPage}
+              onBeat={handleBeat}
+              setBeatDuration={setBeatDuration}
+            />
+          ) : (
+            <DrillPage
+              key={pageKey}
+              page={currentPage}
+              popPage={popPage}
+              onBeat={handleBeat}
+              setBeatDuration={setBeatDuration}
+              pushPage={pushPage}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="tab-bar">
+        {[
+          { key: 'home', label: '今日', Icon: Icon.Home },
+          { key: 'tuner', label: '调音', Icon: Icon.Tuner },
+          { key: 'stats', label: '记录', Icon: Icon.Stats },
+          { key: 'profile', label: '我的', Icon: Icon.Profile },
+        ].map(({ key, label, Icon: TabIcon }) => (
+          <div
+            key={key}
+            className={`tab-item ${activeTab === key && navStack.length === 0 ? 'active' : ''}`}
+            onClick={() => switchTab(key)}
+            data-hoverable="true"
+          >
+            <TabIcon active={activeTab === key && navStack.length === 0} />
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Home Indicator */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+        paddingBottom: 8, pointerEvents: 'none',
+      }}>
+        <div style={{
+          width: 139, height: 5, borderRadius: 100,
+          background: 'rgba(0,0,0,0.25)',
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Tab Content
+// ──────────────────────────────────────────────────────────
+function TabContent({ tab, pushPage, onBeat, setBeatDuration }) {
+  if (tab === 'home') return <HomePage pushPage={pushPage} onBeat={onBeat} setBeatDuration={setBeatDuration} />;
+  if (tab === 'tuner') return <TunerPage standalone />;
+  if (tab === 'stats') return <StatsPage />;
+  if (tab === 'profile') return <ProfilePage pushPage={pushPage} />;
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────
+// Home Page (Today's Practice)
+// ──────────────────────────────────────────────────────────
+function HomePage({ pushPage, onBeat, setBeatDuration }) {
+  const today = new Date();
+  const dateStr = `${today.getMonth() + 1}月${today.getDate()}日 · 星期三`;
+
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+      position: 'relative',
+    }}>
+      {/* Staff lines decoration */}
+      <div className="staff-lines">
+        {[40, 70, 100, 130, 160].map((t, i) => (
+          <div key={i} style={{ top: t }} />
+        ))}
+      </div>
+
+      <div style={{ padding: '12px 20px 24px' }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 20,
+        }}>
+          <div>
+            <div style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 28,
+              fontWeight: 700,
+              color: '#2a2420',
+              letterSpacing: 1,
+            }}>今日练习</div>
+            <div style={{ fontSize: 13, color: 'rgba(42,36,32,0.6)', marginTop: 2 }}>
+              {dateStr}
+            </div>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: 'rgba(201,154,62,0.15)',
+            borderRadius: 20,
+          }}>
+            <span className="streak-flame">
+              <Icon.Flame />
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#c95520' }}>
+              12
+            </span>
+            <span style={{ fontSize: 12, color: '#c95520', opacity: 0.8 }}>天</span>
+          </div>
+        </div>
+
+        {/* Daily Goal Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, #2a2420 0%, #3d2f20 100%)',
+          borderRadius: 20,
+          padding: 20,
+          marginBottom: 24,
+          boxShadow: '0 4px 20px rgba(42,36,32,0.2)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute',
+            right: -20,
+            top: -10,
+            fontSize: 100,
+            fontWeight: 700,
+            fontFamily: '"Noto Serif SC", serif',
+            color: 'rgba(201,154,62,0.05)',
+            pointerEvents: 'none',
+          }}>
+            琴
+          </div>
+          <div style={{
+            fontSize: 13,
+            color: 'rgba(245,237,217,0.7)',
+            marginBottom: 8,
+          }}>今日目标</div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 6,
+            marginBottom: 16,
+          }}>
+            <span style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 42,
+              fontWeight: 700,
+              color: '#f4d487',
+            }}>45</span>
+            <span style={{
+              fontSize: 16,
+              color: 'rgba(245,237,217,0.7)',
+            }}>分钟</span>
+          </div>
+          <div className="progress-track" style={{
+            height: 8,
+            background: 'rgba(245,237,217,0.15)',
+            borderRadius: 4,
+            marginBottom: 10,
+          }}>
+            <div className="progress-fill" style={{
+              height: '100%',
+              width: '30%',
+              background: 'linear-gradient(90deg, #c99a3e, #f4d487)',
+              borderRadius: 4,
+            }} />
+          </div>
+          <div style={{
+            fontSize: 12,
+            color: 'rgba(245,237,217,0.6)',
+          }}>已完成 13 / 45 分钟</div>
+        </div>
+
+        {/* Quick Actions */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 12,
+          marginBottom: 24,
+        }}>
+          {[
+            { label: '调音器', icon: '🎯', action: 'tuner', color: '#c99a3e' },
+            { label: '节拍器', icon: '⏱', action: 'metronome', color: '#8b6914' },
+            { label: '开始练习', icon: '▶', action: 'practice', color: '#2e7d32' },
+          ].map((item, i) => (
+            <div
+              key={i}
+              className="btn-ripple"
+              style={{
+                background: '#fff9ec',
+                borderRadius: 16,
+                padding: '16px 8px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 2px 8px rgba(42,36,32,0.06)',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease',
+              }}
+              data-hoverable="true"
+              onClick={() => {
+                if (item.action === 'tuner') pushPage({ type: 'tuner' });
+                else if (item.action === 'metronome') pushPage({ type: 'metronome' });
+                else if (item.action === 'practice') pushPage({ type: 'practice', piece: REPERTOIRE[0] });
+              }}
+            >
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: item.color + '22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20,
+              }}>
+                {item.icon}
+              </div>
+              <div style={{ fontSize: 13, color: '#2a2420', fontWeight: 500 }}>
+                {item.label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Repertoire Section */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}>
+          <div style={{
+            fontFamily: '"Noto Serif SC", serif',
+            fontSize: 18,
+            fontWeight: 600,
+            color: '#2a2420',
+          }}>在练曲目</div>
+          <div style={{
+            fontSize: 12,
+            color: '#c99a3e',
+            cursor: 'pointer',
+          }} data-hoverable="true">
+            全部
+          </div>
+        </div>
+
+        {/* Practice Cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {REPERTOIRE.map((piece) => (
+            <div
+              key={piece.id}
+              className="practice-card"
+              data-hoverable="true"
+              onClick={() => pushPage({ type: 'practice', piece })}
+            >
+              <div style={{ paddingLeft: 12 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 6,
+                }}>
+                  <div style={{
+                    fontFamily: '"Noto Serif SC", serif',
+                    fontSize: 17,
+                    fontWeight: 600,
+                    color: '#2a2420',
+                  }}>{piece.title}</div>
+                  <div style={{
+                    fontSize: 11,
+                    padding: '3px 8px',
+                    borderRadius: 8,
+                    background: piece.difficulty === '高级'
+                      ? 'rgba(139,32,32,0.1)'
+                      : piece.difficulty === '中级'
+                        ? 'rgba(201,154,62,0.2)'
+                        : 'rgba(46,125,50,0.1)',
+                    color: piece.difficulty === '高级'
+                      ? '#8b2020'
+                      : piece.difficulty === '中级'
+                        ? '#8b6914'
+                        : '#2e7d32',
+                    fontWeight: 500,
+                  }}>{piece.difficulty}</div>
+                </div>
+                <div style={{
+                  fontSize: 12,
+                  color: 'rgba(42,36,32,0.6)',
+                  marginBottom: 10,
+                }}>
+                  {piece.composer} · {piece.instrument}
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginBottom: 8,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div className="progress-track">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${piece.proficiency}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#8b6914',
+                    minWidth: 32,
+                    textAlign: 'right',
+                  }}>{piece.proficiency}%</span>
+                </div>
+                <div style={{
+                  fontSize: 11,
+                  color: 'rgba(42,36,32,0.5)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}>
+                  <span>第 {piece.currentBars} / {piece.targetBars} 小节</span>
+                  <span>上次：{piece.lastPracticed}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Practice Tip */}
+        <div style={{
+          marginTop: 24,
+          padding: 16,
+          background: 'rgba(201,154,62,0.1)',
+          borderRadius: 14,
+          border: '1px dashed rgba(201,154,62,0.3)',
+        }}>
+          <div style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#8b6914',
+            marginBottom: 4,
+          }}>💡 今日练习提示</div>
+          <div style={{
+            fontSize: 12,
+            color: 'rgba(42,36,32,0.7)',
+            lineHeight: 1.6,
+          }}>
+            练琴前先做五分钟的音阶暖手，用节拍器从慢到快逐步提升速度。
+            《渔舟唱晚》的快板段落建议从 80 BPM 开始练习。
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Tuner Page
+// ──────────────────────────────────────────────────────────
+function TunerPage({ standalone = false, popPage }) {
+  const [isActive, setIsActive] = useState(false);
+  const [cents, setCents] = useState(-25);
+  const [note, setNote] = useState('A');
+  const [freq, setFreq] = useState(440);
+  const rafRef = useRef(null);
+  const targetCentsRef = useRef(-25);
+  const currentCentsRef = useRef(-25);
+  const visibleRef = useRef(true);
+  const noteIndexRef = useRef(0);
+  const notes = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
+
+  // Simulate incoming audio signal with some variation
+  useEffect(() => {
+    if (!isActive) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    let lastTime = performance.now();
+    let phase = 0;
+
+    const tick = (now) => {
+      if (!visibleRef.current) {
+        lastTime = now;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      phase += dt;
+
+      // Simulate approaching correct pitch
+      // Start off, gradually approach 0 with slight wobble
+      const target = Math.sin(phase * 0.7) * 3 + (phase > 3 ? 0 : -15 + phase * 5);
+      targetCentsRef.current = Math.max(-50, Math.min(50, target));
+
+      // Smooth approach
+      currentCentsRef.current += (targetCentsRef.current - currentCentsRef.current) * 0.08;
+      setCents(currentCentsRef.current);
+
+      // Slight frequency variation
+      const baseFreq = 440 * Math.pow(2, currentCentsRef.current / 1200);
+      setFreq(baseFreq);
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isActive]);
+
+  useEffect(() => {
+    const handle = () => { visibleRef.current = !document.hidden; };
+    document.addEventListener('visibilitychange', handle);
+    return () => document.removeEventListener('visibilitychange', handle);
+  }, []);
+
+  const inTune = Math.abs(cents) < 5;
+
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {!standalone && (
+        <NavHeader title="调音器" onBack={popPage} />
+      )}
+
+      <div style={{ padding: standalone ? '80px 20px 24px' : '20px 20px 24px', flex: 1 }}>
+        {standalone && (
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#2a2420',
+            }}>调音器</div>
+            <div style={{ fontSize: 13, color: 'rgba(42,36,32,0.5)', marginTop: 4 }}>
+              拨动琴弦，指针指向绿区即为准确
+            </div>
+          </div>
+        )}
+
+        {/* Dial */}
+        <div style={{ marginBottom: 32 }}>
+          <TunerDial cents={cents} note={note} freq={freq} active={isActive} />
+        </div>
+
+        {/* String selector */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 8,
+          marginBottom: 24,
+        }}>
+          {['1弦', '2弦', '3弦', '4弦', '5弦', '6弦'].map((s, i) => (
+            <div
+              key={i}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 500,
+                background: i === 0 ? '#c99a3e' : 'rgba(42,36,32,0.08)',
+                color: i === 0 ? '#f5edd9' : '#2a2420',
+                transition: 'all 0.2s ease',
+                cursor: 'pointer',
+              }}
+              data-hoverable="true"
+              onClick={() => setNote(notes[(i + 9) % 12])}
+            >
+              {s}
+            </div>
+          ))}
+        </div>
+
+        {/* Status */}
+        <div style={{
+          textAlign: 'center',
+          padding: '16px 20px',
+          background: isActive
+            ? (inTune ? 'rgba(46,125,50,0.1)' : 'rgba(201,154,62,0.1)')
+            : 'rgba(42,36,32,0.05)',
+          borderRadius: 16,
+          marginBottom: 24,
+          transition: 'background 0.3s ease',
+        }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: isActive
+              ? (inTune ? '#2e7d32' : '#8b6914')
+              : 'rgba(42,36,32,0.5)',
+            marginBottom: 4,
+          }}>
+            {isActive ? (inTune ? '✓ 音准了，可以开始练习' : '继续微调，指针接近绿区') : '点击下方按钮开始调音'}
+          </div>
+          {isActive && (
+            <div style={{
+              fontSize: 12,
+              color: 'rgba(42,36,32,0.5)',
+            }}>
+              偏差：{cents > 0 ? '+' : ''}{cents.toFixed(1)} 音分
+            </div>
+          )}
+        </div>
+
+        {/* Start/Stop Button */}
+        <button
+          className="btn-ripple"
+          style={{
+            width: '100%',
+            padding: '18px 0',
+            border: 'none',
+            borderRadius: 16,
+            fontSize: 17,
+            fontWeight: 600,
+            color: isActive ? '#2a2420' : '#f5edd9',
+            background: isActive
+              ? 'linear-gradient(135deg, #e8c87a, #c99a3e)'
+              : 'linear-gradient(135deg, #2a2420, #3d2f20)',
+            boxShadow: '0 4px 16px rgba(42,36,32,0.2)',
+            cursor: 'pointer',
+            transition: 'transform 0.1s ease',
+          }}
+          data-hoverable="true"
+          onClick={() => setIsActive(!isActive)}
+        >
+          {isActive ? '停止调音' : '开始调音'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Metronome Page (Signature interaction)
+// ──────────────────────────────────────────────────────────
+function MetronomePage({ popPage, onBeat, setBeatDuration }) {
+  const [bpm, setBpm] = useState(80);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentBeat, setCurrentBeat] = useState(0);
+  const [beatsPerMeasure, setBeatsPerMeasure] = useState(4);
+  const beatCountRef = useRef(0);
+  const lastBeatTimeRef = useRef(0);
+
+  const handleBeat = useCallback(() => {
+    if (onBeat) onBeat();
+    beatCountRef.current = (beatCountRef.current + 1) % beatsPerMeasure;
+    setCurrentBeat(beatCountRef.current);
+    lastBeatTimeRef.current = performance.now();
+  }, [onBeat, beatsPerMeasure]);
+
+  // Update beat duration for breathing effect
+  useEffect(() => {
+    setBeatDuration(60 / bpm);
+  }, [bpm, setBeatDuration]);
+
+  const beatMarkers = Array.from({ length: beatsPerMeasure }, (_, i) => i);
+
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <NavHeader title="节拍器" onBack={popPage} />
+
+      <div style={{ padding: '20px 20px 24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* BPM Display */}
+        <div style={{ textAlign: 'center', marginBottom: 8 }}>
+          <div style={{
+            fontFamily: '"Noto Serif SC", serif',
+            fontSize: 72,
+            fontWeight: 700,
+            color: '#2a2420',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            <DigitDisplay value={bpm} />
+          </div>
+          <div style={{ fontSize: 14, color: 'rgba(42,36,32,0.5)', marginTop: 4 }}>
+            BPM · 每分钟节拍数
+          </div>
+        </div>
+
+        {/* Beat markers */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 12,
+          marginBottom: 16,
+          height: 16,
+          alignItems: 'center',
+        }}>
+          {beatMarkers.map((i) => (
+            <div
+              key={i}
+              className={`beat-dot ${isPlaying && currentBeat === i ? 'active' : ''}`}
+            />
+          ))}
+        </div>
+
+        {/* Time signature selector */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 8,
+          marginBottom: 20,
+        }}>
+          {[2, 3, 4, 6].map((n) => (
+            <div
+              key={n}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 16,
+                fontSize: 13,
+                fontWeight: beatsPerMeasure === n ? 600 : 400,
+                background: beatsPerMeasure === n
+                  ? 'rgba(201,154,62,0.25)'
+                  : 'rgba(42,36,32,0.06)',
+                color: beatsPerMeasure === n ? '#8b6914' : 'rgba(42,36,32,0.6)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              data-hoverable="true"
+              onClick={() => {
+                beatCountRef.current = 0;
+                setCurrentBeat(0);
+                setBeatsPerMeasure(n);
+              }}
+            >
+              {n}/4拍
+            </div>
+          ))}
+        </div>
+
+        {/* Pendulum */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PendulumMetronome
+            bpm={bpm}
+            setBpm={setBpm}
+            isPlaying={isPlaying}
+            onBeat={handleBeat}
+          />
+        </div>
+
+        {/* Hint text */}
+        <div style={{
+          textAlign: 'center',
+          fontSize: 12,
+          color: 'rgba(42,36,32,0.5)',
+          marginBottom: 16,
+        }}>
+          {isPlaying ? '摆锤在端点处打出节拍' : '上下拖动黄铜摆锤调整 BPM'}
+        </div>
+
+        {/* BPM quick presets */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 8,
+          marginBottom: 20,
+          flexWrap: 'wrap',
+        }}>
+          {[
+            { label: '广板', bpm: 60 },
+            { label: '行板', bpm: 76 },
+            { label: '中板', bpm: 100 },
+            { label: '快板', bpm: 132 },
+            { label: '急板', bpm: 168 },
+          ].map((preset) => (
+            <div
+              key={preset.bpm}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 14,
+                fontSize: 12,
+                background: bpm === preset.bpm
+                  ? 'rgba(201,154,62,0.2)'
+                  : 'rgba(42,36,32,0.05)',
+                color: bpm === preset.bpm ? '#8b6914' : 'rgba(42,36,32,0.5)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              data-hoverable="true"
+              onClick={() => setBpm(preset.bpm)}
+            >
+              {preset.label} {preset.bpm}
+            </div>
+          ))}
+        </div>
+
+        {/* Play/Stop Button */}
+        <button
+          className="btn-ripple"
+          style={{
+            width: '100%',
+            padding: '18px 0',
+            border: 'none',
+            borderRadius: 16,
+            fontSize: 17,
+            fontWeight: 600,
+            color: '#f5edd9',
+            background: isPlaying
+              ? 'linear-gradient(135deg, #8b2020, #6b1515)'
+              : 'linear-gradient(135deg, #c99a3e, #8b6914)',
+            boxShadow: '0 4px 16px rgba(42,36,32,0.2)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            transition: 'transform 0.1s ease',
+          }}
+          data-hoverable="true"
+          onClick={() => setIsPlaying(!isPlaying)}
+        >
+          {isPlaying ? (
+            <>
+              <Icon.Pause />
+              <span>停止</span>
+            </>
+          ) : (
+            <>
+              <Icon.Play />
+              <span>启动节拍</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Practice Page (Timer)
+// ──────────────────────────────────────────────────────────
+function PracticePage({ piece, popPage, pushPage }) {
+  const [isRunning, setIsRunning] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const timerRef = useRef(null);
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (!isRunning) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+    // Use a single interval, no stacking
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      if (document.hidden) return; // pause when hidden
+      setSeconds(s => s + 1);
+    }, 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isRunning]);
+
+  const handleFinish = () => {
+    setIsRunning(false);
+    pushPage({
+      type: 'checkin',
+      piece,
+      duration: Math.max(1, Math.floor(seconds / 60)),
+    });
+  };
+
+  const progressPct = Math.min(100, (seconds / (piece.targetBars * 60)) * 100);
+
+  return (
+    <div
+      className={`sheet-flip ${isFlipped ? '' : ''}`}
+      key={piece.id}
+      style={{
+        height: '100%',
+        background: '#f5edd9',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <NavHeader title="练习中" onBack={popPage} />
+
+      <div style={{ padding: '20px 20px 24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Piece info */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            fontFamily: '"Noto Serif SC", serif',
+            fontSize: 26,
+            fontWeight: 700,
+            color: '#2a2420',
+            marginBottom: 6,
+          }}>{piece.title}</div>
+          <div style={{ fontSize: 14, color: 'rgba(42,36,32,0.6)' }}>
+            {piece.composer} · {piece.instrument}
+          </div>
+        </div>
+
+        {/* Timer display */}
+        <div style={{
+          textAlign: 'center',
+          padding: '40px 0',
+          marginBottom: 24,
+          position: 'relative',
+        }}>
+          {/* Decorative circle */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 200,
+            height: 200,
+            borderRadius: '50%',
+            border: '2px solid rgba(201,154,62,0.2)',
+          }} />
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 220,
+            height: 220,
+            borderRadius: '50%',
+            border: '1px dashed rgba(201,154,62,0.3)',
+          }} />
+          <div style={{
+            fontFamily: '"Noto Serif SC", serif',
+            fontSize: 64,
+            fontWeight: 300,
+            color: '#2a2420',
+            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: 2,
+            position: 'relative',
+            zIndex: 1,
+          }}>
+            {formatTime(seconds)}
+          </div>
+          <div style={{
+            fontSize: 13,
+            color: 'rgba(42,36,32,0.5)',
+            marginTop: 4,
+            position: 'relative',
+            zIndex: 1,
+          }}>
+            {isRunning ? '正在计时' : '点击开始练习'}
+          </div>
+        </div>
+
+        {/* Progress */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: 12,
+            color: 'rgba(42,36,32,0.5)',
+            marginBottom: 6,
+          }}>
+            <span>练习进度</span>
+            <span>{progressPct.toFixed(0)}%</span>
+          </div>
+          <div className="progress-track" style={{ height: 8 }}>
+            <div
+              className="progress-fill"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Sections */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: '#2a2420',
+            marginBottom: 10,
+          }}>分段练习</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {piece.sections.map((sec, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: '12px 14px',
+                  background: '#fff9ec',
+                  borderRadius: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                data-hoverable="true"
+                onClick={() => setIsFlipped(f => !f)}
+              >
+                <div style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: i === 0 ? 'rgba(201,154,62,0.2)' : 'rgba(42,36,32,0.08)',
+                  color: i === 0 ? '#8b6914' : 'rgba(42,36,32,0.4)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 600,
+                }}>
+                  {i + 1}
+                </div>
+                <div style={{
+                  flex: 1,
+                  fontSize: 14,
+                  color: '#2a2420',
+                }}>{sec}</div>
+                <Icon.Check style={{ width: 18, height: 18, color: i < 0 ? '#2e7d32' : 'rgba(42,36,32,0.2)' }} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            className="btn-ripple"
+            style={{
+              flex: 1,
+              padding: '16px 0',
+              border: 'none',
+              borderRadius: 14,
+              fontSize: 15,
+              fontWeight: 500,
+              color: '#2a2420',
+              background: 'rgba(42,36,32,0.08)',
+              cursor: 'pointer',
+              transition: 'transform 0.1s ease',
+            }}
+            data-hoverable="true"
+            onClick={() => { setSeconds(0); setIsRunning(false); }}
+          >
+            重置
+          </button>
+          <button
+            className="btn-ripple"
+            style={{
+              flex: 2,
+              padding: '16px 0',
+              border: 'none',
+              borderRadius: 14,
+              fontSize: 16,
+              fontWeight: 600,
+              color: '#f5edd9',
+              background: isRunning
+                ? 'linear-gradient(135deg, #8b6914, #6b4d0e)'
+                : 'linear-gradient(135deg, #c99a3e, #8b6914)',
+              boxShadow: '0 4px 16px rgba(42,36,32,0.2)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'transform 0.1s ease',
+            }}
+            data-hoverable="true"
+            onClick={() => setIsRunning(!isRunning)}
+          >
+            {isRunning ? <Icon.Pause /> : <Icon.Play />}
+            <span>{isRunning ? '暂停' : '开始'}</span>
+          </button>
+        </div>
+
+        {/* Finish button */}
+        {seconds > 0 && (
+          <button
+            className="btn-ripple"
+            style={{
+              width: '100%',
+              marginTop: 12,
+              padding: '14px 0',
+              border: '1.5px solid #c99a3e',
+              borderRadius: 14,
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#8b6914',
+              background: 'transparent',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            data-hoverable="true"
+            onClick={handleFinish}
+          >
+            完成练习，打卡记录
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Check-in (Stamp) Page
+// ──────────────────────────────────────────────────────────
+function CheckinPage({ piece, duration, popPage }) {
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+
+  return (
+    <div style={{
+      height: '100%',
+      background: '#f5edd9',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <NavHeader title="练习完成" onBack={popPage} />
+
+      <div style={{ padding: '20px 20px 24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Paper / certificate area */}
+        <div style={{
+          flex: 1,
+          background: '#fff9ec',
+          borderRadius: 20,
+          padding: 32,
+          marginBottom: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          position: 'relative',
+          boxShadow: '0 4px 20px rgba(42,36,32,0.08)',
+        }}>
+          {/* Paper texture lines */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 20,
+            background: `
+              repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 23px,
+                rgba(201,154,62,0.08) 23px,
+                rgba(201,154,62,0.08) 24px
+              )
+            `,
+            pointerEvents: 'none',
+          }} />
+
+          <div style={{
+            position: 'relative',
+            zIndex: 1,
+            textAlign: 'center',
+            width: '100%',
+          }}>
+            <div style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#2a2420',
+              marginBottom: 4,
+            }}>练习完成</div>
+            <div style={{
+              fontSize: 13,
+              color: 'rgba(42,36,32,0.5)',
+              marginBottom: 24,
+            }}>{dateStr}</div>
+
+            {/* Stamp */}
+            <div style={{ margin: '16px 0 28px' }}>
+              <PracticeStamp date={dateStr} piece={piece.title} duration={duration} />
+            </div>
+
+            <div style={{
+              padding: '16px 0',
+              borderTop: '1px solid rgba(201,154,62,0.2)',
+              borderBottom: '1px solid rgba(201,154,62,0.2)',
+            }}>
+              <div style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: '#2a2420',
+                fontFamily: '"Noto Serif SC", serif',
+                marginBottom: 8,
+              }}>{piece.title}</div>
+              <div style={{
+                fontSize: 13,
+                color: 'rgba(42,36,32,0.6)',
+                marginBottom: 12,
+              }}>{piece.composer} · {piece.instrument}</div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 24,
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    color: '#c99a3e',
+                    fontFamily: '"Noto Serif SC", serif',
+                  }}>{duration}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.5)' }}>分钟</div>
+                </div>
+                <div style={{
+                  width: 1,
+                  background: 'rgba(201,154,62,0.2)',
+                }} />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    color: '#c99a3e',
+                    fontFamily: '"Noto Serif SC", serif',
+                  }}>13</div>
+                  <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.5)' }}>连续天</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Note input (static) */}
+        <div style={{
+          marginBottom: 24,
+        }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: '#2a2420',
+            marginBottom: 8,
+          }}>练习笔记</div>
+          <div style={{
+            padding: 14,
+            background: '#fff9ec',
+            borderRadius: 12,
+            fontSize: 13,
+            color: 'rgba(42,36,32,0.7)',
+            lineHeight: 1.6,
+            minHeight: 60,
+          }}>
+            {piece.notes}
+          </div>
+        </div>
+
+        {/* Confirm button */}
+        <button
+          className="btn-ripple"
+          style={{
+            width: '100%',
+            padding: '18px 0',
+            border: 'none',
+            borderRadius: 16,
+            fontSize: 17,
+            fontWeight: 600,
+            color: '#f5edd9',
+            background: 'linear-gradient(135deg, #c99a3e, #8b6914)',
+            boxShadow: '0 4px 16px rgba(42,36,32,0.2)',
+            cursor: 'pointer',
+            transition: 'transform 0.1s ease',
+          }}
+          data-hoverable="true"
+          onClick={popPage}
+        >
+          保存记录
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Stats Page
+// ──────────────────────────────────────────────────────────
+function StatsPage() {
+  const totalMinutes = WEEK_STATS.reduce((sum, d) => sum + d.minutes, 0);
+  const maxMinutes = Math.max(...WEEK_STATS.map(d => d.minutes), 60);
+  const streakDays = 6;
+
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+    }}>
+      <div style={{ padding: '80px 20px 24px' }}>
+        <div style={{
+          fontFamily: '"Noto Serif SC", serif',
+          fontSize: 28,
+          fontWeight: 700,
+          color: '#2a2420',
+          marginBottom: 24,
+        }}>练习记录</div>
+
+        {/* Weekly summary card */}
+        <div style={{
+          background: 'linear-gradient(135deg, #2a2420 0%, #3d2f20 100%)',
+          borderRadius: 20,
+          padding: 24,
+          marginBottom: 24,
+          color: '#f5edd9',
+          boxShadow: '0 4px 20px rgba(42,36,32,0.2)',
+        }}>
+          <div style={{
+            fontSize: 13,
+            color: 'rgba(245,237,217,0.6)',
+            marginBottom: 8,
+          }}>本周总练习时长</div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            marginBottom: 20,
+          }}>
+            <span style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 48,
+              fontWeight: 700,
+              color: '#f4d487',
+            }}>{totalMinutes}</span>
+            <span style={{ fontSize: 16, color: 'rgba(245,237,217,0.6)' }}>分钟</span>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(245,237,217,0.5)', marginBottom: 4 }}>连续天数</div>
+              <div style={{
+                fontSize: 22, fontWeight: 700, color: '#e08a2a',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                <span className="streak-flame" style={{ fontSize: 0 }}><Icon.Flame /></span>
+                {streakDays}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(245,237,217,0.5)', marginBottom: 4 }}>日均时长</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#c99a3e' }}>
+                {Math.round(totalMinutes / 6)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(245,237,217,0.5)', marginBottom: 4 }}>完成曲目</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#2e7d32' }}>2</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Weekly bar chart */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: '#2a2420',
+            marginBottom: 16,
+            fontFamily: '"Noto Serif SC", serif',
+          }}>本周练习分布</div>
+          <div style={{
+            background: '#fff9ec',
+            borderRadius: 16,
+            padding: '20px 16px',
+            height: 180,
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8,
+          }}>
+            {WEEK_STATS.map((d, i) => {
+              const height = d.minutes === 0 ? 2 : (d.minutes / maxMinutes) * 120;
+              return (
+                <div key={i} style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                  <div style={{
+                    width: '100%',
+                    height,
+                    background: d.completed
+                      ? 'linear-gradient(180deg, #e8c87a, #c99a3e)'
+                      : 'rgba(42,36,32,0.1)',
+                    borderRadius: '4px 4px 2px 2px',
+                    animationDelay: `${i * 0.1}s`,
+                  }} className="chart-bar"
+                    style={{
+                      width: '100%',
+                      height,
+                      background: d.completed
+                        ? 'linear-gradient(180deg, #e8c87a, #c99a3e)'
+                        : 'rgba(42,36,32,0.1)',
+                      borderRadius: '4px 4px 2px 2px',
+                      animation: `bar-grow 0.6s cubic-bezier(0.2,0.8,0.2,1) ${i * 0.1}s both`,
+                    }}
+                  />
+                  <div style={{
+                    fontSize: 11,
+                    color: d.completed ? '#8b6914' : 'rgba(42,36,32,0.3)',
+                    fontWeight: d.completed ? 500 : 400,
+                  }}>{d.day}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Repertoire progress */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: '#2a2420',
+            marginBottom: 12,
+            fontFamily: '"Noto Serif SC", serif',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>曲目进度</span>
+            <span style={{ fontSize: 12, color: '#c99a3e', cursor: 'pointer' }} data-hoverable="true">查看全部</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {REPERTOIRE.map((piece) => (
+              <div key={piece.id} style={{
+                background: '#fff9ec',
+                borderRadius: 14,
+                padding: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                cursor: 'pointer',
+              }} data-hoverable="true">
+                <div style={{
+                  width: 44, height: 44,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #e8c87a22, #c99a3e33)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: '"Noto Serif SC", serif',
+                  fontSize: 18, fontWeight: 700,
+                  color: '#8b6914',
+                }}>
+                  {piece.title[0]}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: '#2a2420',
+                    marginBottom: 4,
+                  }}>{piece.title}</div>
+                  <div className="progress-track" style={{ height: 5 }}>
+                    <div className="progress-fill" style={{ width: `${piece.proficiency}%` }} />
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: '#8b6914',
+                  minWidth: 36,
+                  textAlign: 'right',
+                }}>{piece.proficiency}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Profile Page
+// ──────────────────────────────────────────────────────────
+function ProfilePage({ pushPage }) {
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+    }}>
+      <div style={{ padding: '80px 20px 24px' }}>
+        {/* Profile Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          marginBottom: 28,
+        }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #c99a3e, #8b6914)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: '"Noto Serif SC", serif',
+            fontSize: 28, fontWeight: 700,
+            color: '#f5edd9',
+          }}>琴</div>
+          <div>
+            <div style={{
+              fontFamily: '"Noto Serif SC", serif',
+              fontSize: 22, fontWeight: 700, color: '#2a2420',
+            }}>抚琴人</div>
+            <div style={{ fontSize: 13, color: 'rgba(42,36,32,0.5)', marginTop: 2 }}>
+              已坚持练习 12 天
+            </div>
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 12,
+          marginBottom: 24,
+        }}>
+          {[
+            { label: '总练习', value: '68', unit: '小时', color: '#c99a3e' },
+            { label: '曲目', value: '5', unit: '首', color: '#2e7d32' },
+            { label: '最长连续', value: '12', unit: '天', color: '#e08a2a' },
+          ].map((item, i) => (
+            <div key={i} style={{
+              background: '#fff9ec',
+              borderRadius: 14,
+              padding: 16,
+              textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: 24, fontWeight: 700, color: item.color,
+                fontFamily: '"Noto Serif SC", serif',
+              }}>{item.value}<span style={{ fontSize: 12, fontWeight: 400 }}>{item.unit}</span></div>
+              <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.5)', marginTop: 2 }}>
+                {item.label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Menu */}
+        <div style={{
+          background: '#fff9ec',
+          borderRadius: 16,
+          overflow: 'hidden',
+          marginBottom: 16,
+        }}>
+          {[
+            { label: '我的乐器', detail: '古筝 · 古琴', icon: '🎵' },
+            { label: '练习目标', detail: '每日 45 分钟', icon: '🎯' },
+            { label: '提醒设置', detail: '每日 20:00', icon: '⏰' },
+          ].map((item, i, arr) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '14px 16px',
+                borderBottom: i < arr.length - 1 ? '1px solid rgba(201,154,62,0.1)' : 'none',
+                cursor: 'pointer',
+              }}
+              data-hoverable="true"
+            >
+              <span style={{ fontSize: 20, marginRight: 12 }}>{item.icon}</span>
+              <span style={{ flex: 1, fontSize: 15, color: '#2a2420' }}>{item.label}</span>
+              <span style={{ fontSize: 13, color: 'rgba(42,36,32,0.4)', marginRight: 8 }}>{item.detail}</span>
+              <Icon.Back style={{ transform: 'rotate(180deg)', color: 'rgba(42,36,32,0.3)' }} />
+            </div>
+          ))}
+        </div>
+
+        {/* Design spec & API doc entries */}
+        <div style={{
+          background: '#fff9ec',
+          borderRadius: 16,
+          overflow: 'hidden',
+          marginBottom: 16,
+        }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '14px 16px',
+              cursor: 'pointer',
+              borderBottom: '1px solid rgba(201,154,62,0.1)',
+            }}
+            data-hoverable="true"
+            onClick={() => pushPage({ type: 'design-spec' })}
+          >
+            <span style={{ fontSize: 20, marginRight: 12 }}>📐</span>
+            <span style={{ flex: 1, fontSize: 15, color: '#2a2420' }}>设计规范</span>
+            <Icon.Back style={{ transform: 'rotate(180deg)', color: 'rgba(42,36,32,0.3)' }} />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '14px 16px',
+              cursor: 'pointer',
+            }}
+            data-hoverable="true"
+            onClick={() => pushPage({ type: 'api-doc' })}
+          >
+            <span style={{ fontSize: 20, marginRight: 12 }}>📡</span>
+            <span style={{ flex: 1, fontSize: 15, color: '#2a2420' }}>接口文档</span>
+            <Icon.Back style={{ transform: 'rotate(180deg)', color: 'rgba(42,36,32,0.3)' }} />
+          </div>
+        </div>
+
+        {/* App info */}
+        <div style={{
+          textAlign: 'center',
+          fontSize: 12,
+          color: 'rgba(42,36,32,0.35)',
+          marginTop: 24,
+        }}>
+          琴房 v2.0.0 · 原生 App
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Design Spec Page
+// ──────────────────────────────────────────────────────────
+function DesignSpecPage({ popPage }) {
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <NavHeader title="设计规范" onBack={popPage} />
+
+      <div style={{ padding: '20px 20px 40px' }}>
+        {/* Color palette */}
+        <div style={{ marginBottom: 28 }}>
+          <SectionTitle>色彩体系</SectionTitle>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 10,
+            marginTop: 12,
+          }}>
+            {[
+              { name: '深胡桃木棕', hex: '#2a2420', light: false },
+              { name: '奶油谱纸', hex: '#f5edd9', light: true },
+              { name: '黄铜金', hex: '#c99a3e', light: false },
+              { name: '墨黑', hex: '#1a1410', light: false },
+              { name: '谱纸米白', hex: '#fff9ec', light: true },
+              { name: '朱砂印章', hex: '#8b2020', light: false },
+            ].map((c, i) => (
+              <div key={i} style={{
+                background: c.light ? '#fff' : 'transparent',
+                borderRadius: 12,
+                overflow: 'hidden',
+                border: c.light ? '1px solid rgba(42,36,32,0.1)' : 'none',
+              }}>
+                <div style={{
+                  height: 60,
+                  background: c.hex,
+                }} />
+                <div style={{ padding: '8px 10px', background: c.light ? '#fff9ec' : '#2a2420' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.light ? '#2a2420' : '#f5edd9' }}>{c.name}</div>
+                  <div style={{ fontSize: 10, color: c.light ? 'rgba(42,36,32,0.5)' : 'rgba(245,237,217,0.5)', fontFamily: 'monospace' }}>{c.hex}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Typography */}
+        <div style={{ marginBottom: 28 }}>
+          <SectionTitle>字体排印</SectionTitle>
+          <div style={{
+            background: '#fff9ec',
+            borderRadius: 14,
+            padding: 16,
+            marginTop: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.4)', marginBottom: 4 }}>标题 · Noto Serif SC</div>
+              <div style={{ fontFamily: '"Noto Serif SC", serif', fontSize: 28, fontWeight: 700, color: '#2a2420' }}>渔舟唱晚</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.4)', marginBottom: 4 }}>正文 · Noto Sans SC</div>
+              <div style={{ fontFamily: '"Noto Sans SC", sans-serif', fontSize: 15, color: '#2a2420' }}>每日练习，日积跬步，以至千里。</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.4)', marginBottom: 4 }}>数字 · Tabular Nums</div>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 36, fontWeight: 700, color: '#c99a3e' }}>0123456789</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Motion */}
+        <div style={{ marginBottom: 28 }}>
+          <SectionTitle>动效体系</SectionTitle>
+          <div style={{
+            background: '#fff9ec',
+            borderRadius: 14,
+            padding: 16,
+            marginTop: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}>
+            {[
+              { name: '节拍摆锤单摆运动', desc: '真实物理单摆方程，端点触发节拍脉冲' },
+              { name: '调音指针阻尼摆动', desc: '弹簧-阻尼系统，趋近目标音高' },
+              { name: '打卡印章落纸', desc: '短促下沉 + 回弹 + 印泥扩散' },
+              { name: '谱纸翻页', desc: 'Y 轴旋转，模拟翻谱动作' },
+              { name: '数字翻牌', desc: 'BPM 数字上下翻转动效' },
+              { name: '节拍脉动呼吸', desc: '界面随 BPM 微微呼吸' },
+              { name: '连续天数火焰', desc: '微抖动画，象征坚持' },
+              { name: '图表柱生长', desc: '从底部向上生长，逐根延迟' },
+              { name: '按钮涟漪', desc: '按下时径向扩散高光' },
+              { name: '页面右滑进入', desc: 'iOS 原生导航过渡' },
+              { name: 'Tab 切换位移', desc: '激活态图标微上浮' },
+              { name: '进度条填充', desc: '贝塞尔缓动填充' },
+            ].map((m, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                gap: 10,
+                paddingBottom: i < 11 ? 10 : 0,
+                borderBottom: i < 11 ? '1px solid rgba(201,154,62,0.1)' : 'none',
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'rgba(201,154,62,0.15)',
+                  color: '#8b6914',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, flexShrink: 0,
+                }}>{i + 1}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#2a2420' }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(42,36,32,0.5)', marginTop: 1 }}>{m.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Components */}
+        <div style={{ marginBottom: 28 }}>
+          <SectionTitle>组件规范</SectionTitle>
+          <div style={{
+            background: '#fff9ec',
+            borderRadius: 14,
+            padding: 16,
+            marginTop: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.5)', marginBottom: 8 }}>主按钮</div>
+              <button style={{
+                width: '100%', padding: '14px 0',
+                border: 'none', borderRadius: 14,
+                fontSize: 15, fontWeight: 600,
+                color: '#f5edd9',
+                background: 'linear-gradient(135deg, #c99a3e, #8b6914)',
+                boxShadow: '0 4px 16px rgba(42,36,32,0.2)',
+                cursor: 'pointer',
+              }}>确认操作</button>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.5)', marginBottom: 8 }}>次按钮</div>
+              <button style={{
+                width: '100%', padding: '14px 0',
+                border: '1.5px solid #c99a3e', borderRadius: 14,
+                fontSize: 15, fontWeight: 600,
+                color: '#8b6914',
+                background: 'transparent',
+                cursor: 'pointer',
+              }}>次要操作</button>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.5)', marginBottom: 8 }}>进度条</div>
+              <div className="progress-track" style={{ height: 8 }}>
+                <div className="progress-fill" style={{ width: '65%' }} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.5)', marginBottom: 8 }}>卡片</div>
+              <div className="practice-card" style={{ cursor: 'default' }}>
+                <div style={{ paddingLeft: 12 }}>
+                  <div style={{ fontFamily: '"Noto Serif SC", serif', fontSize: 16, fontWeight: 600, color: '#2a2420' }}>曲目卡片样式</div>
+                  <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.6)', marginTop: 2 }}>左侧色条标识进度</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div style={{
+      fontFamily: '"Noto Serif SC", serif',
+      fontSize: 18,
+      fontWeight: 600,
+      color: '#2a2420',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+    }}>
+      <div style={{ width: 3, height: 18, background: 'linear-gradient(180deg, #c99a3e, #8b6914)', borderRadius: 2 }} />
+      {children}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// API Doc Page
+// ──────────────────────────────────────────────────────────
+function ApiDocPage({ popPage }) {
+  const endpoints = [
+    {
+      method: 'GET',
+      path: '/api/practice/today',
+      desc: '获取今日练习任务与进度',
+      response: `{
+  "date": "2026-08-19",
+  "dailyGoalMinutes": 45,
+  "completedMinutes": 13,
+  "streakDays": 12,
+  "repertoire": [
+    {
+      "id": 1,
+      "title": "渔舟唱晚",
+      "proficiency": 80,
+      "targetBars": 72,
+      "currentBars": 58
+    }
+  ]
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/api/practice/checkin',
+      desc: '提交练习打卡',
+      params: [
+        { name: 'pieceId', type: 'number', required: true, desc: '曲目 ID' },
+        { name: 'duration', type: 'number', required: true, desc: '练习时长（分钟）' },
+        { name: 'sections', type: 'array', required: false, desc: '完成的段落索引' },
+        { name: 'notes', type: 'string', required: false, desc: '练习笔记' },
+      ],
+      response: `{
+  "id": "chk_20260819_001",
+  "pieceId": 1,
+  "duration": 32,
+  "timestamp": "2026-08-19T20:32:00+08:00",
+  "streakUpdated": true,
+  "newStreakDays": 13
+}`,
+    },
+    {
+      method: 'GET',
+      path: '/api/practice/weekly',
+      desc: '获取周练习统计',
+      params: [
+        { name: 'weekOffset', type: 'number', required: false, desc: '周偏移，0=本周' },
+      ],
+      response: `{
+  "weekStart": "2026-08-17",
+  "totalMinutes": 250,
+  "streakDays": 6,
+  "daily": [
+    { "day": 1, "minutes": 45, "completed": true },
+    { "day": 2, "minutes": 30, "completed": true }
+  ]
+}`,
+    },
+    {
+      method: 'GET',
+      path: '/api/repertoire/list',
+      desc: '获取曲目列表',
+      response: `{
+  "items": [
+    {
+      "id": 1,
+      "title": "渔舟唱晚",
+      "composer": "娄树华",
+      "difficulty": "中级",
+      "proficiency": 80,
+      "sections": ["慢板起兴", "中板推进", "快板高潮"]
+    }
+  ],
+  "total": 5
+}`,
+    },
+    {
+      method: 'POST',
+      path: '/api/tuner/analyze',
+      desc: '分析音频帧音高（WebSocket 实时流）',
+      params: [
+        { name: 'audioData', type: 'Float32Array', required: true, desc: '音频采样数据' },
+        { name: 'sampleRate', type: 'number', required: true, desc: '采样率' },
+      ],
+      response: `{
+  "note": "A4",
+  "frequency": 442.3,
+  "cents": 9.0,
+  "inTune": false,
+  "confidence": 0.92
+}`,
+    },
+    {
+      method: 'GET',
+      path: '/api/user/profile',
+      desc: '获取用户信息',
+      response: `{
+  "id": "usr_001",
+  "nickname": "抚琴人",
+  "instrument": ["古筝", "古琴"],
+  "level": "中级",
+  "totalPracticeHours": 68,
+  "maxStreak": 12
+}`,
+    },
+  ];
+
+  const [expanded, setExpanded] = useState(0);
+
+  return (
+    <div style={{
+      height: '100%',
+      overflowY: 'auto',
+      background: '#f5edd9',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <NavHeader title="接口文档" onBack={popPage} />
+
+      <div style={{ padding: '20px 20px 40px' }}>
+        {/* API base info */}
+        <div style={{
+          background: '#2a2420',
+          borderRadius: 14,
+          padding: 16,
+          marginBottom: 20,
+          color: '#f5edd9',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#f4d487' }}>基础信息</div>
+          <div style={{ fontSize: 12, lineHeight: 1.8, fontFamily: 'monospace' }}>
+            Base URL: <span style={{ color: '#c99a3e' }}>/api/v1</span><br />
+            认证: <span style={{ color: '#c99a3e' }}>Bearer Token</span><br />
+            格式: <span style={{ color: '#c99a3e' }}>JSON / UTF-8</span><br />
+            限流: <span style={{ color: '#c99a3e' }}>120 次 / 分钟</span>
+          </div>
+        </div>
+
+        {/* Endpoints */}
+        {endpoints.map((ep, i) => (
+          <div key={i} style={{
+            background: '#fff9ec',
+            borderRadius: 14,
+            marginBottom: 12,
+            overflow: 'hidden',
+            border: expanded === i ? '1.5px solid rgba(201,154,62,0.3)' : '1px solid rgba(42,36,32,0.06)',
+            transition: 'border 0.2s ease',
+          }}>
+            <div
+              style={{
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'pointer',
+              }}
+              data-hoverable="true"
+              onClick={() => setExpanded(expanded === i ? -1 : i)}
+            >
+              <span style={{
+                padding: '3px 8px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                background: ep.method === 'GET'
+                  ? 'rgba(46,125,50,0.15)'
+                  : 'rgba(201,154,62,0.2)',
+                color: ep.method === 'GET' ? '#2e7d32' : '#8b6914',
+              }}>{ep.method}</span>
+              <span style={{
+                flex: 1,
+                fontSize: 13,
+                fontWeight: 500,
+                color: '#2a2420',
+                fontFamily: 'monospace',
+              }}>{ep.path}</span>
+              <span style={{
+                fontSize: 11,
+                color: 'rgba(42,36,32,0.4)',
+              }}>{ep.desc}</span>
+              <Icon.Back style={{
+                transform: `rotate(${expanded === i ? 0 : 180}deg)`,
+                color: 'rgba(42,36,32,0.3)',
+                transition: 'transform 0.2s ease',
+              }} />
+            </div>
+            {expanded === i && (
+              <div style={{
+                padding: '0 16px 16px',
+                borderTop: '1px solid rgba(201,154,62,0.1)',
+              }}>
+                <div style={{ fontSize: 12, color: '#8b6914', fontWeight: 600, margin: '12px 0 6px' }}>
+                  描述
+                </div>
+                <div style={{ fontSize: 12, color: 'rgba(42,36,32,0.7)', marginBottom: 4 }}>{ep.desc}</div>
+
+                {ep.params && (
+                  <>
+                    <div style={{ fontSize: 12, color: '#8b6914', fontWeight: 600, margin: '12px 0 6px' }}>
+                      参数
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {ep.params.map((p, j) => (
+                        <div key={j} style={{
+                          display: 'flex',
+                          gap: 8,
+                          fontSize: 11,
+                        }}>
+                          <span style={{
+                            fontFamily: 'monospace',
+                            color: '#2a2420',
+                            fontWeight: 600,
+                            minWidth: 90,
+                          }}>{p.name}</span>
+                          <span style={{
+                            color: '#c99a3e',
+                            fontFamily: 'monospace',
+                            minWidth: 80,
+                          }}>{p.type}</span>
+                          <span style={{ color: 'rgba(42,36,32,0.5)' }}>
+                            {p.required ? '必填' : '可选'} · {p.desc}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div style={{ fontSize: 12, color: '#8b6914', fontWeight: 600, margin: '12px 0 6px' }}>
+                  响应示例
+                </div>
+                <pre style={{
+                  background: '#2a2420',
+                  color: '#f5edd9',
+                  padding: 12,
+                  borderRadius: 8,
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  overflowX: 'auto',
+                  fontFamily: 'monospace',
+                }}>{ep.response}</pre>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Navigation Header
+// ──────────────────────────────────────────────────────────
+function NavHeader({ title, onBack }) {
+  return (
+    <div style={{
+      height: 44,
+      display: 'flex',
+      alignItems: 'center',
+      padding: '0 12px',
+      position: 'relative',
+      flexShrink: 0,
+      background: 'rgba(245,237,217,0.9)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      borderBottom: '0.5px solid rgba(42,36,32,0.08)',
+    }}>
+      <button
+        onClick={onBack}
+        data-hoverable="true"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '8px 12px',
+          background: 'none',
+          border: 'none',
+          color: '#c99a3e',
+          fontSize: 15,
+          cursor: 'pointer',
+          fontWeight: 500,
+        }}
+      >
+        <Icon.Back />
+        返回
+      </button>
+      <div style={{
+        position: 'absolute',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        fontSize: 17,
+        fontWeight: 600,
+        color: '#2a2420',
+        fontFamily: '"Noto Serif SC", serif',
+      }}>{title}</div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Drill-in Page Router
+// ──────────────────────────────────────────────────────────
+function DrillPage({ page, popPage, onBeat, setBeatDuration, pushPage }) {
+  let content = null;
+  switch (page.type) {
+    case 'tuner':
+      content = <TunerPage popPage={popPage} />;
+      break;
+    case 'metronome':
+      content = <MetronomePage popPage={popPage} onBeat={onBeat} setBeatDuration={setBeatDuration} />;
+      break;
+    case 'practice':
+      content = <PracticePage piece={page.piece} popPage={popPage} pushPage={pushPage} />;
+      break;
+    case 'checkin':
+      content = <CheckinPage piece={page.piece} duration={page.duration} popPage={popPage} />;
+      break;
+    case 'design-spec':
+      content = <DesignSpecPage popPage={popPage} />;
+      break;
+    case 'api-doc':
+      content = <ApiDocPage popPage={popPage} />;
+      break;
+    default:
+      content = <div>未知页面</div>;
+  }
+
+  return (
+    <div className="page-enter" style={{
+      position: 'absolute',
+      inset: 0,
+      background: '#f5edd9',
+    }}>
+      {content}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Custom Cursor Controller
+// ──────────────────────────────────────────────────────────
+function setupCursor() {
+  const cursor = document.getElementById('cursor');
+  if (!cursor) return;
+  if (prefersReducedMotion) {
+    cursor.style.display = 'none';
+    document.body.style.cursor = 'auto';
+    return;
+  }
+
+  let targetX = window.innerWidth / 2;
+  let targetY = window.innerHeight / 2;
+  let curX = targetX;
+  let curY = targetY;
+  let rafId = null;
+  let visible = true;
+
+  const animate = () => {
+    if (!visible) { rafId = null; return; }
+    // Smooth follow
+    curX += (targetX - curX) * 0.25;
+    curY += (targetY - curY) * 0.25;
+    cursor.style.left = curX + 'px';
+    cursor.style.top = curY + 'px';
+    rafId = requestAnimationFrame(animate);
+  };
+
+  const handleMove = (e) => {
+    targetX = e.clientX;
+    targetY = e.clientY;
+    if (!rafId) {
+      visible = !document.hidden;
+      if (visible) rafId = requestAnimationFrame(animate);
+    }
+
+    // Hover detection
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const isHoverable = el?.closest('[data-hoverable="true"]');
+    const isDraggable = el?.closest('.pendulum-weight');
+    cursor.classList.toggle('hover', !!isHoverable);
+    cursor.classList.toggle('drag', !!isDraggable);
+  };
+
+  const handleVisibility = () => {
+    visible = !document.hidden;
+    if (visible && !rafId) {
+      rafId = requestAnimationFrame(animate);
+    }
+  };
+
+  window.addEventListener('mousemove', handleMove, { passive: true });
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  // Start animation
+  rafId = requestAnimationFrame(animate);
+
+  return () => {
+    window.removeEventListener('mousemove', handleMove);
+    document.removeEventListener('visibilitychange', handleVisibility);
+    if (rafId) cancelAnimationFrame(rafId);
+  };
+}
+
+// ──────────────────────────────────────────────────────────
+// Render
+// ──────────────────────────────────────────────────────────
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+// Setup custom cursor
+setupCursor();
+
+// Cleanup on unload
+window.addEventListener('beforeunload', () => {
+  // All refs cleaned up via component unmount; nothing extra needed
+});
+</script>
+
+</body>
+</html>

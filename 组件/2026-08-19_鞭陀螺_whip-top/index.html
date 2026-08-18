@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>鞭陀螺 · 抽陀螺物理组件</title>
+<style>
+  :root {
+    --brick-0: #2d3630;
+    --brick-1: #3a473f;
+    --brick-2: #4a5a52;
+    --brick-line: #232a26;
+    --brick-highlight: #5d7066;
+    --wood-dark: #6b2a1e;
+    --wood-mid: #8b3a2a;
+    --wood-light: #a8503a;
+    --wood-grain: #5a1f15;
+    --rope-color: #e8e0cc;
+    --rope-shadow: #b8ad8f;
+    --vermilion: #c23a1f;
+    --vermilion-dark: #8e2a15;
+    --ink: #1a1f1c;
+    --paper: #f2ede0;
+    --text-main: #e8e3d4;
+    --text-dim: #9aa39c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--brick-0);
+    font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+    color: var(--text-main);
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 青砖地面背景 */
+  #stage {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+
+  /* 自定义光标 — 鞭梢形 */
+  #cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: difference;
+    transition: opacity 0.2s ease;
+  }
+
+  #cursor svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .cursor-dot {
+    fill: #f5f0e0;
+  }
+
+  .cursor-ring {
+    fill: none;
+    stroke: #f5f0e0;
+    stroke-width: 1.2;
+    opacity: 0.6;
+  }
+
+  .cursor-trail {
+    stroke: #f5f0e0;
+    stroke-width: 1;
+    fill: none;
+    opacity: 0.4;
+  }
+
+  /* 鞭柄光标 — 抓住时 */
+  #cursor.grab {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 顶部信息栏 */
+  .hud-top {
+    position: fixed;
+    top: 28px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0 36px;
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  .hud-title {
+    font-size: 14px;
+    letter-spacing: 0.3em;
+    color: var(--text-dim);
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+  }
+
+  .hud-title strong {
+    color: var(--text-main);
+    font-weight: 600;
+    letter-spacing: 0.5em;
+    font-size: 16px;
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .hud-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .hud-seal {
+    width: 48px;
+    height: 48px;
+    border: 1.5px solid var(--vermilion);
+    color: var(--vermilion);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.2;
+    writing-mode: vertical-rl;
+    font-weight: 600;
+    opacity: 0.85;
+  }
+
+  .hud-speed {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .hud-speed .val {
+    color: var(--vermilion);
+    font-size: 22px;
+    font-weight: 600;
+    display: block;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+
+  /* 底部提示 */
+  .hud-bottom {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  .hint-text {
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 0.3em;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .hint-text.hidden {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .hint-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    opacity: 0.5;
+    letter-spacing: 0.2em;
+    margin-top: 8px;
+  }
+
+  /* 重置按钮 */
+  .reset-btn {
+    position: fixed;
+    bottom: 28px;
+    right: 32px;
+    z-index: 100;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--text-dim);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.5s ease, transform 0.5s ease, color 0.2s, border-color 0.2s;
+    pointer-events: none;
+    font-family: serif;
+  }
+
+  .reset-btn.show {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+  }
+
+  .reset-btn:hover {
+    color: var(--vermilion);
+    border-color: var(--vermilion);
+  }
+
+  /* 左下角数据 */
+  .hud-stat {
+    position: fixed;
+    bottom: 32px;
+    left: 32px;
+    z-index: 100;
+    pointer-events: none;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    line-height: 2;
+  }
+
+  .hud-stat span {
+    color: var(--text-main);
+    margin-left: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 状态指示 */
+  .state-pill {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    pointer-events: none;
+    padding: 6px 18px;
+    border: 1px solid rgba(232, 227, 212, 0.2);
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--text-dim);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: rgba(26, 31, 28, 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  .state-pill.show { opacity: 1; }
+  .state-pill.spin { color: var(--vermilion); border-color: rgba(194, 58, 31, 0.3); }
+
+  /* 力度指示条 */
+  .tension-bar {
+    position: fixed;
+    left: 36px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 200px;
+    background: rgba(232, 227, 212, 0.08);
+    border-radius: 2px;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    overflow: hidden;
+  }
+
+  .tension-bar.show { opacity: 1; }
+
+  .tension-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--vermilion);
+    border-radius: 2px;
+    height: 0%;
+    transition: height 0.05s linear;
+  }
+
+  .tension-label {
+    position: absolute;
+    left: 12px;
+    top: -6px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    writing-mode: vertical-rl;
+  }
+
+  /* 减速偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    #cursor { display: none; }
+    html, body { cursor: default; }
+    .hud-title, .hud-seal, .hint-text, .hint-sub, .state-pill { transition: none; }
+  }
+
+  /* 隐藏默认光标所有交互元素 */
+  button, canvas, div { cursor: none; }
+  @media (prefers-reduced-motion: reduce) {
+    button, canvas, div { cursor: auto; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<!-- 自定义光标 -->
+<div id="cursor" aria-hidden="true">
+  <svg viewBox="0 0 24 24" id="cursorSvg">
+    <circle class="cursor-dot" cx="12" cy="12" r="2"/>
+    <circle class="cursor-ring" cx="12" cy="12" r="8"/>
+    <path class="cursor-trail" d="M12 20 Q 12 16 12 12" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<!-- 顶部 HUD -->
+<div class="hud-top">
+  <div class="hud-title">
+    <strong>鞭陀螺</strong>
+    枣木一枚 青砖一方
+  </div>
+  <div class="hud-right">
+    <div class="hud-seal">抽陀螺</div>
+    <div class="hud-speed">
+      <span class="val" id="speedVal">0</span>
+      <span>转/分</span>
+    </div>
+  </div>
+</div>
+
+<!-- 状态胶囊 -->
+<div class="state-pill" id="statePill">待命</div>
+
+<!-- 力度条 -->
+<div class="tension-bar" id="tensionBar">
+  <div class="tension-fill" id="tensionFill"></div>
+  <div class="tension-label">张力</div>
+</div>
+
+<!-- 底部提示 -->
+<div class="hud-bottom">
+  <div class="hint-text" id="hintText">按住鞭柄 向左拉动 松手出鞭</div>
+  <div class="hint-sub" id="hintSub">试试全力一抽 看它能转多久</div>
+</div>
+
+<!-- 左下数据 -->
+<div class="hud-stat">
+  <div>转速 <span id="statRpm">—</span></div>
+  <div>进动角 <span id="statAngle">—</span></div>
+  <div>持续 <span id="statTime">—</span></div>
+</div>
+
+<!-- 重置按钮 -->
+<button class="reset-btn" id="resetBtn" title="再抽一次">↺</button>
+
+<script>
+(function () {
+  'use strict';
+
+  // ========== 基础设置 ==========
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const cursor = document.getElementById('cursor');
+  const speedVal = document.getElementById('speedVal');
+  const statePill = document.getElementById('statePill');
+  const tensionBar = document.getElementById('tensionBar');
+  const tensionFill = document.getElementById('tensionFill');
+  const hintText = document.getElementById('hintText');
+  const hintSub = document.getElementById('hintSub');
+  const statRpm = document.getElementById('statRpm');
+  const statAngle = document.getElementById('statAngle');
+  const statTime = document.getElementById('statTime');
+  const resetBtn = document.getElementById('resetBtn');
+
+  // 减速偏好
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 画布尺寸
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ========== 鼠标追踪 ==========
+  const mouse = { x: W / 2, y: H / 2, px: W / 2, py: H / 2, vx: 0, vy: 0, down: false };
+
+  function updateMouse(e) {
+    mouse.px = mouse.x;
+    mouse.py = mouse.y;
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    mouse.vx = mouse.x - mouse.px;
+    mouse.vy = mouse.y - mouse.py;
+  }
+
+  window.addEventListener('mousemove', function (e) {
+    updateMouse(e);
+    updateCursor(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mousedown', function (e) {
+    updateMouse(e);
+    mouse.down = true;
+    handlePress(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mouseup', function (e) {
+    updateMouse(e);
+    mouse.down = false;
+    handleRelease();
+  });
+
+  // 触摸支持
+  window.addEventListener('touchstart', function (e) {
+    if (e.touches.length > 0) {
+      const t = e.touches[0];
+      updateMouse(t);
+      mouse.down = true;
+      handlePress(t.clientX, t.clientY);
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (e.touches.length > 0) {
+      const t = e.touches[0];
+      updateMouse(t);
+      updateCursor(t.clientX, t.clientY);
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', function (e) {
+    mouse.down = false;
+    handleRelease();
+  });
+
+  // ========== 自定义光标 ==========
+  let cursorX = W / 2, cursorY = H / 2;
+  let cursorTargetX = W / 2, cursorTargetY = H / 2;
+
+  function updateCursor(x, y) {
+    cursorTargetX = x;
+    cursorTargetY = y;
+  }
+
+  function tickCursor() {
+    // 平滑跟随
+    cursorX += (cursorTargetX - cursorX) * 0.4;
+    cursorY += (cursorTargetY - cursorY) * 0.4;
+    cursor.style.transform = 'translate(' + (cursorX - 12) + 'px, ' + (cursorY - 12) + 'px)';
+  }
+
+  // ========== 陀螺物理状态 ==========
+  // 状态: 'idle' 待命 'winding' 缠绕拉动 'spinning' 自由旋转 'fallen' 倒下
+  let state = 'idle';
+
+  // 特效粒子（释放爆发、落地扬尘）
+  const particles = [];
+  const MAX_PARTICLES = 80;
+
+  // 屏幕震动
+  let shakeX = 0, shakeY = 0, shakeAmount = 0;
+
+  // 释放爆发闪光
+  let burstAlpha = 0;
+  let burstX = 0, burstY = 0;
+
+  const top = {
+    // 位置
+    baseX: 0, baseY: 0,    // 底部触地点（画面坐标，地面上）
+    offsetX: 0, offsetY: 0, // 顶部偏移（进动用）
+    // 尺寸
+    bodyH: 110,             // 主体高度
+    bodyR: 55,              // 最大半径
+    tipR: 6,                // 底尖半径
+    headR: 30,              // 顶部平台半径
+    // 旋转
+    spinAngle: 0,           // 自转角（绕自身轴）
+    spinVel: 0,             // 自转角速度（弧度/帧）
+    // 进动
+    precessAngle: 0,        // 进动角（绕垂直轴）
+    precessVel: 0,          // 进动角速度
+    tiltAngle: 0,           // 倾斜角（与垂直轴夹角，弧度）
+    // 绳子
+    ropeWrapped: 12,        // 已缠绕圈数
+    ropeMaxWrap: 12,
+    ropeUnwound: 0,         // 已拉出长度（像素）
+    ropePullPerLoop: 140,   // 每圈拉出像素数
+    // 倒下
+    fallProgress: 0,        // 0-1 倒下进度
+    fallDirection: 0,       // 倒下方向
+    fallBounce: 0,          // 落地弹跳次数
+    // 计时
+    spinStartTime: 0,
+    spinDuration: 0,
+    // 预接触微动
+    swayAngle: 0,
+    swayPhase: 0,
+  };
+
+  // 初始位置
+  function initTop() {
+    top.baseX = W / 2;
+    top.baseY = H * 0.72;
+    top.spinAngle = 0;
+    top.spinVel = 0;
+    top.precessAngle = 0;
+    top.precessVel = 0;
+    top.tiltAngle = 0.03;
+    top.ropeWrapped = top.ropeMaxWrap;
+    top.ropeUnwound = 0;
+    top.fallProgress = 0;
+    top.fallDirection = 0;
+    top.fallBounce = 0;
+    top.offsetX = 0;
+    top.offsetY = 0;
+    top.spinStartTime = 0;
+    top.spinDuration = 0;
+    top.swayAngle = 0;
+    top.swayPhase = 0;
+    particles.length = 0;
+    shakeAmount = 0;
+    burstAlpha = 0;
+    state = 'idle';
+  }
+  initTop();
+
+  // 鞭柄位置（相对陀螺）
+  function getHandlePos() {
+    // 缠绕时鼠标直接控制柄的位置；待命时放在默认位置
+    let hx, hy;
+    if (state === 'winding') {
+      // 限制在合理范围（不能拉太远，不能塞进陀螺）
+      const minX = top.baseX - 300;
+      const maxX = top.baseX + 140;
+      hx = Math.max(minX, Math.min(maxX, mouse.x));
+      hy = mouse.y;
+      // y 限制在地面以上
+      hy = Math.min(hy, top.baseY - 30);
+      hy = Math.max(hy, top.baseY - top.bodyH - 40);
+    } else {
+      hx = top.baseX + 120 + top.ropeUnwound;
+      hy = top.baseY - top.bodyH * 0.55;
+    }
+    return { x: hx, y: hy };
+  }
+
+  // ========== 交互处理 ==========
+  let dragStartX = 0;
+  let dragStartRope = 0;
+
+  // 预接触：光标接近鞭柄时的微反馈
+  function updatePreContactHandle() {
+    if (state !== 'idle') return;
+    const hp = getHandlePos();
+    const dx = mouse.x - hp.x;
+    const dy = mouse.y - hp.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 80) {
+      // 光标放大提示可抓
+      cursor.style.transform = 'translate(' + (cursorX - 14) + 'px, ' + (cursorY - 14) + 'px) scale(1.3)';
+      // 陀螺轻晃
+      top.swayPhase += 0.03;
+      top.swayAngle = Math.sin(top.swayPhase) * 0.04;
+    } else {
+      top.swayAngle *= 0.95;
+      top.swayPhase += 0.008;
+      top.swayAngle += Math.sin(top.swayPhase) * 0.002;
+    }
+  }
+
+  function handlePress(x, y) {
+    if (state === 'fallen') return;
+    if (state === 'spinning') return;
+
+    // 检查是否点在鞭柄附近
+    const hp = getHandlePos();
+    const dist = Math.hypot(x - hp.x, y - hp.y);
+
+    // 即使没点到柄上，只要在 idel 状态点一下也可以抓
+    if (dist < 80 || state === 'idle') {
+      state = 'winding';
+      dragStartX = x;
+      dragStartRope = top.ropeUnwound;
+      cursor.classList.add('grab');
+      statePill.textContent = '蓄力中';
+      statePill.classList.add('show');
+      tensionBar.classList.add('show');
+      hintText.classList.add('hidden');
+      hintSub.classList.add('hidden');
+    }
+  }
+
+  function handleRelease() {
+    cursor.classList.remove('grab');
+
+    if (state === 'winding') {
+      // 计算释放速度
+      const pullSpeed = Math.max(0, mouse.vx * -1); // 向左拉为正
+      const pullDistance = top.ropeUnwound;
+      const distanceFactor = Math.min(1, pullDistance / (top.ropeMaxWrap * top.ropePullPerLoop * 0.7));
+
+      // 初始转速：由拉动距离 + 释放瞬时速度共同决定
+      const velFromDist = distanceFactor * 0.35;
+      const velFromSpeed = Math.min(pullSpeed * 0.008, 0.3);
+      let initVel = velFromDist + velFromSpeed;
+
+      if (initVel < 0.06) {
+        // 力度太小，不算抽出去
+        state = 'idle';
+        statePill.classList.remove('show');
+        tensionBar.classList.remove('show');
+        // 绳子缓慢收回
+        return;
+      }
+
+      // 释放 —— 开始旋转
+      top.spinVel = initVel;
+      top.precessVel = initVel * 0.15;
+      top.tiltAngle = 0.04 + (1 - distanceFactor) * 0.1; // 拉得越满越稳
+      top.spinStartTime = performance.now();
+      top.spinDuration = 0;
+      state = 'spinning';
+
+      // 签名时刻：爆发特效
+      burstX = top.baseX;
+      burstY = top.baseY - top.bodyH * 0.5;
+      burstAlpha = 1;
+
+      // 释放粒子（棉絮/绳屑感）
+      for (let i = 0; i < 12 + Math.floor(distanceFactor * 10); i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 2 + Math.random() * 6;
+        particles.push({
+          x: top.baseX + (Math.random() - 0.5) * 40,
+          y: top.baseY - top.bodyH * 0.5 + (Math.random() - 0.5) * 30,
+          vx: Math.cos(a) * s * (0.5 + Math.random()),
+          vy: Math.sin(a) * s * 0.6 - 2,
+          life: 1,
+          decay: 0.015 + Math.random() * 0.02,
+          size: 1 + Math.random() * 2.5,
+          color: distanceFactor > 0.6 && Math.random() > 0.7 ? '#c23a1f' : '#e8e0cc',
+          type: 'lint'
+        });
+      }
+
+      // 满力一抽时的屏幕轻震
+      if (distanceFactor > 0.7) {
+        shakeAmount = 3 + distanceFactor * 4;
+      }
+
+      statePill.textContent = '旋转中';
+      statePill.classList.add('spin');
+      statePill.classList.add('show');
+      tensionBar.classList.remove('show');
+    }
+  }
+
+  function updateWinding() {
+    if (state !== 'winding') return;
+
+    const hp = getHandlePos();
+    // 绳子拉出长度 = 柄到陀螺的距离 - 初始松弛长度
+    const startX = top.baseX + 120;
+    const startY = top.baseY - top.bodyH * 0.55;
+    const dx = hp.x - startX;
+    const dy = hp.y - startY;
+    // 向左拉为正（拉出），向右推为负（收回）
+    const pullDist = -dx + Math.abs(dy) * 0.3;
+    top.ropeUnwound = Math.max(0, pullDist);
+
+    // 每拉出 ropePullPerLoop 像素 = 解一圈
+    const loopsUnwound = top.ropeUnwound / top.ropePullPerLoop;
+    top.ropeWrapped = Math.max(0, top.ropeMaxWrap - loopsUnwound);
+
+    // 预旋：拉动过程中陀螺开始转动（拉动越快转得越快）
+    const pullSpeed = -mouse.vx; // 向左速度
+    const baseSpin = top.ropeUnwound * 0.00025;
+    const speedSpin = Math.max(0, pullSpeed) * 0.004;
+    top.spinVel = Math.min(0.09, baseSpin + speedSpin);
+    top.spinAngle += top.spinVel;
+
+    // 张力显示
+    const tension = Math.min(1, top.ropeUnwound / (top.ropeMaxWrap * top.ropePullPerLoop * 0.7));
+    tensionFill.style.height = (tension * 100) + '%';
+
+    // 预旋微动（绳子拉动时的轻微摇晃，越拉越紧绷）
+    top.tiltAngle = 0.02 + Math.sin(top.spinAngle * 4) * 0.008 * tension;
+  }
+
+  // ========== 物理积分（旋转阶段）==========
+  // 摩擦系数：指数衰减
+  // 角速度越快，进动越慢，倾斜越小；越慢则越倾斜、进动越快
+  const SPIN_DECAY = 0.9992;     // 每帧衰减系数
+  const MIN_SPIN = 0.003;        // 最低自转（低于则开始倒下）
+  const MAX_TILT = 1.2;          // 最大倾斜（接近倒下）
+
+  function updatePhysics(dt) {
+    if (state !== 'spinning') return;
+
+    top.spinDuration = (performance.now() - top.spinStartTime) / 1000;
+
+    // 1. 自转衰减（指数，速度越快衰减越慢 — 空气阻力主导，摩擦相对恒定）
+    const airDrag = 0.9994 + top.spinVel * 0.001;
+    top.spinVel *= Math.min(1, airDrag);
+    top.spinAngle += top.spinVel;
+
+    // 2. 转速比 (0~1，1=初始高速)
+    const speedRatio = Math.min(1, top.spinVel / 0.35);
+
+    // 3. 进动：角速度越慢，进动越快（真实陀螺进动反比关系）
+    if (top.spinVel > 0.008) {
+      top.precessVel = 0.0015 / Math.max(top.spinVel, 0.015) * 0.02;
+      top.precessVel = Math.min(top.precessVel, 0.06);
+    } else {
+      top.precessVel *= 0.985;
+    }
+    top.precessAngle += top.precessVel;
+
+    // 4. 倾斜角：转速越低，倾斜越大（渐近增长）
+    const targetTilt = 0.03 + (1 - speedRatio) * 0.85;
+    top.tiltAngle += (targetTilt - top.tiltAngle) * 0.015;
+
+    // 5. 失稳抖动：接近倒下时的章动（nutation）
+    if (speedRatio < 0.3 && speedRatio > 0.04) {
+      const jitter = (0.3 - speedRatio) * 2.5;
+      top.tiltAngle += Math.sin(performance.now() * 0.019 + top.precessAngle * 2) * 0.025 * jitter;
+      top.offsetX += Math.sin(performance.now() * 0.023) * 0.4 * jitter;
+    }
+    top.offsetX *= 0.94;
+
+    // 6. 倒地前最后几圈的打滑感
+    if (speedRatio < 0.1 && speedRatio > 0.02) {
+      top.baseX += Math.sin(performance.now() * 0.011) * 0.3;
+    }
+
+    // 7. 倒下判定
+    if (top.spinVel < MIN_SPIN || top.tiltAngle > MAX_TILT) {
+      state = 'fallen';
+      top.fallDirection = top.precessAngle + Math.PI * 0.25;
+      top.fallProgress = 0;
+      top.fallBounce = 0;
+      statePill.textContent = '已停转';
+      statePill.classList.remove('spin');
+      resetBtn.classList.add('show');
+
+      // 落地扬尘粒子
+      for (let i = 0; i < 20; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 1 + Math.random() * 3;
+        particles.push({
+          x: top.baseX + Math.cos(a) * 20,
+          y: top.baseY + 2,
+          vx: Math.cos(a) * s,
+          vy: -1 - Math.random() * 2,
+          life: 1,
+          decay: 0.01 + Math.random() * 0.015,
+          size: 2 + Math.random() * 4,
+          color: '#5d6b60',
+          type: 'dust'
+        });
+      }
+
+      shakeAmount = 2;
+    }
+  }
+
+  function updateFalling() {
+    if (state !== 'fallen') return;
+
+    // 倒下动画：加速倾倒（重力感）
+    const gravity = 0.003 + top.fallProgress * 0.008;
+    top.fallProgress += gravity;
+
+    if (top.fallProgress >= 1) {
+      top.fallProgress = 1;
+      // 落地后反弹衰减
+      if (top.fallBounce < 3) {
+        top.fallBounce++;
+        // 弹跳：稍微弹起一点再落下（用 offsetY 表达）
+        top.offsetY = -8 + top.fallBounce * 2;
+        // 每次弹跳再扬起一点尘
+        for (let i = 0; i < 6 - top.fallBounce * 2; i++) {
+          const a = -Math.PI * 0.3 - Math.random() * Math.PI * 0.4;
+          particles.push({
+            x: top.baseX + Math.cos(top.fallDirection) * top.bodyH * 0.5,
+            y: top.baseY,
+            vx: Math.cos(a) * (1 + Math.random() * 2),
+            vy: Math.sin(a) * (1 + Math.random() * 2),
+            life: 1,
+            decay: 0.02 + Math.random() * 0.02,
+            size: 1.5 + Math.random() * 2,
+            color: '#5d6b60',
+            type: 'dust'
+          });
+        }
+      }
+      top.spinVel *= 0.92;
+    }
+
+    top.spinAngle += top.spinVel;
+
+    // 弹跳回弹
+    if (top.offsetY < 0) {
+      top.offsetY += 0.8;
+      if (top.offsetY > 0) top.offsetY = 0;
+    }
+  }
+
+  // ========== 粒子系统 ==========
+  function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.type === 'dust' ? 0.05 : 0.15; // 重力
+      p.vx *= 0.98;
+      p.life -= p.decay;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (particles.length > MAX_PARTICLES) {
+      particles.splice(0, particles.length - MAX_PARTICLES);
+    }
+  }
+
+  function drawParticles() {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      if (p.type === 'dust') {
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      } else {
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function updateShake() {
+    if (shakeAmount > 0.1) {
+      shakeX = (Math.random() - 0.5) * shakeAmount * 2;
+      shakeY = (Math.random() - 0.5) * shakeAmount * 2;
+      shakeAmount *= 0.88;
+    } else {
+      shakeX *= 0.8;
+      shakeY *= 0.8;
+      shakeAmount = 0;
+    }
+  }
+
+  // ========== 渲染 ==========
+  function drawBrickGround() {
+    // 基础底色
+    const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
+    grad.addColorStop(0, '#2d3630');
+    grad.addColorStop(1, '#1e2420');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 青砖纹理（透视）
+    const horizon = H * 0.55;
+    const brickH = 28;
+    const brickW = 90;
+
+    ctx.strokeStyle = 'rgba(20, 25, 22, 0.6)';
+    ctx.lineWidth = 1;
+
+    // 横线（地面砖缝）
+    for (let y = horizon; y < H; y += brickH) {
+      const depth = (y - horizon) / (H - horizon);
+      const alpha = 0.3 + depth * 0.5;
+      ctx.strokeStyle = 'rgba(20, 25, 22, ' + alpha + ')';
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+
+      // 每排竖缝，交错排列
+      const rowIdx = Math.floor((y - horizon) / brickH);
+      const offset = (rowIdx % 2) * (brickW / 2);
+      for (let x = -brickW + offset; x < W + brickW; x += brickW) {
+        // 透视：近处缝宽
+        const perspectiveAlpha = alpha * 0.7;
+        ctx.strokeStyle = 'rgba(20, 25, 22, ' + perspectiveAlpha + ')';
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + brickH);
+        ctx.stroke();
+      }
+    }
+
+    // 地面顶部柔和阴影
+    const topGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+    topGrad.addColorStop(0, 'rgba(20, 24, 22, 0.9)');
+    topGrad.addColorStop(1, 'rgba(20, 24, 22, 0)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, W, horizon);
+
+    // 陀螺脚下的固定光感（微弱环境光）
+    const groundGlow = ctx.createRadialGradient(
+      top.baseX, top.baseY + 20, 10,
+      top.baseX, top.baseY + 20, 260
+    );
+    groundGlow.addColorStop(0, 'rgba(120, 100, 80, 0.08)');
+    groundGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = groundGlow;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawShadow() {
+    // 陀螺投下的阴影（随倾斜变化）
+    let shadowX = top.baseX;
+    let shadowY = top.baseY + 4;
+    let shadowW = top.bodyR * 1.8;
+    let shadowH = 10;
+    let shadowAlpha = 0.4;
+
+    if (state === 'spinning' || state === 'winding') {
+      // 进动时阴影位置微偏
+      shadowX += Math.cos(top.precessAngle) * top.tiltAngle * top.bodyH * 0.3;
+      shadowW = top.bodyR * (1.6 + top.tiltAngle * 0.8);
+      shadowAlpha = 0.35 + top.tiltAngle * 0.2;
+    }
+
+    if (state === 'fallen') {
+      // 倒下后阴影变成椭圆形，在侧面
+      shadowX = top.baseX + Math.cos(top.fallDirection) * top.bodyH * 0.9 * top.fallProgress;
+      shadowY = top.baseY + 2;
+      shadowW = top.bodyR * 2;
+      shadowH = 8;
+      shadowAlpha = 0.5;
+    }
+
+    const shadowGrad = ctx.createEllipseGradient
+      ? null : ctx.createRadialGradient(shadowX, shadowY, 2, shadowX, shadowY, shadowW);
+    ctx.fillStyle = 'rgba(0, 0, 0, ' + shadowAlpha + ')';
+    ctx.beginPath();
+    ctx.ellipse(shadowX, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 绘制陀螺（2.5D 透视）
+  function drawTop() {
+    ctx.save();
+
+    // 计算倾斜偏移
+    let tiltX = 0, tiltY = 0;
+    if (state === 'fallen') {
+      tiltX = Math.cos(top.fallDirection) * top.bodyH * 0.5 * top.fallProgress;
+      tiltY = top.bodyH * 0.45 * top.fallProgress;
+    } else {
+      tiltX = Math.cos(top.precessAngle) * top.tiltAngle * top.bodyH * 0.3;
+      tiltY = Math.sin(top.precessAngle * 2) * top.tiltAngle * top.bodyH * 0.05;
+    }
+
+    const centerX = top.baseX + tiltX + top.offsetX;
+    const centerY = top.baseY - top.bodyH * 0.5 + tiltY;
+
+    ctx.translate(centerX, centerY);
+
+    // 应用倾斜（2.5D 缩放模拟）
+    let scaleX = 1;
+    if (state === 'fallen') {
+      scaleX = 1 - top.fallProgress * 0.7;
+    } else {
+      // 进动导致的左右宽度变化
+      scaleX = 1 - top.tiltAngle * 0.3 * Math.cos(top.precessAngle);
+    }
+    ctx.scale(scaleX, 1);
+
+    // 旋转（自转）——仅影响表面纹理，不倒转整体
+    ctx.save();
+
+    // 高速旋转时的残影与朱漆记拖尾
+    if (state === 'spinning' && top.spinVel > 0.1) {
+      const blurStrength = Math.min(1, (top.spinVel - 0.1) * 3);
+      // 绘制残影（多层角度偏移）
+      const streakCount = Math.min(8, 3 + Math.floor(blurStrength * 6));
+      const streakSpread = blurStrength * 0.4;
+      for (let i = 0; i < streakCount; i++) {
+        const t = i / streakCount;
+        ctx.save();
+        ctx.globalAlpha = 0.08 * (1 - t) * blurStrength;
+        drawTopBody(top.spinAngle + t * streakSpread);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = 0.08 * (1 - t) * blurStrength;
+        drawTopBody(top.spinAngle - t * streakSpread);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    drawTopBody(top.spinAngle);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawTopBody(rotation) {
+    const bodyH = top.bodyH;
+    const bodyR = top.bodyR;
+    const tipR = top.tipR;
+    const headR = top.headR;
+
+    ctx.save();
+    ctx.rotate(rotation);
+
+    // 主体 —— 梯形（上窄下宽的陀螺形状）
+    // 下半部分（圆锥形主体）
+    const grad = ctx.createLinearGradient(-bodyR, 0, bodyR, 0);
+    grad.addColorStop(0, '#5a1f15');
+    grad.addColorStop(0.3, '#8b3a2a');
+    grad.addColorStop(0.5, '#a8503a');
+    grad.addColorStop(0.7, '#8b3a2a');
+    grad.addColorStop(1, '#5a1f15');
+    ctx.fillStyle = grad;
+
+    // 主体形状（从顶部平台到底尖）
+    ctx.beginPath();
+    ctx.moveTo(-headR, -bodyH * 0.35);
+    ctx.lineTo(-bodyR, bodyH * 0.1);
+    ctx.quadraticCurveTo(-bodyR * 0.9, bodyH * 0.3, -tipR, bodyH * 0.5);
+    ctx.lineTo(tipR, bodyH * 0.5);
+    ctx.quadraticCurveTo(bodyR * 0.9, bodyH * 0.3, bodyR, bodyH * 0.1);
+    ctx.lineTo(headR, -bodyH * 0.35);
+    ctx.closePath();
+    ctx.fill();
+
+    // 木纹纹理（随自转旋转）
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = '#3d160e';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const y = -bodyH * 0.25 + i * (bodyH * 0.7 / 6);
+      const rAt = bodyR * (1 - (y + bodyH * 0.35) / (bodyH * 0.85));
+      ctx.beginPath();
+      ctx.ellipse(0, y, Math.abs(rAt) * 0.9, Math.abs(rAt) * 0.2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // 顶部平台 —— 朱漆标记
+    // 平台椭圆
+    const topGrad = ctx.createRadialGradient(0, -bodyH * 0.35, 2, 0, -bodyH * 0.35, headR);
+    topGrad.addColorStop(0, '#d44a2e');
+    topGrad.addColorStop(0.7, '#c23a1f');
+    topGrad.addColorStop(1, '#8e2a15');
+    ctx.fillStyle = topGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, -bodyH * 0.35, headR, headR * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 朱漆圆环
+    ctx.strokeStyle = '#f5e6d8';
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(0, -bodyH * 0.35, headR * 0.7, headR * 0.21, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 中心点
+    ctx.fillStyle = '#f5e6d8';
+    ctx.beginPath();
+    ctx.arc(0, -bodyH * 0.35, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 底部尖
+    ctx.fillStyle = '#4a1810';
+    ctx.beginPath();
+    ctx.moveTo(-tipR, bodyH * 0.5 - 2);
+    ctx.lineTo(0, bodyH * 0.5 + 3);
+    ctx.lineTo(tipR, bodyH * 0.5 - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 高光
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#e8b098';
+    ctx.beginPath();
+    ctx.ellipse(-bodyR * 0.4, -bodyH * 0.1, bodyR * 0.08, bodyH * 0.25, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  // 绘制绳子
+  function drawRope() {
+    if (state === 'spinning' || state === 'fallen') return;
+    if (top.ropeWrapped <= 0 && state === 'idle') return;
+
+    const hp = getHandlePos();
+
+    ctx.save();
+
+    // 缠在陀螺身上的绳圈
+    if (top.ropeWrapped > 0.1) {
+      ctx.strokeStyle = '#e8e0cc';
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.9;
+
+      const bodyH = top.bodyH;
+      const bodyR = top.bodyR;
+
+      for (let i = 0; i < top.ropeWrapped; i++) {
+        const t = i / top.ropeMaxWrap;
+        const y = bodyH * 0.4 - t * bodyH * 0.55;
+        const rAt = bodyR * (1 - (y + bodyH * 0.35) / (bodyH * 0.85));
+        if (rAt < 5) break;
+
+        const baseX = top.baseX;
+        const baseY = top.baseY - bodyH * 0.5 + y;
+
+        // 只有一半可见（正面）
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY, Math.abs(rAt) * 0.95, Math.abs(rAt) * 0.25, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+
+        // 绳圈阴影
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#a89678';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY + 2, Math.abs(rAt) * 0.95, Math.abs(rAt) * 0.25, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#e8e0cc';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.9;
+      }
+    }
+
+    // 从陀螺延伸到鞭柄的绳子
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#e8e0cc';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+
+    // 绳子起点（陀螺中部）
+    const startX = top.baseX + top.bodyR * 0.6;
+    const startY = top.baseY - top.bodyH * 0.4;
+
+    // 贝塞尔曲线（有下垂感）
+    const midX = (startX + hp.x) / 2;
+    const midY = (startY + hp.y) / 2 + (state === 'winding' ? -2 : 8);
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(midX, midY, hp.x, hp.y);
+    ctx.stroke();
+
+    // 绳子暗面（下方描边）
+    ctx.strokeStyle = '#b8ad8f';
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(startX + 1, startY + 1);
+    ctx.quadraticCurveTo(midX + 1, midY + 1.5, hp.x + 1, hp.y + 1);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 鞭柄
+    ctx.fillStyle = '#6b2a1e';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(hp.x - 5, hp.y - 18, 10, 36, 3)
+      : rectRound(ctx, hp.x - 5, hp.y - 18, 10, 36, 3);
+    ctx.fill();
+
+    // 鞭柄高光
+    ctx.fillStyle = '#8b3a2a';
+    ctx.fillRect(hp.x - 3, hp.y - 16, 2, 32);
+
+    // 鞭柄顶端
+    ctx.fillStyle = '#c23a1f';
+    ctx.beginPath();
+    ctx.arc(hp.x, hp.y - 18, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function rectRound(ctx, x, y, w, h, r) {
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+  }
+
+  // 预接触微动（idle 状态，鼠标接近陀螺时微晃）
+  function updatePreContact() {
+    if (state !== 'idle') return;
+    const dx = mouse.x - top.baseX;
+    const dy = mouse.y - (top.baseY - top.bodyH * 0.4);
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 220) {
+      const intensity = 1 - dist / 220;
+      top.offsetX = Math.sin(performance.now() * 0.003) * 2 * intensity;
+      top.tiltAngle = 0.03 + intensity * 0.05 + top.swayAngle;
+      top.spinAngle += 0.002 * intensity;
+    } else {
+      top.offsetX *= 0.9;
+      top.tiltAngle += (0.03 - top.tiltAngle) * 0.08 + top.swayAngle * 0.1;
+    }
+  }
+
+  // ========== HUD 更新 ==========
+  function updateHUD() {
+    // 每帧 spinVel 是弧度，RPM = 弧度/帧 × 60帧/秒 × 60秒 / (2π) — 但这里帧是约60fps
+    // 简化：RPM = spinVel * 60 * 60 / (2π) = spinVel * 1800/π ≈ spinVel * 573
+    const rpm = Math.round(top.spinVel * 60 * 60 / (Math.PI * 2));
+    if (state === 'spinning' || state === 'fallen') {
+      speedVal.textContent = rpm.toLocaleString();
+      statRpm.textContent = rpm.toLocaleString() + ' rpm';
+      statAngle.textContent = (top.tiltAngle * 180 / Math.PI).toFixed(1) + '°';
+      statTime.textContent = top.spinDuration.toFixed(1) + ' 秒';
+    } else if (state === 'winding') {
+      const preRpm = Math.round(top.spinVel * 60 * 60 / (Math.PI * 2));
+      speedVal.textContent = preRpm.toLocaleString();
+      statRpm.textContent = '蓄力中';
+      statAngle.textContent = (top.ropeMaxWrap - top.ropeWrapped).toFixed(1) + ' 圈已解';
+      statTime.textContent = (top.ropeUnwound / 10).toFixed(1) + ' 分尺';
+    } else {
+      speedVal.textContent = '0';
+      statRpm.textContent = '—';
+      statAngle.textContent = '—';
+      statTime.textContent = '—';
+    }
+  }
+
+  // ========== 重置 ==========
+  resetBtn.addEventListener('click', function () {
+    initTop();
+    statePill.textContent = '待命';
+    statePill.classList.remove('show', 'spin');
+    resetBtn.classList.remove('show');
+    hintText.classList.remove('hidden');
+    hintSub.classList.remove('hidden');
+  });
+
+  // ========== 主动画循环 ==========
+  let rafId = null;
+  let lastTime = 0;
+  let visible = true;
+
+  function tick(now) {
+    if (!visible) { rafId = null; return; }
+
+    const dt = Math.min(50, now - lastTime);
+    lastTime = now;
+
+    // 逻辑更新
+    updatePreContact();
+    updatePreContactHandle();
+    updateWinding();
+    updatePhysics(dt);
+    updateFalling();
+    updateHUD();
+    tickCursor();
+
+    // 更新特效
+    updateParticles();
+    updateShake();
+    burstAlpha *= 0.88;
+
+    // 应用屏幕震动
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // 渲染
+    drawBrickGround();
+    drawShadow();
+    drawRope();
+    drawTop();
+    drawParticles();
+
+    // 释放爆发闪光
+    if (burstAlpha > 0.01) {
+      const bg = ctx.createRadialGradient(burstX, burstY, 5, burstX, burstY, 120);
+      bg.addColorStop(0, 'rgba(255, 240, 220, ' + burstAlpha * 0.6 + ')');
+      bg.addColorStop(0.5, 'rgba(255, 200, 160, ' + burstAlpha * 0.2 + ')');
+      bg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(burstX - 150, burstY - 150, 300, 300);
+    }
+
+    ctx.restore();
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // 页面可见性控制
+  document.addEventListener('visibilitychange', function () {
+    visible = !document.hidden;
+    if (visible && rafId === null) {
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function () {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  });
+
+  // 启动
+  rafId = requestAnimationFrame(tick);
+
+  // 初始光标位置
+  updateCursor(W / 2, H / 2);
+  cursorX = W / 2;
+  cursorY = H / 2;
+
+})();
+</script>
+</body>
+</html>

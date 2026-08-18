@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>物趣实验室 V3 · H 型换挡杆</title>
+<style>
+/* ============================================================
+   物趣实验室 V3 · 手动挡 H 型换挡杆
+   单一展品 · 纯 vanilla · 零 CDN · 五感反馈链
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; min-height: 100vh; overflow: hidden; }
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+  color: var(--text-primary);
+  transition: background 0.8s ease, color 0.8s ease;
+  user-select: none;
+}
+
+/* ---------- 主题变量 ---------- */
+/* 曜石黑座舱 / 阳极氧化铝 / 琥珀背光 */
+
+/* ---------- 自定义光标 ---------- */
+.cursor-dot, .cursor-ring {
+  position: fixed;
+  top: 0; left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+.cursor-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--cursor-core, #FFD54F);
+  box-shadow: 0 0 8px var(--cursor-core, #FFD54F);
+  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+}
+.cursor-ring {
+  width: 36px; height: 36px;
+  border: 1.5px solid var(--cursor-ring, #E8A33D);
+  border-radius: 50%;
+  opacity: 0.6;
+  transition: width 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+              height 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+              opacity 0.25s ease,
+              border-color 0.3s ease,
+              background 0.3s ease,
+              transform 0.1s ease;
+}
+.cursor-ring.near {
+  width: 28px; height: 28px;
+  opacity: 0.9;
+  border-color: var(--accent, #E8A33D);
+}
+.cursor-ring.grab {
+  width: 20px; height: 20px;
+  opacity: 1;
+  background: var(--accent, #E8A33D);
+  border-color: var(--accent, #E8A33D);
+  mix-blend-mode: difference;
+}
+.cursor-ring.gear-pop {
+  animation: gear-pop 0.3s ease-out;
+}
+@keyframes gear-pop {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.6); opacity: 0.4; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+}
+body { cursor: none; }
+@media (hover: none) {
+  body { cursor: auto; }
+  .cursor-dot, .cursor-ring { display: none; }
+}
+
+/* ---------- 场景容器 ---------- */
+.scene {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 座舱背景氛围 */
+.cabin-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 80%, var(--cabin-glow, rgba(232, 163, 61, 0.08)) 0%, transparent 50%),
+    linear-gradient(to bottom, var(--cabin-top, #1A1B1F) 0%, var(--cabin-bottom, #0D0E10) 100%);
+}
+.cabin-streaks {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.008) 2px,
+      rgba(255, 255, 255, 0.008) 3px
+    );
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* ---------- 仪表盘 (顶部) ---------- */
+.dash {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 180px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 60px;
+  padding-bottom: 20px;
+  z-index: 10;
+}
+.gauge {
+  position: relative;
+  width: 140px; height: 80px;
+}
+.gauge-label {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--gauge-label, #6B6F78);
+  letter-spacing: 3px;
+}
+.gauge-arc {
+  position: absolute;
+  top: 0; left: 0;
+  width: 140px; height: 70px;
+  overflow: hidden;
+}
+.gauge-arc::before {
+  content: '';
+  position: absolute;
+  bottom: -70px;
+  left: 0;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  border: 2px solid var(--gauge-track, #2A2C32);
+  box-sizing: border-box;
+}
+.gauge-fill {
+  position: absolute;
+  bottom: -70px;
+  left: 0;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--gauge-accent, #E8A33D);
+  border-right-color: var(--gauge-accent, #E8A33D);
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: transform 0.3s ease, border-color 0.3s ease;
+  clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+}
+.gauge-needle {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 2px; height: 60px;
+  margin-left: -1px;
+  background: linear-gradient(to top, var(--needle, #FF6B4A), transparent);
+  transform-origin: bottom center;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease-out;
+  border-radius: 1px;
+}
+.gauge-center {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 10px; height: 10px;
+  margin-left: -5px;
+  background: var(--gauge-center, #C8CCD4);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(200, 204, 212, 0.3);
+}
+.gauge-value {
+  position: absolute;
+  top: 28px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--gauge-value, #C8CCD4);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+.gauge-value .unit {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--gauge-label, #6B6F78);
+  margin-left: 2px;
+}
+
+/* 挡位显示 (中心) */
+.gear-display {
+  position: relative;
+  width: 100px; height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.gear-num {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--gear-color, #E8A33D);
+  line-height: 1;
+  letter-spacing: 2px;
+  text-shadow: 0 0 16px var(--gear-glow, rgba(232, 163, 61, 0.5));
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+  font-variant-numeric: tabular-nums;
+}
+.gear-num.neutral { color: var(--gear-neutral, #6B6F78); text-shadow: none; }
+.gear-num.reverse { color: var(--gear-reverse, #C0392B); text-shadow: 0 0 16px rgba(192, 57, 43, 0.5); }
+.gear-label-text {
+  font-size: 10px;
+  color: var(--gauge-label, #6B6F78);
+  letter-spacing: 4px;
+  margin-top: 6px;
+}
+
+/* ---------- 换挡杆区域 (中间) ---------- */
+.shifter-area {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 360px;
+  height: 420px;
+  z-index: 20;
+}
+
+/* H 闸底板 */
+.gate-plate {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px; height: 320px;
+  background: linear-gradient(145deg, var(--plate-top, #2A2C32), var(--plate-bottom, #17181C));
+  border-radius: 16px;
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.05),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.5),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--plate-border, #3A3C42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gate-slot {
+  position: relative;
+  width: 120px;
+  height: 240px;
+}
+/* H 闸形状：用 SVG 绘制更精确，这里用 CSS 叠加 */
+.gate-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.gate-path {
+  fill: none;
+  stroke: var(--gate-track, #0A0B0D);
+  stroke-width: 22;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(inset 0 2px 4px rgba(0,0,0,0.6));
+}
+.gate-inner {
+  fill: none;
+  stroke: var(--gate-inner, #121318);
+  stroke-width: 18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 挡位标记 */
+.gear-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.gear-mark {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mark-dim, #3A3C42);
+  transition: color 0.3s ease, text-shadow 0.3s ease;
+  letter-spacing: 1px;
+}
+.gear-mark.active {
+  color: var(--mark-active, #E8A33D);
+  text-shadow: 0 0 8px var(--mark-glow, rgba(232, 163, 61, 0.4));
+}
+.gear-mark.reverse.active {
+  color: var(--gear-reverse, #C0392B);
+  text-shadow: 0 0 8px rgba(192, 57, 43, 0.4);
+}
+
+/* 换挡杆 */
+.shifter {
+  position: absolute;
+  bottom: 160px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 200px;
+  pointer-events: none;
+  z-index: 30;
+}
+.shifter-rod {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 10px;
+  height: 140px;
+  margin-left: -5px;
+  background: linear-gradient(to right, var(--rod-left, #8A8D94), var(--rod-mid, #D0D3D8), var(--rod-left, #8A8D94));
+  border-radius: 5px;
+  transform-origin: bottom center;
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.4);
+}
+.shifter-boot {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 60px;
+  height: 50px;
+  margin-left: -30px;
+  background: radial-gradient(ellipse at center top, var(--boot-top, #2A2C32), var(--boot-bottom, #1A1B1F));
+  border-radius: 50% 50% 30% 30%;
+  border-top: 2px solid var(--boot-rim, #3A3C42);
+}
+.shifter-boot::before {
+  content: '';
+  position: absolute;
+  top: 8px; left: 10%;
+  width: 80%;
+  height: 2px;
+  background: var(--stitch, #C0392B);
+  opacity: 0.6;
+  border-radius: 1px;
+}
+.shifter-boot::after {
+  content: '';
+  position: absolute;
+  top: 18px; left: 15%;
+  width: 70%;
+  height: 1.5px;
+  background: var(--stitch, #C0392B);
+  opacity: 0.4;
+  border-radius: 1px;
+}
+
+.shifter-knob {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 50px; height: 58px;
+  margin-left: -25px;
+  cursor: grab;
+  pointer-events: auto;
+  z-index: 40;
+}
+.shifter-knob:active { cursor: grabbing; }
+.knob-body {
+  width: 100%; height: 100%;
+  background: linear-gradient(145deg, var(--knob-top, #1E1F23), var(--knob-bottom, #0F1013));
+  border-radius: 10px 10px 14px 14px;
+  position: relative;
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.1),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--knob-border, #2A2C32);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: box-shadow 0.3s ease;
+}
+.shifter-knob.hover .knob-body {
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.15),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.6),
+    0 6px 20px rgba(232, 163, 61, 0.2),
+    0 0 30px rgba(232, 163, 61, 0.1);
+}
+.shifter-knob.breathing .knob-body {
+  animation: knob-breathe 2.5s ease-in-out infinite;
+}
+@keyframes knob-breathe {
+  0%, 100% { box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.1),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.5); }
+  50% { box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.12),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.6),
+    0 5px 16px rgba(232, 163, 61, 0.12),
+    0 0 20px rgba(232, 163, 61, 0.06); }
+}
+
+.knob-shift-pattern {
+  width: 28px;
+  height: 22px;
+  opacity: 0.7;
+}
+.knob-cap {
+  position: absolute;
+  top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 32px; height: 8px;
+  background: linear-gradient(to bottom, var(--knob-cap-top, #C8CCD4), var(--knob-cap-bottom, #7A7D84));
+  border-radius: 3px 3px 1px 1px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.knob-ridge {
+  width: 30px;
+  height: 2px;
+  background: var(--knob-ridge, #2A2C32);
+  border-radius: 1px;
+  margin: 1px 0;
+}
+
+/* 挡位入挡震动 */
+.shifter.settling .shifter-knob {
+  animation: settle-shake 0.4s ease-out;
+}
+@keyframes settle-shake {
+  0% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-2px) rotate(-1deg); }
+  40% { transform: translateX(1.5px) rotate(0.8deg); }
+  60% { transform: translateX(-1px) rotate(-0.5deg); }
+  80% { transform: translateX(0.5px) rotate(0.3deg); }
+  100% { transform: translateX(0) rotate(0); }
+}
+
+/* 倒挡下压指示 */
+.reverse-hint {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--gear-reverse, #C0392B);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  white-space: nowrap;
+  letter-spacing: 1px;
+}
+.shifter.depress .reverse-hint { opacity: 1; }
+
+/* ---------- 控制台 (底部) ---------- */
+.console {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  padding-top: 20px;
+  z-index: 10;
+}
+.console-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.console-label {
+  font-size: 10px;
+  color: var(--gauge-label, #6B6F78);
+  letter-spacing: 3px;
+}
+.console-value {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--gauge-value, #C8CCD4);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 油门踏板 (可踩) */
+.throttle-pedal {
+  width: 60px; height: 40px;
+  background: linear-gradient(to bottom, var(--pedal-top, #3A3C42), var(--pedal-bottom, #1A1B1F));
+  border-radius: 4px 4px 10px 10px;
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--pedal-depth, #0F1013), 0 6px 12px rgba(0,0,0,0.4);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  border: 1px solid var(--pedal-border, #4A4C52);
+}
+.throttle-pedal:active, .throttle-pedal.pressed {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--pedal-depth, #0F1013), 0 2px 6px rgba(0,0,0,0.4);
+}
+.throttle-pedal .pedal-text {
+  position: absolute;
+  bottom: 4px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--gauge-label, #6B6F78);
+  letter-spacing: 1px;
+}
+
+/* 静音按钮 */
+.sound-toggle {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--btn-bg, #2A2C32);
+  border: 1px solid var(--btn-border, #3A3C42);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gauge-value, #C8CCD4);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.sound-toggle:hover { background: var(--btn-hover, #3A3C42); }
+.sound-toggle.muted { color: var(--gear-reverse, #C0392B); }
+
+/* 主题切换 */
+.theme-switcher {
+  position: fixed;
+  top: 20px; right: 24px;
+  display: flex;
+  gap: 8px;
+  z-index: 100;
+  align-items: center;
+}
+.theme-label {
+  font-size: 11px;
+  color: var(--gauge-label, #6B6F78);
+  letter-spacing: 2px;
+  margin-right: 4px;
+}
+.theme-chip {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.theme-chip:hover { transform: scale(1.15); }
+.theme-chip.active {
+  border-color: var(--accent, #E8A33D);
+  transform: scale(1.1);
+}
+
+/* ---------- 标题 / 说明 ---------- */
+.title-block {
+  position: fixed;
+  top: 20px; left: 24px;
+  z-index: 100;
+}
+.title-block .brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #C8CCD4);
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.title-block .brand .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #E8A33D);
+  box-shadow: 0 0 6px var(--accent, #E8A33D);
+}
+.title-block .sub {
+  font-size: 11px;
+  color: var(--text-tertiary, #6B6F78);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* 操作提示 */
+.hint-text {
+  position: absolute;
+  bottom: 135px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--text-tertiary, #6B6F78);
+  text-align: center;
+  line-height: 1.7;
+  letter-spacing: 1px;
+  z-index: 5;
+  transition: opacity 0.5s ease;
+}
+.hint-text.fade { opacity: 0.3; }
+
+/* 挡位吸入闪光 */
+.gear-flash {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at center, var(--flash-color, rgba(232, 163, 61, 0.3)), transparent 60%);
+}
+.gear-flash.on { animation: gear-flash-anim 0.3s ease-out; }
+@keyframes gear-flash-anim {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 600px) {
+  .dash { gap: 24px; padding-bottom: 10px; height: 140px; }
+  .gauge { width: 100px; height: 60px; }
+  .gauge-arc { width: 100px; height: 50px; }
+  .gauge-arc::before { bottom: -50px; width: 100px; height: 100px; }
+  .gauge-fill { bottom: -50px; width: 100px; height: 100px; }
+  .gauge-needle { height: 42px; }
+  .gauge-value { font-size: 16px; top: 18px; }
+  .shifter-area { width: 280px; height: 360px; }
+  .gate-plate { width: 240px; height: 280px; }
+  .gate-slot { width: 100px; height: 200px; }
+  .shifter { height: 160px; bottom: 140px; }
+  .shifter-rod { height: 110px; }
+  .shifter-knob { width: 42px; height: 50px; margin-left: -21px; }
+  .title-block { left: 12px; }
+  .theme-switcher { right: 12px; }
+}
+
+/* ---------- Reduced Motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .cursor-ring { transition: none; }
+  .shifter-rod { transition: none; }
+  .gauge-needle { transition: none; }
+  .gauge-fill { transition: none; }
+  .shifter-knob.breathing .knob-body { animation: none; }
+}
+</style>
+</head>
+<body data-theme="0">
+
+<!-- 自定义光标 -->
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- 主题切换 -->
+<div class="theme-switcher" id="themeSwitcher">
+  <span class="theme-label">配色</span>
+  <div class="theme-chip active" data-theme="0" title="曜石座舱"></div>
+  <div class="theme-chip" data-theme="1" title="米白内饰"></div>
+  <div class="theme-chip" data-theme="2" title="焦糖复古"></div>
+</div>
+
+<!-- 标题 -->
+<div class="title-block">
+  <div class="brand"><span class="dot"></span>物趣实验室 · V3</div>
+  <div class="sub">H 型五速手动挡换挡杆</div>
+</div>
+
+<!-- 场景 -->
+<div class="scene" id="scene">
+  <div class="cabin-bg"></div>
+  <div class="cabin-streaks"></div>
+
+  <!-- 仪表盘 -->
+  <div class="dash">
+    <div class="gauge">
+      <div class="gauge-arc">
+        <div class="gauge-fill" id="rpmFill"></div>
+      </div>
+      <div class="gauge-needle" id="rpmNeedle"></div>
+      <div class="gauge-center"></div>
+      <div class="gauge-value" id="rpmValue">800<span class="unit">rpm</span></div>
+      <div class="gauge-label">转速</div>
+    </div>
+
+    <div class="gear-display">
+      <div class="gear-num neutral" id="gearNum">N</div>
+      <div class="gear-label-text">挡位</div>
+    </div>
+
+    <div class="gauge">
+      <div class="gauge-arc">
+        <div class="gauge-fill" id="spdFill"></div>
+      </div>
+      <div class="gauge-needle" id="spdNeedle"></div>
+      <div class="gauge-center"></div>
+      <div class="gauge-value" id="spdValue">0<span class="unit">km/h</span></div>
+      <div class="gauge-label">车速</div>
+    </div>
+  </div>
+
+  <!-- 换挡杆区域 -->
+  <div class="shifter-area" id="shifterArea">
+    <div class="gate-plate">
+      <div class="gate-slot" id="gateSlot">
+        <!-- H 闸 SVG 路径 -->
+        <svg class="gate-svg" viewBox="0 0 120 240" preserveAspectRatio="none">
+          <!-- 外轨（凹陷阴影） -->
+          <path class="gate-path" d="
+            M 30 20 L 30 80
+            M 60 20 L 60 220
+            M 90 20 L 90 80
+            M 30 160 L 30 220
+            M 90 160 L 90 220
+            M 30 120 L 90 120
+          "/>
+          <!-- 内轨 -->
+          <path class="gate-inner" d="
+            M 30 20 L 30 80
+            M 60 20 L 60 220
+            M 90 20 L 90 80
+            M 30 160 L 30 220
+            M 90 160 L 90 220
+            M 30 120 L 90 120
+          "/>
+        </svg>
+
+        <!-- 挡位标记 -->
+        <div class="gear-marks">
+          <div class="gear-mark" id="markR" style="left: 18px; top: -2px;">R</div>
+          <div class="gear-mark" id="mark1" style="left: 52px; top: -2px;">1</div>
+          <div class="gear-mark" id="mark2" style="left: 82px; top: -2px;">2</div>
+          <div class="gear-mark" id="mark3" style="left: 52px; top: 108px;">3</div>
+          <div class="gear-mark" id="mark4" style="left: 82px; top: 108px;">4</div>
+          <div class="gear-mark" id="mark5" style="left: 52px; top: 228px;">5</div>
+        </div>
+
+        <!-- 入挡闪光 -->
+        <div class="gear-flash" id="gearFlash"></div>
+      </div>
+    </div>
+
+    <!-- 换挡杆 -->
+    <div class="shifter" id="shifter">
+      <div class="shifter-knob breathing" id="shifterKnob">
+        <div class="knob-cap"></div>
+        <div class="knob-body">
+          <svg class="knob-shift-pattern" viewBox="0 0 30 24" fill="none">
+            <path d="M5 2 L5 10 M15 2 L15 22 M25 2 L25 10 M5 16 L25 16 M15 22 L25 22"
+                  stroke="#E8A33D" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+            <text x="2" y="1" fill="#E8A33D" font-size="4" opacity="0.6">R</text>
+          </svg>
+        </div>
+        <div class="reverse-hint">按住下推挂倒挡</div>
+      </div>
+      <div class="shifter-rod" id="shifterRod"></div>
+      <div class="shifter-boot"></div>
+    </div>
+  </div>
+
+  <!-- 提示文字 -->
+  <div class="hint-text" id="hintText">
+    抓住球头拖动 · 横向选闸 · 纵向推挡 · 下压入倒挡
+  </div>
+
+  <!-- 底部控制台 -->
+  <div class="console">
+    <div class="console-item">
+      <div class="console-label">油门</div>
+      <div class="throttle-pedal" id="throttlePedal">
+        <span class="pedal-text">按 住</span>
+      </div>
+    </div>
+    <div class="console-item">
+      <div class="console-label">音效</div>
+      <div class="sound-toggle" id="soundToggle" title="静音切换">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   物趣实验室 V3 · H 型换挡杆
+   单展品 · 二维路径拖拽 · detent 吸附 · 五层反馈
+   ============================================================ */
+(function() {
+  'use strict';
+
+  // ---------- 三套主题 ----------
+  var THEMES = [
+    {
+      name: '曜石座舱',
+      bg: '#17181C',
+      cabinTop: '#1A1B1F',
+      cabinBottom: '#0D0E10',
+      cabinGlow: 'rgba(232, 163, 61, 0.08)',
+      textPrimary: '#C8CCD4',
+      textTertiary: '#6B6F78',
+      accent: '#E8A33D',
+      accentEnd: '#B87E1F',
+      gearColor: '#E8A33D',
+      gearGlow: 'rgba(232, 163, 61, 0.5)',
+      gearNeutral: '#6B6F78',
+      gearReverse: '#C0392B',
+      stitch: '#C0392B',
+      gateTrack: '#0A0B0D',
+      gateInner: '#121318',
+      plateTop: '#2A2C32',
+      plateBottom: '#17181C',
+      plateBorder: '#3A3C42',
+      markDim: '#3A3C42',
+      markActive: '#E8A33D',
+      markGlow: 'rgba(232, 163, 61, 0.4)',
+      rodLeft: '#6A6D74',
+      rodMid: '#B0B4BA',
+      bootTop: '#2A2C32',
+      bootBottom: '#1A1B1F',
+      bootRim: '#3A3C42',
+      knobTop: '#1E1F23',
+      knobBottom: '#0F1013',
+      knobBorder: '#2A2C32',
+      knobCapTop: '#C8CCD4',
+      knobCapBottom: '#7A7D84',
+      knobRidge: '#2A2C32',
+      gaugeTrack: '#2A2C32',
+      gaugeAccent: '#E8A33D',
+      gaugeLabel: '#6B6F78',
+      gaugeValue: '#C8CCD4',
+      gaugeCenter: '#C8CCD4',
+      needle: '#FF6B4A',
+      pedalTop: '#3A3C42',
+      pedalBottom: '#1A1B1F',
+      pedalDepth: '#0F1013',
+      pedalBorder: '#4A4C52',
+      btnBg: '#2A2C32',
+      btnBorder: '#3A3C42',
+      btnHover: '#3A3C42',
+      cursorCore: '#FFD54F',
+      cursorRing: '#E8A33D',
+      flashColor: 'rgba(232, 163, 61, 0.35)'
+    },
+    {
+      name: '米白内饰',
+      bg: '#EDE8E0',
+      cabinTop: '#F5F1EA',
+      cabinBottom: '#D8D2C6',
+      cabinGlow: 'rgba(139, 90, 60, 0.1)',
+      textPrimary: '#4A3C31',
+      textTertiary: '#9A8E80',
+      accent: '#8B5A3C',
+      accentEnd: '#6B4228',
+      gearColor: '#8B5A3C',
+      gearGlow: 'rgba(139, 90, 60, 0.3)',
+      gearNeutral: '#9A8E80',
+      gearReverse: '#B4432E',
+      stitch: '#B4432E',
+      gateTrack: '#C8BFA8',
+      gateInner: '#B8A890',
+      plateTop: '#D8CFBE',
+      plateBottom: '#B8A890',
+      plateBorder: '#9A8E80',
+      markDim: '#A89A88',
+      markActive: '#8B5A3C',
+      markGlow: 'rgba(139, 90, 60, 0.3)',
+      rodLeft: '#A89A88',
+      rodMid: '#D8CFBE',
+      bootTop: '#C8BFA8',
+      bootBottom: '#B8A890',
+      bootRim: '#A89A88',
+      knobTop: '#5C4A36',
+      knobBottom: '#3D2B1F',
+      knobBorder: '#6B5344',
+      knobCapTop: '#D8CFBE',
+      knobCapBottom: '#9A8E80',
+      knobRidge: '#4A3C31',
+      gaugeTrack: '#C8BFA8',
+      gaugeAccent: '#8B5A3C',
+      gaugeLabel: '#9A8E80',
+      gaugeValue: '#5C4A36',
+      gaugeCenter: '#8B5A3C',
+      needle: '#B4432E',
+      pedalTop: '#C8BFA8',
+      pedalBottom: '#A89A88',
+      pedalDepth: '#8A7D6E',
+      pedalBorder: '#B8A890',
+      btnBg: '#D8CFBE',
+      btnBorder: '#B8A890',
+      btnHover: '#C8BFA8',
+      cursorCore: '#8B5A3C',
+      cursorRing: '#8B5A3C',
+      flashColor: 'rgba(139, 90, 60, 0.3)'
+    },
+    {
+      name: '焦糖复古',
+      bg: '#2D1F16',
+      cabinTop: '#3D2B1F',
+      cabinBottom: '#1A0F08',
+      cabinGlow: 'rgba(212, 168, 83, 0.12)',
+      textPrimary: '#E8D4B0',
+      textTertiary: '#8B7355',
+      accent: '#D4A853',
+      accentEnd: '#A87E2E',
+      gearColor: '#FFCE6E',
+      gearGlow: 'rgba(255, 206, 110, 0.5)',
+      gearNeutral: '#8B7355',
+      gearReverse: '#D96E40',
+      stitch: '#D96E40',
+      gateTrack: '#1A0F08',
+      gateInner: '#2D1F16',
+      plateTop: '#4A372A',
+      plateBottom: '#2D1F16',
+      plateBorder: '#5C4530',
+      markDim: '#5C4530',
+      markActive: '#FFCE6E',
+      markGlow: 'rgba(255, 206, 110, 0.4)',
+      rodLeft: '#8B7355',
+      rodMid: '#C9B596',
+      bootTop: '#4A372A',
+      bootBottom: '#2D1F16',
+      bootRim: '#5C4530',
+      knobTop: '#5C3D2E',
+      knobBottom: '#3D2817',
+      knobBorder: '#6B4A36',
+      knobCapTop: '#D4A853',
+      knobCapBottom: '#8B6914',
+      knobRidge: '#4A372A',
+      gaugeTrack: '#4A372A',
+      gaugeAccent: '#FFCE6E',
+      gaugeLabel: '#8B7355',
+      gaugeValue: '#E8D4B0',
+      gaugeCenter: '#D4A853',
+      needle: '#D96E40',
+      pedalTop: '#5C4530',
+      pedalBottom: '#3D2817',
+      pedalDepth: '#1A0F08',
+      pedalBorder: '#6B4A36',
+      btnBg: '#4A372A',
+      btnBorder: '#5C4530',
+      btnHover: '#5C4530',
+      cursorCore: '#FFCE6E',
+      cursorRing: '#D4A853',
+      flashColor: 'rgba(255, 206, 110, 0.35)'
+    }
+  ];
+
+  // ---------- 每日随机 ----------
+  function getDailyThemeIndex() {
+    var now = new Date();
+    var seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+    var h = ((seed * 2654435761) % 100000 + 100000) % 100000;
+    return h % THEMES.length;
+  }
+
+  function applyTheme(idx) {
+    var t = THEMES[idx];
+    var s = document.body.style;
+    s.setProperty('--bg', t.bg);
+    s.setProperty('--cabin-top', t.cabinTop);
+    s.setProperty('--cabin-bottom', t.cabinBottom);
+    s.setProperty('--cabin-glow', t.cabinGlow);
+    s.setProperty('--text-primary', t.textPrimary);
+    s.setProperty('--text-tertiary', t.textTertiary);
+    s.setProperty('--accent', t.accent);
+    s.setProperty('--accent-end', t.accentEnd);
+    s.setProperty('--gear-color', t.gearColor);
+    s.setProperty('--gear-glow', t.gearGlow);
+    s.setProperty('--gear-neutral', t.gearNeutral);
+    s.setProperty('--gear-reverse', t.gearReverse);
+    s.setProperty('--stitch', t.stitch);
+    s.setProperty('--gate-track', t.gateTrack);
+    s.setProperty('--gate-inner', t.gateInner);
+    s.setProperty('--plate-top', t.plateTop);
+    s.setProperty('--plate-bottom', t.plateBottom);
+    s.setProperty('--plate-border', t.plateBorder);
+    s.setProperty('--mark-dim', t.markDim);
+    s.setProperty('--mark-active', t.markActive);
+    s.setProperty('--mark-glow', t.markGlow);
+    s.setProperty('--rod-left', t.rodLeft);
+    s.setProperty('--rod-mid', t.rodMid);
+    s.setProperty('--boot-top', t.bootTop);
+    s.setProperty('--boot-bottom', t.bootBottom);
+    s.setProperty('--boot-rim', t.bootRim);
+    s.setProperty('--knob-top', t.knobTop);
+    s.setProperty('--knob-bottom', t.knobBottom);
+    s.setProperty('--knob-border', t.knobBorder);
+    s.setProperty('--knob-cap-top', t.knobCapTop);
+    s.setProperty('--knob-cap-bottom', t.knobCapBottom);
+    s.setProperty('--knob-ridge', t.knobRidge);
+    s.setProperty('--gauge-track', t.gaugeTrack);
+    s.setProperty('--gauge-accent', t.gaugeAccent);
+    s.setProperty('--gauge-label', t.gaugeLabel);
+    s.setProperty('--gauge-value', t.gaugeValue);
+    s.setProperty('--gauge-center', t.gaugeCenter);
+    s.setProperty('--needle', t.needle);
+    s.setProperty('--pedal-top', t.pedalTop);
+    s.setProperty('--pedal-bottom', t.pedalBottom);
+    s.setProperty('--pedal-depth', t.pedalDepth);
+    s.setProperty('--pedal-border', t.pedalBorder);
+    s.setProperty('--btn-bg', t.btnBg);
+    s.setProperty('--btn-border', t.btnBorder);
+    s.setProperty('--btn-hover', t.btnHover);
+    s.setProperty('--cursor-core', t.cursorCore);
+    s.setProperty('--cursor-ring', t.cursorRing);
+    s.setProperty('--flash-color', t.flashColor);
+
+    document.body.style.backgroundColor = t.bg;
+    document.body.style.color = t.textPrimary;
+
+    // 更新主题芯片激活状态
+    var chips = document.querySelectorAll('.theme-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].classList.toggle('active', parseInt(chips[i].getAttribute('data-theme'), 10) === idx);
+      chips[i].style.background = THEMES[i].accent;
+    }
+  }
+
+  function initThemeSwitcher() {
+    var daily = getDailyThemeIndex();
+    applyTheme(daily);
+    var chips = document.querySelectorAll('.theme-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener('click', function() {
+        var idx = parseInt(this.getAttribute('data-theme'), 10);
+        applyTheme(idx);
+      });
+    }
+  }
+
+  // ---------- 自定义光标 ----------
+  var cursorDot = document.getElementById('cursorDot');
+  var cursorRing = document.getElementById('cursorRing');
+  var cursorX = window.innerWidth / 2;
+  var cursorY = window.innerHeight / 2;
+  var ringX = cursorX;
+  var ringY = cursorY;
+  var cursorState = 'idle'; // idle / near / grab
+
+  function updateCursor() {
+    cursorDot.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+  }
+
+  function animateRing() {
+    if (reducedMotion) {
+      ringX = cursorX;
+      ringY = cursorY;
+    } else {
+      ringX += (cursorX - ringX) * 0.18;
+      ringY += (cursorY - ringY) * 0.18;
+    }
+    cursorRing.style.transform = 'translate(' + ringX + 'px, ' + ringY + 'px) translate(-50%, -50%)';
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    cursorX = e.clientX;
+    cursorY = e.clientY;
+    updateCursor();
+  });
+
+  function setCursorState(state) {
+    if (cursorState === state) return;
+    cursorState = state;
+    cursorRing.classList.remove('near', 'grab', 'gear-pop');
+    if (state === 'near') cursorRing.classList.add('near');
+    else if (state === 'grab') cursorRing.classList.add('grab');
+  }
+
+  function cursorGearPop() {
+    cursorRing.classList.remove('gear-pop');
+    void cursorRing.offsetWidth;
+    cursorRing.classList.add('gear-pop');
+  }
+
+  // ---------- RAF 主循环 ----------
+  var rafId = null;
+  var isVisible = !document.hidden;
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var animatables = [];
+
+  function tick() {
+    if (!isVisible) { rafId = null; return; }
+    for (var i = 0; i < animatables.length; i++) {
+      try { animatables[i](); } catch (e) {}
+    }
+    animateRing();
+    rafId = requestAnimationFrame(tick);
+  }
+  function startRaf() { if (rafId) return; rafId = requestAnimationFrame(tick); }
+  function stopRaf() { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+  document.addEventListener('visibilitychange', function() {
+    isVisible = !document.hidden;
+    if (isVisible) startRaf(); else stopRaf();
+  });
+  window.addEventListener('beforeunload', stopRaf);
+
+  // ---------- 工具 ----------
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  // ============================================================
+  // H 型换挡杆核心
+  // ============================================================
+  function initShifter() {
+    var knob = document.getElementById('shifterKnob');
+    var rod = document.getElementById('shifterRod');
+    var shifter = document.getElementById('shifter');
+    var gateSlot = document.getElementById('gateSlot');
+    var gearNum = document.getElementById('gearNum');
+    var flash = document.getElementById('gearFlash');
+    var hint = document.getElementById('hintText');
+
+    if (!knob || !rod || !shifter) return;
+
+    // H 闸坐标 (基于 gate-slot 120x240 的坐标系，单位像素)
+    // 横向：左闸 x=30, 中闸 x=60, 右闸 x=90
+    // 纵向：上 20, 中 120, 下 220
+    // 挡位：
+    //   R: 左闸上 (30, 20)  — 需要下压
+    //   1: 中闸上 (60, 20)
+    //   2: 右闸上 (90, 20)  — 注意：实际 H 闸是 1-3-5 左中右? 不对
+    // 标准 H 闸五速：
+    //   左上: 1   中上: 3   右上: 5
+    //   左中 横档+  中: 空   右中 横档
+    //   左下: 2   中下: 4   右下: R (下压)
+    // 调整为更标准的布局:
+    //   左上: R (下压)  中上: 1  右上: 2
+    //          横档 (空挡)
+    //   左下: 3        中下: 4  右下: 5
+    // 不对，标准是 1-3-5 在上排左中右，2-4 在下排左右，倒挡在最左或最右
+    // 采用常见布局：R-1-2 上排 ｜ 3-4-空 中排 ｜ 5-下...  算了，用经典布局：
+    //   左上:1  中上:3  右上:5
+    //   左中:    中:空    右中:
+    //   左下:2  中下:4  右下:R(下压)
+
+    var GEARS = {
+      R: { x: 90, y: 220, reverse: true },
+      '1': { x: 30, y: 20 },
+      '2': { x: 30, y: 220 },
+      '3': { x: 60, y: 20 },
+      '4': { x: 60, y: 220 },
+      '5': { x: 90, y: 20 }
+    };
+    var NEUTRAL_Y = 120;
+    var LANES = [30, 60, 90]; // 三条闸道的 x 坐标
+    var TOP_Y = 20, BOTTOM_Y = 220, MID_Y = 120;
+    var SLOT_WIDTH = 18; // 闸道内横向松旷
+
+    // 当前状态
+    var currentGear = 'N';
+    var posX = 60, posY = 120; // 球头在 gate-slot 坐标系中的位置
+    var depressed = false; // 是否下压（挂倒挡用）
+    var dragging = false;
+    var lastGear = 'N';
+    var velocityX = 0, velocityY = 0;
+    var lastPosX = 60, lastPosY = 120;
+    var lastTime = 0;
+    var settleTime = 0; // 入挡后余震计时
+
+    // WebAudio 合成
+    var audioCtx = null;
+    var soundOn = true;
+
+    function initAudio() {
+      if (audioCtx) return;
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) { soundOn = false; }
+    }
+
+    function playClick() {
+      if (!soundOn || !audioCtx || reducedMotion) return;
+      var t = audioCtx.currentTime;
+      // 金属咔哒声：短促噪声 + 高频
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, t);
+      osc.frequency.exponentialRampToValueAtTime(300, t + 0.05);
+      gain.gain.setValueAtTime(0.15, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+
+    function playThud() {
+      if (!soundOn || !audioCtx || reducedMotion) return;
+      var t = audioCtx.currentTime;
+      // 低沉入挡声
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, t);
+      osc.frequency.exponentialRampToValueAtTime(80, t + 0.1);
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    }
+
+    function playGrind() {
+      if (!soundOn || !audioCtx || reducedMotion) return;
+      var t = audioCtx.currentTime;
+      // 打齿声（短促高频噪声感）
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1200, t);
+      osc.frequency.linearRampToValueAtTime(600, t + 0.1);
+      gain.gain.setValueAtTime(0.05, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    }
+
+    // 音效按钮
+    var soundBtn = document.getElementById('soundToggle');
+    if (soundBtn) {
+      soundBtn.addEventListener('click', function() {
+        initAudio();
+        soundOn = !soundOn;
+        soundBtn.classList.toggle('muted', !soundOn);
+      });
+    }
+
+    // 坐标转换：gate-slot 坐标 → 实际偏移像素
+    function getGateSlotRect() {
+      return gateSlot.getBoundingClientRect();
+    }
+
+    function updateVisual() {
+      // 球头位置基于 gate-slot 坐标系 (0-120, 0-240)
+      // 换挡杆底部在 gate-plate 底部，球头在上方
+      // rod 的 pivot 在底部
+      // 根据 posX, posY 计算杆的倾斜和球头位置
+
+      var slotRect = getGateSlotRect();
+      var slotW = slotRect.width;
+      var slotH = slotRect.height;
+
+      // 归一化
+      var nx = posX / 120; // 0-1
+      var ny = posY / 240; // 0-1
+
+      // 换挡杆底部在 gate 中心 (相对于 shifter-area)
+      // 球头需要在闸道的位置
+      // 简化：直接用 translateX/Y 移动球头，杆用 rotate 模拟倾斜
+
+      // 球头相对中心的偏移 (像素, 基于 slot 尺寸)
+      var offsetX = (nx - 0.5) * slotW;
+      var offsetY = (ny - 0.5) * slotH; // y越大越往下
+
+      // 杆倾斜
+      var rodLen = 140; // 杆长 px
+      var rodBaseY = 140; // 杆底部距球头静止位置的距离
+      var tiltX = Math.atan2(offsetX, rodLen) * 180 / Math.PI;
+      var tiltY = -Math.atan2(offsetY, rodLen) * 180 / Math.PI;
+
+      // 球头位移
+      knob.style.transform = 'translate(' + offsetX + 'px, ' + offsetY + 'px)';
+      // 杆倾斜（3D）
+      rod.style.transform = 'rotateX(' + tiltY + 'deg) rotateY(' + tiltX + 'deg)';
+      rod.style.left = 'calc(50% - 5px + ' + offsetX * 0.2 + 'px)';
+
+      // 防尘罩随动（简单缩放）
+      var boot = shifter.querySelector('.shifter-boot');
+      if (boot) {
+        boot.style.transform = 'translateX(' + offsetX * 0.3 + 'px)';
+      }
+    }
+
+    // 判断当前挡位
+    function detectGear() {
+      // 找到最近的挡位位置
+      var bestGear = 'N';
+      var bestDist = 40; // 阈值
+
+      for (var g in GEARS) {
+        if (!GEARS.hasOwnProperty(g)) continue;
+        var gp = GEARS[g];
+        // 倒挡需要下压
+        if (gp.reverse && !depressed) continue;
+        var dx = posX - gp.x;
+        var dy = posY - gp.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestDist) {
+          bestDist = d;
+          bestGear = g;
+        }
+      }
+
+      // 如果不在任何挡位附近，检查是否在空挡横档
+      if (bestGear === 'N') {
+        // 在中闸附近？在空挡 y 附近？
+        if (Math.abs(posY - MID_Y) < 30) {
+          return 'N';
+        }
+      }
+      return bestGear;
+    }
+
+    // 挡位吸入（detent）
+    function snapToGear(g) {
+      if (g === 'N') {
+        // 回到中闸中间
+        snapToPosition(findNearestLane(), MID_Y);
+        return;
+      }
+      var gp = GEARS[g];
+      snapToPosition(gp.x, gp.y);
+    }
+
+    function findNearestLane() {
+      var best = 60, bestDist = 100;
+      for (var i = 0; i < LANES.length; i++) {
+        var d = Math.abs(posX - LANES[i]);
+        if (d < bestDist) { bestDist = d; best = LANES[i]; }
+      }
+      return best;
+    }
+
+    function snapToPosition(tx, ty) {
+      if (reducedMotion) {
+        posX = tx; posY = ty;
+        updateVisual();
+        return;
+      }
+      var stiffness = 0.4;
+      var damping = 0.7;
+      var vx = velocityX * 0.3;
+      var vy = velocityY * 0.3;
+      var x = posX, y = posY;
+
+      function step() {
+        if (dragging) return;
+        var fx = (tx - x) * stiffness;
+        var fy = (ty - y) * stiffness;
+        vx = (vx + fx) * damping;
+        vy = (vy + fy) * damping;
+        x += vx;
+        y += vy;
+        if (Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1 && Math.abs(x - tx) < 0.5 && Math.abs(y - ty) < 0.5) {
+          posX = tx; posY = ty;
+          updateVisual();
+          onSettleComplete();
+          return;
+        }
+        posX = x; posY = y;
+        updateVisual();
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    function onSettleComplete() {
+      // 入挡完成，余震
+      shifter.classList.add('settling');
+      setTimeout(function() { shifter.classList.remove('settling'); }, 400);
+    }
+
+    function setGear(g) {
+      if (g === currentGear) return;
+      var prev = currentGear;
+      currentGear = g;
+
+      // 更新挡位显示
+      gearNum.classList.remove('neutral', 'reverse');
+      if (g === 'N') {
+        gearNum.textContent = 'N';
+        gearNum.classList.add('neutral');
+      } else if (g === 'R') {
+        gearNum.textContent = 'R';
+        gearNum.classList.add('reverse');
+        playThud();
+        setTimeout(playClick, 60);
+      } else {
+        gearNum.textContent = g;
+        playThud();
+        setTimeout(playClick, 60);
+      }
+
+      // 更新挡位标记高亮
+      var marks = document.querySelectorAll('.gear-mark');
+      for (var i = 0; i < marks.length; i++) {
+        marks[i].classList.remove('active');
+      }
+      if (g !== 'N') {
+        var markEl = document.getElementById('mark' + g);
+        if (markEl) markEl.classList.add('active');
+      }
+
+      // 入挡闪光
+      if (g !== 'N' && prev === 'N') {
+        flash.classList.remove('on');
+        void flash.offsetWidth;
+        flash.classList.add('on');
+        cursorGearPop();
+      }
+
+      // 引擎联动
+      updateEngineOnGearChange(prev, g);
+
+      // 提示淡出
+      if (hint) hint.classList.add('fade');
+    }
+
+    // ---------- H 闸路径约束 ----------
+    function clampToGate(x, y) {
+      // 判断当前所在的 y 区间
+      // 空挡横档区 y 约 100-140
+      // 上排挡位 y < 60, 下排 y > 180
+      var inNeutralZone = y > 90 && y < 150;
+
+      if (inNeutralZone) {
+        // 空挡区：可以横向移动，但只能在三条闸道的 x 附近有松旷
+        // 简化：允许在整个宽度内自由移动（横档）
+        x = clamp(x, 20, 100);
+        y = clamp(y, 20, 220);
+        return { x: x, y: y, inLane: false };
+      } else if (y <= 90) {
+        // 上半区：必须在某条闸道内
+        var lane = findNearestLane();
+        if (Math.abs(x - lane) > SLOT_WIDTH) {
+          // 被闸壁挡住
+          x = x < lane ? lane - SLOT_WIDTH : lane + SLOT_WIDTH;
+        }
+        // 顶部限制
+        y = Math.max(y, TOP_Y);
+        return { x: x, y: y, inLane: true, lane: lane };
+      } else {
+        // 下半区：必须在某条闸道内
+        var lane2 = findNearestLane();
+        if (Math.abs(x - lane2) > SLOT_WIDTH) {
+          x = x < lane2 ? lane2 - SLOT_WIDTH : lane2 + SLOT_WIDTH;
+        }
+        y = Math.min(y, BOTTOM_Y);
+        // 倒挡在右下，需要下压
+        if (lane2 === 90 && y > 200 && !depressed) {
+          // 没下压，进不了倒挡，被挡住
+          y = Math.min(y, 200);
+        }
+        return { x: x, y: y, inLane: true, lane: lane2 };
+      }
+    }
+
+    // ---------- 拖拽 ----------
+    var grabOffsetX = 0, grabOffsetY = 0;
+
+    knob.addEventListener('mousedown', function(e) {
+      dragging = true;
+      setCursorState('grab');
+      knob.classList.remove('breathing', 'hover');
+      initAudio();
+
+      var knobRect = knob.getBoundingClientRect();
+      var slotRect = getGateSlotRect();
+
+      // 计算鼠标在 gate-slot 坐标系中的位置
+      var mouseSlotX = e.clientX - slotRect.left;
+      var mouseSlotY = e.clientY - slotRect.top;
+
+      // 当前 posX/posY 就是球头在 slot 中的位置
+      grabOffsetX = mouseSlotX - posX;
+      grabOffsetY = mouseSlotY - posY;
+
+      lastPosX = posX;
+      lastPosY = posY;
+      lastTime = performance.now();
+
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      // 悬停检测
+      if (!dragging) {
+        var knobRect = knob.getBoundingClientRect();
+        var dx = e.clientX - (knobRect.left + knobRect.width / 2);
+        var dy = e.clientY - (knobRect.top + knobRect.height / 2);
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 80) {
+          setCursorState('near');
+          knob.classList.add('hover');
+        } else {
+          setCursorState('idle');
+          knob.classList.remove('hover');
+        }
+        return;
+      }
+
+      var slotRect = getGateSlotRect();
+      var mx = e.clientX - slotRect.left - grabOffsetX;
+      var my = e.clientY - slotRect.top - grabOffsetY;
+
+      // 检测下压（鼠标低于球头起始位置很多 = 下压动作）
+      // 实际：用 Shift 键或鼠标滚轮或额外拖动方向来表示下压
+      // 采用：按住时垂直向下拖动超过阈值视为下压（模拟把球头往下按）
+      // 但我们 y 轴已经用来做换挡了...
+      // 改用：右键或双键或滚轮
+      // 方案：使用 Ctrl 键 / 右键 来模拟下压
+      // 更直观：双击球头切换下压状态？
+      // 最佳方案：鼠标滚轮 或 额外的按键提示
+      // 用：按住 Shift 键 = 下压
+      depressed = e.shiftKey;
+      shifter.classList.toggle('depress', depressed);
+
+      // 约束到 H 闸
+      var clamped = clampToGate(mx, my);
+
+      // 速度计算
+      var now = performance.now();
+      var dt = now - lastTime;
+      if (dt > 0) {
+        velocityX = (clamped.x - lastPosX) / dt * 16;
+        velocityY = (clamped.y - lastPosY) / dt * 16;
+      }
+      lastPosX = clamped.x;
+      lastPosY = clamped.y;
+      lastTime = now;
+
+      posX = clamped.x;
+      posY = clamped.y;
+      updateVisual();
+
+      // 实时检测挡位（进入挡位范围但还没完全吸入）
+      var g = detectGear();
+      if (g !== currentGear) {
+        // 只在接近阈值时做预显示（但不真正入挡）
+        // 这里实时更新挡位文字，让用户有预期
+        // 不对，应该松手后才入挡。拖动时显示接近的挡位。
+        // 改为：拖动时不改变当前挡位，只改变视觉高亮
+      }
+    });
+
+    document.addEventListener('mouseup', function(e) {
+      if (!dragging) return;
+      dragging = false;
+      setCursorState('near');
+      knob.classList.add('breathing');
+
+      // 松手后：根据当前位置吸附到最近挡位或空挡
+      var g = detectGear();
+      if (g !== 'N') {
+        // 吸入挡位
+        snapToGear(g);
+        setGear(g);
+      } else {
+        // 回到空挡（最近闸道 + 中间 y）
+        snapToGear('N');
+        setGear('N');
+      }
+
+      // 复位下压状态
+      depressed = false;
+      shifter.classList.remove('depress');
+    });
+
+    // 滚轮切换下压状态（备用交互）
+    knob.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      depressed = e.deltaY > 0;
+      shifter.classList.toggle('depress', depressed);
+    }, { passive: false });
+
+    // 右键切换下压
+    knob.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      depressed = !depressed;
+      shifter.classList.toggle('depress', depressed);
+    });
+
+    // ---------- 初始化 ----------
+    setGear('N');
+    updateVisual();
+
+    // 暴露给引擎联动
+    window.__shifter = {
+      getGear: function() { return currentGear; },
+      getGearRatio: function() {
+        var ratios = { '1': 3.6, '2': 2.3, '3': 1.6, '4': 1.1, '5': 0.85, 'R': 3.4, 'N': 0 };
+        return ratios[currentGear] || 0;
+      },
+      isNeutral: function() { return currentGear === 'N'; }
+    };
+  }
+
+  // ============================================================
+  // 引擎 / 转速 / 车速联动
+  // ============================================================
+  function initEngine() {
+    var rpmNeedle = document.getElementById('rpmNeedle');
+    var rpmFill = document.getElementById('rpmFill');
+    var rpmValue = document.getElementById('rpmValue');
+    var spdNeedle = document.getElementById('spdNeedle');
+    var spdFill = document.getElementById('spdFill');
+    var spdValue = document.getElementById('spdValue');
+    var pedal = document.getElementById('throttlePedal');
+
+    if (!rpmNeedle || !spdNeedle) return;
+
+    var rpm = 800; // 怠速
+    var speed = 0;
+    var throttle = 0; // 0-1
+    var pressing = false;
+
+    // 油门踩踏
+    if (pedal) {
+      pedal.addEventListener('mousedown', function() {
+        pressing = true;
+        pedal.classList.add('pressed');
+      });
+      document.addEventListener('mouseup', function() {
+        pressing = false;
+        pedal.classList.remove('pressed');
+      });
+    }
+
+    function updateGauges() {
+      // RPM 表：-90度(0rpm) 到 90度(8000rpm)
+      var rpmPct = clamp((rpm - 0) / 8000, 0, 1);
+      var rpmAngle = -90 + rpmPct * 180;
+      rpmNeedle.style.transform = 'rotate(' + rpmAngle + 'deg)';
+      rpmFill.style.transform = 'rotate(' + rpmAngle + 'deg)';
+      if (rpmValue) rpmValue.innerHTML = Math.round(rpm) + '<span class="unit">rpm</span>';
+
+      // 车速表：0-220 km/h
+      var spdPct = clamp(speed / 220, 0, 1);
+      var spdAngle = -90 + spdPct * 180;
+      spdNeedle.style.transform = 'rotate(' + spdAngle + 'deg)';
+      spdFill.style.transform = 'rotate(' + spdAngle + 'deg)';
+      if (spdValue) spdValue.innerHTML = Math.round(speed) + '<span class="unit">km/h</span>';
+    }
+
+    function engineStep() {
+      var shifter = window.__shifter;
+      if (!shifter) return;
+
+      var isNeutral = shifter.isNeutral();
+      var ratio = shifter.getGearRatio();
+
+      // 节气门开度
+      if (pressing) {
+        throttle = clamp(throttle + 0.05, 0, 1);
+      } else {
+        throttle = clamp(throttle - 0.03, 0, 1);
+      }
+
+      if (isNeutral) {
+        // 空挡：油门决定转速
+        var targetRpm = 800 + throttle * 5000;
+        rpm += (targetRpm - rpm) * 0.08;
+        // 车速自然衰减
+        speed *= 0.99;
+      } else if (ratio > 0) {
+        // 有挡位
+        // 简化模型：转速 = 车速 * 齿比 * 常数
+        // 但也要受油门影响
+        var engineTorque = throttle; // 简化
+        var force = engineTorque * ratio;
+
+        // 转速根据油门变化
+        var targetRpm = 800 + throttle * 6500;
+        rpm += (targetRpm - rpm) * 0.05;
+
+        // 车速根据转速和齿比变化
+        var speedFromRpm = rpm / ratio / 30; // 简化换算
+        var speedDiff = speedFromRpm - speed;
+        speed += speedDiff * 0.03;
+
+        // 车速自然阻力
+        speed *= 0.998;
+
+        // 断油保护
+        if (rpm > 7500) {
+          rpm = 7500;
+        }
+      }
+
+      rpm = clamp(rpm, 600, 8000);
+      speed = clamp(speed, 0, 220);
+
+      updateGauges();
+    }
+
+    animatables.push(engineStep);
+  }
+
+  function updateEngineOnGearChange(prev, curr) {
+    // 换挡时转速回落/跃升
+    // 升挡：转速掉一截
+    // 降挡：转速补油
+    var gearOrder = { 'R': -1, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, 'N': 0 };
+    var p = gearOrder[prev];
+    var c = gearOrder[curr];
+    if (p === undefined) p = 0;
+    if (c === undefined) c = 0;
+
+    var shifter = window.__shifter;
+    if (!shifter) return;
+  }
+
+  // ============================================================
+  // 启动
+  // ============================================================
+  function init() {
+    initThemeSwitcher();
+
+    // 初始化交互
+    initShifter();
+    initEngine();
+
+    // 光标初始居中
+    updateCursor();
+    cursorRing.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+
+    startRaf();
+
+    // 宣告可升级
+    try {
+      function announceUpgrade() {
+        window.parent && window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+      }
+      announceUpgrade();
+      if (document.readyState !== 'complete') {
+        window.addEventListener('load', announceUpgrade, { once: true });
+      }
+    } catch(e) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>
