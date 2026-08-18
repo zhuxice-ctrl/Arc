@@ -1,0 +1,2507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>胶片暗房 · 原生 App V2</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0E0B09; font-family: 'Noto Sans SC', -apple-system, system-ui, sans-serif; }
+  body { cursor: none; }
+  #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background:
+    radial-gradient(ellipse at 30% 20%, rgba(192,57,43,0.08), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(217,142,50,0.06), transparent 50%),
+    #0E0B09;
+    position: relative;
+  }
+
+  /* ─── Custom Cursor ─── */
+  .custom-cursor {
+    position: fixed;
+    width: 32px; height: 32px;
+    pointer-events: none;
+    z-index: 99999;
+    transform: translate(-50%, -50%);
+    transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.3s ease;
+  }
+  .cursor-ring {
+    position: absolute; inset: 0;
+    border: 2px solid #F2EBDD;
+    border-radius: 50%;
+    box-shadow:
+      0 0 12px rgba(242, 235, 221, 0.6),
+      0 0 24px rgba(192, 57, 43, 0.3),
+      inset 0 0 6px rgba(242, 235, 221, 0.3);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cursor-dot {
+    position: absolute; top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    background: #C0392B;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px #C0392B, 0 0 16px rgba(192, 57, 43, 0.5);
+    transition: all 0.15s ease;
+  }
+  .custom-cursor.hovering {
+    width: 56px; height: 56px;
+  }
+  .custom-cursor.hovering .cursor-ring {
+    border-color: #D98E32;
+    box-shadow:
+      0 0 20px rgba(217, 142, 50, 0.7),
+      0 0 40px rgba(192, 57, 43, 0.4),
+      inset 0 0 10px rgba(217, 142, 50, 0.4);
+  }
+  .custom-cursor.hovering .cursor-dot {
+    background: #D98E32;
+    box-shadow: 0 0 12px #D98E32;
+  }
+  .cursor-ripple {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99998;
+    border: 2px solid #D98E32;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.8;
+  }
+
+  /* ─── Film grain overlay ─── */
+  .film-grain {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  /* ─── Red safelight ambient glow (in dark areas) ─── */
+  .safelight-glow {
+    position: absolute; top: -60px; left: 50%;
+    width: 200px; height: 200px;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(192,57,43,0.35), transparent 70%);
+    pointer-events: none;
+    filter: blur(20px);
+    animation: safelight-breathe 4s ease-in-out infinite;
+  }
+  @keyframes safelight-breathe {
+    0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+    50% { opacity: 1; transform: translateX(-50%) scale(1.15); }
+  }
+
+  /* ─── Film developing animation (gray to photo) ─── */
+  .developing-photo {
+    position: relative;
+    filter: grayscale(100%) brightness(1.1) contrast(0.7);
+    transition: filter 2.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .developing-photo.developed {
+    filter: grayscale(0%) brightness(1) contrast(1);
+  }
+
+  /* ─── Shutter click effect ─── */
+  .shutter-flash {
+    position: fixed; inset: 0;
+    background: #F2EBDD;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .shutter-flash.active {
+    animation: shutter-flash-anim 0.25s ease-out;
+  }
+  @keyframes shutter-flash-anim {
+    0% { opacity: 0; }
+    20% { opacity: 0.9; }
+    100% { opacity: 0; }
+  }
+
+  /* ─── Scrollbar hidden inside phone ─── */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* ─── Page transition ─── */
+  .page-enter {
+    animation: page-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes page-slide-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ─── Film advance strips ─── */
+  .film-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 16px 8px;
+  }
+  .film-card {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* ─── Staggered list enter ─── */
+  .stagger-item {
+    opacity: 0;
+    transform: translateY(16px);
+    animation: stagger-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  @keyframes stagger-in {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── Progress ring ─── */
+  .progress-ring-circle {
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+    transition: stroke-dashoffset 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ─── Pull to refresh spring ─── */
+  .pull-indicator {
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    transition: height 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ─── Floating action button ─── */
+  .fab {
+    position: absolute;
+    bottom: calc(var(--ios-safe-bottom, 34px) + 80px);
+    right: 20px;
+    z-index: 30;
+  }
+  .fab-btn {
+    width: 56px; height: 56px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #C0392B, #D98E32);
+    box-shadow: 0 8px 24px rgba(192, 57, 43, 0.4), 0 2px 8px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    cursor: none;
+  }
+  .fab-btn:hover {
+    transform: scale(1.1) rotate(90deg);
+    box-shadow: 0 12px 32px rgba(192, 57, 43, 0.5);
+  }
+  .fab-btn:active { transform: scale(0.95); }
+
+  /* ─── Bottom sheet / half screen drawer ─── */
+  .bottom-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: #1A1512;
+    border-radius: 24px 24px 0 0;
+    z-index: 25;
+    transform: translateY(100%);
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+  }
+  .bottom-sheet.open {
+    transform: translateY(0);
+  }
+  .sheet-handle {
+    width: 36px; height: 5px;
+    background: rgba(242, 235, 221, 0.2);
+    border-radius: 3px;
+    margin: 10px auto;
+  }
+
+  /* ─── Tab bar ─── */
+  .tab-bar {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 0;
+    height: calc(var(--ios-safe-bottom, 34px) + 64px);
+    padding-bottom: var(--ios-safe-bottom, 34px);
+    z-index: 20;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(26, 21, 18, 0.85);
+    border-top: 0.5px solid rgba(242, 235, 221, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 0;
+    cursor: none;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tab-item:active { transform: scale(0.92); }
+  .tab-icon {
+    width: 24px; height: 24px;
+    opacity: 0.5;
+    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tab-item.active .tab-icon {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  .tab-label {
+    font-size: 10px;
+    color: rgba(242, 235, 221, 0.5);
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    transition: color 0.3s ease;
+  }
+  .tab-item.active .tab-label {
+    color: #D98E32;
+  }
+
+  /* ─── Masonry columns ─── */
+  .masonry {
+    column-count: 2;
+    column-gap: 10px;
+    padding: 0 16px;
+  }
+  .masonry-item {
+    break-inside: avoid;
+    margin-bottom: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ─── Badge / chip ─── */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: none;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .chip:hover { transform: translateY(-2px); }
+
+  /* ─── Nav bar title ─── */
+  .nav-large-title {
+    font-family: 'Noto Serif SC', serif;
+    font-weight: 700;
+    font-size: 34px;
+    line-height: 1.1;
+    color: #F2EBDD;
+    letter-spacing: -0.5px;
+  }
+  .nav-subtitle {
+    font-size: 13px;
+    color: rgba(242, 235, 221, 0.5);
+    margin-top: 4px;
+  }
+
+  /* ─── Hero parallax ─── */
+  .hero-image {
+    width: 100%;
+    height: 340px;
+    object-fit: cover;
+    transition: transform 0.1s linear;
+  }
+
+  /* ─── Utility ─── */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+  /* Ambient float animation */
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .float-slow { animation: float-slow 4s ease-in-out infinite; }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+
+  /* Code block for API docs */
+  .code-block {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: #F2EBDD;
+    background: #0E0B09;
+    border-radius: 10px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    border: 1px solid rgba(242, 235, 221, 0.08);
+  }
+  .code-keyword { color: #D98E32; }
+  .code-string { color: #C0392B; }
+  .code-comment { color: rgba(242, 235, 221, 0.35); }
+  .code-prop { color: #F2EBDD; }
+
+  /* Spec swatch */
+  .swatch {
+    border-radius: 10px;
+    height: 58px;
+    position: relative;
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .swatch:hover { transform: scale(1.04); }
+
+  /* Step indicator */
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(242, 235, 221, 0.2);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .step-dot.active {
+    background: #D98E32;
+    width: 24px;
+    border-radius: 4px;
+    box-shadow: 0 0 12px rgba(217, 142, 50, 0.6);
+  }
+
+  /* Long press menu hint */
+  .press-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .press-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background 0.3s ease;
+    pointer-events: none;
+  }
+  .press-card:active::after {
+    background: rgba(255,255,255,0.08);
+  }
+
+  /* Page container */
+  .page-container {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    background: #1A1512;
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .modal-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .modal-content {
+    position: absolute;
+    left: 16px; right: 16px;
+    top: 50%;
+    transform: translateY(-50%) scale(0.9);
+    background: #2E241C;
+    border-radius: 20px;
+    padding: 24px 20px;
+    z-index: 41;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    border: 1px solid rgba(242, 235, 221, 0.08);
+  }
+  .modal-content.open {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+    pointer-events: auto;
+  }
+
+  /* Film sprocket holes decoration */
+  .sprocket-top, .sprocket-bottom {
+    height: 12px;
+    background-image: radial-gradient(circle, #1A1512 3px, transparent 3.5px);
+    background-size: 16px 12px;
+    background-repeat: repeat-x;
+    background-color: #2E241C;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+/* ============================================================
+   胶片暗房 · 原生 App V2
+   收藏爱好 · 胶片相机与冲扫社区原生 App
+   ============================================================ */
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ─── Image URLs ─── */
+const IMG = {
+  leicaM6: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqnzt47ifw_ve_miaoda',
+  contaxT2: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqnzt47iew_ve_miaoda',
+  rollei35: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn633dmls_ve_miaoda',
+  portra400: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn4dpgqgw_ve_miaoda',
+  hp5: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn6qhvsau_ve_miaoda',
+  filmRolls: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn6wmjgyu_ve_miaoda',
+  landscape: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqoaytc2tw_ve_miaoda',
+  darkroom: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn4vhf2bu_ve_miaoda',
+  negatives: '/spark/app/app_17cb1x3y6qd/runtime/api/v1/storage/object/bucket_aadkqolzrygas_static/static%2Faadkqn5mxlkas_ve_miaoda',
+};
+
+/* ─── Color Tokens ─── */
+const TOKENS = {
+  charcoal: '#1A1512',
+  deepBrown: '#2E241C',
+  darkroomRed: '#C0392B',
+  amber: '#D98E32',
+  cream: '#F2EBDD',
+  creamDim: 'rgba(242, 235, 221, 0.6)',
+  creamFaint: 'rgba(242, 235, 221, 0.15)',
+  warmBlack: '#0E0B09',
+};
+
+/* ─── Data ─── */
+const CAMERAS = [
+  { id: 1, name: '徕卡 M6', en: 'Leica M6', type: '旁轴', year: '1984', format: '35mm', lens: '徕卡 M 卡口', price: '¥ 28,000', rating: 4.9, img: IMG.leicaM6,
+    desc: '旁轴相机的精神图腾。手动对焦、机械快门、钛合金帘幕，以极简设计与极致做工定义了街拍美学。',
+    specs: [['类型', '旁轴取景测距仪相机'], ['画幅', '35mm'], ['快门', '机械横走式布帘快门，1s~1/1000s + B门'], ['测光', 'TTL 局部测光，LED 指示'], ['体积', '138 × 77 × 38 mm'], ['重量', '560g']] },
+  { id: 2, name: '康泰时 T2', en: 'Contax T2', type: '便携', year: '1991', format: '35mm', lens: 'Sonnar 38mm f/2.8', price: '¥ 4,500', rating: 4.7, img: IMG.contaxT2,
+    desc: '90 年代 PS 机的巅峰之作。钛金属机身、蔡司天塞镜头、自动曝光，是口袋里的画质标杆。',
+    specs: [['类型', '自动对焦便携相机'], ['画幅', '35mm'], ['镜头', 'Carl Zeiss Sonnar 38mm f/2.8'], ['快门', '程序自动曝光，1s~1/500s'], ['体积', '119 × 66 × 33 mm'], ['重量', '295g']] },
+  { id: 3, name: '禄来 3.5F', en: 'Rolleiflex 3.5F', type: '双反', year: '1960', format: '120 中画幅', lens: 'Planar 75mm f/3.5', price: '¥ 8,800', rating: 4.8, img: IMG.rollei35,
+    desc: '中画幅双反的黄金年代标杆。腰平取景、上下双镜、全机械结构，每一帧都是仪式感。',
+    specs: [['类型', '双镜头反光相机'], ['画幅', '120 中画幅（6×6）'], ['镜头', 'Carl Zeiss Planar 75mm f/3.5'], ['快门', 'Prontor 镜间快门，1s~1/500s'], ['体积', '148 × 108 × 108 mm'], ['重量', '1120g']] },
+  { id: 4, name: '尼康 FM2', en: 'Nikon FM2', type: '单反', year: '1982', format: '35mm', lens: 'F 卡口', price: '¥ 3,200', rating: 4.6, img: IMG.leicaM6,
+    desc: '全机械手动单反的传奇。钛合金快门可达 1/4000s，坚固得像一块砖头，是胶片入门的最佳伙伴。',
+    specs: [['类型', '单镜头反光相机'], ['画幅', '35mm'], ['快门', '钛合金焦平面快门，1s~1/4000s + B门'], ['测光', '中央重点加权平均测光'], ['重量', '450g']] },
+];
+
+const FILMS = [
+  { id: 1, name: '柯达 Portra 400', en: 'Kodak Portra 400', type: '彩色负片', iso: 400, tones: '暖调人像', grain: '极细', price: '¥ 86/卷', img: IMG.portra400, stock: 12,
+    desc: '人像卷之王。肤色还原自然，颗粒极细，宽容度惊人，是商业摄影师的标配。' },
+  { id: 2, name: '富士 C200', en: 'Fujifilm C200', type: '彩色负片', iso: 200, tones: '冷调青绿色', grain: '细腻', price: '¥ 38/卷', img: IMG.landscape, stock: 24,
+    desc: '日系清新的代名词。青色阴影、绿色饱和，扫街和风景的日常口粮卷。' },
+  { id: 3, name: '伊尔福 HP5 Plus', en: 'Ilford HP5+', type: '黑白负片', iso: 400, tones: '高对比黑白', grain: '中颗粒', price: '¥ 45/卷', img: IMG.hp5, stock: 18,
+    desc: '黑白街拍的经典。反差鲜明、颗粒感有质感，迫冲性能极佳，人文摄影的首选。' },
+  { id: 4, name: '柯达 Ektar 100', en: 'Kodak Ektar 100', type: '彩色负片', iso: 100, tones: '超高饱和', grain: '超细', price: '¥ 72/卷', img: IMG.landscape, stock: 6,
+    desc: '世界上颗粒最细的彩色负片。色彩浓郁饱和，风光与商业摄影的画质天花板。' },
+  { id: 5, name: '富士 Pro 400H', en: 'Fujifilm Pro 400H', type: '彩色负片', iso: 400, tones: '柔和暖调', grain: '极细', price: '¥ 120/卷', img: IMG.portra400, stock: 0,
+    desc: '已停产的神卷。肤色柔美、高光淡雅，是婚礼摄影师的梦幻之选。' },
+];
+
+const FEEDS = [
+  { id: 1, author: '银盐少年', avatar: IMG.portra400, camera: '徕卡 M6 + 35/1.4', film: 'Kodak Portra 400', likes: 128, comments: 23, img: IMG.portra400, caption: '傍晚的外滩，Portra 400 的暖调永远不会让人失望。' },
+  { id: 2, author: '暗房阿木', avatar: IMG.hp5, camera: '禄来 3.5F', film: 'Ilford HP5+', likes: 256, comments: 41, img: IMG.hp5, caption: '弄堂里的光与影，黑白是减法的艺术。' },
+  { id: 3, author: '胶片拾光', avatar: IMG.landscape, camera: '康泰时 T2', film: 'Fujifilm C200', likes: 89, comments: 12, img: IMG.landscape, caption: '周末郊游随手拍，C200 的绿色真好看。' },
+  { id: 4, author: 'old_lens', avatar: IMG.leicaM6, camera: '尼康 FM2 + 50/1.8', film: 'Kodak Ektar 100', likes: 312, comments: 58, img: IMG.negatives, caption: '新到手的底片，正等待被扫描的那一刻。' },
+];
+
+const SHOPS = [
+  { id: 1, name: '银盐实验室', distance: '2.4km', rating: 4.9, price: '¥ 35 起', time: '当日可取', tag: '精选', img: IMG.darkroom },
+  { id: 2, name: '暗房之家里弄店', distance: '4.1km', rating: 4.7, price: '¥ 28 起', time: '次日取件', tag: '', img: IMG.darkroom },
+  { id: 3, name: '胶片复兴社', distance: '6.8km', rating: 4.8, price: '¥ 42 起', time: '2-3 日', tag: '艺术家合作', img: IMG.darkroom },
+];
+
+const TABS = [
+  { id: 'home', label: '发现', icon: 'home' },
+  { id: 'cameras', label: '图鉴', icon: 'camera' },
+  { id: 'films', label: '胶卷', icon: 'film' },
+  { id: 'darkroom', label: '暗房', icon: 'darkroom' },
+];
+
+/* ─── Icons (inline SVG) ─── */
+function Icon({ name, size = 24, color = 'currentColor' }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const icons = {
+    home: <><path d="M3 11.5L12 3l9 8.5"/><path d="M5 10v10h14V10"/></>,
+    camera: <><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8 7l1.5-3h5L16 7"/></>,
+    film: <><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="7" cy="6" r="1" fill={color}/><circle cx="7" cy="10" r="1" fill={color}/><circle cx="7" cy="14" r="1" fill={color}/><circle cx="7" cy="18" r="1" fill={color}/><circle cx="17" cy="6" r="1" fill={color}/><circle cx="17" cy="10" r="1" fill={color}/><circle cx="17" cy="14" r="1" fill={color}/><circle cx="17" cy="18" r="1" fill={color}/></>,
+    darkroom: <><path d="M12 3v18"/><path d="M6 7h12v10H6z"/><circle cx="12" cy="12" r="2"/></>,
+    back: <><path d="M15 6l-6 6 6 6"/></>,
+    heart: <><path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z"/></>,
+    comment: <><path d="M20 12a8 8 0 11-3-6.2L20 4l-1 4.3"/></>,
+    plus: <><path d="M12 5v14M5 12h14"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
+    book: <><path d="M4 5a2 2 0 012-2h12v16H6a2 2 0 00-2 2V5z"/><path d="M4 19a2 2 0 002 2h12"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></>,
+    setting: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 01-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1A2 2 0 014.2 17l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 012.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 012.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></>,
+    bookmark: <><path d="M6 3h12v18l-6-4-6 4V3z"/></>,
+    share: <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5L15.4 6.5M15.4 17.5L8.6 13.5"/></>,
+    star: <><path d="M12 3l2.9 6 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 21l1.1-6.5L2.6 9.9 9.1 9 12 3z"/></>,
+    map: <><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16M15 5v16"/></>,
+    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    droplet: <><path d="M12 3s7 7 7 12a7 7 0 01-14 0c0-5 7-12 7-12z"/></>,
+    scan: <><path d="M4 7h16M4 17h16M7 4v6M17 14v6M4 11l4-4 4 4 4-4 4 4"/></>,
+    chevronRight: <path d="M9 6l6 6-6 6"/>,
+    chevronDown: <path d="M6 9l6 6 6-6"/>,
+    check: <path d="M5 12l5 5 9-10"/>,
+    palette: <><path d="M12 22a10 10 0 1110-10c0 2.5-2 4-4 4h-2a2 2 0 00-2 2 2 2 0 01-2 2z"/><circle cx="7.5" cy="10.5" r="1" fill={color}/><circle cx="12" cy="7.5" r="1" fill={color}/><circle cx="16.5" cy="10.5" r="1" fill={color}/></>,
+    code: <><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></>,
+    shutter: <><circle cx="12" cy="12" r="9"/><path d="M12 3l4 8H8l4-8zM3 12l8 4-4-8-4 4zM21 12l-8-4 4 8 4-4z"/></>,
+  };
+  return <svg {...common}>{icons[name]}</svg>;
+}
+
+/* ============================================================
+   Custom Cursor Component
+   ============================================================ */
+function CustomCursor() {
+  const cursorRef = useRef(null);
+  const dotRef = useRef(null);
+  const [hovering, setHovering] = useState(false);
+  const rafRef = useRef(null);
+  const mouse = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const pos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mq.matches) return;
+
+    const onMove = (e) => {
+      mouse.current.x = e.clientX;
+      mouse.current.y = e.clientY;
+      // Check if hovering interactive element
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const interactive = el && el.closest && el.closest('button, a, .chip, .tab-item, .press-card, .fab-btn, .swatch, .masonry-item, .scroll-item');
+      setHovering(!!interactive);
+    };
+
+    const onClick = (e) => {
+      // Ripple effect
+      const ripple = document.createElement('div');
+      ripple.className = 'cursor-ripple';
+      ripple.style.left = e.clientX + 'px';
+      ripple.style.top = e.clientY + 'px';
+      ripple.style.width = '32px';
+      ripple.style.height = '32px';
+      document.body.appendChild(ripple);
+      ripple.animate([
+        { transform: 'translate(-50%, -50%) scale(0)', opacity: 0.8 },
+        { transform: 'translate(-50%, -50%) scale(2.5)', opacity: 0 }
+      ], { duration: 600, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      setTimeout(() => ripple.remove(), 600);
+    };
+
+    const animate = () => {
+      pos.current.x += (mouse.current.x - pos.current.x) * 0.18;
+      pos.current.y += (mouse.current.y - pos.current.y) * 0.18;
+      if (cursorRef.current) {
+        cursorRef.current.style.transform = `translate(${pos.current.x}px, ${pos.current.y}px) translate(-50%, -50%)`;
+      }
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(rafRef.current);
+      } else {
+        rafRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  return (
+    <div ref={cursorRef} className={`custom-cursor ${hovering ? 'hovering' : ''}`}>
+      <div className="cursor-ring" />
+      <div className="cursor-dot" />
+    </div>
+  );
+}
+
+/* ============================================================
+   Shutter Flash Effect
+   ============================================================ */
+function ShutterFlash({ active }) {
+  return <div className={`shutter-flash ${active ? 'active' : ''}`} />;
+}
+
+/* ============================================================
+   Safe Light Ambient Glow
+   ============================================================ */
+function SafeLightGlow() {
+  return <div className="safelight-glow" />;
+}
+
+/* ============================================================
+   Film Developing Photo (gray → color animation)
+   ============================================================ */
+function DevelopingPhoto({ src, alt, style, className = '', delay = 0 }) {
+  const [developed, setDeveloped] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loaded) setDeveloped(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [delay, loaded]);
+
+  return (
+    <img
+      ref={imgRef}
+      src={src}
+      alt={alt}
+      onLoad={() => setLoaded(true)}
+      style={{ ...style, transition: 'filter 2.5s cubic-bezier(0.22, 1, 0.36, 1)' }}
+      className={`developing-photo ${developed ? 'developed' : ''} ${className}`}
+    />
+  );
+}
+
+/* ============================================================
+   Progress Ring
+   ============================================================ */
+function ProgressRing({ size = 80, stroke = 6, progress = 70, color = '#D98E32', label, sublabel }) {
+  const radius = (size - stroke) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (progress / 100) * circumference;
+
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="rgba(242,235,221,0.1)" strokeWidth={stroke} />
+        <circle
+          className="progress-ring-circle"
+          cx={size/2} cy={size/2} r={radius}
+          fill="none" stroke={color} strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{ filter: `drop-shadow(0 0 6px ${color}80)` }}
+        />
+      </svg>
+      {label && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: TOKENS.cream, lineHeight: 1 }}>{label}</div>
+          {sublabel && <div style={{ fontSize: 10, color: TOKENS.creamDim, marginTop: 3 }}>{sublabel}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Tab Bar
+   ============================================================ */
+function TabBar({ active, onChange }) {
+  return (
+    <div className="tab-bar" style={{ '--ios-safe-bottom': '34px' }}>
+      {TABS.map(tab => (
+        <button
+          key={tab.id}
+          className={`tab-item ${active === tab.id ? 'active' : ''}`}
+          onClick={() => onChange(tab.id)}
+          style={{ background: 'none', border: 'none', cursor: 'none' }}
+        >
+          <div className="tab-icon">
+            <Icon name={tab.icon} size={24} color={active === tab.id ? '#D98E32' : '#F2EBDD'} />
+          </div>
+          <div className="tab-label">{tab.label}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 1: Home (Community Feed)
+   卡片式信息流 + 下拉刷新 + 安全灯光晕 + 显影动效
+   ============================================================ */
+function HomePage({ onCameraClick, onFilmClick, onShutter }) {
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeChip, setActiveChip] = useState('推荐');
+  const containerRef = useRef(null);
+  const startY = useRef(0);
+  const pulling = useRef(false);
+  const mq = useRef(window.matchMedia('(prefers-reduced-motion: reduce)'));
+
+  const chips = ['推荐', '人像', '街拍', '风光', '黑白', '新冲扫'];
+
+  const onTouchStart = (e) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.touches[0].clientY;
+      pulling.current = true;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (!pulling.current) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 0 && containerRef.current?.scrollTop === 0) {
+      const damped = Math.min(dy * 0.4, 80);
+      setPullY(damped);
+    }
+  };
+  const onTouchEnd = () => {
+    if (pullY > 50 && !refreshing) {
+      setRefreshing(true);
+      setPullY(50);
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullY(0);
+      }, 1500);
+    } else {
+      setPullY(0);
+    }
+    pulling.current = false;
+  };
+
+  // Mouse drag simulation for desktop
+  const onMouseDown = (e) => {
+    if (containerRef.current?.scrollTop === 0) {
+      startY.current = e.clientY;
+      pulling.current = true;
+    }
+  };
+  const onMouseMove = (e) => {
+    if (!pulling.current) return;
+    const dy = e.clientY - startY.current;
+    if (dy > 0 && containerRef.current?.scrollTop === 0) {
+      const damped = Math.min(dy * 0.4, 80);
+      setPullY(damped);
+    }
+  };
+  const onMouseUp = () => {
+    if (pullY > 50 && !refreshing) {
+      setRefreshing(true);
+      setPullY(50);
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullY(0);
+      }, 1500);
+    } else {
+      setPullY(0);
+    }
+    pulling.current = false;
+  };
+
+  return (
+    <div className="page-container page-enter" onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} ref={containerRef}>
+      <SafeLightGlow />
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 16px', position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div className="nav-large-title">发现</div>
+            <div className="nav-subtitle">今日新冲扫 · 128 张样片</div>
+          </div>
+          <button onClick={onShutter}
+            style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(242,235,221,0.08)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream, transition: 'all 0.3s ease' }}>
+            <Icon name="shutter" size={20} />
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'rgba(242,235,221,0.06)', borderRadius: 14, border: '1px solid rgba(242,235,221,0.08)' }}>
+          <Icon name="search" size={18} color={TOKENS.creamDim} />
+          <span style={{ fontSize: 14, color: TOKENS.creamDim }}>搜索相机、胶卷、冲扫店</span>
+        </div>
+      </div>
+
+      {/* Pull to refresh indicator */}
+      <div className="pull-indicator" style={{ height: pullY }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: TOKENS.amber, fontSize: 12 }}>
+          {refreshing ? (
+            <>
+              <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(217,142,50,0.3)', borderTopColor: '#D98E32', animation: 'spin 0.8s linear infinite' }} />
+              <span>正在冲扫新片...</span>
+            </>
+          ) : (
+            <>
+              <Icon name="scan" size={18} color={TOKENS.amber} />
+              <span>{pullY > 50 ? '松开显影' : '下拉刷新'}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Category chips - horizontal scroll */}
+      <div className="film-strip" style={{ paddingTop: 4 }}>
+        {chips.map((c, i) => (
+          <button key={c}
+            className="chip scroll-item"
+            onClick={() => setActiveChip(c)}
+            style={{
+              animationDelay: `${i * 60}ms`,
+              background: activeChip === c ? `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})` : 'rgba(242,235,221,0.08)',
+              color: activeChip === c ? '#fff' : TOKENS.creamDim,
+              border: 'none',
+              whiteSpace: 'nowrap',
+              boxShadow: activeChip === c ? '0 4px 12px rgba(192,57,43,0.35)' : 'none',
+            }}>
+            {c}
+          </button>
+        ))}
+      </div>
+
+      {/* Featured hero card */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <div className="press-card" style={{ borderRadius: 20, overflow: 'hidden', position: 'relative', height: 200 }}>
+          <img src={IMG.darkroom} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(26,21,18,0.95) 0%, transparent 60%)' }} />
+          <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
+            <span style={{ fontSize: 11, color: TOKENS.amber, fontWeight: 600, letterSpacing: 1 }}>本周精选</span>
+            <div style={{ fontSize: 20, fontWeight: 700, color: TOKENS.cream, marginTop: 4, fontFamily: '"Noto Serif SC", serif' }}>
+              暗房里的红光是时间的回声
+            </div>
+            <div style={{ fontSize: 12, color: TOKENS.creamDim, marginTop: 6 }}>
+              12 位胶片摄影师的私人暗房探访
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Feed */}
+      <div style={{ padding: '0 16px 100px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {FEEDS.map((item, i) => (
+          <div key={item.id} className="stagger-item" style={{ animationDelay: `${300 + i * 100}ms` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(217,142,50,0.4)' }}>
+                <img src={item.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.cream }}>{item.author}</div>
+                <div style={{ fontSize: 11, color: TOKENS.creamDim }}>{item.camera} · {item.film}</div>
+              </div>
+              <button style={{ background: 'none', border: 'none', color: TOKENS.creamDim, cursor: 'none', padding: 4 }}>
+                <Icon name="bookmark" size={18} />
+              </button>
+            </div>
+
+            <div className="press-card" style={{ borderRadius: 16, overflow: 'hidden', position: 'relative' }} onClick={onShutter}>
+              <DevelopingPhoto
+                src={item.img}
+                alt=""
+                delay={500 + i * 300}
+                style={{ width: '100%', height: 280, objectFit: 'cover', display: 'block' }}
+              />
+              {/* Film sprocket bottom */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 14, background: 'linear-gradient(to top, rgba(26,21,18,0.9), transparent)' }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
+              <button style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: TOKENS.creamDim, fontSize: 13, cursor: 'none', padding: 4, transition: 'color 0.2s' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = TOKENS.darkroomRed}
+                onMouseLeave={(e) => e.currentTarget.style.color = TOKENS.creamDim}>
+                <Icon name="heart" size={18} /> {item.likes}
+              </button>
+              <button style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: TOKENS.creamDim, fontSize: 13, cursor: 'none', padding: 4 }}>
+                <Icon name="comment" size={18} /> {item.comments}
+              </button>
+              <button style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: TOKENS.creamDim, fontSize: 13, cursor: 'none', padding: 4 }}>
+                <Icon name="share" size={18} />
+              </button>
+            </div>
+            <div style={{ fontSize: 13, color: TOKENS.cream, marginTop: 6, lineHeight: 1.5 }}>
+              {item.caption}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 2: Camera Catalog (Masonry Grid)
+   瀑布流布局
+   ============================================================ */
+function CameraCatalogPage({ onCameraClick }) {
+  const [filter, setFilter] = useState('全部');
+  const filters = ['全部', '旁轴', '单反', '双反', '便携'];
+
+  const filtered = filter === '全部' ? CAMERAS : CAMERAS.filter(c => c.type === filter);
+
+  return (
+    <div className="page-container page-enter">
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 12px' }}>
+        <div className="nav-large-title">相机图鉴</div>
+        <div className="nav-subtitle">收录 128 台经典胶片相机</div>
+      </div>
+
+      {/* Filters */}
+      <div className="film-strip" style={{ paddingTop: 4 }}>
+        {filters.map(f => (
+          <button key={f}
+            className="chip scroll-item"
+            onClick={() => setFilter(f)}
+            style={{
+              background: filter === f ? TOKENS.deepBrown : 'rgba(242,235,221,0.06)',
+              color: filter === f ? TOKENS.amber : TOKENS.creamDim,
+              border: `1px solid ${filter === f ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.08)'}`,
+              whiteSpace: 'nowrap',
+            }}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {/* Masonry */}
+      <div className="masonry" style={{ paddingTop: 8, paddingBottom: 100 }}>
+        {filtered.map((cam, i) => (
+          <div key={cam.id}
+            className="masonry-item press-card stagger-item"
+            style={{ animationDelay: `${i * 120}ms`, cursor: 'none' }}
+            onClick={() => onCameraClick(cam)}>
+            <img src={cam.img} alt={cam.name}
+              style={{ width: '100%', display: 'block', height: i % 2 === 0 ? 220 : 180, objectFit: 'cover' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(26,21,18,0.9) 0%, transparent 55%)' }} />
+            <div style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
+              <div style={{ fontSize: 10, color: TOKENS.amber, fontWeight: 500, letterSpacing: 0.5 }}>{cam.format}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: TOKENS.cream, marginTop: 2 }}>{cam.name}</div>
+              <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 2 }}>{cam.en}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* FAB */}
+      <div className="fab">
+        <button className="fab-btn" style={{ cursor: 'none', border: 'none' }} onClick={() => {}}>
+          <Icon name="plus" size={24} color="#fff" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 3: Camera Detail (Parallax Hero)
+   Hero 大图 + 滚动视差
+   ============================================================ */
+function CameraDetailPage({ camera, onBack, onShutter }) {
+  const scrollRef = useRef(null);
+  const heroRef = useRef(null);
+  const [like, setLike] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const y = el.scrollTop;
+      if (heroRef.current) {
+        const scale = Math.max(1, 1 + y * 0.003);
+        const opacity = Math.max(0, 1 - y / 200);
+        heroRef.current.style.transform = `scale(${scale}) translateY(${y * 0.3}px)`;
+        heroRef.current.style.opacity = opacity;
+      }
+    };
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [camera]);
+
+  if (!camera) return null;
+
+  return (
+    <div className="page-container page-enter" ref={scrollRef}>
+      {/* Hero image */}
+      <div style={{ position: 'relative', height: 360, overflow: 'hidden', background: TOKENS.charcoal }}>
+        <img ref={heroRef} src={camera.img} alt=""
+          style={{ width: '100%', height: '100%', objectFit: 'cover', transformOrigin: 'center top' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(26,21,18,0.3) 0%, transparent 40%, rgba(26,21,18,0.95) 100%)' }} />
+
+        {/* Back button */}
+        <button onClick={onBack}
+          style={{ position: 'absolute', top: 'calc(var(--ios-safe-top, 62px) - 10px)', left: 16, width: 36, height: 36, borderRadius: 18, background: 'rgba(26,21,18,0.6)', backdropFilter: 'blur(10px)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream, zIndex: 5 }}>
+          <Icon name="back" size={20} />
+        </button>
+
+        {/* Action buttons */}
+        <div style={{ position: 'absolute', top: 'calc(var(--ios-safe-top, 62px) - 10px)', right: 16, display: 'flex', gap: 10, zIndex: 5 }}>
+          <button onClick={() => setLike(!like)}
+            style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(26,21,18,0.6)', backdropFilter: 'blur(10px)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: like ? TOKENS.darkroomRed : TOKENS.cream, transition: 'all 0.3s ease' }}>
+            <Icon name="heart" size={18} />
+          </button>
+          <button onClick={onShutter}
+            style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(26,21,18,0.6)', backdropFilter: 'blur(10px)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream }}>
+            <Icon name="share" size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: '0 20px 100px', marginTop: -60, position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, letterSpacing: 1 }}>{camera.type} · {camera.year}</div>
+            <h1 style={{ fontFamily: '"Noto Serif SC", serif', fontSize: 32, fontWeight: 700, color: TOKENS.cream, marginTop: 4, lineHeight: 1.1 }}>{camera.name}</h1>
+            <div style={{ fontSize: 13, color: TOKENS.creamDim, marginTop: 4 }}>{camera.en}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(217,142,50,0.15)', padding: '4px 10px', borderRadius: 10 }}>
+            <Icon name="star" size={14} color={TOKENS.amber} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: TOKENS.amber }}>{camera.rating}</span>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 20 }}>
+          {[
+            { label: '画幅', value: camera.format },
+            { label: '镜头', value: camera.lens },
+            { label: '价格', value: camera.price },
+          ].map((s, i) => (
+            <div key={i} style={{ background: TOKENS.deepBrown, borderRadius: 14, padding: '14px 12px', border: '1px solid rgba(242,235,221,0.06)' }}>
+              <div style={{ fontSize: 11, color: TOKENS.creamDim }}>{s.label}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.cream, marginTop: 4 }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Description */}
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 500, marginBottom: 8, letterSpacing: 1 }}>机型简介</div>
+          <p style={{ fontSize: 14, color: TOKENS.cream, lineHeight: 1.7, opacity: 0.85 }}>{camera.desc}</p>
+        </div>
+
+        {/* Specs */}
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 500, marginBottom: 12, letterSpacing: 1 }}>技术参数</div>
+          <div style={{ background: TOKENS.deepBrown, borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(242,235,221,0.06)' }}>
+            {camera.specs.map(([k, v], i) => (
+              <div key={i} style={{ display: 'flex', padding: '14px 16px', borderBottom: i < camera.specs.length - 1 ? '1px solid rgba(242,235,221,0.06)' : 'none' }}>
+                <div style={{ width: 80, fontSize: 13, color: TOKENS.creamDim, flexShrink: 0 }}>{k}</div>
+                <div style={{ flex: 1, fontSize: 13, color: TOKENS.cream, textAlign: 'right' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sample photos */}
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 500, marginBottom: 12, letterSpacing: 1 }}>样片画廊</div>
+          <div className="film-strip" style={{ padding: 0, gap: 10 }}>
+            {[IMG.portra400, IMG.hp5, IMG.landscape].map((src, i) => (
+              <div key={i} className="press-card" style={{ width: 140, height: 180, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+                <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <button onClick={onShutter}
+          style={{ marginTop: 28, width: '100%', padding: '16px 24px', borderRadius: 16, background: `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})`, border: 'none', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'none', boxShadow: '0 8px 24px rgba(192,57,43,0.35)', transition: 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)' }}>
+          加入收藏清单
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 4: Film Library (Film Strip Carousel)
+   胶片过片/上卷动效 + 轮播画廊
+   ============================================================ */
+function FilmLibraryPage({ onFilmClick }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef(null);
+  const cardWidth = 260;
+  const cardGap = 16;
+
+  const scrollToIndex = (idx) => {
+    if (scrollRef.current) {
+      const x = idx * (cardWidth + cardGap) + 16;
+      scrollRef.current.scrollTo({ left: x, behavior: 'smooth' });
+    }
+  };
+
+  const onScroll = () => {
+    if (!scrollRef.current) return;
+    const x = scrollRef.current.scrollLeft;
+    const idx = Math.round(x / (cardWidth + cardGap));
+    setActiveIdx(Math.max(0, Math.min(FILMS.length - 1, idx)));
+  };
+
+  const active = FILMS[activeIdx];
+
+  return (
+    <div className="page-container page-enter" style={{ background: `linear-gradient(180deg, ${TOKENS.charcoal} 0%, ${TOKENS.warmBlack} 100%)` }}>
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 0' }}>
+        <div className="nav-large-title">胶卷库</div>
+        <div className="nav-subtitle">24 款胶卷 · 从入门到收藏级</div>
+      </div>
+
+      {/* Featured film with sprocket design */}
+      <div style={{ marginTop: 20 }}>
+        <div className="sprocket-top" />
+        <div style={{ background: TOKENS.deepBrown, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: TOKENS.darkroomRed, boxShadow: `0 0 8px ${TOKENS.darkroomRed}` }} />
+          <span style={{ fontSize: 12, color: TOKENS.cream, fontWeight: 500 }}>正在浏览 · {active.name}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: TOKENS.creamDim }}>{activeIdx + 1} / {FILMS.length}</span>
+        </div>
+        <div className="sprocket-bottom" />
+      </div>
+
+      {/* Film strip carousel */}
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        style={{
+          display: 'flex', gap: cardGap,
+          overflowX: 'auto', scrollSnapType: 'x mandatory',
+          padding: '24px 16px 16px',
+          scrollbarWidth: 'none',
+        }}
+      >
+        {FILMS.map((film, i) => (
+          <div key={film.id}
+            className="scroll-item"
+            onClick={() => onFilmClick(film)}
+            style={{
+              scrollSnapAlign: 'center',
+              flexShrink: 0,
+              width: cardWidth,
+              borderRadius: 20,
+              overflow: 'hidden',
+              position: 'relative',
+              cursor: 'none',
+              transition: 'transform 0.4s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.4s ease',
+              transform: i === activeIdx ? 'scale(1)' : 'scale(0.92)',
+              boxShadow: i === activeIdx ? `0 20px 40px rgba(192,57,43,0.25), 0 8px 20px rgba(0,0,0,0.4)` : 'none',
+            }}>
+            <div style={{ height: 280, position: 'relative' }}>
+              <img src={film.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(26,21,18,0.95) 0%, transparent 50%)' }} />
+
+              {/* ISO badge */}
+              <div style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(26,21,18,0.7)', backdropFilter: 'blur(8px)', padding: '6px 12px', borderRadius: 10, border: '1px solid rgba(242,235,221,0.12)' }}>
+                <div style={{ fontSize: 9, color: TOKENS.creamDim, letterSpacing: 1 }}>ISO</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: TOKENS.cream, fontFamily: '"JetBrains Mono", monospace' }}>{film.iso}</div>
+              </div>
+
+              <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
+                <div style={{ fontSize: 10, color: TOKENS.amber, fontWeight: 500, letterSpacing: 1 }}>{film.type}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: TOKENS.cream, marginTop: 4, fontFamily: '"Noto Serif SC", serif' }}>{film.name}</div>
+                <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 2 }}>{film.en}</div>
+              </div>
+            </div>
+
+            {/* Bottom info */}
+            <div style={{ background: TOKENS.deepBrown, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: TOKENS.creamDim }}>色调</div>
+                  <div style={{ fontSize: 12, color: TOKENS.cream, fontWeight: 500, marginTop: 2 }}>{film.tones}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: TOKENS.creamDim }}>颗粒</div>
+                  <div style={{ fontSize: 12, color: TOKENS.cream, fontWeight: 500, marginTop: 2 }}>{film.grain}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: TOKENS.amber }}>{film.price}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Dots indicator */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '8px 0 24px' }}>
+        {FILMS.map((_, i) => (
+          <div key={i} className={`step-dot ${i === activeIdx ? 'active' : ''}`} />
+        ))}
+      </div>
+
+      {/* Stock list */}
+      <div style={{ padding: '0 20px 100px' }}>
+        <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 500, marginBottom: 12, letterSpacing: 1 }}>我的库存</div>
+        <div style={{ background: TOKENS.deepBrown, borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(242,235,221,0.06)' }}>
+          {FILMS.map((f, i) => (
+            <div key={f.id}
+              className="press-item"
+              style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderBottom: i < FILMS.length - 1 ? '1px solid rgba(242,235,221,0.06)' : 'none', cursor: 'none', gap: 12 }}
+              onClick={() => { scrollToIndex(i); }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, color: TOKENS.cream, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</div>
+                <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 2 }}>{f.type} · ISO {f.iso}</div>
+              </div>
+              <div style={{ fontSize: 13, color: f.stock > 0 ? TOKENS.amber : 'rgba(242,235,221,0.3)', fontWeight: 600 }}>
+                {f.stock > 0 ? `${f.stock} 卷` : '缺货'}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 5: Developing Booking (Step Wizard + Bottom Sheet)
+   步骤进度 + 模态选择
+   ============================================================ */
+function BookingPage({ onBack }) {
+  const [step, setStep] = useState(1);
+  const [shop, setShop] = useState(SHOPS[0]);
+  const [film, setFilm] = useState(FILMS[0]);
+  const [service, setService] = useState('彩色负片冲扫');
+  const [quantity, setQuantity] = useState(2);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetType, setSheetType] = useState('');
+  const [date, setDate] = useState('今天 16:00');
+
+  const totalSteps = 3;
+
+  const services = ['彩色负片冲扫', '黑白负片冲扫', '反转片冲扫', '底片扫描', '暗房放大'];
+
+  const openSheet = (type) => {
+    setSheetType(type);
+    setSheetOpen(true);
+  };
+
+  const next = () => {
+    if (step < totalSteps) setStep(step + 1);
+  };
+  const prev = () => {
+    if (step > 1) setStep(step - 1);
+    else onBack();
+  };
+
+  return (
+    <div className="page-container page-enter" style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 16px', position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={prev} style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(242,235,221,0.08)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream }}>
+            <Icon name="back" size={20} />
+          </button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 600, color: TOKENS.cream }}>冲扫预约</div>
+            <div style={{ fontSize: 12, color: TOKENS.creamDim }}>第 {step} 步 · 共 {totalSteps} 步</div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ marginTop: 16, display: 'flex', gap: 6 }}>
+          {[1, 2, 3].map(s => (
+            <div key={s} style={{
+              flex: 1, height: 4, borderRadius: 2,
+              background: s <= step ? `linear-gradient(90deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})` : 'rgba(242,235,221,0.1)',
+              transition: 'all 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+              boxShadow: s <= step ? `0 0 8px rgba(217,142,50,0.4)` : 'none',
+            }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Step Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 100px' }}>
+        {step === 1 && (
+          <div className="stagger-item">
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: TOKENS.cream, marginBottom: 4, fontFamily: '"Noto Serif SC", serif' }}>选择冲扫店</h2>
+            <p style={{ fontSize: 13, color: TOKENS.creamDim, marginBottom: 20 }}>附近 {SHOPS.length} 家认证暗房</p>
+
+            {SHOPS.map((s, i) => (
+              <div key={s.id}
+                className="press-card stagger-item"
+                style={{
+                  animationDelay: `${i * 100}ms`,
+                  borderRadius: 16, overflow: 'hidden', marginBottom: 12,
+                  border: `2px solid ${shop.id === s.id ? TOKENS.amber : 'rgba(242,235,221,0.06)'}`,
+                  background: TOKENS.deepBrown, cursor: 'none',
+                  transition: 'border-color 0.3s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+                }}
+                onClick={() => setShop(s)}>
+                <div style={{ height: 120, position: 'relative' }}>
+                  <img src={s.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(46,36,28,0.9) 0%, transparent 60%)' }} />
+                  {s.tag && (
+                    <span style={{ position: 'absolute', top: 12, right: 12, background: TOKENS.darkroomRed, color: '#fff', fontSize: 10, padding: '4px 10px', borderRadius: 8, fontWeight: 600 }}>{s.tag}</span>
+                  )}
+                </div>
+                <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: TOKENS.cream }}>{s.name}</div>
+                    <div style={{ fontSize: 12, color: TOKENS.creamDim, marginTop: 3, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Icon name="map" size={12} color={TOKENS.creamDim} />{s.distance}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Icon name="star" size={12} color={TOKENS.amber} />{s.rating}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Icon name="clock" size={12} color={TOKENS.creamDim} />{s.time}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TOKENS.amber }}>{s.price}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="stagger-item">
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: TOKENS.cream, marginBottom: 4, fontFamily: '"Noto Serif SC", serif' }}>冲扫服务</h2>
+            <p style={{ fontSize: 13, color: TOKENS.creamDim, marginBottom: 20 }}>选择胶卷类型与数量</p>
+
+            {/* Service type picker */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, color: TOKENS.creamDim, marginBottom: 10 }}>服务类型</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {services.map(sv => (
+                  <button key={sv}
+                    onClick={() => setService(sv)}
+                    className="chip"
+                    style={{
+                      background: service === sv ? 'rgba(217,142,50,0.15)' : 'rgba(242,235,221,0.06)',
+                      color: service === sv ? TOKENS.amber : TOKENS.creamDim,
+                      border: `1px solid ${service === sv ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.08)'}`,
+                      cursor: 'none',
+                    }}>
+                    {sv}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected film */}
+            <div className="press-card" onClick={() => openSheet('film')}
+              style={{ borderRadius: 16, padding: 16, background: TOKENS.deepBrown, border: '1px solid rgba(242,235,221,0.06)', cursor: 'none', marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: TOKENS.creamDim, marginBottom: 8 }}>胶卷类型</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+                  <img src={film.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, color: TOKENS.cream, fontWeight: 600 }}>{film.name}</div>
+                  <div style={{ fontSize: 12, color: TOKENS.creamDim, marginTop: 2 }}>ISO {film.iso} · {film.type}</div>
+                </div>
+                <Icon name="chevronRight" size={18} color={TOKENS.creamDim} />
+              </div>
+            </div>
+
+            {/* Quantity stepper */}
+            <div style={{ borderRadius: 16, padding: 16, background: TOKENS.deepBrown, border: '1px solid rgba(242,235,221,0.06)' }}>
+              <div style={{ fontSize: 12, color: TOKENS.creamDim, marginBottom: 12 }}>数量</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <button onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  style={{ width: 36, height: 36, borderRadius: 12, background: 'rgba(242,235,221,0.08)', border: 'none', color: TOKENS.cream, fontSize: 18, fontWeight: 500, cursor: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease' }}>
+                  −
+                </button>
+                <div style={{ fontSize: 28, fontWeight: 700, color: TOKENS.cream, fontFamily: '"JetBrains Mono", monospace' }}>
+                  {quantity}
+                  <span style={{ fontSize: 14, color: TOKENS.creamDim, marginLeft: 4, fontWeight: 400 }}>卷</span>
+                </div>
+                <button onClick={() => setQuantity(Math.min(10, quantity + 1))}
+                  style={{ width: 36, height: 36, borderRadius: 12, background: 'rgba(242,235,221,0.08)', border: 'none', color: TOKENS.cream, fontSize: 18, fontWeight: 500, cursor: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="stagger-item">
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: TOKENS.cream, marginBottom: 4, fontFamily: '"Noto Serif SC", serif' }}>预约时间</h2>
+            <p style={{ fontSize: 13, color: TOKENS.creamDim, marginBottom: 20 }}>选择送卷时间，可随时改期</p>
+
+            {/* Date selection */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto', paddingBottom: 4 }}>
+              {['今天', '明天', '周三', '周四', '周五', '周六'].map((d, i) => (
+                <button key={d}
+                  onClick={() => setDate(d + ' 16:00')}
+                  style={{
+                    flexShrink: 0, padding: '10px 16px', borderRadius: 14,
+                    background: i === 0 ? `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})` : 'rgba(242,235,221,0.06)',
+                    color: i === 0 ? '#fff' : TOKENS.cream,
+                    border: 'none',
+                    cursor: 'none',
+                    fontSize: 13, fontWeight: 500,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  }}>
+                  <span>{d}</span>
+                  <span style={{ fontSize: 10, opacity: 0.7 }}>{['8/18', '8/19', '8/20', '8/21', '8/22', '8/23'][i]}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Time slots */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, color: TOKENS.creamDim, marginBottom: 10 }}>可预约时段</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {['10:00', '12:00', '14:00', '16:00', '18:00', '20:00'].map(t => (
+                  <button key={t}
+                    onClick={() => setDate(date.split(' ')[0] + ' ' + t)}
+                    style={{
+                      padding: '10px 0', borderRadius: 10,
+                      background: date.includes(t) ? 'rgba(217,142,50,0.15)' : 'rgba(242,235,221,0.06)',
+                      color: date.includes(t) ? TOKENS.amber : TOKENS.cream,
+                      border: `1px solid ${date.includes(t) ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.08)'}`,
+                      fontSize: 13, cursor: 'none',
+                      fontFamily: '"JetBrains Mono", monospace',
+                    }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Order summary */}
+            <div style={{ borderRadius: 16, padding: 16, background: TOKENS.deepBrown, border: '1px solid rgba(242,235,221,0.06)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: TOKENS.cream, marginBottom: 12 }}>订单摘要</div>
+              {[
+                ['冲扫店', shop.name],
+                ['服务', service],
+                ['胶卷', `${film.name} × ${quantity}`],
+                ['时间', date],
+              ].map(([k, v], i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 13, borderBottom: i < 3 ? '1px solid rgba(242,235,221,0.06)' : 'none' }}>
+                  <span style={{ color: TOKENS.creamDim }}>{k}</span>
+                  <span style={{ color: TOKENS.cream, fontWeight: 500 }}>{v}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, marginTop: 4 }}>
+                <span style={{ color: TOKENS.cream, fontWeight: 600 }}>预估金额</span>
+                <span style={{ color: TOKENS.amber, fontWeight: 700, fontSize: 18 }}>¥ {(quantity * 38).toFixed(0)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom CTA */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0,
+        padding: '12px 20px calc(var(--ios-safe-bottom, 34px) + 12px)',
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        background: 'rgba(26,21,18,0.85)', borderTop: '1px solid rgba(242,235,221,0.08)',
+        zIndex: 15,
+      }}>
+        <button onClick={next}
+          style={{
+            width: '100%', padding: '16px 24px', borderRadius: 16,
+            background: `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})`,
+            border: 'none', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'none',
+            boxShadow: '0 8px 24px rgba(192,57,43,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            transition: 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+          }}>
+          {step === totalSteps ? '确认预约' : '下一步'}
+          <Icon name="chevronRight" size={18} color="#fff" />
+        </button>
+      </div>
+
+      {/* Bottom sheet */}
+      <div className={`modal-backdrop ${sheetOpen ? 'open' : ''}`} onClick={() => setSheetOpen(false)} />
+      <div className={`bottom-sheet ${sheetOpen ? 'open' : ''}`} style={{ maxHeight: '60%', overflowY: 'auto' }}>
+        <div className="sheet-handle" />
+        <div style={{ padding: '8px 20px 20px' }}>
+          <div style={{ fontSize: 17, fontWeight: 600, color: TOKENS.cream, marginBottom: 16 }}>选择胶卷</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {FILMS.map(f => (
+              <div key={f.id}
+                className="press-card"
+                onClick={() => { setFilm(f); setSheetOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, background: film.id === f.id ? 'rgba(217,142,50,0.12)' : TOKENS.charcoal, border: `1px solid ${film.id === f.id ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.06)'}`, cursor: 'none' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                  <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, color: TOKENS.cream, fontWeight: 500 }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 2 }}>{film.type} · ISO {f.iso}</div>
+                </div>
+                <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 600 }}>{f.price}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 6: Personal Darkroom (Collection + Progress Rings)
+   环形进度 + 网格拼贴 + 收藏卡片
+   ============================================================ */
+function DarkroomPage({ onBooking, onSpecs, onApi, onShutter }) {
+  const cameras = CAMERAS.slice(0, 3);
+  const [activeTab, setActiveTab] = useState('收藏');
+  const tabs = ['收藏', '订单', '日志'];
+
+  const orders = [
+    { id: 1, name: '柯达 Portra 400 × 2', shop: '银盐实验室', status: '冲扫中', progress: 65, color: TOKENS.amber },
+    { id: 2, name: '伊尔福 HP5+ × 1', shop: '暗房之家里弄店', status: '已完成', progress: 100, color: '#4CAF50' },
+    { id: 3, name: '富士 C200 × 3', shop: '胶片复兴社', status: '待取件', progress: 90, color: TOKENS.darkroomRed },
+  ];
+
+  return (
+    <div className="page-container page-enter">
+      {/* Hero header with darkroom ambiance */}
+      <div style={{ position: 'relative', padding: 'var(--ios-safe-top, 62px) 20px 24px', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, background: `radial-gradient(circle, rgba(192,57,43,0.3), transparent 70%)`, filter: 'blur(30px)', animation: 'safelight-breathe 4s ease-in-out infinite' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative', zIndex: 2 }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${TOKENS.amber}`, boxShadow: `0 0 20px rgba(217,142,50,0.3)` }}>
+            <img src={IMG.portra400} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: TOKENS.amber, fontWeight: 500, letterSpacing: 1 }}>私人暗房</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: TOKENS.cream, fontFamily: '"Noto Serif SC", serif' }}>银盐少年</div>
+            <div style={{ fontSize: 12, color: TOKENS.creamDim, marginTop: 2 }}>胶片龄 3 年 · 第 47 卷拍摄中</div>
+          </div>
+          <button onClick={onShutter} style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(242,235,221,0.08)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream }}>
+            <Icon name="setting" size={18} />
+          </button>
+        </div>
+
+        {/* Stats grid - 4 stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 20, position: 'relative', zIndex: 2 }}>
+          {[
+            { val: '12', label: '相机' },
+            { val: '34', label: '胶卷' },
+            { val: '47', label: '已冲' },
+            { val: '1.2k', label: '样片' },
+          ].map((s, i) => (
+            <div key={i} className="stagger-item" style={{
+              animationDelay: `${i * 80}ms`,
+              background: 'rgba(242,235,221,0.04)',
+              borderRadius: 14,
+              padding: '14px 0',
+              textAlign: 'center',
+              border: '1px solid rgba(242,235,221,0.06)',
+            }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: TOKENS.cream, fontFamily: '"JetBrains Mono", monospace' }}>{s.val}</div>
+              <div style={{ fontSize: 10, color: TOKENS.creamDim, marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ padding: '0 20px', display: 'flex', gap: 24, borderBottom: '1px solid rgba(242,235,221,0.06)' }}>
+        {tabs.map(t => (
+          <button key={t}
+            onClick={() => setActiveTab(t)}
+            style={{
+              padding: '12px 0 14px', fontSize: 15, fontWeight: 600,
+              color: activeTab === t ? TOKENS.cream : TOKENS.creamDim,
+              background: 'none', border: 'none',
+              borderBottom: `2px solid ${activeTab === t ? TOKENS.amber : 'transparent'}`,
+              cursor: 'none',
+              transition: 'all 0.3s ease',
+              marginBottom: -1,
+            }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === '收藏' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          {/* Camera collection - ring progress */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.cream }}>相机收藏</div>
+              <button style={{ fontSize: 12, color: TOKENS.amber, background: 'none', border: 'none', cursor: 'none' }}>查看全部</button>
+            </div>
+            <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+              {cameras.map((cam, i) => (
+                <div key={cam.id} className="press-card scroll-item" style={{
+                  flexShrink: 0, width: 140, borderRadius: 16,
+                  background: TOKENS.deepBrown,
+                  border: '1px solid rgba(242,235,221,0.06)',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  cursor: 'none',
+                }}>
+                  <div style={{ height: 100, overflow: 'hidden' }}>
+                    <img src={cam.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ padding: '10px 12px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <ProgressRing size={36} stroke={3} progress={[85, 60, 92][i]} color={TOKENS.amber} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: TOKENS.cream, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cam.name}</div>
+                      <div style={{ fontSize: 10, color: TOKENS.creamDim, marginTop: 2 }}>{cam.type} · {cam.format}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Film rolls - tile grid */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.cream }}>胶卷库存</div>
+              <button style={{ fontSize: 12, color: TOKENS.amber, background: 'none', border: 'none', cursor: 'none' }}>管理</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {FILMS.slice(0, 6).map(f => (
+                <div key={f.id} className="press-card" style={{
+                  borderRadius: 12, overflow: 'hidden',
+                  background: TOKENS.deepBrown,
+                  border: '1px solid rgba(242,235,221,0.06)',
+                  cursor: 'none',
+                }}>
+                  <div style={{ aspectRatio: '1', position: 'relative' }}>
+                    <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {f.stock > 0 && (
+                      <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(26,21,18,0.8)', backdropFilter: 'blur(6px)', padding: '2px 8px', borderRadius: 8, fontSize: 10, color: TOKENS.amber, fontWeight: 600 }}>
+                        {f.stock}卷
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '8px 10px' }}>
+                    <div style={{ fontSize: 11, color: TOKENS.cream, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</div>
+                    <div style={{ fontSize: 9, color: TOKENS.creamDim, marginTop: 1 }}>ISO {f.iso}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === '订单' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          <button onClick={onBooking} style={{
+            width: '100%', padding: '14px 20px', borderRadius: 14,
+            background: `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})`,
+            border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16,
+            boxShadow: '0 6px 20px rgba(192,57,43,0.3)',
+          }}>
+            <Icon name="plus" size={18} color="#fff" /> 发起冲扫预约
+          </button>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {orders.map((o, i) => (
+              <div key={o.id} className="stagger-item" style={{
+                animationDelay: `${i * 100}ms`,
+                borderRadius: 16, padding: 16,
+                background: TOKENS.deepBrown,
+                border: '1px solid rgba(242,235,221,0.06)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.cream }}>{o.name}</div>
+                    <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 3 }}>{o.shop}</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: o.color, background: `${o.color}15`, padding: '4px 10px', borderRadius: 8, fontWeight: 500 }}>
+                    {o.status}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ProgressRing size={44} stroke={4} progress={o.progress} color={o.color} label={o.progress + '%'} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ height: 6, borderRadius: 3, background: 'rgba(242,235,221,0.08)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${o.progress}%`, background: `linear-gradient(90deg, ${TOKENS.darkroomRed}, ${o.color})`, borderRadius: 3, boxShadow: `0 0 8px ${o.color}60`, transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)' }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: TOKENS.creamDim, marginTop: 6 }}>
+                      {o.progress < 100 ? '预计 ' + (3 - Math.floor(o.progress / 40)) + ' 小时后完成' : '可前往门店取件'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === '日志' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          {/* Quick links to specs & docs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            <button onClick={onSpecs} className="press-card" style={{
+              padding: 16, borderRadius: 16, textAlign: 'left',
+              background: `linear-gradient(135deg, rgba(217,142,50,0.15), rgba(217,142,50,0.05))`,
+              border: '1px solid rgba(217,142,50,0.2)',
+              cursor: 'none', color: TOKENS.cream,
+            }}>
+              <Icon name="palette" size={24} color={TOKENS.amber} />
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>设计规范</div>
+              <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 4 }}>色彩 / 字体 / 组件</div>
+            </button>
+            <button onClick={onApi} className="press-card" style={{
+              padding: 16, borderRadius: 16, textAlign: 'left',
+              background: `linear-gradient(135deg, rgba(192,57,43,0.15), rgba(192,57,43,0.05))`,
+              border: '1px solid rgba(192,57,43,0.2)',
+              cursor: 'none', color: TOKENS.cream,
+            }}>
+              <Icon name="code" size={24} color={TOKENS.darkroomRed} />
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>接口文档</div>
+              <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 4 }}>API / 数据结构</div>
+            </button>
+          </div>
+
+          {/* Timeline log */}
+          <div style={{ fontSize: 13, color: TOKENS.amber, fontWeight: 500, marginBottom: 12, letterSpacing: 1 }}>冲扫日志</div>
+          {[
+            { date: '8月18日', title: '柯达 Portra 400 第 47 卷', desc: '上海外滩 · 傍晚街拍', type: '拍摄中' },
+            { date: '8月16日', title: '伊尔福 HP5+ 送扫', desc: '暗房之家里弄店 · 2 卷', type: '冲扫中' },
+            { date: '8月12日', title: '富士 C200 完成', desc: '胶片复兴社 · 36 张扫描件', type: '已完成' },
+            { date: '8月8日', title: '徕卡 M6 保养', desc: '取景器清洁 · 快门校准', type: '设备维护' },
+          ].map((log, i) => (
+            <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: i < 3 ? '1px solid rgba(242,235,221,0.06)' : 'none' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: TOKENS.amber, marginTop: 8, flexShrink: 0, boxShadow: `0 0 8px ${TOKENS.amber}` }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: TOKENS.creamDim }}>{log.date}</div>
+                <div style={{ fontSize: 14, color: TOKENS.cream, fontWeight: 500, marginTop: 2 }}>{log.title}</div>
+                <div style={{ fontSize: 12, color: TOKENS.creamDim, marginTop: 3 }}>{log.desc}</div>
+              </div>
+              <span style={{ fontSize: 10, color: TOKENS.amber, background: 'rgba(217,142,50,0.12)', padding: '3px 8px', borderRadius: 6, height: 'fit-content', whiteSpace: 'nowrap' }}>{log.type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 7: Design Specs
+   左右分栏 / 网格拼贴布局
+   ============================================================ */
+function DesignSpecsPage({ onBack }) {
+  const [section, setSection] = useState('色彩');
+
+  const sections = ['色彩', '字体', '组件', '动效', '图标'];
+
+  const colorGroups = [
+    { name: '主色', colors: [
+      { name: '暗房红', hex: '#C0392B', dark: true },
+      { name: '琥珀', hex: '#D98E32', dark: true },
+    ]},
+    { name: '基底', colors: [
+      { name: '炭黑', hex: '#1A1512', dark: true },
+      { name: '深棕', hex: '#2E241C', dark: true },
+      { name: '暖黑', hex: '#0E0B09', dark: true },
+    ]},
+    { name: '文字与表面', colors: [
+      { name: '米白', hex: '#F2EBDD', dark: false },
+      { name: '米白 60%', hex: 'rgba(242,235,221,0.6)', dark: false },
+      { name: '米白 15%', hex: 'rgba(242,235,221,0.15)', dark: false },
+    ]},
+  ];
+
+  const typeSizes = [
+    { name: '大标题', size: 34, weight: 700, font: 'serif', sample: '暗房之光' },
+    { name: '一级标题', size: 22, weight: 700, font: 'serif', sample: '相机图鉴' },
+    { name: '卡片标题', size: 16, weight: 600, font: 'sans', sample: '徕卡 M6 旁轴相机' },
+    { name: '正文', size: 14, weight: 400, font: 'sans', sample: '旁轴相机的精神图腾，以极简设计与极致做工定义了街拍美学。' },
+    { name: '辅助文字', size: 12, weight: 400, font: 'sans', sample: 'ISO 400 · 彩色负片 · 极细颗粒' },
+    { name: '数字', size: 20, weight: 700, font: 'mono', sample: '128 张' },
+  ];
+
+  const components = ['按钮', '卡片', '输入框', '底部 TabBar', '进度环', 'Chip 标签', '底部弹窗', '下拉刷新'];
+
+  return (
+    <div className="page-container page-enter" style={{ background: TOKENS.warmBlack }}>
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 12px', position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(242,235,221,0.08)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream }}>
+            <Icon name="back" size={20} />
+          </button>
+          <div>
+            <div className="nav-large-title" style={{ fontSize: 24 }}>设计规范</div>
+            <div className="nav-subtitle">Design System v1.0</div>
+          </div>
+        </div>
+
+        {/* Section tabs */}
+        <div className="film-strip" style={{ padding: 0, gap: 8 }}>
+          {sections.map(s => (
+            <button key={s}
+              onClick={() => setSection(s)}
+              className="chip scroll-item"
+              style={{
+                background: section === s ? 'rgba(217,142,50,0.15)' : 'rgba(242,235,221,0.06)',
+                color: section === s ? TOKENS.amber : TOKENS.creamDim,
+                border: `1px solid ${section === s ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.08)'}`,
+                whiteSpace: 'nowrap',
+                cursor: 'none',
+              }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 20px 100px' }}>
+        {section === '色彩' && (
+          <div className="stagger-item">
+            {colorGroups.map((group, gi) => (
+              <div key={group.name} style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, marginBottom: 10, letterSpacing: 1 }}>{group.name}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {group.colors.map((c, i) => (
+                    <div key={c.name} className="swatch stagger-item"
+                      style={{
+                        animationDelay: `${gi * 100 + i * 80}ms`,
+                        background: c.hex,
+                        display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                        padding: 10,
+                        border: '1px solid rgba(242,235,221,0.08)',
+                      }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: c.dark ? '#F2EBDD' : '#1A1512' }}>{c.name}</div>
+                      <div style={{ fontSize: 10, color: c.dark ? 'rgba(242,235,221,0.6)' : 'rgba(26,21,18,0.6)', fontFamily: '"JetBrains Mono", monospace', marginTop: 2 }}>{c.hex}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Usage */}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, marginBottom: 10, letterSpacing: 1 }}>语义规范</div>
+              <div style={{ background: TOKENS.deepBrown, borderRadius: 14, padding: 14, border: '1px solid rgba(242,235,221,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[
+                  ['背景', '炭黑 #1A1512 + 深棕 #2E241C 分层'],
+                  ['强调', '暗房红 #C0392B 用于按钮、提醒'],
+                  ['辅助', '琥珀 #D98E32 用于标签、评分、进度'],
+                  ['文字', '米白 #F2EBDD，透明度表达层级'],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: TOKENS.amber, minWidth: 40 }}>{k}</span>
+                    <span style={{ fontSize: 12, color: TOKENS.cream, opacity: 0.8 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {section === '字体' && (
+          <div className="stagger-item">
+            {typeSizes.map((t, i) => (
+              <div key={t.name} className="stagger-item" style={{
+                animationDelay: `${i * 80}ms`,
+                padding: '16px 0',
+                borderBottom: i < typeSizes.length - 1 ? '1px solid rgba(242,235,221,0.06)' : 'none',
+              }}>
+                <div style={{ fontSize: 10, color: TOKENS.creamDim, marginBottom: 6, letterSpacing: 1 }}>
+                  {t.name} · {t.size}px · {t.weight}
+                </div>
+                <div style={{
+                  fontSize: t.size,
+                  fontWeight: t.weight,
+                  color: TOKENS.cream,
+                  fontFamily: t.font === 'serif' ? '"Noto Serif SC", serif' : t.font === 'mono' ? '"JetBrains Mono", monospace' : '"Noto Sans SC", sans-serif',
+                  lineHeight: 1.3,
+                }}>
+                  {t.sample}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {section === '组件' && (
+          <div className="stagger-item" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {components.map((c, i) => (
+              <div key={c} className="stagger-item" style={{
+                animationDelay: `${i * 60}ms`,
+                background: TOKENS.deepBrown,
+                borderRadius: 14,
+                padding: 14,
+                border: '1px solid rgba(242,235,221,0.06)',
+                minHeight: 100,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+              }}>
+                {/* Component preview area */}
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                  {c === '按钮' && (
+                    <button style={{ padding: '8px 20px', borderRadius: 10, background: `linear-gradient(135deg, ${TOKENS.darkroomRed}, ${TOKENS.amber})`, border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'none' }}>
+                      主要按钮
+                    </button>
+                  )}
+                  {c === '卡片' && (
+                    <div style={{ width: '100%', height: 50, background: TOKENS.charcoal, borderRadius: 10, border: '1px solid rgba(242,235,221,0.06)' }} />
+                  )}
+                  {c === '输入框' && (
+                    <div style={{ width: '100%', padding: '8px 12px', borderRadius: 10, background: 'rgba(242,235,221,0.06)', border: '1px solid rgba(242,235,221,0.08)', fontSize: 12, color: TOKENS.creamDim }}>
+                      搜索...
+                    </div>
+                  )}
+                  {c === '底部 TabBar' && (
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      {[1, 2, 3].map(n => (
+                        <div key={n} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                          <Icon name="camera" size={16} color={n === 2 ? TOKENS.amber : 'rgba(242,235,221,0.3)'} />
+                          <span style={{ fontSize: 9, color: n === 2 ? TOKENS.amber : 'rgba(242,235,221,0.3)' }}>标签{n}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {c === '进度环' && <ProgressRing size={48} stroke={4} progress={72} color={TOKENS.amber} label="72%" />}
+                  {c === 'Chip 标签' && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <span className="chip" style={{ background: 'rgba(217,142,50,0.15)', color: TOKENS.amber, fontSize: 11, padding: '3px 10px' }}>选中</span>
+                      <span className="chip" style={{ background: 'rgba(242,235,221,0.06)', color: TOKENS.creamDim, fontSize: 11, padding: '3px 10px' }}>默认</span>
+                    </div>
+                  )}
+                  {c === '底部弹窗' && (
+                    <div style={{ width: 60, height: 30, background: TOKENS.charcoal, borderRadius: '8px 8px 0 0', position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', width: 16, height: 2, background: 'rgba(242,235,221,0.2)', borderRadius: 2 }} />
+                    </div>
+                  )}
+                  {c === '下拉刷新' && (
+                    <Icon name="scan" size={24} color={TOKENS.amber} />
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: TOKENS.cream, fontWeight: 500 }}>{c}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {section === '动效' && (
+          <div className="stagger-item">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { name: '显影渐现', desc: '灰白 → 彩色，2.5s 缓出', icon: 'photo' },
+                { name: '快门闪烁', desc: '全屏白闪，250ms 弹簧', icon: 'shutter' },
+                { name: '安全灯呼吸', desc: '红光光晕，4s 循环', icon: 'pulse' },
+                { name: '胶片过片', desc: '轮播吸附，0.5s 阻尼', icon: 'film' },
+                { name: '下拉弹性', desc: '阻尼拉伸 + 弹簧回弹', icon: 'chevronDown' },
+                { name: '环形进度', desc: '描边缓入，1s 延迟', icon: 'droplet' },
+              ].map((a, i) => (
+                <div key={a.name} className="stagger-item" style={{
+                  animationDelay: `${i * 80}ms`,
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: 14, background: TOKENS.deepBrown,
+                  borderRadius: 14,
+                  border: '1px solid rgba(242,235,221,0.06)',
+                }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: `rgba(217,142,50,0.12)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={a.icon} size={20} color={TOKENS.amber} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, color: TOKENS.cream, fontWeight: 600 }}>{a.name}</div>
+                    <div style={{ fontSize: 11, color: TOKENS.creamDim, marginTop: 2 }}>{a.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {section === '图标' && (
+          <div className="stagger-item">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              {['home', 'camera', 'film', 'darkroom', 'heart', 'comment', 'search', 'bookmark', 'share', 'star', 'map', 'clock', 'user', 'setting', 'plus', 'shutter'].map((ic, i) => (
+                <div key={ic} className="stagger-item" style={{
+                  animationDelay: `${i * 40}ms`,
+                  aspectRatio: '1',
+                  background: TOKENS.deepBrown,
+                  borderRadius: 14,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  border: '1px solid rgba(242,235,221,0.06)',
+                }}>
+                  <Icon name={ic} size={24} color={TOKENS.cream} />
+                  <span style={{ fontSize: 10, color: TOKENS.creamDim }}>{ic}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Page 8: API Docs
+   代码块 + 分组列表
+   ============================================================ */
+function ApiDocsPage({ onBack }) {
+  const [active, setActive] = useState('cameras');
+
+  const endpoints = [
+    { id: 'cameras', name: '相机图鉴', method: 'GET', path: '/api/v1/cameras' },
+    { id: 'camera-detail', name: '相机详情', method: 'GET', path: '/api/v1/cameras/:id' },
+    { id: 'films', name: '胶卷列表', method: 'GET', path: '/api/v1/films' },
+    { id: 'feed', name: '社区信息流', method: 'GET', path: '/api/v1/feed' },
+    { id: 'booking', name: '冲扫预约', method: 'POST', path: '/api/v1/bookings' },
+    { id: 'user', name: '用户信息', method: 'GET', path: '/api/v1/users/:id' },
+  ];
+
+  const methodColor = (m) => m === 'GET' ? '#4CAF50' : m === 'POST' ? TOKENS.amber : TOKENS.darkroomRed;
+
+  const samples = {
+    cameras: `// 获取相机列表
+// GET /api/v1/cameras?type=旁轴&page=1&limit=10
+
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 128,
+    "page": 1,
+    "items": [
+      {
+        "id": 1,
+        "name": "徕卡 M6",
+        "en_name": "Leica M6",
+        "type": "旁轴",
+        "format": "35mm",
+        "year": 1984,
+        "lens_mount": "徕卡 M 卡口",
+        "price": 28000,
+        "rating": 4.9,
+        "image_url": "...",
+        "description": "旁轴相机的精神图腾..."
+      }
+    ]
+  }
+}`,
+    'camera-detail': `// 获取相机详情
+// GET /api/v1/cameras/1
+
+{
+  "code": 0,
+  "data": {
+    "id": 1,
+    "name": "徕卡 M6",
+    "en_name": "Leica M6",
+    "specs": {
+      "type": "旁轴取景测距仪相机",
+      "format": "35mm",
+      "shutter": "机械横走式布帘快门",
+      "shutter_speed": "1s~1/1000s + B门",
+      "metering": "TTL 局部测光",
+      "dimensions": "138 × 77 × 38 mm",
+      "weight": 560
+    },
+    "sample_photos": [...],
+    "related_cameras": [...]
+  }
+}`,
+    films: `// 获取胶卷列表
+// GET /api/v1/films?type=彩色负片
+
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "name": "柯达 Portra 400",
+        "en_name": "Kodak Portra 400",
+        "type": "彩色负片",
+        "iso": 400,
+        "tones": "暖调人像",
+        "grain": "极细",
+        "price": 86,
+        "stock": 12,
+        "description": "人像卷之王..."
+      }
+    ]
+  }
+}`,
+    feed: `// 社区样片流
+// GET /api/v1/feed?category=推荐&cursor=xxx
+
+{
+  "code": 0,
+  "data": {
+    "has_more": true,
+    "next_cursor": "eyJw...",
+    "items": [
+      {
+        "id": "post_001",
+        "author": {
+          "id": "u_001",
+          "name": "银盐少年",
+          "avatar": "..."
+        },
+        "camera": "徕卡 M6 + 35/1.4",
+        "film": "Kodak Portra 400",
+        "image_url": "...",
+        "caption": "傍晚的外滩...",
+        "likes": 128,
+        "comments": 23,
+        "created_at": "2026-08-18T14:30:00+08:00"
+      }
+    ]
+  }
+}`,
+    booking: `// 创建冲扫预约
+// POST /api/v1/bookings
+
+// Request
+{
+  "shop_id": 1,
+  "service_type": "彩色负片冲扫",
+  "film_id": 1,
+  "quantity": 2,
+  "scheduled_at": "2026-08-18T16:00:00+08:00",
+  "remark": "请扫描 4800dpi"
+}
+
+// Response
+{
+  "code": 0,
+  "data": {
+    "booking_id": "bk_20260818001",
+    "status": "pending",
+    "estimated_price": 76,
+    "estimated_completion": "2026-08-19T12:00:00+08:00"
+  }
+}`,
+    user: `// 用户信息 + 收藏
+// GET /api/v1/users/me
+
+{
+  "code": 0,
+  "data": {
+    "id": "u_001",
+    "name": "银盐少年",
+    "avatar": "...",
+    "bio": "胶片龄 3 年",
+    "stats": {
+      "cameras": 12,
+      "films": 34,
+      "processed_rolls": 47,
+      "photos": 1200
+    },
+    "camera_collection": [...],
+    "film_stock": [...],
+    "orders": [...]
+  }
+}`,
+  };
+
+  return (
+    <div className="page-container page-enter" style={{ background: TOKENS.warmBlack }}>
+      <div style={{ padding: 'var(--ios-safe-top, 62px) 20px 12px', position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(242,235,221,0.08)', border: '1px solid rgba(242,235,221,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'none', color: TOKENS.cream }}>
+            <Icon name="back" size={20} />
+          </button>
+          <div>
+            <div className="nav-large-title" style={{ fontSize: 24 }}>接口文档</div>
+            <div className="nav-subtitle">API v1 · RESTful</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Endpoint list */}
+      <div style={{ padding: '0 20px', marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, marginBottom: 10, letterSpacing: 1 }}>接口列表</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {endpoints.map(ep => (
+            <button key={ep.id}
+              onClick={() => setActive(ep.id)}
+              className="press-card"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 14px',
+                background: active === ep.id ? 'rgba(242,235,221,0.06)' : 'transparent',
+                border: `1px solid ${active === ep.id ? 'rgba(217,142,50,0.3)' : 'rgba(242,235,221,0.06)'}`,
+                borderRadius: 12,
+                cursor: 'none',
+                transition: 'all 0.2s ease',
+                textAlign: 'left',
+              }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+                background: `${methodColor(ep.method)}20`,
+                color: methodColor(ep.method),
+                minWidth: 44, textAlign: 'center',
+                fontFamily: '"JetBrains Mono", monospace',
+              }}>{ep.method}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: TOKENS.cream, fontWeight: 500 }}>{ep.name}</div>
+                <div style={{ fontSize: 10, color: TOKENS.creamDim, fontFamily: '"JetBrains Mono", monospace', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ep.path}</div>
+              </div>
+              <Icon name="chevronRight" size={14} color={TOKENS.creamDim} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Code sample */}
+      <div style={{ padding: '0 20px 100px' }}>
+        <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, marginBottom: 10, letterSpacing: 1 }}>代码示例</div>
+        <div className="code-block">
+          {samples[active].split('\n').map((line, i) => {
+            let colored = line;
+            // Simple syntax highlighting
+            colored = colored.replace(/(\/\/.*)$/g, '<span class="code-comment">$1</span>');
+            colored = colored.replace(/("[^"]*")/g, '<span class="code-string">$1</span>');
+            colored = colored.replace(/\b(code|message|data|items|id|name|type|format|year|price|rating|total|page|has_more|next_cursor|author|film|likes|comments|created_at|status|estimated_price|estimated_completion|request|response|specs|sample_photos|related_cameras|stats|camera_collection|film_stock|orders|shop_id|service_type|film_id|quantity|scheduled_at|remark|booking_id)\b(?=\s*:)/g, '<span class="code-prop">$1</span>');
+            colored = colored.replace(/\b(true|false|null)\b/g, '<span class="code-keyword">$1</span>');
+
+            return <div key={i} dangerouslySetInnerHTML={{ __html: colored || '&nbsp;' }} />;
+          })}
+        </div>
+
+        {/* Response codes */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 12, color: TOKENS.amber, fontWeight: 500, marginBottom: 10, letterSpacing: 1 }}>状态码</div>
+          <div style={{ background: TOKENS.deepBrown, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(242,235,221,0.06)' }}>
+            {[
+              { code: 200, desc: '请求成功', color: '#4CAF50' },
+              { code: 400, desc: '参数错误', color: TOKENS.amber },
+              { code: 401, desc: '未授权', color: TOKENS.amber },
+              { code: 404, desc: '资源不存在', color: TOKENS.darkroomRed },
+              { code: 500, desc: '服务器错误', color: TOKENS.darkroomRed },
+            ].map((s, i) => (
+              <div key={s.code} style={{ display: 'flex', padding: '12px 16px', borderBottom: i < 4 ? '1px solid rgba(242,235,221,0.06)' : 'none' }}>
+                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 13, color: s.color, minWidth: 60, fontWeight: 600 }}>{s.code}</span>
+                <span style={{ fontSize: 13, color: TOKENS.cream }}>{s.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Main App
+   ============================================================ */
+function App() {
+  const [tab, setTab] = useState('home');
+  const [selectedCamera, setSelectedCamera] = useState(null);
+  const [showCameraDetail, setShowCameraDetail] = useState(false);
+  const [showBooking, setShowBooking] = useState(false);
+  const [showSpecs, setShowSpecs] = useState(false);
+  const [showApi, setShowApi] = useState(false);
+  const [shutterFlash, setShutterFlash] = useState(false);
+
+  const triggerShutter = useCallback(() => {
+    setShutterFlash(true);
+    const t = setTimeout(() => setShutterFlash(false), 250);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleTabChange = (newTab) => {
+    triggerShutter();
+    setShowCameraDetail(false);
+    setShowBooking(false);
+    setShowSpecs(false);
+    setShowApi(false);
+    setTimeout(() => setTab(newTab), 150);
+  };
+
+  const handleCameraClick = (cam) => {
+    triggerShutter();
+    setSelectedCamera(cam);
+    setTimeout(() => setShowCameraDetail(true), 150);
+  };
+
+  // ── Announce upgrade ──
+  useEffect(() => {
+    const announce = () => {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    };
+    announce();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announce, { once: true });
+    }
+  }, []);
+
+  // ── Render current page ──
+  const renderPage = () => {
+    if (showSpecs) return <DesignSpecsPage onBack={() => setShowSpecs(false)} />;
+    if (showApi) return <ApiDocsPage onBack={() => setShowApi(false)} />;
+    if (showBooking) return <BookingPage onBack={() => setShowBooking(false)} />;
+    if (showCameraDetail) return <CameraDetailPage camera={selectedCamera} onBack={() => setShowCameraDetail(false)} onShutter={triggerShutter} />;
+
+    switch (tab) {
+      case 'home':
+        return <HomePage onCameraClick={handleCameraClick} onFilmClick={() => setTab('films')} onShutter={triggerShutter} />;
+      case 'cameras':
+        return <CameraCatalogPage onCameraClick={handleCameraClick} />;
+      case 'films':
+        return <FilmLibraryPage onFilmClick={() => {}} />;
+      case 'darkroom':
+        return <DarkroomPage
+          onBooking={() => setShowBooking(true)}
+          onSpecs={() => setShowSpecs(true)}
+          onApi={() => setShowApi(true)}
+          onShutter={triggerShutter}
+        />;
+      default:
+        return null;
+    }
+  };
+
+  const showTabBar = !showCameraDetail && !showBooking && !showSpecs && !showApi;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
+      <h1 style={{
+        fontFamily: '"Noto Serif SC", serif',
+        fontSize: 14,
+        color: 'rgba(242,235,221,0.4)',
+        fontWeight: 400,
+        letterSpacing: 3,
+      }}>
+        胶 片 暗 房 · 原 生 App V2
+      </h1>
+
+      <div style={{
+        width: 402, height: 874, borderRadius: 48, overflow: 'hidden',
+        position: 'relative', background: '#000',
+        border: '1px solid #2A2522',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.6), 0 0 120px rgba(192,57,43,0.08)',
+        fontFamily: '"Noto Sans SC", -apple-system, system-ui, sans-serif',
+        WebkitFontSmoothing: 'antialiased',
+        '--ios-safe-top': '62px',
+        '--ios-safe-bottom': '34px',
+      }}>
+        {/* dynamic island */}
+        <div style={{
+          position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+          width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50,
+        }} />
+        {/* status bar */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+          {/* custom status bar with dark icons on dark bg */}
+          <div style={{
+            display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+            padding: '21px 24px 19px', boxSizing: 'border-box',
+            position: 'relative', zIndex: 20, width: '100%',
+          }}>
+            <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+              <span style={{ fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590, fontSize: 17, lineHeight: '22px', color: '#F2EBDD' }}>9:41</span>
+            </div>
+            <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+              <svg width="19" height="12" viewBox="0 0 19 12">
+                <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill="#F2EBDD"/>
+                <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill="#F2EBDD"/>
+                <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill="#F2EBDD"/>
+                <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill="#F2EBDD"/>
+              </svg>
+              <svg width="17" height="12" viewBox="0 0 17 12">
+                <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill="#F2EBDD"/>
+                <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill="#F2EBDD"/>
+                <circle cx="8.5" cy="10.5" r="1.5" fill="#F2EBDD"/>
+              </svg>
+              <svg width="27" height="13" viewBox="0 0 27 13">
+                <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="rgba(242,235,221,0.35)" fill="none"/>
+                <rect x="2" y="2" width="20" height="9" rx="2" fill="#F2EBDD"/>
+                <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill="#F2EBDD" fillOpacity="0.4"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* screen content */}
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', isolation: 'isolate' }}>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            {renderPage()}
+          </div>
+          {showTabBar && <TabBar active={tab} onChange={handleTabChange} />}
+        </div>
+
+        {/* home indicator */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+          height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+          paddingBottom: 8, pointerEvents: 'none',
+        }}>
+          <div style={{
+            width: 139, height: 5, borderRadius: 100,
+            background: 'rgba(242,235,221,0.7)',
+          }} />
+        </div>
+
+        {/* shutter flash overlay */}
+        <ShutterFlash active={shutterFlash} />
+
+        {/* film grain overlay */}
+        <div className="film-grain" />
+      </div>
+
+      {/* Page indicator (for demo) */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 400 }}>
+        {[
+          { key: 'home', label: '首页', tab: 'home' },
+          { key: 'cameras', label: '相机图鉴', tab: 'cameras' },
+          { key: 'camera-detail', label: '相机详情', action: () => { setTab('cameras'); setTimeout(() => handleCameraClick(CAMERAS[0]), 200); } },
+          { key: 'films', label: '胶卷库', tab: 'films' },
+          { key: 'booking', label: '冲扫预约', action: () => setShowBooking(true) },
+          { key: 'darkroom', label: '个人暗房', tab: 'darkroom' },
+          { key: 'specs', label: '设计规范', action: () => { setTab('darkroom'); setTimeout(() => setShowSpecs(true), 200); } },
+          { key: 'api', label: '接口文档', action: () => { setTab('darkroom'); setTimeout(() => setShowApi(true), 200); } },
+        ].map(p => {
+          const isActive =
+            (p.tab && tab === p.tab && !showCameraDetail && !showBooking && !showSpecs && !showApi) ||
+            (p.key === 'camera-detail' && showCameraDetail) ||
+            (p.key === 'booking' && showBooking) ||
+            (p.key === 'specs' && showSpecs) ||
+            (p.key === 'api' && showApi);
+          return (
+            <button key={p.key}
+              onClick={() => {
+                triggerShutter();
+                if (p.action) p.action();
+                else if (p.tab) handleTabChange(p.tab);
+              }}
+              style={{
+                padding: '6px 14px', borderRadius: 20,
+                fontSize: 12,
+                background: isActive ? 'rgba(217,142,50,0.15)' : 'rgba(242,235,221,0.04)',
+                color: isActive ? '#D98E32' : 'rgba(242,235,221,0.5)',
+                border: `1px solid ${isActive ? 'rgba(217,142,50,0.4)' : 'rgba(242,235,221,0.08)'}`,
+                cursor: 'none',
+                transition: 'all 0.25s ease',
+              }}>
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <CustomCursor />
+    </div>
+  );
+}
+
+/* ============================================================
+   Mount
+   ============================================================ */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
