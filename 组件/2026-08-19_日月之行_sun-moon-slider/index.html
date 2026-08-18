@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" string="true">interactive-prototype">
+<title>日月之行 · 拟物化滑动开关</title>
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
+<style>
+/* ============ 基础 ============ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --dawn: #F5A623;
+  --dusk: #FF7A4D;
+  --night: #141B2E;
+  --star: #F5F2E8;
+  --cloud: rgba(200, 200, 210, 0.6);
+  --track-shadow: rgba(0,0,0,0.3);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+body {
+  cursor: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body, .slider-hit, .knob-base, .scene-wrap { cursor: default !important; }
+  .cursor { display: none !important; }
+  .slider-group.near .slider-body { animation: none; }
+  .slider-group.near .slider-rays { animation: none; }
+}
+
+/* ============ 场景容器 ============ */
+.scene-wrap {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0e1a;
+  overflow: hidden;
+}
+
+.scene {
+  position: relative;
+  width: 800px;
+  height: 560px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scene-inner {
+  position: relative;
+  width: 800px;
+  height: 560px;
+  flex-shrink: 0;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* ============ 天空背景 ============ */
+.sky {
+  position: absolute;
+  inset: 0;
+  transition: none;
+}
+
+.sky-top, .sky-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.sky-top { top: 0; height: 65%; }
+.sky-bottom { bottom: 0; height: 60%; }
+.horizon-glow {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 40%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 150, 80, 0.5) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+
+/* ============ 星星画布 ============ */
+.stars-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ============ 云 ============ */
+.clouds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.cloud {
+  position: absolute;
+  opacity: 0.5;
+  will-change: transform;
+}
+.cloud path {
+  fill: #ffffff;
+}
+
+/* ============ 山脉 ============ */
+.mountains {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.mountain-layer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+}
+.mountain-layer svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ============ 村舍窗灯 ============ */
+.village {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.window-light {
+  position: absolute;
+  width: 4px;
+  height: 3px;
+  background: #FFD27A;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(255, 210, 122, 0.8);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* ============ 滑轨 ============ */
+.track-group {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.track-arc {
+  fill: none;
+  stroke: rgba(255,255,255,0.12);
+  stroke-width: 10;
+  stroke-linecap: round;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+.track-arc-inner {
+  fill: none;
+  stroke: rgba(0,0,0,0.2);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.track-glow {
+  fill: none;
+  stroke: rgba(245, 166, 35, 0.4);
+  stroke-width: 14;
+  stroke-linecap: round;
+  opacity: 0;
+  filter: blur(4px);
+  transition: opacity 0.3s;
+}
+.track-group.near .track-glow { opacity: 1; }
+
+/* ============ 端点标记 ============ */
+.end-mark {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  font-family: "Noto Serif SC", serif;
+}
+.end-mark .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+}
+.end-mark .label {
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: rgba(255,255,255,0.5);
+}
+
+/* ============ 滑块 ============ */
+.slider-group {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 10;
+}
+.slider-hit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: none;
+}
+.slider-body {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, var(--sun-highlight, #FFF3D0) 0%, var(--sun-mid, #F5C754) 40%, var(--sun-dark, #E8A52D) 75%, var(--sun-shadow, #C9821A) 100%);
+  box-shadow:
+    0 0 20px var(--sun-glow1, rgba(245, 199, 84, 0.6)),
+    0 0 40px var(--sun-glow2, rgba(245, 166, 35, 0.35)),
+    0 4px 12px rgba(0,0,0,0.3),
+    inset -2px -2px 6px rgba(0,0,0,0.15),
+    inset 2px 2px 6px rgba(255,255,255,0.4);
+  transition: background 0.3s, box-shadow 0.3s, transform 0.05s;
+}
+
+/* 阳光芒 */
+.slider-rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 90px;
+  height: 90px;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.5s;
+}
+.slider-rays svg { width: 100%; height: 100%; }
+.slider-rays path {
+  fill: var(--ray-color, rgba(245, 199, 84, 0.6));
+  transition: fill 0.3s;
+}
+
+/* 月亮模式通过 CSS 变量连续过渡，由 JS 控制 */
+.slider-group.night .slider-body {
+  /* 月夜色变量会在 JS 中通过 CSS variable 连续插值 */
+}
+.slider-group.night .slider-rays {
+  opacity: 0;
+}
+
+/* 月晕 */
+.moon-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  box-shadow: 0 0 20px 8px rgba(245, 242, 232, 0.15);
+  opacity: 0;
+  transition: opacity 0.5s;
+  pointer-events: none;
+}
+.slider-group.night .moon-halo {
+  opacity: 1;
+}
+
+/* 月亮暗面纹理 */
+.moon-crater {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.slider-group.night .moon-crater { opacity: 1; }
+.crater-1 { width: 12px; height: 12px; left: 18px; top: 16px; }
+.crater-2 { width: 8px; height: 8px; left: 32px; top: 28px; }
+.crater-3 { width: 6px; height: 6px; left: 22px; top: 36px; }
+
+/* 五态反馈：接近 */
+.slider-group.near .slider-body {
+  animation: breath 2s ease-in-out infinite;
+}
+.slider-group.near .slider-rays {
+  animation: raysPulse 2s ease-in-out infinite;
+}
+@keyframes breath {
+  0%, 100% { box-shadow: 0 0 20px rgba(245, 199, 84, 0.6), 0 0 40px rgba(245, 166, 35, 0.35), 0 4px 12px rgba(0,0,0,0.3); }
+  50% { box-shadow: 0 0 28px rgba(245, 199, 84, 0.8), 0 0 60px rgba(245, 166, 35, 0.5), 0 4px 12px rgba(0,0,0,0.3); }
+}
+@keyframes raysPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+  50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+}
+
+/* 五态反馈：按住 */
+.slider-group.pressed .slider-body {
+  transform: translate(-50%, -50%) scale(0.93);
+  box-shadow:
+    0 0 14px rgba(245, 199, 84, 0.5),
+    0 0 28px rgba(245, 166, 35, 0.3),
+    0 2px 6px rgba(0,0,0,0.4),
+    inset -2px -2px 4px rgba(0,0,0,0.2),
+    inset 2px 2px 4px rgba(255,255,255,0.3);
+}
+
+/* 阈值咔嗒震颤 */
+.slider-group.snap .slider-body {
+  animation: snapJitter 0.25s ease-out;
+}
+@keyframes snapJitter {
+  0% { transform: translate(-50%, -50%) scale(0.95); }
+  25% { transform: translate(-52%, -48%) scale(1.05); }
+  50% { transform: translate(-48%, -52%) scale(0.97); }
+  75% { transform: translate(-51%, -49%) scale(1.02); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+.snap-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 199, 84, 0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+.slider-group.snap .snap-ring {
+  animation: snapRing 0.4s ease-out;
+}
+.release-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 199, 84, 0.4) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.slider-group.released .release-glow {
+  animation: releaseGlow 0.8s ease-out forwards;
+}
+@keyframes releaseGlow {
+  0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.8); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+}
+@keyframes snapRing {
+  0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+
+/* ============ 风速旋钮 ============ */
+.knob-group {
+  position: absolute;
+  bottom: 30px;
+  right: 40px;
+  pointer-events: auto;
+  z-index: 5;
+}
+.knob-label {
+  position: absolute;
+  top: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  font-family: "Noto Serif SC", serif;
+}
+.knob-value {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+}
+.knob-base {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3a4050 0%, #222735 50%, #141822 100%);
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.5),
+    inset 0 2px 4px rgba(255,255,255,0.1),
+    inset 0 -2px 4px rgba(0,0,0,0.3);
+  position: relative;
+  cursor: none;
+}
+.knob-dial {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a5268 0%, #2c3242 50%, #1a1e2a 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(255,255,255,0.15),
+    inset 0 -1px 2px rgba(0,0,0,0.3);
+  will-change: transform;
+}
+.knob-pointer {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: #F5A623;
+  box-shadow: 0 0 4px rgba(245, 166, 35, 0.6);
+}
+.knob-ticks {
+  position: absolute;
+  inset: -8px;
+}
+.knob-tick {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 2px;
+  height: 4px;
+  border-radius: 1px;
+  background: rgba(255,255,255,0.3);
+  transform-origin: 50% 39px;
+  transform: translateX(-50%) rotate(var(--a));
+}
+
+/* ============ 标签文字 ============ */
+.title-block {
+  position: absolute;
+  top: 36px;
+  left: 40px;
+  pointer-events: none;
+  z-index: 4;
+}
+.title-block .h1 {
+  font-family: "Noto Serif SC", serif;
+  font-size: 28px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 6px;
+  margin-bottom: 6px;
+}
+.title-block .sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 2px;
+}
+
+.time-indicator {
+  position: absolute;
+  top: 44px;
+  right: 40px;
+  font-family: "Noto Serif SC", serif;
+  font-size: 14px;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 3px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ============ 自定义光标 ============ */
+.cursor {
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s, height 0.2s;
+}
+.cursor svg { width: 100%; height: 100%; }
+.cursor .cursor-shape {
+  fill: #ffffff;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+  transition: d 0.2s, fill 0.2s;
+}
+.cursor.grab .cursor-shape { fill: #F5A623; }
+.cursor.hover { width: 32px; height: 32px; }
+.cursor.hover .cursor-shape { fill: #FFD27A; }
+.cursor.dragging { width: 20px; height: 20px; }
+.cursor.dragging .cursor-shape { fill: #FF7A4D; }
+
+/* ============ 署名 ============ */
+.signature {
+  position: absolute;
+  bottom: 32px;
+  left: 40px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.25);
+  letter-spacing: 2px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 840px) {
+  .scene {
+    width: 100vw;
+    height: 70vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+}
+.scene-animatable { will-change: transform; }
+</style>
+</head>
+<body>
+
+<div class="scene-wrap">
+  <div class="scene" id="scene">
+    <div class="scene-inner" id="sceneInner">
+    <!-- 天空 -->
+    <div class="sky" id="sky">
+      <div class="sky-top" id="skyTop"></div>
+      <div class="sky-bottom" id="skyBottom"></div>
+      <div class="horizon-glow" id="horizonGlow"></div>
+    </div>
+
+    <!-- 星星 -->
+    <canvas class="stars-canvas" id="starsCanvas"></canvas>
+
+    <!-- 云 -->
+    <div class="clouds" id="clouds"></div>
+
+    <!-- 山脉 -->
+    <div class="mountains" id="mountains">
+      <!-- 远山 -->
+      <div class="mountain-layer" style="bottom: 80px; z-index: 1;">
+        <svg viewBox="0 0 800 200" preserveAspectRatio="none">
+          <path d="M0,200 L0,140 Q50,100 100,120 T200,100 T300,110 T400,90 T500,105 T600,95 T700,115 T800,100 L800,200 Z" fill="rgba(20,27,46,0.4)"/>
+        </svg>
+      </div>
+      <!-- 中山 -->
+      <div class="mountain-layer" style="bottom: 40px; z-index: 2;">
+        <svg viewBox="0 0 800 250" preserveAspectRatio="none">
+          <path d="M0,250 L0,180 Q60,120 120,150 T240,130 T360,110 T480,140 T600,120 T720,150 T800,130 L800,250 Z" fill="rgba(20,27,46,0.6)"/>
+        </svg>
+      </div>
+      <!-- 近山+村庄 -->
+      <div class="mountain-layer" style="bottom: 0; z-index: 3;">
+        <svg viewBox="0 0 800 300" preserveAspectRatio="none" id="nearMountain">
+          <path d="M0,300 L0,220 Q40,170 80,190 Q120,150 160,180 Q200,140 240,170 Q280,130 320,160 Q360,120 400,150 Q440,110 480,140 Q520,100 560,130 Q600,90 640,120 Q680,100 720,130 Q760,110 800,140 L800,300 Z" fill="#0d1220"/>
+          <!-- 小屋屋顶三角 -->
+          <g fill="rgba(15,20,35,0.9)">
+            <polygon points="130,200 150,180 170,200"/>
+            <polygon points="200,210 225,185 250,210"/>
+            <polygon points="500,205 520,185 540,205"/>
+            <polygon points="600,215 625,190 650,215"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 村舍窗灯 -->
+    <div class="village" id="village" style="z-index: 4;"></div>
+
+    <!-- 轨道 -->
+    <svg class="track-group" id="trackGroup" viewBox="0 0 800 560" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <filter id="glowFilter">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <!-- 轨道弧 (上半圆，圆心 400,500 半径 350，角度 150°→30°，120°大弧) -->
+      <!-- 左端点 x=97 y=325 右端点 x=703 y=325 -->
+      <path class="track-glow" id="trackGlow" d="M 97 325 A 350 350 0 0 1 703 325"/>
+      <path class="track-arc" d="M 97 325 A 350 350 0 0 1 703 325"/>
+      <path class="track-arc-inner" d="M 97 325 A 350 350 0 0 1 703 325" stroke-dasharray="2 8"/>
+    </svg>
+
+    <!-- 端点标签 -->
+    <div class="end-mark" style="left: 97px; top: 335px; transform: translateX(-50%);">
+      <div class="dot"></div>
+      <div class="label">晨</div>
+    </div>
+    <div class="end-mark" style="left: 703px; top: 335px; transform: translateX(-50%);">
+      <div class="dot"></div>
+      <div class="label">夜</div>
+    </div>
+
+    <!-- 滑块 -->
+    <div class="slider-group" id="slider">
+      <div class="release-glow" id="releaseGlow"></div>
+      <div class="snap-ring"></div>
+      <div class="moon-halo"></div>
+      <div class="slider-rays">
+        <svg viewBox="0 0 90 90">
+          <!-- 8道光芒 -->
+          <g transform="translate(45 45)">
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(0)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(45)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(90)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(135)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(180)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(225)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(270)"/>
+            <path d="M0,-42 L3,-28 L-3,-28 Z" transform="rotate(315)"/>
+          </g>
+        </svg>
+      </div>
+      <div class="slider-body">
+        <div class="moon-crater crater-1"></div>
+        <div class="moon-crater crater-2"></div>
+        <div class="moon-crater crater-3"></div>
+      </div>
+      <div class="slider-hit" id="sliderHit"></div>
+    </div>
+
+    <!-- 风速旋钮 -->
+    <div class="knob-group" id="knobGroup">
+      <div class="knob-label">风速</div>
+      <div class="knob-value" id="knobValue">2级</div>
+      <div class="knob-base" id="knobBase">
+        <div class="knob-dial" id="knobDial">
+          <div class="knob-pointer"></div>
+        </div>
+        <div class="knob-ticks" id="knobTicks"></div>
+      </div>
+    </div>
+
+    <!-- 标题 -->
+    <div class="title-block">
+      <div class="h1">日月之行</div>
+      <div class="sub">拖动太阳，走过一天</div>
+    </div>
+
+    <div class="time-indicator" id="timeIndicator">辰时 · 07:00</div>
+
+    <div class="signature">ART 设计实验室</div>
+    </div>
+  </div>
+</div>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor">
+  <svg viewBox="0 0 24 24">
+    <path class="cursor-shape" d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"/>
+  </svg>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ==================== 工具函数 ====================
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const lerpColor = (c1, c2, t) => {
+    const r = Math.round(lerp(c1[0], c2[0], t));
+    const g = Math.round(lerp(c1[1], c2[1], t));
+    const b = Math.round(lerp(c1[2], c2[2], t));
+    return `rgb(${r},${g},${b})`;
+  };
+  const hexToRgb = hex => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+
+  // 多段颜色插值 (stops: [{t, color}])
+  const multiLerp = (stops, t) => {
+    if (t <= stops[0].t) return stops[0].color;
+    if (t >= stops[stops.length - 1].t) return stops[stops.length - 1].color;
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (t >= stops[i].t && t <= stops[i + 1].t) {
+        const localT = (t - stops[i].t) / (stops[i + 1].t - stops[i].t);
+        return lerpColor(stops[i].rgb, stops[i + 1].rgb, localT);
+      }
+    }
+    return stops[stops.length - 1].color;
+  };
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ==================== 色板定义 ====================
+  const SKY_TOP = [
+    { t: 0.00, hex: '#F5C77E', rgb: hexToRgb('#F5C77E') },  // 黎明金
+    { t: 0.35, hex: '#87CEEB', rgb: hexToRgb('#87CEEB') },  // 正午浅蓝
+    { t: 0.60, hex: '#FF9A6B', rgb: hexToRgb('#FF9A6B') },  // 黄昏珊瑚
+    { t: 0.80, hex: '#1D2A4A', rgb: hexToRgb('#1D2A4A') },  // 入夜
+    { t: 1.00, hex: '#141B2E', rgb: hexToRgb('#141B2E') },  // 深夜
+  ];
+
+  const SKY_BOTTOM = [
+    { t: 0.00, hex: '#FFE4B5', rgb: hexToRgb('#FFE4B5') },
+    { t: 0.35, hex: '#C9E4F0', rgb: hexToRgb('#C9E4F0') },
+    { t: 0.60, hex: '#FFB088', rgb: hexToRgb('#FFB088') },
+    { t: 0.80, hex: '#2A3856', rgb: hexToRgb('#2A3856') },
+    { t: 1.00, hex: '#0E1424', rgb: hexToRgb('#0E1424') },
+  ];
+
+  // ==================== 弧形轨道参数 ====================
+  // 圆心 (400, 540) 半径 260
+  // 左端点角度 180-60 = 120° ? No, let's recalculate.
+  // 圆心在 (400, 540)，y方向向下。半径260。
+  // 左端点 x=100: dx = 100-400 = -300 → 超过半径260
+  // Let me use proper arc math:
+  // 圆心 (400, cy)，半径 R=300
+  // 弧的两端在 y = 280 线上，分别在 x=100 和 x=700
+  // dx = 300, R = 300 → 这是水平距离。
+  // 实际: 从圆心(400, cy) 到 (100, 280): (dx=-300, dy=280-cy)
+  // 半径平方: 300² + (280-cy)² = R²
+  // 设弧顶在 y = 280 - R + (280-cy)? 更简单的方式：
+  // 弧是上半圆的一部分。圆心在下方。
+  // 重新设计: 圆心 (400, 420)，半径 260
+  // 左端点: 起始角 150° (即 π*5/6)
+  // 右端点: 30° (即 π/6)
+  // 弧的角度范围: 150° → 30° = 120° 弧
+  // 验证: 弧顶在 90°
+  // x = 400 + 260*cos(90°) = 400
+  // y = 420 - 260*sin(90°) = 420 - 260 = 160 ✓ (弧顶在 y=160)
+  // 左端点 150°:
+  // x = 400 + 260*cos(150°) = 400 + 260*(-√3/2) = 400 - 225 = 175
+  // y = 420 - 260*sin(150°) = 420 - 130 = 290
+  // 右端点 30°:
+  // x = 400 + 260*cos(30°) = 400 + 225 = 625
+  // y = 420 - 260*sin(30°) = 420 - 130 = 290
+
+  // 等一下，120度的弧宽只有 450px，在800宽的场景里偏小。
+  // 重新设计: 圆心(400, 500)，半径 350
+  // 弧范围: 150° → 30° (120°)
+  // 弧顶 90°: y = 500 - 350 = 150
+  // 左端点 x = 400 + 350*cos(150°) = 400 + 350*(-0.866) = 400 - 303 = 97
+  // 左端点 y = 500 - 350*sin(150°) = 500 - 175 = 325
+  // 右端点 x = 400 + 350*cos(30°) = 400 + 303 = 703
+  // 右端点 y = 500 - 350*sin(30°) = 500 - 175 = 325
+  // 这样宽度约 606px，比较合适。弧顶在 y=150，端点在 y=325。
+
+  const ARC = {
+    cx: 400,
+    cy: 500,
+    R: 350,
+    startAngle: Math.PI * 5 / 6, // 150°
+    endAngle: Math.PI / 6,       // 30°
+    totalAngle: Math.PI * 4 / 6, // 120° = 2π/3
+  };
+
+  // t: 0→1 映射到角度: 150° → 30°
+  const tToAngle = t => ARC.startAngle - t * ARC.totalAngle;
+  const angleToXY = angle => ({
+    x: ARC.cx + ARC.R * Math.cos(angle),
+    y: ARC.cy - ARC.R * Math.sin(angle),
+  });
+  const tToXY = t => angleToXY(tToAngle(t));
+
+  // ==================== 状态 ====================
+  const state = {
+    t: 0,                    // 当前滑块位置 0-1
+    targetT: 0,              // 目标位置 (吸附目标)
+    velocity: 0,             // 速度 (units of t per frame)
+    isDragging: false,
+    isAnimating: false,
+    isSnapped: false,        // 是否已吸附到位
+    lastSnapSide: 0,         // 上次吸附侧
+    nearSlider: false,
+    windSpeed: 2,            // 风速等级 0-5
+    windAngle: -60,          // 旋钮角度 -120 到 120
+    windAngVel: 0,           // 角速度
+    isDraggingKnob: false,
+    knobAngle0: 0,           // 拖拽起始角
+    pointerAngle0: 0,        // 拖拽起始指针角
+    sceneScale: 1,
+    sceneOffsetX: 0,
+    sceneOffsetY: 0,
+  };
+
+  // ==================== DOM 引用 ====================
+  const scene = $('scene');
+  const sceneInner = $('sceneInner');
+  const skyTop = $('skyTop');
+  const skyBottom = $('skyBottom');
+  const starsCanvas = $('starsCanvas');
+  const starsCtx = starsCanvas.getContext('2d');
+  const cloudsEl = $('clouds');
+  const slider = $('slider');
+  const sliderHit = $('sliderHit');
+  const trackGroup = $('trackGroup');
+  const village = $('village');
+  const timeIndicator = $('timeIndicator');
+  const cursor = $('cursor');
+  const knobGroup = $('knobGroup');
+  const knobDial = $('knobDial');
+  const knobBase = $('knobBase');
+  const knobTicks = $('knobTicks');
+  const knobValue = $('knobValue');
+
+  // ==================== 星星数据 ====================
+  const stars = [];
+  const STAR_COUNT = 80;
+  function initStars() {
+    const w = starsCanvas.width = 800;
+    const h = starsCanvas.height = 400;
+    stars.length = 0;
+    for (let i = 0; i < STAR_COUNT; i++) {
+      stars.push({
+        x: Math.random() * w,
+        y: Math.random() * h * 0.8,
+        r: Math.random() * 1.5 + 0.5,
+        twinklePhase: Math.random() * Math.PI * 2,
+        twinkleSpeed: Math.random() * 0.02 + 0.01,
+        appearAt: 0.65 + Math.random() * 0.3, // 在哪个 t 值开始出现
+      });
+    }
+  }
+  initStars();
+
+  function drawStars(t, time) {
+    const ctx = starsCtx;
+    ctx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
+    // 星星只在 t > 0.65 时开始出现
+    for (const s of stars) {
+      if (t < s.appearAt) continue;
+      const appearT = clamp((t - s.appearAt) / 0.15, 0, 1);
+      const twinkle = 0.5 + 0.5 * Math.sin(time * s.twinkleSpeed + s.twinklePhase);
+      const alpha = appearT * (0.4 + 0.6 * twinkle);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(245, 242, 232, ${alpha})`;
+      ctx.fill();
+      // 光晕
+      if (s.r > 1.2) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(245, 242, 232, ${alpha * 0.15})`;
+        ctx.fill();
+      }
+    }
+  }
+
+  // ==================== 云 ====================
+  const clouds = [];
+  function createCloud(x, y, scale, speed, opacity) {
+    const el = document.createElement('div');
+    el.className = 'cloud';
+    el.innerHTML = `
+      <svg viewBox="0 0 120 40" width="${120 * scale}" height="${40 * scale}">
+        <ellipse cx="30" cy="25" rx="25" ry="15" opacity="${opacity}"/>
+        <ellipse cx="55" cy="20" rx="28" ry="18" opacity="${opacity}"/>
+        <ellipse cx="80" cy="25" rx="25" ry="14" opacity="${opacity}"/>
+        <ellipse cx="50" cy="28" rx="40" ry="10" opacity="${opacity * 0.8}"/>
+      </svg>
+    `;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    cloudsEl.appendChild(el);
+    return { el, x, y, speed, scale, baseX: x, width: 120 * scale };
+  }
+
+  function initClouds() {
+    clouds.length = 0;
+    // 创建几朵云，分布在天空中
+    const configs = [
+      { x: 50, y: 80, scale: 0.8, speed: 0.3, opacity: 0.5 },
+      { x: 250, y: 60, scale: 1.0, speed: 0.25, opacity: 0.4 },
+      { x: 450, y: 100, scale: 0.7, speed: 0.35, opacity: 0.5 },
+      { x: 600, y: 70, scale: 0.9, speed: 0.28, opacity: 0.45 },
+      { x: 150, y: 130, scale: 0.6, speed: 0.4, opacity: 0.35 },
+      { x: 700, y: 140, scale: 0.75, speed: 0.32, opacity: 0.4 },
+    ];
+    for (const c of configs) {
+      clouds.push(createCloud(c.x, c.y, c.scale, c.speed, c.opacity));
+    }
+  }
+  initClouds();
+
+  function updateClouds(deltaTime, windLevel) {
+    const windFactor = windLevel * 0.5; // 0-5 级 → 0-2.5 倍速
+    for (const c of clouds) {
+      c.x += c.speed * windFactor * deltaTime * 0.06;
+      if (c.x > 850) c.x = -150;
+      c.el.style.transform = `translateX(${c.x - c.baseX}px)`;
+    }
+  }
+
+  // ==================== 窗灯 ====================
+  const windowLights = [];
+  function initWindowLights() {
+    // 在近山村庄位置放置窗灯
+    const positions = [
+      { x: 142, y: 270, lightAt: 0.62 },
+      { x: 155, y: 272, lightAt: 0.65 },
+      { x: 215, y: 282, lightAt: 0.68 },
+      { x: 228, y: 280, lightAt: 0.60 },
+      { x: 240, y: 284, lightAt: 0.70 },
+      { x: 510, y: 276, lightAt: 0.58 },
+      { x: 525, y: 278, lightAt: 0.64 },
+      { x: 612, y: 286, lightAt: 0.66 },
+      { x: 625, y: 288, lightAt: 0.62 },
+      { x: 638, y: 290, lightAt: 0.72 },
+      { x: 300, y: 295, lightAt: 0.70 },
+      { x: 380, y: 292, lightAt: 0.68 },
+    ];
+    for (const p of positions) {
+      const el = document.createElement('div');
+      el.className = 'window-light';
+      el.style.left = p.x + 'px';
+      el.style.top = p.y + 'px';
+      village.appendChild(el);
+      windowLights.push({ el, lightAt: p.lightAt });
+    }
+  }
+  initWindowLights();
+
+  function updateWindowLights(t) {
+    for (const w of windowLights) {
+      if (t >= w.lightAt) {
+        const intensity = clamp((t - w.lightAt) / 0.1, 0, 1);
+        // 轻微闪烁
+        const flicker = 0.85 + 0.15 * Math.sin(performance.now() * 0.003 + w.lightAt * 10);
+        w.el.style.opacity = intensity * flicker;
+      } else {
+        w.el.style.opacity = 0;
+      }
+    }
+  }
+
+  // ==================== 天空颜色更新 ====================
+  function updateSky(t) {
+    const topColor = multiLerp(SKY_TOP, t);
+    const bottomColor = multiLerp(SKY_BOTTOM, t);
+    skyTop.style.background = topColor;
+    skyBottom.style.background = `linear-gradient(to bottom, transparent 0%, ${bottomColor} 100%)`;
+
+    // 夜晚模式下整体变暗
+    const nightFactor = clamp((t - 0.5) / 0.4, 0, 1);
+    scene.style.filter = `brightness(${1 - nightFactor * 0.08})`;
+
+    // 地平线辉光：黎明和黄昏最强
+    const glow = $('horizonGlow');
+    // 黎明峰在 t=0.15，黄昏峰在 t=0.65
+    const dawnGlow = Math.max(0, 1 - Math.abs(t - 0.15) / 0.2);
+    const duskGlow = Math.max(0, 1 - Math.abs(t - 0.65) / 0.2);
+    const glowIntensity = Math.max(dawnGlow * 0.5, duskGlow * 0.7);
+    glow.style.opacity = glowIntensity;
+    // 黄昏时偏珊瑚橙，黎明时偏金黄
+    const glowColor = duskGlow > dawnGlow
+      ? `rgba(255, 122, 77, ${0.5 * glowIntensity})`
+      : `rgba(245, 166, 35, ${0.4 * glowIntensity})`;
+    glow.style.background = `radial-gradient(ellipse at 50% 100%, ${glowColor} 0%, transparent 70%)`;
+  }
+
+  // 太阳/月亮色板（连续插值）
+  const SUN_COLORS = {
+    highlight: hexToRgb('#FFF3D0'),
+    mid: hexToRgb('#F5C754'),
+    dark: hexToRgb('#E8A52D'),
+    shadow: hexToRgb('#C9821A'),
+  };
+  const MOON_COLORS = {
+    highlight: hexToRgb('#FFFFFF'),
+    mid: hexToRgb('#E8E4D8'),
+    dark: hexToRgb('#B8B4A8'),
+    shadow: hexToRgb('#8A8778'),
+  };
+
+  // ==================== 滑块位置更新 ====================
+  function updateSliderPosition(t) {
+    const pos = tToXY(t);
+    slider.style.left = pos.x + 'px';
+    slider.style.top = pos.y + 'px';
+    slider.style.transform = 'translate(-50%, -50%)';
+
+    // 太阳→月亮连续过渡：t=0.55 开始，t=0.7 完成
+    const nightFactor = clamp((t - 0.55) / 0.15, 0, 1);
+    const body = slider.querySelector('.slider-body');
+    body.style.setProperty('--sun-highlight', lerpColor(SUN_COLORS.highlight, MOON_COLORS.highlight, nightFactor));
+    body.style.setProperty('--sun-mid', lerpColor(SUN_COLORS.mid, MOON_COLORS.mid, nightFactor));
+    body.style.setProperty('--sun-dark', lerpColor(SUN_COLORS.dark, MOON_COLORS.dark, nightFactor));
+    body.style.setProperty('--sun-shadow', lerpColor(SUN_COLORS.shadow, MOON_COLORS.shadow, nightFactor));
+
+    // 光芒收缩（夜段收起）
+    const raysEl = slider.querySelector('.slider-rays');
+    raysEl.style.opacity = 1 - nightFactor;
+    raysEl.style.transform = `translate(-50%, -50%) scale(${1 - nightFactor * 0.3})`;
+
+    // 月晕显现
+    const halo = slider.querySelector('.moon-halo');
+    halo.style.opacity = nightFactor * 0.8;
+    halo.style.transform = `translate(-50%, -50%) scale(${0.8 + nightFactor * 0.2})`;
+
+    // 环形山显现
+    const craters = slider.querySelectorAll('.moon-crater');
+    craters.forEach(c => c.style.opacity = nightFactor);
+
+    // 轨道光晕颜色（暖金→银白）
+    const glowRgb = lerpColor(hexToRgb('#F5A623'), hexToRgb('#F5F2E8'), nightFactor);
+    const glowAlpha = 0.5 - nightFactor * 0.2;
+    // glowRgb 是 "rgb(r,g,b)" 字符串，需要提取数值
+    const match = glowRgb.match(/\d+/g);
+    if (match) {
+      $('trackGlow').setAttribute('stroke', `rgba(${match[0]},${match[1]},${match[2]},${glowAlpha})`);
+    }
+  }
+
+  // ==================== 时间指示 ====================
+  function updateTimeIndicator(t) {
+    // t=0 → 06:00 寅时?, t=0.5 → 12:00 午时, t=1 → 24:00 子时
+    // 更诗意: 辰→午→酉→子
+    const hour = 6 + t * 18; // 6点到24点
+    const h12 = Math.floor(hour) % 24;
+    const mm = Math.floor((hour % 1) * 60);
+    const timeStr = `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+
+    // 时辰
+    const shichen = [
+      { t: 0.0, name: '辰时' },   // 7-9
+      { t: 0.1, name: '巳时' },   // 9-11
+      { t: 0.22, name: '午时' },  // 11-13
+      { t: 0.33, name: '未时' },  // 13-15
+      { t: 0.45, name: '申时' },  // 15-17
+      { t: 0.56, name: '酉时' },  // 17-19
+      { t: 0.67, name: '戌时' },  // 19-21
+      { t: 0.78, name: '亥时' },  // 21-23
+      { t: 0.89, name: '子时' },  // 23-1
+    ];
+    let current = shichen[0].name;
+    for (const s of shichen) {
+      if (t >= s.t) current = s.name;
+    }
+
+    timeIndicator.textContent = `${current} · ${timeStr}`;
+  }
+
+  // ==================== 物理：滑块弹簧+阻尼+磁力 ====================
+  // 弹簧参数（基于 60fps 帧归一化）
+  const SPRING = {
+    stiffness: 0.08,       // 弹簧刚度（越小越软）
+    damping: 0.88,         // 阻尼系数（每帧速度衰减，0.85~0.92 对应 2~4 次振荡）
+    snapForce: 0.025,      // 磁力吸附强度 (靠近端点时)
+    snapDistance: 0.15,    // 吸附触发距离
+  };
+
+  let lastTime = performance.now();
+  let rafId = null;
+  let animationFrame = 0;
+  let isVisible = true;
+
+  document.addEventListener('visibilitychange', () => {
+    isVisible = !document.hidden;
+    if (isVisible && !rafId) {
+      lastTime = performance.now();
+      tick();
+    }
+  });
+
+  function tick() {
+    if (!isVisible) {
+      rafId = null;
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+
+    const now = performance.now();
+    let delta = now - lastTime;
+    lastTime = now;
+    // 限制最大帧间隔，避免切换标签后跳帧
+    if (delta > 50) delta = 50;
+    const dt = delta / 16.67; // 归一化到 60fps 帧
+    animationFrame++;
+
+    // --- 滑块物理 ---
+    if (!state.isDragging && state.isAnimating) {
+      // 计算吸附目标
+      const target = state.targetT;
+      const dist = target - state.t;
+      const absDist = Math.abs(dist);
+
+      // 弹簧力
+      let force = dist * SPRING.stiffness * dt;
+
+      // 临近端点时加磁力
+      if (absDist < SPRING.snapDistance) {
+        const magFactor = 1 - absDist / SPRING.snapDistance;
+        force += Math.sign(dist) * SPRING.snapForce * magFactor * magFactor * dt;
+      }
+
+      state.velocity += force;
+      state.velocity *= Math.pow(SPRING.damping, dt);
+
+      // 应用速度
+      state.t += state.velocity * dt;
+
+      // 边界限制
+      if (state.t < 0) { state.t = 0; state.velocity = Math.abs(state.velocity) * 0.3; }
+      if (state.t > 1) { state.t = 1; state.velocity = -Math.abs(state.velocity) * 0.3; }
+
+      // 检测是否到达目标（速度很小且距离很近）
+      if (absDist < 0.003 && Math.abs(state.velocity) < 0.002) {
+        state.t = target;
+        state.velocity = 0;
+        state.isAnimating = false;
+      }
+
+      // 阈值"咔嗒"：跨越中点时触发（任何速度都触发）
+      const currentSide = state.t > 0.5 ? 1 : 0;
+      if (currentSide !== state.lastSnapSide) {
+        triggerSnap();
+        state.lastSnapSide = currentSide;
+      }
+    }
+
+    // --- 旋钮惯性 ---
+    if (!state.isDraggingKnob && Math.abs(state.windAngVel) > 0.01) {
+      state.windAngle += state.windAngVel * dt;
+      state.windAngVel *= Math.pow(0.94, dt); // 阻尼衰减
+      // 边界回弹
+      if (state.windAngle < -120) {
+        state.windAngle = -120;
+        state.windAngVel = Math.abs(state.windAngVel) * 0.3;
+      }
+      if (state.windAngle > 120) {
+        state.windAngle = 120;
+        state.windAngVel = -Math.abs(state.windAngVel) * 0.3;
+      }
+      // 更新风速
+      updateWindFromAngle();
+    }
+
+    // --- 更新场景 ---
+    updateSky(state.t);
+    updateSliderPosition(state.t);
+    drawStars(state.t, animationFrame);
+    updateWindowLights(state.t);
+    updateTimeIndicator(state.t);
+
+    // --- 云漂移 ---
+    updateClouds(delta, state.windSpeed);
+
+    // --- 旋钮显示 ---
+    knobDial.style.transform = `rotate(${state.windAngle}deg)`;
+  }
+
+  // 启动
+  lastTime = performance.now();
+  tick();
+
+  // ==================== 吸附触发效果 ====================
+  function triggerSnap() {
+    slider.classList.remove('snap');
+    // 强制 reflow
+    void slider.offsetWidth;
+    slider.classList.add('snap');
+    setTimeout(() => slider.classList.remove('snap'), 400);
+  }
+
+  // ==================== 场景缩放 ====================
+  function updateSceneScale() {
+    const rect = scene.getBoundingClientRect();
+    const scale = Math.min(rect.width / 800, rect.height / 560);
+    sceneInner.style.transform = `scale(${scale})`;
+    state.sceneScale = scale;
+    state.sceneOffsetX = rect.left + (rect.width - 800 * scale) / 2;
+    state.sceneOffsetY = rect.top + (rect.height - 560 * scale) / 2;
+  }
+  updateSceneScale();
+  window.addEventListener('resize', updateSceneScale);
+
+  // 将屏幕坐标转换为场景坐标
+  function screenToScene(clientX, clientY) {
+    return {
+      x: (clientX - state.sceneOffsetX) / state.sceneScale,
+      y: (clientY - state.sceneOffsetY) / state.sceneScale,
+    };
+  }
+
+  // 找到弧上最接近给定点的 t 值
+  function findClosestTOnArc(sx, sy) {
+    // 计算从圆心到点的角度
+    const dx = sx - ARC.cx;
+    const dy = ARC.cy - sy; // y 轴向下，所以翻转
+    let angle = Math.atan2(dy, dx);
+    // 限制在弧范围内
+    angle = clamp(angle, ARC.endAngle, ARC.startAngle);
+    // 映射到 t
+    const t = (ARC.startAngle - angle) / ARC.totalAngle;
+    return clamp(t, 0, 1);
+  }
+
+  // 检测接近
+  function checkProximity(clientX, clientY) {
+    if (state.isDragging) return;
+    const pos = screenToScene(clientX, clientY);
+    const sliderPos = tToXY(state.t);
+    const dist = Math.hypot(pos.x - sliderPos.x, pos.y - sliderPos.y);
+
+    const near = dist < 60;
+    if (near !== state.nearSlider) {
+      state.nearSlider = near;
+      if (near) {
+        slider.classList.add('near');
+        trackGroup.classList.add('near');
+      } else {
+        slider.classList.remove('near');
+        trackGroup.classList.remove('near');
+      }
+    }
+  }
+
+  // 全局 pointer 移动：处理接近检测和光标
+  document.addEventListener('pointermove', (e) => {
+    // 光标跟随
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top = e.clientY + 'px';
+
+    checkProximity(e.clientX, e.clientY);
+    checkKnobProximity(e.clientX, e.clientY);
+
+    // 更新光标悬停状态
+    if (state.nearSlider || state.nearKnob) {
+      cursor.classList.add('hover');
+    } else {
+      cursor.classList.remove('hover');
+    }
+  });
+
+  // 滑块按下
+  let lastDragTime = 0;
+  let lastDragT = 0;
+
+  sliderHit.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    state.isDragging = true;
+    state.isAnimating = false;
+    state.velocity = 0;
+    lastDragTime = performance.now();
+    lastDragT = state.t;
+    slider.classList.add('pressed');
+    slider.classList.remove('near');
+    trackGroup.classList.remove('near');
+    cursor.classList.add('dragging');
+    cursor.classList.add('grab');
+    sliderHit.setPointerCapture(e.pointerId);
+  });
+
+  sliderHit.addEventListener('pointermove', (e) => {
+    if (!state.isDragging) return;
+    const pos = screenToScene(e.clientX, e.clientY);
+    const newT = findClosestTOnArc(pos.x, pos.y);
+    const now = performance.now();
+    const dt = now - lastDragTime;
+
+    // 速度（归一化到 60fps 帧单位，供物理系统使用）
+    if (dt > 0) {
+      const frame60 = dt / 16.67;
+      state.velocity = (newT - lastDragT) / frame60;
+    }
+    lastDragTime = now;
+    lastDragT = newT;
+    state.t = newT;
+  });
+
+  sliderHit.addEventListener('pointerup', (e) => {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+    slider.classList.remove('pressed');
+    cursor.classList.remove('dragging');
+    cursor.classList.remove('grab');
+    sliderHit.releasePointerCapture(e.pointerId);
+
+    // 决定吸附目标
+    const target = state.t > 0.5 ? 1 : 0;
+    state.targetT = target;
+    state.isAnimating = true;
+
+    // 释放余晖效果
+    slider.classList.remove('released');
+    void slider.offsetWidth;
+    slider.classList.add('released');
+    setTimeout(() => slider.classList.remove('released'), 800);
+  });
+
+  sliderHit.addEventListener('pointercancel', (e) => {
+    if (state.isDragging) {
+      state.isDragging = false;
+      slider.classList.remove('pressed');
+      cursor.classList.remove('dragging');
+      cursor.classList.remove('grab');
+    }
+  });
+
+  // ==================== 风速旋钮 ====================
+  const KNOB_MIN = -120;
+  const KNOB_MAX = 120;
+  const DETENTS = 6; // 0-5 共 6 档
+
+  function initKnobTicks() {
+    for (let i = 0; i <= DETENTS; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'knob-tick';
+      const angle = KNOB_MIN + (KNOB_MAX - KNOB_MIN) * (i / DETENTS);
+      tick.style.setProperty('--a', angle + 'deg');
+      knobTicks.appendChild(tick);
+    }
+  }
+  initKnobTicks();
+
+  // 根据角度计算风速等级 (带回弹档位感)
+  function updateWindFromAngle() {
+    // -120 到 120 → 0 到 5
+    const raw = (state.windAngle - KNOB_MIN) / (KNOB_MAX - KNOB_MIN) * 5;
+    state.windSpeed = clamp(raw, 0, 5);
+    knobValue.textContent = Math.round(state.windSpeed) + '级';
+  }
+  updateWindFromAngle();
+
+  // 旋钮接近检测
+  state.nearKnob = false;
+  function checkKnobProximity(clientX, clientY) {
+    if (state.isDraggingKnob) return;
+    const rect = knobBase.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dist = Math.hypot(clientX - cx, clientY - cy);
+    state.nearKnob = dist < 50;
+  }
+
+  // 旋钮拖拽
+  knobBase.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    state.isDraggingKnob = true;
+    state.windAngVel = 0;
+
+    const rect = knobBase.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    state.pointerAngle0 = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+    state.knobAngle0 = state.windAngle;
+
+    cursor.classList.add('dragging');
+    cursor.classList.add('grab');
+    knobBase.setPointerCapture(e.pointerId);
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!state.isDraggingKnob) return;
+
+    const rect = knobBase.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const pointerAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+
+    let deltaAngle = pointerAngle - state.pointerAngle0;
+    // 处理 180° 翻转
+    if (deltaAngle > 180) deltaAngle -= 360;
+    if (deltaAngle < -180) deltaAngle += 360;
+
+    let newAngle = state.knobAngle0 + deltaAngle;
+
+    // 档位阻尼感：接近档位时有轻微吸附
+    const detentStep = (KNOB_MAX - KNOB_MIN) / 5;
+    const normalized = (newAngle - KNOB_MIN) / detentStep;
+    const nearestDetent = Math.round(normalized);
+    const detentDist = normalized - nearestDetent;
+    if (Math.abs(detentDist) < 0.15) {
+      newAngle = KNOB_MIN + nearestDetent * detentStep;
+    }
+
+    // 边界限制
+    newAngle = clamp(newAngle, KNOB_MIN, KNOB_MAX);
+
+    // 角速度（用于释放惯性）
+    state.windAngVel = (newAngle - state.windAngle);
+    state.windAngle = newAngle;
+
+    updateWindFromAngle();
+  });
+
+  knobBase.addEventListener('pointerup', (e) => {
+    if (!state.isDraggingKnob) return;
+    state.isDraggingKnob = false;
+    cursor.classList.remove('dragging');
+    cursor.classList.remove('grab');
+    knobBase.releasePointerCapture(e.pointerId);
+  });
+
+  knobBase.addEventListener('pointercancel', () => {
+    if (state.isDraggingKnob) {
+      state.isDraggingKnob = false;
+      cursor.classList.remove('dragging');
+      cursor.classList.remove('grab');
+    }
+  });
+
+  // ==================== 自定义光标初始位置 ====================
+  // 开页显示在屏幕正中央
+  cursor.style.left = window.innerWidth / 2 + 'px';
+  cursor.style.top = window.innerHeight / 2 + 'px';
+
+  // 隐藏原生光标（reduced motion 时降级为系统光标）
+  if (reduceMotion) {
+    cursor.style.display = 'none';
+  } else {
+    document.body.style.cursor = 'none';
+  }
+
+  // 窗口大小变化
+  window.addEventListener('resize', () => {
+    // 重新计算场景缩放
+  });
+
+  // ==================== 初始渲染 ====================
+  updateSky(0);
+  updateSliderPosition(0);
+  updateWindowLights(0);
+  updateTimeIndicator(0);
+
+})();
+</script>
+</body>
+</html>
