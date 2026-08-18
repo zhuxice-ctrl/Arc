@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>黄铜天平 · 精密机械秤量组件</title>
+<style>
+/* ============================================================
+   黄铜天平 · 精密机械秤量组件
+   配色：黄铜金 / 深棕木 / 象牙白 / 暗绿铜锈
+   ============================================================ */
+:root {
+  --brass-high:   #e8c47a;
+  --brass-mid:    #c49a4a;
+  --brass-deep:   #8b6a2e;
+  --brass-shadow: #5c4619;
+  --wood-dark:    #3a2817;
+  --wood-mid:     #5a3d22;
+  --wood-light:   #7a5a38;
+  --ivory:        #f3ead3;
+  --ivory-warm:   #e8dcc0;
+  --ivory-deep:   #c9b896;
+  --patina:       #5c7a5c;
+  --patina-dark:  #3e5a3e;
+  --patina-light: #7ea57e;
+  --ink:          #2a1f14;
+  --ink-soft:     #4a3828;
+  --shadow-soft:  rgba(42, 31, 20, 0.18);
+  --shadow-hard:  rgba(42, 31, 20, 0.35);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ivory);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Serif SC", "Songti SC", serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* 自定义光标 - 默认隐藏系统光标 */
+body { cursor: none; }
+@media (prefers-reduced-motion: reduce) {
+  body { cursor: default; }
+  .custom-cursor { display: none !important; }
+}
+
+/* ============================================================
+   舞台背景：木桌纹理 + 铜锈装饰
+   ============================================================ */
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background:
+    radial-gradient(ellipse at 50% 42%, var(--ivory) 0%, var(--ivory-warm) 55%, var(--ivory-deep) 100%);
+  overflow: hidden;
+}
+
+/* 木纹底纹（纯 CSS 细线模拟） */
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      rgba(90, 61, 34, 0.04) 1px,
+      transparent 2px,
+      transparent 38px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      rgba(90, 61, 34, 0.025) 1px,
+      transparent 2px,
+      transparent 7px
+    );
+  pointer-events: none;
+}
+
+/* 顶部题签 */
+.header-label {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 5;
+  pointer-events: none;
+}
+.header-label .title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 8px;
+  color: var(--ink);
+  padding-left: 8px;
+}
+.header-label .subtitle {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+  opacity: 0.7;
+  padding-left: 4px;
+}
+
+/* 右下角编号 */
+.corner-mark {
+  position: absolute;
+  bottom: 28px;
+  right: 36px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--ink-soft);
+  opacity: 0.5;
+  z-index: 5;
+  pointer-events: none;
+  font-family: "SFMono-Regular", "Consolas", monospace;
+}
+.corner-mark .top { display: block; text-align: right; margin-bottom: 4px; }
+.corner-mark .line {
+  display: block;
+  width: 60px;
+  height: 1px;
+  background: var(--ink-soft);
+  margin-left: auto;
+  opacity: 0.4;
+}
+
+/* 左下角说明 */
+.info-panel {
+  position: absolute;
+  bottom: 32px;
+  left: 36px;
+  z-index: 5;
+  pointer-events: none;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.9;
+  letter-spacing: 1px;
+  opacity: 0.75;
+}
+.info-panel .row { display: flex; gap: 12px; }
+.info-panel .key {
+  display: inline-block;
+  min-width: 52px;
+  color: var(--brass-deep);
+  font-weight: 600;
+}
+.info-panel .val { color: var(--ink); }
+
+/* ============================================================
+   天平主体 SVG 舞台
+   ============================================================ */
+.scale-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 760px;
+  height: 520px;
+  z-index: 3;
+}
+
+.scale-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* 天平梁旋转组 */
+.beam-group {
+  transform-origin: 380px 180px;
+  will-change: transform;
+}
+
+/* 游码 */
+.rider-group {
+  cursor: none;
+  transform-origin: center;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.rider-group.hovering {
+  transform: translateY(-2px);
+}
+.rider-group.dragging {
+  transform: translateY(-5px);
+  transition: none;
+}
+
+/* 砝码托盘 */
+.pan-left, .pan-right {
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+
+/* 砝码 */
+.weight-piece {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+.weight-piece.hovering {
+  transform: translateY(-3px) scale(1.04);
+  filter: brightness(1.08);
+}
+.weight-piece.placed {
+  cursor: pointer;
+}
+
+/* 平衡指示针 */
+.balance-pointer {
+  transform-origin: 380px 210px;
+  will-change: transform;
+}
+
+/* 平衡灯 */
+.balance-light {
+  transition: fill 0.3s ease, filter 0.3s ease;
+}
+.balance-light.balanced {
+  fill: #7fb07f;
+  filter: drop-shadow(0 0 6px rgba(127, 176, 127, 0.7));
+}
+
+/* 刻度吸附线 */
+.tick-mark {
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+.tick-mark.active {
+  stroke: var(--patina);
+  stroke-width: 1.8;
+}
+
+/* ============================================================
+   砝码架（底部）
+   ============================================================ */
+.weight-tray {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 28px;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 4;
+  padding: 18px 32px 14px;
+  background: linear-gradient(180deg,
+    rgba(58, 40, 23, 0.08) 0%,
+    rgba(58, 40, 23, 0.14) 100%);
+  border-top: 1px solid rgba(58, 40, 23, 0.2);
+  border-radius: 6px 6px 2px 2px;
+  backdrop-filter: blur(2px);
+}
+
+.tray-label {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--ink-soft);
+  opacity: 0.5;
+  white-space: nowrap;
+  padding-left: 4px;
+}
+
+.shelf-weight {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+}
+.shelf-weight:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.06);
+}
+.shelf-weight:active {
+  transform: translateY(-1px) scale(0.98);
+}
+.shelf-weight svg { display: block; }
+.shelf-weight .w-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+/* ============================================================
+   右侧参数面板
+   ============================================================ */
+.readout-panel {
+  position: absolute;
+  top: 50%;
+  right: 48px;
+  transform: translateY(-50%);
+  width: 170px;
+  z-index: 5;
+  color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+
+.readout-title {
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--brass-deep);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(139, 106, 46, 0.3);
+  padding-left: 2px;
+}
+
+.readout-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(42, 31, 20, 0.12);
+}
+.readout-row .rk {
+  color: var(--ink-soft);
+  opacity: 0.7;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+.readout-row .rv {
+  color: var(--ink);
+  font-weight: 600;
+  font-family: "SFMono-Regular", "Consolas", monospace;
+  font-size: 12px;
+}
+
+.readout-row.balanced .rv {
+  color: var(--patina-dark);
+}
+.readout-row.balanced .rk {
+  color: var(--patina-dark);
+  opacity: 0.9;
+}
+
+.readout-status {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(92, 122, 92, 0.08);
+  border: 1px solid rgba(92, 122, 92, 0.25);
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-align: center;
+  color: var(--patina-dark);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.readout-status.show {
+  opacity: 1;
+}
+
+/* ============================================================
+   自定义光标
+   ============================================================ */
+.custom-cursor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.2s ease,
+              border-color 0.2s ease,
+              opacity 0.2s ease;
+  mix-blend-mode: multiply;
+}
+
+.custom-cursor .ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              border-color 0.25s ease,
+              border-width 0.25s ease;
+}
+
+.custom-cursor .dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  background: var(--ink);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+}
+
+/* 悬停游码 */
+.custom-cursor.state-rider .ring {
+  border-color: var(--brass-deep);
+  border-width: 2px;
+  transform: scale(1.4);
+}
+.custom-cursor.state-rider .dot {
+  background: var(--brass-mid);
+  width: 4px;
+  height: 4px;
+}
+
+/* 拖拽中 */
+.custom-cursor.state-drag .ring {
+  border-color: var(--patina-dark);
+  border-width: 2.5px;
+  transform: scale(0.6);
+  border-style: solid;
+  background: rgba(92, 122, 92, 0.15);
+}
+.custom-cursor.state-drag .dot {
+  background: var(--patina-dark);
+  width: 5px;
+  height: 5px;
+}
+
+/* 悬停砝码 */
+.custom-cursor.state-weight .ring {
+  border-color: var(--wood-dark);
+  border-width: 1.5px;
+  transform: scale(1.2) rotate(45deg);
+  border-radius: 3px;
+}
+.custom-cursor.state-weight .dot {
+  background: var(--wood-dark);
+  width: 3px;
+  height: 3px;
+}
+
+/* ============================================================
+   入场动画
+   ============================================================ */
+@keyframes beamDrop {
+  0%   { transform: translateY(-60px); opacity: 0; }
+  60%  { transform: translateY(2px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pillarRise {
+  0%   { transform: scaleY(0); transform-origin: bottom; opacity: 0; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  0%   { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.header-label { animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both; }
+.info-panel { animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both; }
+.corner-mark { animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both; }
+.readout-panel { animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both; }
+.weight-tray { animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both; }
+.scale-base { animation: pillarRise 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both; transform-origin: 380px 460px; }
+.beam-group { animation: beamDrop 1s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both; }
+
+/* 平衡状态脉冲 */
+@keyframes pulseGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(127, 176, 127, 0.5)); }
+  50%      { filter: drop-shadow(0 0 10px rgba(127, 176, 127, 0.85)); }
+}
+.balance-light.balanced.pulse {
+  animation: pulseGlow 1.6s ease-in-out infinite;
+}
+
+/* 力矩数值变化闪烁 */
+@keyframes valueFlash {
+  0%   { color: var(--brass-deep); }
+  100% { color: var(--ink); }
+}
+.readout-row .rv.flash {
+  animation: valueFlash 0.5s ease-out;
+}
+
+/* 砝码落盘弹跳 */
+@keyframes weightBounce {
+  0%   { transform: translateY(-12px) scaleY(1.1); opacity: 0; }
+  40%  { transform: translateY(0) scaleY(0.92) scaleX(1.06); opacity: 1; }
+  65%  { transform: translateY(-4px) scaleY(1.04); }
+  100% { transform: translateY(0) scaleY(1) scaleX(1); }
+}
+.weight-piece.placed {
+  animation: weightBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     自定义光标
+     ============================================================ -->
+<div class="custom-cursor" id="cursor">
+  <div class="ring"></div>
+  <div class="dot"></div>
+</div>
+
+<div class="stage">
+
+  <!-- 顶部题签 -->
+  <div class="header-label">
+    <div class="title">黄铜天平</div>
+    <div class="subtitle">PRECISION BALANCE · No.Ⅲ</div>
+  </div>
+
+  <!-- 左下角操作说明 -->
+  <div class="info-panel">
+    <div class="row"><span class="key">游码</span><span class="val">沿横梁拖动以改变力臂</span></div>
+    <div class="row"><span class="key">砝码</span><span class="val">点击添加至左盘 · 再点取下</span></div>
+    <div class="row"><span class="key">平衡</span><span class="val">力矩相等时指针归中发光</span></div>
+  </div>
+
+  <!-- 右下角编号 -->
+  <div class="corner-mark">
+    <span class="top">ART · LAB / 03</span>
+    <span class="line"></span>
+    <span style="margin-top: 4px; display: block; text-align: right; font-size: 9px; letter-spacing: 2px;">BRASS BALANCE</span>
+  </div>
+
+  <!-- 右侧读数面板 -->
+  <div class="readout-panel">
+    <div class="readout-title">测 量 读 数</div>
+    <div class="readout-row">
+      <span class="rk">左力矩</span>
+      <span class="rv" id="torqueL">0</span>
+    </div>
+    <div class="readout-row">
+      <span class="rk">右力矩</span>
+      <span class="rv" id="torqueR">0</span>
+    </div>
+    <div class="readout-row">
+      <span class="rk">力矩差</span>
+      <span class="rv" id="torqueDiff">0</span>
+    </div>
+    <div class="readout-row">
+      <span class="rk">游码位置</span>
+      <span class="rv" id="riderPos">10.0</span>
+    </div>
+    <div class="readout-row">
+      <span class="rk">左盘重</span>
+      <span class="rv" id="leftWeight">0</span>
+    </div>
+    <div class="readout-row">
+      <span class="rk">梁倾角</span>
+      <span class="rv" id="beamAngle">0.0°</span>
+    </div>
+    <div class="readout-status" id="balanceStatus">水 平 对 零</div>
+  </div>
+
+  <!-- ============================================================
+       天平 SVG
+       ============================================================ -->
+  <div class="scale-wrap">
+    <svg class="scale-svg" viewBox="0 0 760 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- 黄铜渐变 -->
+        <linearGradient id="brassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"  stop-color="#e8c47a"/>
+          <stop offset="40%" stop-color="#c49a4a"/>
+          <stop offset="70%" stop-color="#a07a38"/>
+          <stop offset="100%" stop-color="#8b6a2e"/>
+        </linearGradient>
+        <linearGradient id="brassGradH" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"  stop-color="#8b6a2e"/>
+          <stop offset="20%" stop-color="#c49a4a"/>
+          <stop offset="50%" stop-color="#e8c47a"/>
+          <stop offset="80%" stop-color="#c49a4a"/>
+          <stop offset="100%" stop-color="#8b6a2e"/>
+        </linearGradient>
+        <linearGradient id="brassBeam" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"  stop-color="#d4b064"/>
+          <stop offset="50%" stop-color="#c49a4a"/>
+          <stop offset="100%" stop-color="#8b6a2e"/>
+        </linearGradient>
+        <!-- 木材渐变 -->
+        <linearGradient id="woodBase" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"  stop-color="#5a3d22"/>
+          <stop offset="30%" stop-color="#6d4d2c"/>
+          <stop offset="70%" stop-color="#5a3d22"/>
+          <stop offset="100%" stop-color="#4a3018"/>
+        </linearGradient>
+        <linearGradient id="woodPillar" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"  stop-color="#4a3018"/>
+          <stop offset="50%" stop-color="#6d4d2c"/>
+          <stop offset="100%" stop-color="#3a2410"/>
+        </linearGradient>
+        <!-- 铜锈 -->
+        <linearGradient id="patinaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7ea57e"/>
+          <stop offset="100%" stop-color="#5c7a5c"/>
+        </linearGradient>
+        <!-- 砝码托盘 -->
+        <linearGradient id="panGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"  stop-color="#d4b064"/>
+          <stop offset="40%" stop-color="#b89040"/>
+          <stop offset="100%" stop-color="#7a5e28"/>
+        </linearGradient>
+        <!-- 阴影 -->
+        <radialGradient id="baseShadow" cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="rgba(42,31,20,0.25)"/>
+          <stop offset="100%" stop-color="rgba(42,31,20,0)"/>
+        </radialGradient>
+
+        <!-- 砝码（可复用形状） -->
+        <symbol id="weight50" viewBox="0 0 36 36">
+          <ellipse cx="18" cy="32" rx="14" ry="2.5" fill="rgba(42,31,20,0.2)"/>
+          <path d="M8 18 L8 28 Q8 32 18 32 Q28 32 28 28 L28 18 Q28 14 18 14 Q8 14 8 18 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.8"/>
+          <ellipse cx="18" cy="18" rx="10" ry="3" fill="#e8c47a" opacity="0.6"/>
+          <path d="M15 8 Q15 5 18 5 Q21 5 21 8 L21 14 L15 14 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.8"/>
+          <text x="18" y="25" text-anchor="middle" font-size="7" fill="#5c4619" font-weight="600" font-family="serif">50g</text>
+        </symbol>
+        <symbol id="weight100" viewBox="0 0 44 42">
+          <ellipse cx="22" cy="38" rx="17" ry="2.8" fill="rgba(42,31,20,0.2)"/>
+          <path d="M7 20 L7 34 Q7 38 22 38 Q37 38 37 34 L37 20 Q37 16 22 16 Q7 16 7 20 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.9"/>
+          <ellipse cx="22" cy="20" rx="15" ry="3.5" fill="#e8c47a" opacity="0.6"/>
+          <path d="M18 5 Q18 2 22 2 Q26 2 26 5 L26 16 L18 16 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.9"/>
+          <text x="22" y="29" text-anchor="middle" font-size="8" fill="#5c4619" font-weight="600" font-family="serif">100g</text>
+        </symbol>
+        <symbol id="weight200" viewBox="0 0 54 50">
+          <ellipse cx="27" cy="45" rx="21" ry="3.2" fill="rgba(42,31,20,0.22)"/>
+          <path d="M7 22 L7 40 Q7 45 27 45 Q47 45 47 40 L47 22 Q47 17 27 17 Q7 17 7 22 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="1"/>
+          <ellipse cx="27" cy="22" rx="20" ry="4.5" fill="#e8c47a" opacity="0.6"/>
+          <path d="M22 3 Q22 0 27 0 Q32 0 32 3 L32 17 L22 17 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="1"/>
+          <text x="27" y="33" text-anchor="middle" font-size="10" fill="#5c4619" font-weight="600" font-family="serif">200g</text>
+        </symbol>
+        <symbol id="weight500" viewBox="0 0 66 60">
+          <ellipse cx="33" cy="54" rx="26" ry="4" fill="rgba(42,31,20,0.25)"/>
+          <path d="M6 26 L6 48 Q6 54 33 54 Q60 54 60 48 L60 26 Q60 20 33 20 Q6 20 6 26 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="1.1"/>
+          <ellipse cx="33" cy="26" rx="27" ry="5.5" fill="#e8c47a" opacity="0.6"/>
+          <path d="M27 4 Q27 0 33 0 Q39 0 39 4 L39 20 L27 20 Z" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="1.1"/>
+          <text x="33" y="38" text-anchor="middle" font-size="12" fill="#5c4619" font-weight="600" font-family="serif">500g</text>
+        </symbol>
+      </defs>
+
+      <!-- 底座阴影 -->
+      <ellipse cx="380" cy="472" rx="180" ry="12" fill="url(#baseShadow)"/>
+
+      <!-- 底座（木） -->
+      <g class="scale-base">
+        <!-- 底座平台 -->
+        <rect x="240" y="440" width="280" height="28" rx="3" fill="url(#woodBase)" stroke="#3a2410" stroke-width="1"/>
+        <rect x="240" y="440" width="280" height="4" rx="2" fill="rgba(255, 235, 200, 0.3)"/>
+        <rect x="240" y="464" width="280" height="4" rx="2" fill="rgba(42,31,20,0.4)"/>
+
+        <!-- 支柱 -->
+        <rect x="366" y="250" width="28" height="192" fill="url(#woodPillar)" stroke="#3a2410" stroke-width="1"/>
+        <rect x="366" y="250" width="4" height="192" fill="rgba(255, 235, 200, 0.15)"/>
+
+        <!-- 支柱铜帽（轴座） -->
+        <rect x="358" y="236" width="44" height="18" rx="2" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="1"/>
+        <circle cx="380" cy="228" r="6" fill="#3a2410" stroke="#6b5020" stroke-width="1"/>
+        <circle cx="380" cy="228" r="2.5" fill="#1a0f05"/>
+
+        <!-- 底座调节脚 -->
+        <ellipse cx="260" cy="472" rx="10" ry="3" fill="#3a2410"/>
+        <ellipse cx="500" cy="472" rx="10" ry="3" fill="#3a2410"/>
+        <circle cx="260" cy="470" r="4" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.6"/>
+        <circle cx="500" cy="470" r="4" fill="url(#brassGrad)" stroke="#6b5020" stroke-width="0.6"/>
+      </g>
+
+      <!-- 平衡指示刻度盘 -->
+      <g class="scale-base">
+        <ellipse cx="380" cy="270" rx="34" ry="10" fill="rgba(243, 234, 211, 0.8)" stroke="#6b5020" stroke-width="0.8"/>
+        <path d="M360 270 Q380 260 400 270" fill="none" stroke="#8b6a2e" stroke-width="0.6"/>
+        <!-- 刻度线 -->
+        <line x1="362" y1="270" x2="362" y2="266" stroke="#8b6a2e" stroke-width="0.8"/>
+        <line x1="371" y1="270" x2="371" y2="264" stroke="#8b6a2e" stroke-width="0.8"/>
+        <line x1="380" y1="270" x2="380" y2="262" stroke="#5c4619" stroke-width="1.2"/>
+        <line x1="389" y1="270" x2="389" y2="264" stroke="#8b6a2e" stroke-width="0.8"/>
+        <line x1="398" y1="270" x2="398" y2="266" stroke="#8b6a2e" stroke-width="0.8"/>
+        <!-- 平衡灯 -->
+        <circle class="balance-light" id="balanceLight" cx="380" cy="288" r="4" fill="#8b6a2e" stroke="#5c4619" stroke-width="0.6"/>
+      </g>
+
+      <!-- 横梁组（旋转） -->
+      <g class="beam-group" id="beamGroup">
+
+        <!-- 横梁本体 -->
+        <rect x="130" y="173" width="500" height="14" rx="3" fill="url(#brassBeam)" stroke="#6b5020" stroke-width="1"/>
+        <!-- 横梁顶部高光 -->
+        <rect x="130" y="173" width="500" height="3" rx="1.5" fill="rgba(255, 235, 180, 0.5)"/>
+        <!-- 横梁底部暗部 -->
+        <rect x="130" y="184" width="500" height="3" rx="1.5" fill="rgba(42,31,20,0.3)"/>
+
+        <!-- 刻度（右半侧 0-20，每格1） -->
+        <g id="tickMarks">
+          <!-- 通过 JS 生成 -->
+        </g>
+
+        <!-- 中心轴孔 -->
+        <circle cx="380" cy="180" r="7" fill="#3a2410" stroke="#6b5020" stroke-width="1.2"/>
+        <circle cx="380" cy="180" r="3" fill="#1a0f05"/>
+
+        <!-- 左端吊耳 + 托盘 -->
+        <g>
+          <path d="M140 187 L140 195 Q140 200 148 200 L168 200 Q176 200 176 195 L176 187" fill="none" stroke="#8b6a2e" stroke-width="1.5"/>
+          <line x1="144" y1="200" x2="136" y2="260" stroke="#8b6a2e" stroke-width="1"/>
+          <line x1="172" y1="200" x2="180" y2="260" stroke="#8b6a2e" stroke-width="1"/>
+          <line x1="158" y1="200" x2="158" y2="260" stroke="#8b6a2e" stroke-width="0.8"/>
+
+          <!-- 左托盘 -->
+          <g class="pan-left">
+            <ellipse cx="158" cy="268" rx="52" ry="8" fill="rgba(42,31,20,0.15)"/>
+            <path d="M106 262 Q106 272 158 272 Q210 272 210 262 L206 268 Q206 276 158 276 Q110 276 110 268 Z" fill="url(#panGrad)" stroke="#6b5020" stroke-width="1"/>
+            <ellipse cx="158" cy="262" rx="52" ry="7" fill="url(#brassGradH)" stroke="#6b5020" stroke-width="0.8"/>
+            <ellipse cx="158" cy="262" rx="44" ry="4" fill="rgba(42,31,20,0.08)"/>
+          </g>
+          <!-- 左盘砝码容器（JS 控制） -->
+          <g id="leftPanWeights"></g>
+        </g>
+
+        <!-- 右端吊耳 + 托盘 -->
+        <g>
+          <path d="M584 187 L584 195 Q584 200 592 200 L612 200 Q620 200 620 195 L620 187" fill="none" stroke="#8b6a2e" stroke-width="1.5"/>
+          <line x1="588" y1="200" x2="580" y2="260" stroke="#8b6a2e" stroke-width="1"/>
+          <line x1="616" y1="200" x2="624" y2="260" stroke="#8b6a2e" stroke-width="1"/>
+          <line x1="602" y1="200" x2="602" y2="260" stroke="#8b6a2e" stroke-width="0.8"/>
+
+          <!-- 右托盘（固定 - 可作为配重/参照） -->
+          <g class="pan-right">
+            <ellipse cx="602" cy="268" rx="52" ry="8" fill="rgba(42,31,20,0.15)"/>
+            <path d="M550 262 Q550 272 602 272 Q654 272 654 262 L650 268 Q650 276 602 276 Q554 276 554 268 Z" fill="url(#panGrad)" stroke="#6b5020" stroke-width="1"/>
+            <ellipse cx="602" cy="262" rx="52" ry="7" fill="url(#brassGradH)" stroke="#6b5020" stroke-width="0.8"/>
+            <ellipse cx="602" cy="262" rx="44" ry="4" fill="rgba(42,31,20,0.08)"/>
+          </g>
+          <!-- 右盘砝码容器（固定配重，如固定基准物） -->
+        </g>
+
+        <!-- 游码（可拖动） -->
+        <g class="rider-group" id="rider">
+          <!-- 游码阴影 -->
+          <ellipse cx="0" cy="190" rx="12" ry="2.5" fill="rgba(42,31,20,0.3)" id="riderShadow"/>
+          <!-- 游码本体 -->
+          <g id="riderBody">
+            <path d="M-9 172 L-9 178 Q-9 180 -7 180 L7 180 Q9 180 9 178 L9 172 Q9 170 7 168 L-7 168 Q-9 170 -9 172 Z" fill="url(#brassGrad)" stroke="#5c4619" stroke-width="0.8"/>
+            <ellipse cx="0" cy="172" rx="9" ry="2.5" fill="#e8c47a" opacity="0.7"/>
+            <!-- 游码顶部把手 -->
+            <path d="M-4 165 Q-4 161 0 161 Q4 161 4 165 L4 168 L-4 168 Z" fill="url(#brassGrad)" stroke="#5c4619" stroke-width="0.7"/>
+            <!-- 游码指针 -->
+            <path d="M0 180 L0 188" stroke="#3e5a3e" stroke-width="1.2" stroke-linecap="round"/>
+            <circle cx="0" cy="189" r="1.2" fill="#3e5a3e"/>
+          </g>
+        </g>
+
+        <!-- 平衡指示针（与梁联动，但放大） -->
+        <g class="balance-pointer" id="balancePointer">
+          <line x1="380" y1="210" x2="380" y2="268" stroke="#8b6a2e" stroke-width="1.2"/>
+          <polygon points="380,268 377,262 383,262" fill="#8b6a2e"/>
+        </g>
+
+      </g><!-- /beam-group -->
+
+    </svg>
+  </div><!-- /scale-wrap -->
+
+  <!-- 砝码架 -->
+  <div class="weight-tray" id="weightTray">
+    <div class="tray-label">砝 码 架</div>
+
+    <div class="shelf-weight" data-weight="50" data-symbol="weight50">
+      <svg width="36" height="36" viewBox="0 0 36 36"><use href="#weight50"/></svg>
+      <span class="w-label">50 克</span>
+    </div>
+
+    <div class="shelf-weight" data-weight="100" data-symbol="weight100">
+      <svg width="44" height="42" viewBox="0 0 44 42"><use href="#weight100"/></svg>
+      <span class="w-label">100 克</span>
+    </div>
+
+    <div class="shelf-weight" data-weight="200" data-symbol="weight200">
+      <svg width="54" height="50" viewBox="0 0 54 50"><use href="#weight200"/></svg>
+      <span class="w-label">200 克</span>
+    </div>
+
+    <div class="shelf-weight" data-weight="500" data-symbol="weight500">
+      <svg width="66" height="60" viewBox="0 0 66 60"><use href="#weight500"/></svg>
+      <span class="w-label">500 克</span>
+    </div>
+  </div>
+
+</div><!-- /stage -->
+
+<script>
+/* ============================================================
+   黄铜天平 · 精密机械秤量组件 — 物理与交互逻辑
+   ============================================================
+   物理模型：
+   - 力矩 = 重量 × 力臂
+   - 左力矩 = 左盘砝码总重 × 左盘力臂（固定 240px）
+   - 右力矩 = 游码重 × 游码力臂 + 右盘基准重 × 右盘力臂
+   - 梁的平衡角由力矩差决定，通过阻尼弹簧模型向目标角收敛
+   - 游码可在 0 ~ 20 刻度间拖动，每刻度对应力臂增量
+   ============================================================ */
+
+(function() {
+  'use strict';
+
+  // 检查 reduced motion
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ============================================================
+  // 配置参数
+  // ============================================================
+  const CONFIG = {
+    // 物理参数
+    riderMass: 10,          // 游码质量（g）
+    panArm: 240,            // 托盘力臂（px，从中心到吊点）
+    riderArmMin: 20,        // 游码最小力臂（px，刻度0位置）
+    riderArmMax: 240,       // 游码最大力臂（px，刻度20位置）
+    riderTicks: 20,         // 游码刻度总数
+    rightBaseMass: 100,     // 右盘基准配重（g）—— 让天平天然偏右一点
+    maxAngle: 25,           // 最大倾斜角（度）
+    // 阻尼弹簧参数
+    springK: 0.08,          // 弹簧刚度（越大回中越快）
+    damping: 0.86,          // 阻尼系数（0-1，越小阻尼越大）
+    snapThreshold: 0.4,     // 刻度吸附阈值（刻度单位）
+    balanceThreshold: 60,   // 平衡判定阈值（力矩差单位 g·px，约 1/2 刻度精度）
+    // 视觉
+    beamY: 180,             // 梁的 y 坐标
+    beamCenterX: 380,       // 梁中心 x
+  };
+
+  // ============================================================
+  // 状态
+  // ============================================================
+  const state = {
+    // 游码位置（刻度值，0~20）
+    riderTick: 10,
+    // 左盘砝码数组
+    leftWeights: [],
+    // 梁角度（度）
+    beamAngle: 0,
+    beamAngularVel: 0,
+    // 目标角度
+    targetAngle: 0,
+    // 拖拽状态
+    dragging: false,
+    dragType: null, // 'rider'
+    // 动画帧
+    rafId: null,
+    running: true,
+    // 上一帧时间
+    lastTime: 0,
+  };
+
+  // ============================================================
+  // DOM 引用
+  // ============================================================
+  const el = {
+    beamGroup: document.getElementById('beamGroup'),
+    rider: document.getElementById('rider'),
+    riderBody: document.getElementById('riderBody'),
+    riderShadow: document.getElementById('riderShadow'),
+    tickMarks: document.getElementById('tickMarks'),
+    leftPanWeights: document.getElementById('leftPanWeights'),
+    balancePointer: document.getElementById('balancePointer'),
+    balanceLight: document.getElementById('balanceLight'),
+    balanceStatus: document.getElementById('balanceStatus'),
+    cursor: document.getElementById('cursor'),
+
+    torqueL: document.getElementById('torqueL'),
+    torqueR: document.getElementById('torqueR'),
+    torqueDiff: document.getElementById('torqueDiff'),
+    riderPos: document.getElementById('riderPos'),
+    leftWeight: document.getElementById('leftWeight'),
+    beamAngleEl: document.getElementById('beamAngle'),
+  };
+
+  // ============================================================
+  // 刻度生成
+  // ============================================================
+  function buildTicks() {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const startX = CONFIG.beamCenterX + CONFIG.riderArmMin;
+    const endX = CONFIG.beamCenterX + CONFIG.riderArmMax;
+    const totalLen = endX - startX;
+
+    for (let i = 0; i <= CONFIG.riderTicks; i++) {
+      const x = startX + (totalLen / CONFIG.riderTicks) * i;
+      const line = document.createElementNS(svgNS, 'line');
+      const isMajor = i % 5 === 0;
+      line.setAttribute('x1', x);
+      line.setAttribute('y1', CONFIG.beamY + 7);
+      line.setAttribute('x2', x);
+      line.setAttribute('y2', CONFIG.beamY + (isMajor ? 16 : 12));
+      line.setAttribute('stroke', '#5c4619');
+      line.setAttribute('stroke-width', isMajor ? '1.1' : '0.7');
+      line.setAttribute('class', 'tick-mark');
+      line.dataset.tick = i;
+      el.tickMarks.appendChild(line);
+
+      // 主刻度数字
+      if (isMajor) {
+        const text = document.createElementNS(svgNS, 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', CONFIG.beamY + 28);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('font-size', '8');
+        text.setAttribute('fill', '#5c4619');
+        text.setAttribute('font-family', 'serif');
+        text.setAttribute('font-weight', '600');
+        text.textContent = i;
+        el.tickMarks.appendChild(text);
+      }
+    }
+  }
+
+  // ============================================================
+  // 力矩计算
+  // ============================================================
+  function riderTickToArm(tick) {
+    return CONFIG.riderArmMin + (CONFIG.riderArmMax - CONFIG.riderArmMin) * (tick / CONFIG.riderTicks);
+  }
+
+  function riderTickToX(tick) {
+    const startX = CONFIG.beamCenterX + CONFIG.riderArmMin;
+    const endX = CONFIG.beamCenterX + CONFIG.riderArmMax;
+    const totalLen = endX - startX;
+    return startX + (totalLen / CONFIG.riderTicks) * tick;
+  }
+
+  function xToRiderTick(x) {
+    const startX = CONFIG.beamCenterX + CONFIG.riderArmMin;
+    const endX = CONFIG.beamCenterX + CONFIG.riderArmMax;
+    const totalLen = endX - startX;
+    const clampedX = Math.max(startX, Math.min(endX, x));
+    return ((clampedX - startX) / totalLen) * CONFIG.riderTicks;
+  }
+
+  function computeTorques() {
+    // 左力矩 = 左盘总重 * 力臂
+    const leftMass = state.leftWeights.reduce((s, w) => s + w, 0);
+    const torqueL = leftMass * CONFIG.panArm;
+
+    // 右力矩 = 右盘基准重 * 力臂 + 游码重 * 游码力臂
+    const riderArm = CONFIG.riderArmMin +
+      (CONFIG.riderArmMax - CONFIG.riderArmMin) * (state.riderTick / CONFIG.riderTicks);
+    const torqueR = CONFIG.rightBaseMass * CONFIG.panArm + CONFIG.riderMass * riderArm;
+
+    return { torqueL, torqueR, leftMass, riderArm };
+  }
+
+  function computeTargetAngle() {
+    const { torqueL, torqueR } = computeTorques();
+    const diff = torqueL - torqueR; // 正=左重=梁左低右高（角度为正，顺时针？）
+    // 力矩差到角度的映射：非线性，小力矩差变化快，大力矩差饱和
+    // 使用 tanh 类函数归一化到 -maxAngle ~ +maxAngle
+    // 左重 → 左端下沉 → 从观看角度，左端向下，角度为负（逆时针）
+    // 约定：angle > 0 表示右端下沉（顺时针）
+    const maxTorque = 600 * CONFIG.panArm; // 参考最大力矩
+    const normalized = diff / maxTorque;
+    // 用 smoothstep-ish 映射
+    const angle = -CONFIG.maxAngle * Math.tanh(normalized * 2.5);
+    return angle;
+  }
+
+  // ============================================================
+  // 渲染：游码位置
+  // ============================================================
+  function updateRiderPosition() {
+    const x = riderTickToX(state.riderTick);
+    // 游码组的 transform 是 translate
+    // 注意：游码在 SVG 内以 (0, 0) 为基准绘制
+    el.rider.setAttribute('transform', `translate(${x}, 0)`);
+  }
+
+  // ============================================================
+  // 渲染：梁角度 + 指针
+  // ============================================================
+  function updateBeamAngle() {
+    el.beamGroup.style.transform = `rotate(${state.beamAngle}deg)`;
+
+    // 指针放大 1.5 倍角度，增强可读性
+    const pointerAngle = state.beamAngle * 1.5;
+    el.balancePointer.style.transform = `rotate(${pointerAngle}deg)`;
+
+    // 读数更新
+    el.beamAngleEl.textContent = state.beamAngle.toFixed(1) + '°';
+  }
+
+  // ============================================================
+  // 渲染：左盘砝码
+  // ============================================================
+  function updateLeftPanWeights() {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    el.leftPanWeights.innerHTML = '';
+
+    // 从下往上堆叠
+    let yOffset = 0;
+    const panCenterX = 158; // 左盘中心 x
+
+    const weightSpecs = {
+      50:  { w: 36, h: 22, yBase: 30 },
+      100: { w: 44, h: 26, yBase: 34 },
+      200: { w: 54, h: 30, yBase: 38 },
+      500: { w: 66, h: 36, yBase: 44 },
+    };
+
+    state.leftWeights.forEach((mass, idx) => {
+      const spec = weightSpecs[mass];
+      if (!spec) return;
+
+      const g = document.createElementNS(svgNS, 'g');
+      g.setAttribute('class', 'weight-piece placed');
+      g.dataset.weight = mass;
+      g.dataset.index = idx;
+
+      const y = 262 - spec.yBase + 4 - yOffset; // 从托盘表面向上堆
+      const x = panCenterX - spec.w / 2;
+
+      const use = document.createElementNS(svgNS, 'use');
+      use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#weight' + mass);
+      use.setAttribute('href', '#weight' + mass);
+      use.setAttribute('x', x);
+      use.setAttribute('y', y);
+      use.setAttribute('width', spec.w);
+      use.setAttribute('height', spec.h + 4);
+      g.appendChild(use);
+
+      // 点击移除
+      g.style.cursor = 'pointer';
+      g.addEventListener('mouseenter', () => setCursorState('weight'));
+      g.addEventListener('mouseleave', () => {
+        if (!state.dragging) setCursorState('default');
+      });
+      g.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeWeightFromLeft(idx);
+      });
+
+      el.leftPanWeights.appendChild(g);
+      yOffset += spec.h - 4;
+    });
+  }
+
+  // ============================================================
+  // 渲染：读数面板
+  // ============================================================
+  function updateReadouts() {
+    const { torqueL, torqueR, leftMass } = computeTorques();
+    const diff = Math.abs(torqueL - torqueR);
+
+    setReadout('torqueL', Math.round(torqueL));
+    setReadout('torqueR', Math.round(torqueR));
+    setReadout('torqueDiff', Math.round(torqueL - torqueR));
+    setReadout('riderPos', state.riderTick.toFixed(1));
+    setReadout('leftWeight', leftMass);
+
+    // 平衡状态
+    const balanced = diff < CONFIG.balanceThreshold;
+    if (balanced) {
+      el.balanceLight.classList.add('balanced', 'pulse');
+      el.balanceStatus.classList.add('show');
+      document.querySelectorAll('.readout-row').forEach(r => r.classList.add('balanced'));
+    } else {
+      el.balanceLight.classList.remove('balanced', 'pulse');
+      el.balanceStatus.classList.remove('show');
+      document.querySelectorAll('.readout-row').forEach(r => r.classList.remove('balanced'));
+    }
+  }
+
+  function setReadout(id, value) {
+    const node = document.getElementById(id);
+    if (!node) return;
+    const oldVal = node.textContent;
+    const newVal = String(value);
+    if (oldVal !== newVal) {
+      node.textContent = newVal;
+      node.classList.remove('flash');
+      // 触发重排以重启动画
+      void node.offsetWidth;
+      node.classList.add('flash');
+    }
+  }
+
+  // ============================================================
+  // 刻度高亮（吸附反馈）
+  // ============================================================
+  function updateTickHighlight() {
+    const ticks = el.tickMarks.querySelectorAll('.tick-mark');
+    const nearest = Math.round(state.riderTick);
+    ticks.forEach(t => {
+      const tIdx = parseInt(t.dataset.tick);
+      if (tIdx === nearest) {
+        t.classList.add('active');
+      } else {
+        t.classList.remove('active');
+      }
+    });
+  }
+
+  // ============================================================
+  // 自定义光标
+  // ============================================================
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let cursorTargetX = cursorX;
+  let cursorTargetY = cursorY;
+
+  function setCursorState(stateName) {
+    if (prefersReducedMotion) return;
+    el.cursor.className = 'custom-cursor state-' + stateName;
+  }
+
+  function updateCursor() {
+    // 缓动跟随
+    cursorX += (cursorTargetX - cursorX) * 0.25;
+    cursorY += (cursorTargetY - cursorY) * 0.25;
+    el.cursor.style.left = cursorX + 'px';
+    el.cursor.style.top = cursorY + 'px';
+  }
+
+  // ============================================================
+  // 物理主循环
+  // ============================================================
+  function physicsLoop(timestamp) {
+    if (!state.running) return;
+
+    if (!state.lastTime) state.lastTime = timestamp;
+    const dt = Math.min((timestamp - state.lastTime) / 16.67, 2); // 归一化到60fps帧，限幅
+    state.lastTime = timestamp;
+
+    // 计算目标角度
+    const target = computeTargetAngle();
+    state.targetAngle = target;
+
+    if (!state.dragging || state.dragType !== 'rider') {
+      // 非游码拖拽时，运行阻尼弹簧物理
+      // 弹簧力：与偏移量成正比
+      const springForce = (target - state.beamAngle) * CONFIG.springK;
+      state.beamAngularVel += springForce * dt;
+      state.beamAngularVel *= Math.pow(CONFIG.damping, dt);
+      state.beamAngle += state.beamAngularVel * dt;
+
+      // 极限角度约束（软约束）
+      if (Math.abs(state.beamAngle) > CONFIG.maxAngle) {
+        state.beamAngle = Math.sign(state.beamAngle) * CONFIG.maxAngle;
+        state.beamAngularVel *= -0.3; // 反弹
+      }
+    } else {
+      // 游码拖拽中：梁角度直接跟随目标角，但保留少量惯性/阻尼以模拟阻力
+      const diff = target - state.beamAngle;
+      state.beamAngularVel = diff * 0.18 * dt;
+      state.beamAngle += state.beamAngularVel;
+      state.beamAngularVel *= 0.9;
+    }
+
+    // 渲染
+    updateBeamAngle();
+    updateReadouts();
+    updateCursor();
+
+    state.rafId = requestAnimationFrame(physicsLoop);
+  }
+
+  // ============================================================
+  // 游码拖拽
+  // ============================================================
+  const scaleWrap = document.querySelector('.scale-wrap');
+
+  function getSvgPoint(clientX, clientY) {
+    const svg = document.querySelector('.scale-svg');
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: clientX, y: clientY };
+    const svgPt = pt.matrixTransform(ctm.inverse());
+    return { x: svgPt.x, y: svgPt.y };
+  }
+
+  function startRiderDrag(e) {
+    state.dragging = true;
+    state.dragType = 'rider';
+    el.rider.classList.add('dragging');
+    setCursorState('drag');
+    e.preventDefault();
+  }
+
+  function moveRiderDrag(e) {
+    if (!state.dragging || state.dragType !== 'rider') return;
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pt = getSvgPoint(clientX, 0);
+
+    // 考虑当前梁的旋转角度，将鼠标位置投影到梁上
+    const angleRad = state.beamAngle * Math.PI / 180;
+    // 将点转换到以梁中心为原点的坐标系
+    const dx = pt.x - CONFIG.beamCenterX;
+    const dy = pt.y - CONFIG.beamY;
+    // 旋转回水平梁坐标系
+    const localX = dx * Math.cos(-angleRad) - dy * Math.sin(-angleRad);
+
+    const tick = xToRiderTick(CONFIG.beamCenterX + localX);
+    state.riderTick = Math.max(0, Math.min(CONFIG.riderTicks, tick));
+
+    updateRiderPosition();
+    updateTickHighlight();
+  }
+
+  function endRiderDrag() {
+    if (!state.dragging || state.dragType !== 'rider') return;
+
+    // 刻度吸附：松手后吸附到最近刻度，带弹性
+    const nearest = Math.round(state.riderTick);
+    const diff = nearest - state.riderTick;
+
+    // 给一个初始角速度（模拟"松手"的弹性感）
+    if (Math.abs(diff) > 0.05) {
+      state.riderTick = nearest;
+      // 给梁一点冲击感，让它微微振荡
+      state.beamAngularVel += diff * 0.3;
+    }
+
+    state.dragging = false;
+    state.dragType = null;
+    el.rider.classList.remove('dragging');
+    setCursorState('default');
+    updateRiderPosition();
+    updateTickHighlight();
+  }
+
+  // 游码拖拽事件绑定
+  el.rider.addEventListener('mousedown', startRiderDrag);
+  el.rider.addEventListener('touchstart', startRiderDrag, { passive: false });
+
+  document.addEventListener('mousemove', moveRiderDrag);
+  document.addEventListener('touchmove', moveRiderDrag, { passive: false });
+
+  document.addEventListener('mouseup', endRiderDrag);
+  document.addEventListener('touchend', endRiderDrag);
+  document.addEventListener('touchcancel', endRiderDrag);
+
+  // 游码悬停
+  el.rider.addEventListener('mouseenter', () => {
+    if (!state.dragging) {
+      el.rider.classList.add('hovering');
+      setCursorState('rider');
+    }
+  });
+  el.rider.addEventListener('mouseleave', () => {
+    if (!state.dragging) {
+      el.rider.classList.remove('hovering');
+      setCursorState('default');
+    }
+  });
+
+  // ============================================================
+  // 砝码添加 / 移除
+  // ============================================================
+  const shelfWeights = document.querySelectorAll('.shelf-weight');
+
+  shelfWeights.forEach(sw => {
+    sw.addEventListener('mouseenter', () => setCursorState('weight'));
+    sw.addEventListener('mouseleave', () => {
+      if (!state.dragging) setCursorState('default');
+    });
+
+    sw.addEventListener('click', (e) => {
+      const mass = parseInt(sw.dataset.weight);
+      addWeightToLeft(mass);
+      // 按压反馈
+      sw.style.transform = 'translateY(-1px) scale(0.96)';
+      setTimeout(() => { sw.style.transform = ''; }, 150);
+    });
+  });
+
+  function addWeightToLeft(mass) {
+    state.leftWeights.push(mass);
+    // 给梁一个冲击：新增重量 → 角速度脉冲（重物冲击感）
+    state.beamAngularVel -= mass * 0.06;
+    // 托盘下沉微动（通过给砝码一个入场动画 class）
+    updateLeftPanWeights();
+    // 最新加入的砝码做一个轻微弹跳
+    const pieces = el.leftPanWeights.querySelectorAll('.weight-piece');
+    if (pieces.length) {
+      const last = pieces[pieces.length - 1];
+      last.style.animation = 'none';
+      void last.offsetWidth;
+      last.style.animation = 'weightBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    }
+    updateReadouts();
+  }
+
+  function removeWeightFromLeft(idx) {
+    if (idx < 0 || idx >= state.leftWeights.length) return;
+    const mass = state.leftWeights[idx];
+    state.leftWeights.splice(idx, 1);
+    // 反向冲击
+    state.beamAngularVel += mass * 0.04;
+    updateLeftPanWeights();
+    updateReadouts();
+  }
+
+  // 左盘悬停反馈（委托）
+  el.leftPanWeights.addEventListener('mouseenter', () => setCursorState('weight'), true);
+  el.leftPanWeights.addEventListener('mouseleave', () => {
+    if (!state.dragging) setCursorState('default');
+  }, true);
+
+  // ============================================================
+  // 全局鼠标移动：光标跟随
+  // ============================================================
+  document.addEventListener('mousemove', (e) => {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+  });
+
+  // 初始光标位置居中
+  cursorX = window.innerWidth / 2;
+  cursorY = window.innerHeight / 2;
+  cursorTargetX = cursorX;
+  cursorTargetY = cursorY;
+  updateCursor();
+
+  // ============================================================
+  // 页面可见性：暂停/恢复
+  // ============================================================
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      state.running = false;
+      if (state.rafId) cancelAnimationFrame(state.rafId);
+    } else {
+      state.running = true;
+      state.lastTime = 0;
+      state.rafId = requestAnimationFrame(physicsLoop);
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', () => {
+    state.running = false;
+    if (state.rafId) cancelAnimationFrame(state.rafId);
+  });
+
+  // ============================================================
+  // 初始化
+  // ============================================================
+  function init() {
+    buildTicks();
+    updateRiderPosition();
+    updateTickHighlight();
+    updateLeftPanWeights();
+    updateBeamAngle();
+    updateReadouts();
+    setCursorState('default');
+
+    // 初始加一个 100g 砝码，让用户立即看到效果
+    setTimeout(() => {
+      addWeightToLeft(100);
+    }, 1200);
+
+    state.rafId = requestAnimationFrame(physicsLoop);
+  }
+
+  init();
+
+})();
+</script>
+</body>
+</html>
