@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>舂米臼 · 木杵石臼</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #e8d9b8;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* 自定义光标 */
+  #cursor {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.08s ease-out, width 0.12s ease, height 0.12s ease;
+    will-change: left, top;
+  }
+  #cursor svg {
+    display: block;
+    overflow: visible;
+  }
+  .hint {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #6b5a3e;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    opacity: 0.7;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+  }
+  .hint.hide { opacity: 0; }
+  .progress-badge {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    pointer-events: none;
+    text-align: right;
+    color: #6b5a3e;
+  }
+  .progress-badge .label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    opacity: 0.55;
+    margin-bottom: 6px;
+  }
+  .progress-badge .bar {
+    width: 140px;
+    height: 6px;
+    background: rgba(107, 90, 62, 0.18);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-badge .fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #c8a96e, #f0d89a);
+    border-radius: 3px;
+    transition: width 0.4s ease-out;
+  }
+  .progress-badge .count {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+  }
+  .title-stamp {
+    position: fixed;
+    top: 28px;
+    left: 32px;
+    pointer-events: none;
+    color: #5a4a30;
+  }
+  .title-stamp .zh {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 4px;
+  }
+  .title-stamp .sub {
+    font-size: 11px;
+    letter-spacing: 3px;
+    opacity: 0.5;
+    margin-top: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html, body { cursor: default; }
+    #cursor { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+</div>
+
+<!-- 自定义光标 -->
+<div id="cursor">
+  <svg width="36" height="36" viewBox="0 0 36 36" id="cursorSvg">
+    <!-- 默认：张开的手形光标 -->
+    <g id="cursorOpen" stroke="#3a2e1c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="rgba(255,240,210,0.92)">
+      <path d="M18 28 C 14 28, 11 25, 11 21 L 11 12 C 11 10.5, 12 9.5, 13.5 9.5 C 15 9.5, 16 10.5, 16 12 L 16 19 L 17 19 L 17 8 C 17 6.5, 18 5.5, 19.5 5.5 C 21 5.5, 22 6.5, 22 8 L 22 19 L 23 19 L 23 10 C 23 8.5, 24 7.5, 25.5 7.5 C 27 7.5, 28 8.5, 28 10 L 28 20 L 29 20 L 29 13 C 29 11.5, 30 10.5, 31.5 10.5 C 33 10.5, 34 11.5, 34 13 L 34 22 C 34 26, 31 29, 26 29 L 24 29 Z"/>
+    </g>
+    <!-- 抓住状态：握拳 -->
+    <g id="cursorGrab" stroke="#3a2e1c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="rgba(255,240,210,0.92)" style="display:none">
+      <ellipse cx="18" cy="20" rx="9" ry="8.5"/>
+      <path d="M9 18 C 9 14, 12 10, 18 10 C 24 10, 27 14, 27 18"/>
+      <path d="M12 16 C 13.5 15, 15.5 14.5, 18 14.5 C 20.5 14.5, 22.5 15, 24 16" stroke-width="1" opacity="0.5"/>
+    </g>
+  </svg>
+</div>
+
+<!-- 标题 -->
+<div class="title-stamp">
+  <div class="zh">舂米臼</div>
+  <div class="sub">CHONG MI JIU · 木杵石臼</div>
+</div>
+
+<!-- 进度徽章 -->
+<div class="progress-badge">
+  <div class="label">舂白进度</div>
+  <div class="bar"><div class="fill" id="progFill"></div></div>
+  <div class="count" id="progCount">0 臼</div>
+</div>
+
+<!-- 提示 -->
+<div class="hint" id="hint">按住木杵向上提起，松手舂下</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================
+  //  配置
+  // ============================================================
+  var CONFIG = {
+    // 物理
+    gravity: 1400,           // px/s^2
+    liftDragFactor: 0.85,    // 上提时的拖拽跟随系数（越低越沉）
+    liftDragFactorHigh: 0.6, // 提到很高时更沉（势能阻力）
+    bounceCoeff: 0.28,       // 冲击后弹跳系数（0-1），越小越沉
+    settleVelocity: 30,      // 速度低于此值视为静止
+    maxLiftHeight: 420,      // 最大可提升高度（px）
+    // 石臼
+    mortarWidth: 260,
+    mortarHeight: 130,
+    mortarInnerD: 200,
+    mortarRimHeight: 38,
+    // 木杵
+    pestleWidth: 32,
+    pestleHeadWidth: 56,
+    pestleHeadHeight: 44,
+    pestleTotalLength: 340,
+    // 米
+    riceDepth: 36,           // 米层厚度
+    riceSurfaceBase: 0,      // 米面相对位置（运行时计算）
+    // 粒子
+    maxRiceParticles: 80,
+    maxDustParticles: 40,
+    maxHuskParticles: 30,
+  };
+
+  // ============================================================
+  //  状态
+  // ============================================================
+  var canvas, ctx;
+  var W = 0, H = 0, DPR = 1;
+  var mortarX = 0, mortarY = 0;  // 石臼中心位置（屏幕坐标）
+  var riceSurfaceY = 0;          // 米面 y 坐标
+
+  // 减少动画偏好
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 木杵状态
+  var pestle = {
+    x: 0, y: 0,       // 杵头中心位置（y = 杵头顶点）
+    vy: 0,            // 垂直速度（向下为正）
+    state: 'idle',    // idle | hover | grabbed | falling | bouncing
+    tilt: 0,          // 倾斜角度（弧度）
+    tiltVel: 0,       // 倾斜角速度
+    grabOffsetY: 0,   // 抓取时鼠标与杵柄顶部的偏移
+    bounceCount: 0,
+    squish: 0,        // 杵头入米挤压量 0-1
+    squishVel: 0,
+  };
+
+  // 米的进度
+  var riceProgress = {
+    value: 0,         // 0-1，0 = 全糙米，1 = 全精米
+    hits: 0,          // 舂捣次数
+    surfaceRoughness: 1.0, // 1 = 粗糙（糙米），0 = 光滑（精米）
+    huskDensity: 1.0, // 0-1，谷壳密度
+    riceColor: null,  // 运行时插值
+    impactHistory: [], // 最近几次冲击强度（用于米面形态）
+  };
+
+  // 粒子池
+  var riceParticles = [];
+  var dustParticles = [];
+  var huskParticles = [];
+  var shockwaves = [];   // 闷响视觉波
+
+  // 石臼震动
+  var mortarShake = { x: 0, y: 0, intensity: 0, decay: 0.92 };
+
+  // 尘雾环境
+  var ambientDust = [];
+
+  // 输入
+  var mouse = { x: 0, y: 0, down: false };
+  var cursorEl, cursorOpen, cursorGrab;
+  var hintEl;
+  var hintShown = true;
+  var hasInteracted = false;
+
+  // 循环控制
+  var rafId = null;
+  var lastTime = 0;
+  var paused = false;
+  var running = false;
+
+  // ============================================================
+  //  初始化
+  // ============================================================
+  function init() {
+    canvas = document.getElementById('cv');
+    ctx = canvas.getContext('2d');
+    cursorEl = document.getElementById('cursor');
+    cursorOpen = document.getElementById('cursorOpen');
+    cursorGrab = document.getElementById('cursorGrab');
+    hintEl = document.getElementById('hint');
+
+    resize();
+    setupInitialState();
+    bindEvents();
+    startLoop();
+
+    // 初始光标位置：屏幕中央
+    mouse.x = W / 2;
+    mouse.y = H / 2;
+    updateCursor(mouse.x, mouse.y);
+
+    // 宣告可升级
+    announceUpgrade();
+  }
+
+  function setupInitialState() {
+    // 石臼位置
+    mortarX = W / 2;
+    mortarY = H / 2 + 80;
+    riceSurfaceY = mortarY - CONFIG.mortarHeight / 2 + CONFIG.mortarRimHeight + CONFIG.riceDepth * 0.3;
+
+    // 木杵初始位置：杵头刚好放在米面上
+    pestle.x = mortarX;
+    pestle.y = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 6;
+    pestle.vy = 0;
+    pestle.state = 'idle';
+    pestle.tilt = 0;
+    pestle.tiltVel = 0;
+    pestle.bounceCount = 0;
+    pestle.squish = 0;
+
+    // 米进度
+    riceProgress.value = 0;
+    riceProgress.hits = 0;
+    riceProgress.surfaceRoughness = 1.0;
+    riceProgress.huskDensity = 1.0;
+
+    // 环境尘粒
+    for (var i = 0; i < 18; i++) {
+      ambientDust.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.6,
+        r: 0.8 + Math.random() * 1.5,
+        vx: (Math.random() - 0.5) * 6,
+        vy: -Math.random() * 8 - 2,
+        life: Math.random(),
+        maxLife: 4 + Math.random() * 4,
+        opacity: 0.15 + Math.random() * 0.2,
+      });
+    }
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // 重算位置
+    mortarX = W / 2;
+    mortarY = H / 2 + 80;
+    riceSurfaceY = mortarY - CONFIG.mortarHeight / 2 + CONFIG.mortarRimHeight + CONFIG.riceDepth * 0.3;
+
+    // 若杵在 idle，同步位置
+    if (pestle.state === 'idle') {
+      pestle.x = mortarX;
+      pestle.y = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 6;
+    }
+  }
+
+  // ============================================================
+  //  事件
+  // ============================================================
+  function bindEvents() {
+    window.addEventListener('resize', resize);
+
+    var el = canvas;
+
+    el.addEventListener('mousemove', function(e) {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      updateCursor(mouse.x, mouse.y);
+    });
+
+    el.addEventListener('mousedown', function(e) {
+      mouse.down = true;
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      handlePress();
+    });
+
+    window.addEventListener('mouseup', function(e) {
+      if (!mouse.down) return;
+      mouse.down = false;
+      handleRelease();
+    });
+
+    // 触摸
+    el.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      var t = e.touches[0];
+      mouse.x = t.clientX;
+      mouse.y = t.clientY;
+      mouse.down = true;
+      updateCursor(mouse.x, mouse.y);
+      handlePress();
+    }, { passive: false });
+
+    el.addEventListener('touchmove', function(e) {
+      e.preventDefault();
+      var t = e.touches[0];
+      mouse.x = t.clientX;
+      mouse.y = t.clientY;
+      updateCursor(mouse.x, mouse.y);
+    }, { passive: false });
+
+    el.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      mouse.down = false;
+      handleRelease();
+    }, { passive: false });
+
+    // 可见性
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        paused = true;
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      } else {
+        paused = false;
+        lastTime = performance.now();
+        if (running) startLoop();
+      }
+    });
+
+    // 卸载
+    window.addEventListener('beforeunload', function() {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+      running = false;
+    });
+  }
+
+  function updateCursor(x, y) {
+    if (reducedMotion) return;
+    cursorEl.style.left = x + 'px';
+    cursorEl.style.top = y + 'px';
+  }
+
+  function setCursorGrab(grabbing) {
+    if (reducedMotion) return;
+    if (grabbing) {
+      cursorOpen.style.display = 'none';
+      cursorGrab.style.display = 'block';
+    } else {
+      cursorOpen.style.display = 'block';
+      cursorGrab.style.display = 'none';
+    }
+  }
+
+  // ============================================================
+  //  交互处理
+  // ============================================================
+  function isOnPestleHandle(x, y) {
+    // 杵柄是从杵头向上延伸的一根木杆
+    var handleTop = pestle.y - CONFIG.pestleHeadHeight / 2 - CONFIG.pestleTotalLength + CONFIG.pestleHeadHeight;
+    var handleBottom = pestle.y - CONFIG.pestleHeadHeight / 2;
+    var handleX = pestle.x;
+    var handleHalfW = CONFIG.pestleWidth / 2 + 12; // 命中区域稍大
+    return x >= handleX - handleHalfW && x <= handleX + handleHalfW &&
+           y >= handleTop - 10 && y <= handleBottom + 20;
+  }
+
+  function handlePress() {
+    if (pestle.state === 'falling' || pestle.state === 'bouncing') return;
+
+    if (isOnPestleHandle(mouse.x, mouse.y)) {
+      pestle.state = 'grabbed';
+      // 记录抓取偏移：鼠标相对于杵柄顶部的位置
+      var handleTop = pestle.y - CONFIG.pestleHeadHeight / 2 - CONFIG.pestleTotalLength + CONFIG.pestleHeadHeight;
+      pestle.grabOffsetY = mouse.y - handleTop;
+      pestle.vy = 0;
+      setCursorGrab(true);
+      hideHint();
+      hasInteracted = true;
+    }
+  }
+
+  function handleRelease() {
+    if (pestle.state === 'grabbed') {
+      pestle.state = 'falling';
+      setCursorGrab(false);
+      // 保留当前速度（如果用户松手时正在向下甩，会叠加）
+    }
+  }
+
+  function hideHint() {
+    if (!hintShown) return;
+    hintShown = false;
+    hintEl.classList.add('hide');
+  }
+
+  // ============================================================
+  //  物理更新
+  // ============================================================
+  function updatePhysics(dt) {
+    var handleTopY = pestle.y - CONFIG.pestleHeadHeight / 2 - CONFIG.pestleTotalLength + CONFIG.pestleHeadHeight;
+
+    // --- 抓取状态：跟随鼠标，但有重量感 ---
+    if (pestle.state === 'grabbed') {
+      var targetY = mouse.y - pestle.grabOffsetY + CONFIG.pestleTotalLength - CONFIG.pestleHeadHeight + CONFIG.pestleHeadHeight / 2;
+      // 简化：目标 y = 鼠标 y - grabOffset + 杆长偏移
+      targetY = mouse.y - pestle.grabOffsetY + (CONFIG.pestleTotalLength - CONFIG.pestleHeadHeight) + CONFIG.pestleHeadHeight / 2;
+
+      // 限制高度：不能低于米面，不能高于最大提升
+      var minY = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 6;
+      var maxY = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 6 - CONFIG.maxLiftHeight;
+      // targetY 越小越高
+      if (targetY > minY) targetY = minY;
+      if (targetY < maxY) targetY = maxY;
+
+      // 高度越高，阻力越大（势能越大越沉）
+      var liftAmount = Math.min(1, (minY - pestle.y) / CONFIG.maxLiftHeight);
+      var drag = CONFIG.liftDragFactor + (CONFIG.liftDragFactorHigh - CONFIG.liftDragFactor) * liftAmount;
+
+      // 带阻尼的弹簧跟随，模拟重量
+      var diff = targetY - pestle.y;
+      // 使用平滑跟随，有惯性感
+      var accel = diff * 18 * drag;
+      pestle.vy += accel * dt;
+      pestle.vy *= Math.pow(0.001, dt); // 强阻尼
+
+      pestle.y += pestle.vy * dt;
+
+      // 水平方向：轻微跟随，但以垂直为主
+      var targetX = mortarX + (mouse.x - mortarX) * 0.15;
+      var xdiff = targetX - pestle.x;
+      pestle.x += xdiff * Math.min(1, dt * 8);
+
+      // 倾斜：随水平偏移微倾
+      var targetTilt = (mouse.x - mortarX) * 0.0015;
+      pestle.tiltVel += (targetTilt - pestle.tilt) * 6 * dt;
+      pestle.tiltVel *= Math.pow(0.01, dt);
+      pestle.tilt += pestle.tiltVel * dt;
+
+      // 挤压：贴到米面时轻微挤压
+      var distToRice = riceSurfaceY - (pestle.y + CONFIG.pestleHeadHeight / 2);
+      if (distToRice < 2) {
+        pestle.squish = Math.min(0.3, (2 - distToRice) * 0.15);
+      } else {
+        pestle.squish *= Math.pow(0.001, dt);
+      }
+    }
+    // --- 下落状态：重力加速 ---
+    else if (pestle.state === 'falling') {
+      pestle.vy += CONFIG.gravity * dt;
+      pestle.y += pestle.vy * dt;
+
+      // 倾斜回正
+      pestle.tiltVel += -pestle.tilt * 8 * dt;
+      pestle.tiltVel *= Math.pow(0.1, dt);
+      pestle.tilt += pestle.tiltVel * dt;
+
+      // 检测撞击米面
+      var pestleBottom = pestle.y + CONFIG.pestleHeadHeight / 2;
+      if (pestleBottom >= riceSurfaceY && pestle.vy > 0) {
+        triggerImpact(pestle.vy);
+      }
+    }
+    // --- 弹跳状态 ---
+    else if (pestle.state === 'bouncing') {
+      pestle.vy += CONFIG.gravity * dt;
+      pestle.y += pestle.vy * dt;
+
+      // 倾斜
+      pestle.tiltVel += -pestle.tilt * 6 * dt;
+      pestle.tiltVel *= Math.pow(0.1, dt);
+      pestle.tilt += pestle.tiltVel * dt;
+
+      var pestleBottom = pestle.y + CONFIG.pestleHeadHeight / 2;
+      if (pestleBottom >= riceSurfaceY && pestle.vy > 0) {
+        // 再次撞击，但力度递减
+        if (Math.abs(pestle.vy) < CONFIG.settleVelocity || pestle.bounceCount >= 3) {
+          // 静止
+          pestle.y = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 2;
+          pestle.vy = 0;
+          pestle.state = 'idle';
+          pestle.bounceCount = 0;
+          pestle.squish = 0.3;
+        } else {
+          pestle.bounceCount++;
+          // 弹跳
+          var impactSpeed = pestle.vy;
+          pestle.vy = -impactSpeed * CONFIG.bounceCoeff;
+          pestle.y = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 0.1;
+          // 小幅冲击反馈
+          triggerMiniImpact(impactSpeed * CONFIG.bounceCoeff);
+        }
+      }
+    }
+    // --- idle：轻微呼吸晃动 ---
+    else if (pestle.state === 'idle') {
+      // 检测悬停
+      if (isOnPestleHandle(mouse.x, mouse.y)) {
+        pestle.state = 'hover';
+      }
+      // 挤压缓慢恢复
+      pestle.squish *= Math.pow(0.01, dt);
+
+      // 环境微动
+      var t = performance.now() * 0.001;
+      pestle.tilt = Math.sin(t * 1.3) * 0.008;
+    }
+    // --- hover ---
+    else if (pestle.state === 'hover') {
+      if (!isOnPestleHandle(mouse.x, mouse.y)) {
+        pestle.state = 'idle';
+      }
+      // 更明显的微动，暗示可抓
+      var t = performance.now() * 0.001;
+      pestle.tilt = Math.sin(t * 2.5) * 0.02;
+      pestle.squish *= Math.pow(0.01, dt);
+    }
+
+    // 挤压量弹簧回退
+    pestle.squishVel += -pestle.squish * 20 * dt;
+    pestle.squishVel *= Math.pow(0.001, dt);
+    pestle.squish += pestle.squishVel * dt;
+    if (pestle.squish < 0) { pestle.squish = 0; pestle.squishVel = 0; }
+
+    // 石臼震动衰减
+    mortarShake.intensity *= Math.pow(mortarShake.decay, dt * 60);
+    mortarShake.x = (Math.random() - 0.5) * mortarShake.intensity * 2;
+    mortarShake.y = (Math.random() - 0.5) * mortarShake.intensity * 2;
+  }
+
+  // ============================================================
+  //  冲击
+  // ============================================================
+  function triggerImpact(velocity) {
+    // velocity 是撞击时的向下速度（正数）
+    var impactPower = Math.min(1, velocity / 900); // 归一化强度 0-1
+
+    // 杵头挤压
+    pestle.squish = Math.min(1, impactPower * 1.2);
+    pestle.squishVel = -impactPower * 8;
+
+    // 杵弹跳
+    pestle.vy = -velocity * CONFIG.bounceCoeff;
+    pestle.y = riceSurfaceY - CONFIG.pestleHeadHeight / 2 - 1;
+    pestle.state = 'bouncing';
+    pestle.bounceCount = 1;
+
+    // 倾斜冲击：反弹时轻微反向倾斜
+    pestle.tiltVel = (Math.random() - 0.5) * impactPower * 4;
+
+    // 石臼跳震
+    mortarShake.intensity = impactPower * 14;
+
+    // 米粒飞溅
+    spawnRiceSplash(impactPower);
+
+    // 谷壳飞出（数量随进度减少）
+    if (riceProgress.huskDensity > 0.05) {
+      spawnHuskSplash(impactPower);
+    }
+
+    // 尘雾
+    spawnDustBurst(impactPower);
+
+    // 闷响视觉波
+    shockwaves.push({
+      x: mortarX,
+      y: riceSurfaceY,
+      r: 20,
+      maxR: 60 + impactPower * 120,
+      opacity: 0.6 * impactPower,
+      life: 1,
+    });
+
+    // 进度积累
+    addProgress(impactPower);
+  }
+
+  function triggerMiniImpact(velocity) {
+    var impactPower = Math.min(1, Math.abs(velocity) / 500);
+    mortarShake.intensity = Math.max(mortarShake.intensity, impactPower * 5);
+    spawnRiceSplash(impactPower * 0.4);
+    spawnDustBurst(impactPower * 0.3);
+    shockwaves.push({
+      x: mortarX,
+      y: riceSurfaceY,
+      r: 15,
+      maxR: 30 + impactPower * 50,
+      opacity: 0.3 * impactPower,
+      life: 1,
+    });
+  }
+
+  // ============================================================
+  //  粒子系统
+  // ============================================================
+  function spawnRiceSplash(power) {
+    var count = Math.floor(12 + power * 35);
+    for (var i = 0; i < count; i++) {
+      if (riceParticles.length >= CONFIG.maxRiceParticles) break;
+      var angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
+      var speed = 120 + Math.random() * 260 * power;
+      // 位置：杵头周围
+      var offsetX = (Math.random() - 0.5) * CONFIG.pestleHeadWidth * 0.8;
+      riceParticles.push({
+        x: pestle.x + offsetX,
+        y: riceSurfaceY - 2,
+        vx: Math.cos(angle) * speed * (offsetX > 0 ? 1 : -1) * (0.3 + Math.random() * 0.7) + (Math.random()-0.5)*40,
+        vy: Math.sin(angle) * speed - 60,
+        r: 2 + Math.random() * 1.5,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 10,
+        life: 1,
+        bounced: 0,
+        maxBounce: 1 + Math.floor(Math.random() * 2),
+      });
+    }
+  }
+
+  function spawnHuskSplash(power) {
+    var count = Math.floor(4 + power * 12 * riceProgress.huskDensity);
+    for (var i = 0; i < count; i++) {
+      if (huskParticles.length >= CONFIG.maxHuskParticles) break;
+      var angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
+      var speed = 80 + Math.random() * 180 * power;
+      huskParticles.push({
+        x: pestle.x + (Math.random() - 0.5) * CONFIG.pestleHeadWidth,
+        y: riceSurfaceY - 2,
+        vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 60,
+        vy: Math.sin(angle) * speed - 40,
+        w: 4 + Math.random() * 3,
+        h: 2 + Math.random() * 1.5,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 16,
+        life: 1,
+        floated: false,
+      });
+    }
+  }
+
+  function spawnDustBurst(power) {
+    var count = Math.floor(6 + power * 18);
+    for (var i = 0; i < count; i++) {
+      if (dustParticles.length >= CONFIG.maxDustParticles) break;
+      dustParticles.push({
+        x: mortarX + (Math.random() - 0.5) * CONFIG.mortarInnerD * 0.7,
+        y: riceSurfaceY - 2,
+        vx: (Math.random() - 0.5) * 80,
+        vy: -20 - Math.random() * 100 * power,
+        r: 3 + Math.random() * 6,
+        life: 1,
+        maxLife: 1.2 + Math.random() * 1.5,
+        opacity: 0.3 + Math.random() * 0.3,
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    // 米粒
+    for (var i = riceParticles.length - 1; i >= 0; i--) {
+      var p = riceParticles[i];
+      p.vy += CONFIG.gravity * 0.7 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rotation += p.rotSpeed * dt;
+
+      // 撞到地面/臼边
+      if (p.y > riceSurfaceY + 4 && p.vy > 0) {
+        if (p.bounced < p.maxBounce) {
+          p.vy = -p.vy * 0.35;
+          p.vx *= 0.7;
+          p.y = riceSurfaceY + 3;
+          p.bounced++;
+        } else {
+          p.y = riceSurfaceY + 4;
+          p.life -= dt * 1.5;
+          p.vx *= Math.pow(0.01, dt);
+        }
+      }
+
+      // 出臼外或寿命耗尽
+      var distFromCenter = Math.abs(p.x - mortarX);
+      if (p.life <= 0 || (p.y > mortarY + CONFIG.mortarHeight / 2 && p.vy > 0) || distFromCenter > W * 0.6) {
+        riceParticles.splice(i, 1);
+      }
+    }
+
+    // 谷壳（更轻，飘得远）
+    for (var j = huskParticles.length - 1; j >= 0; j--) {
+      var h = huskParticles[j];
+      h.vy += CONFIG.gravity * 0.35 * dt;
+      h.vx *= Math.pow(0.5, dt); // 空气阻力
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+      h.rotation += h.rotSpeed * dt;
+      h.life -= dt * 0.35;
+
+      if (h.life <= 0 || h.y > H + 20) {
+        huskParticles.splice(j, 1);
+      }
+    }
+
+    // 尘雾
+    for (var k = dustParticles.length - 1; k >= 0; k--) {
+      var d = dustParticles[k];
+      d.vy += -10 * dt; // 缓慢上升
+      d.vx += (Math.random() - 0.5) * 20 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.life -= dt / d.maxLife;
+      d.r += dt * 6; // 扩散
+
+      if (d.life <= 0) {
+        dustParticles.splice(k, 1);
+      }
+    }
+
+    // 冲击波
+    for (var m = shockwaves.length - 1; m >= 0; m--) {
+      var s = shockwaves[m];
+      s.r += (s.maxR - s.r) * dt * 6;
+      s.life -= dt * 2;
+      s.opacity = s.life * 0.6;
+      if (s.life <= 0) {
+        shockwaves.splice(m, 1);
+      }
+    }
+
+    // 环境尘
+    for (var n = 0; n < ambientDust.length; n++) {
+      var a = ambientDust[n];
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      a.life += dt;
+      if (a.life > a.maxLife || a.y < -10 || a.x < -10 || a.x > W + 10) {
+        a.x = Math.random() * W;
+        a.y = H + 10;
+        a.vx = (Math.random() - 0.5) * 6;
+        a.vy = -Math.random() * 8 - 2;
+        a.life = 0;
+        a.maxLife = 4 + Math.random() * 4;
+      }
+    }
+  }
+
+  // ============================================================
+  //  进度
+  // ============================================================
+  function addProgress(power) {
+    riceProgress.hits++;
+    // 冲击越强，进度越多，但边际递减
+    var gain = power * 0.08 * (1 - riceProgress.value * 0.7);
+    riceProgress.value = Math.min(1, riceProgress.value + gain);
+
+    // 表面粗糙度随进度降低
+    riceProgress.surfaceRoughness = 1 - riceProgress.value * 0.85;
+
+    // 谷壳密度随进度降低
+    riceProgress.huskDensity = 1 - riceProgress.value * 0.95;
+
+    // 更新UI
+    var fill = document.getElementById('progFill');
+    var count = document.getElementById('progCount');
+    if (fill) fill.style.width = (riceProgress.value * 100).toFixed(1) + '%';
+    if (count) count.textContent = riceProgress.hits + ' 臼';
+
+    // 记录冲击历史
+    riceProgress.impactHistory.push(power);
+    if (riceProgress.impactHistory.length > 10) {
+      riceProgress.impactHistory.shift();
+    }
+  }
+
+  // ============================================================
+  //  渲染
+  // ============================================================
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    drawBackground();
+    drawGround();
+
+    // 环境尘（后层）
+    drawAmbientDust();
+
+    // 石臼 + 米 + 杵
+    drawMortarAndRice();
+    drawPestle();
+
+    // 粒子（前层）
+    drawParticles();
+
+    // 冲击波
+    drawShockwaves();
+  }
+
+  function drawBackground() {
+    // 晒谷场暖调天空 / 墙面渐变
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#f5e6c8');
+    grad.addColorStop(0.55, '#ecd9b0');
+    grad.addColorStop(1, '#d9c38e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 阳光光晕
+    var sunX = W * 0.78;
+    var sunY = H * 0.18;
+    var sunGrad = ctx.createRadialGradient(sunX, sunY, 20, sunX, sunY, 280);
+    sunGrad.addColorStop(0, 'rgba(255, 235, 180, 0.5)');
+    sunGrad.addColorStop(1, 'rgba(255, 235, 180, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 远处竹篱笆剪影
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#6b5a3e';
+    var fenceY = H * 0.58;
+    for (var i = 0; i < 20; i++) {
+      var fx = i * (W / 18) - 20;
+      ctx.fillRect(fx, fenceY - 40, 3, 40);
+    }
+    ctx.fillRect(0, fenceY - 30, W, 2);
+    ctx.fillRect(0, fenceY - 15, W, 2);
+    ctx.restore();
+  }
+
+  function drawGround() {
+    // 晒谷场地面
+    var groundY = H * 0.65;
+    var grad = ctx.createLinearGradient(0, groundY, 0, H);
+    grad.addColorStop(0, '#c9a96e');
+    grad.addColorStop(0.4, '#b8965a');
+    grad.addColorStop(1, '#a07f48');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, groundY, W, H - groundY);
+
+    // 地面纹理：散落的谷粒和细草
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = '#7a5e32';
+    for (var i = 0; i < 60; i++) {
+      var gx = (i * 137.5) % W;
+      var gy = groundY + 20 + ((i * 73) % (H - groundY - 30));
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, 2, 0.8, i * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawAmbientDust() {
+    ctx.save();
+    for (var i = 0; i < ambientDust.length; i++) {
+      var d = ambientDust[i];
+      var alpha = d.opacity * (0.5 + 0.5 * Math.sin(d.life * 2));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#f5e6c8';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawMortarAndRice() {
+    var mx = mortarX + mortarShake.x;
+    var my = mortarY + mortarShake.y;
+    var mw = CONFIG.mortarWidth;
+    var mh = CONFIG.mortarHeight;
+    var innerD = CONFIG.mortarInnerD;
+
+    ctx.save();
+
+    // --- 石臼底座阴影 ---
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(mx, my + mh / 2 + 8, mw * 0.55, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --- 石臼主体（梯形碗状） ---
+    // 外轮廓
+    var topW = mw;
+    var bottomW = mw * 0.72;
+    var topY = my - mh / 2;
+    var bottomY = my + mh / 2;
+
+    // 主体渐变
+    var bodyGrad = ctx.createLinearGradient(mx - topW / 2, 0, mx + topW / 2, 0);
+    bodyGrad.addColorStop(0, '#8a8073');
+    bodyGrad.addColorStop(0.3, '#a89d8d');
+    bodyGrad.addColorStop(0.5, '#b8ad9d');
+    bodyGrad.addColorStop(0.7, '#9d9282');
+    bodyGrad.addColorStop(1, '#7a7064');
+
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(mx - topW / 2, topY);
+    ctx.lineTo(mx + topW / 2, topY);
+    ctx.lineTo(mx + bottomW / 2, bottomY);
+    ctx.lineTo(mx - bottomW / 2, bottomY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 石质纹理（细纹）
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = '#5a5040';
+    ctx.lineWidth = 0.8;
+    for (var i = 0; i < 8; i++) {
+      var ty = topY + (mh / 8) * i;
+      var tw = topW - (topW - bottomW) * (i / 8);
+      ctx.beginPath();
+      ctx.moveTo(mx - tw / 2 + 4, ty + 2);
+      ctx.lineTo(mx + tw / 2 - 4, ty + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- 臼口（加厚的边） ---
+    var rimH = CONFIG.mortarRimHeight;
+    var rimTopY = topY;
+    var rimBottomY = topY + rimH;
+
+    // 臼口内壁凹陷
+    ctx.save();
+    // 上表面
+    var rimGrad = ctx.createLinearGradient(0, rimTopY, 0, rimBottomY);
+    rimGrad.addColorStop(0, '#9a9080');
+    rimGrad.addColorStop(0.5, '#c0b6a4');
+    rimGrad.addColorStop(1, '#7a7064');
+    ctx.fillStyle = rimGrad;
+
+    // 臼口外圈（椭圆）
+    ctx.beginPath();
+    ctx.ellipse(mx, rimTopY + 4, topW / 2, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 臼口内圈（凹陷）
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(mx, rimTopY + 2, innerD / 2, 14, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 内壁深色
+    var innerGrad = ctx.createLinearGradient(0, rimTopY - 10, 0, rimTopY + rimH + 20);
+    innerGrad.addColorStop(0, '#6a6050');
+    innerGrad.addColorStop(1, '#4a4236');
+    ctx.fillStyle = innerGrad;
+    ctx.fillRect(mx - innerD / 2 - 10, rimTopY - 10, innerD + 20, rimH + 30);
+
+    ctx.restore();
+    ctx.restore();
+
+    // --- 米层 ---
+    drawRiceLayer(mx, rimBottomY + 4, innerD);
+
+    ctx.restore();
+  }
+
+  function drawRiceLayer(cx, topY, innerD) {
+    // 米的颜色：从糙米到精米
+    var t = riceProgress.value;
+    // 糙米色 -> 精米色
+    var r = Math.round(168 + (245 - 168) * t);
+    var g = Math.round(138 + (238 - 138) * t);
+    var b = Math.round(92 + (215 - 92) * t);
+    var riceColor = 'rgb(' + r + ',' + g + ',' + b + ')';
+
+    // 深一些的阴影色
+    var r2 = Math.round(148 + (215 - 148) * t);
+    var g2 = Math.round(118 + (208 - 118) * t);
+    var b2 = Math.round(72 + (185 - 72) * t);
+    var riceShade = 'rgb(' + r2 + ',' + g2 + ',' + b2 + ')';
+
+    ctx.save();
+
+    // 米层主体（椭圆体）
+    var riceTopY = riceSurfaceY;
+    var riceBottomY = topY + CONFIG.riceDepth;
+
+    // 用椭圆绘制米面
+    var riceGrad = ctx.createRadialGradient(cx, riceTopY + 4, 5, cx, riceTopY + 4, innerD / 2);
+    riceGrad.addColorStop(0, riceColor);
+    riceGrad.addColorStop(0.7, riceColor);
+    riceGrad.addColorStop(1, riceShade);
+
+    ctx.fillStyle = riceGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, riceTopY + 6, innerD / 2 - 6, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 米的颗粒质感 / 粗糙度
+    ctx.save();
+    ctx.globalAlpha = 0.35 * riceProgress.surfaceRoughness;
+    ctx.fillStyle = riceShade;
+    var seed = 42;
+    for (var i = 0; i < 40; i++) {
+      seed = (seed * 9301 + 49297) % 233280;
+      var rx = cx - innerD / 2 + 10 + (seed / 233280) * (innerD - 20);
+      seed = (seed * 9301 + 49297) % 233280;
+      var ry = riceTopY + 2 + (seed / 233280) * 6;
+      seed = (seed * 9301 + 49297) % 233280;
+      var rsize = 1 + (seed / 233280) * 1.5;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, rsize + 0.5, rsize * 0.6, i * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 谷壳（金黄）
+    if (riceProgress.huskDensity > 0.05) {
+      ctx.save();
+      ctx.globalAlpha = 0.85 * riceProgress.huskDensity;
+      ctx.fillStyle = '#d4a84a';
+      var seed2 = 123;
+      var huskCount = Math.floor(15 * riceProgress.huskDensity);
+      for (var j = 0; j < huskCount; j++) {
+        seed2 = (seed2 * 7919 + 104729) % 233280;
+        var hx = cx - innerD / 2 + 12 + (seed2 / 233280) * (innerD - 24);
+        seed2 = (seed2 * 7919 + 104729) % 233280;
+        var hy = riceTopY + 1 + (seed2 / 233280) * 5;
+        seed2 = (seed2 * 7919 + 104729) % 233280;
+        var hrot = (seed2 / 233280) * Math.PI;
+        seed2 = (seed2 * 7919 + 104729) % 233280;
+        var hw = 3 + (seed2 / 233280) * 2;
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(hrot);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, hw, hw * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // 杵头挤压凹陷（冲击瞬间）
+    if (pestle.squish > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = riceShade;
+      var squishW = CONFIG.pestleHeadWidth * 0.8 * (0.8 + pestle.squish * 0.4);
+      var squishH = 8 * pestle.squish;
+      ctx.beginPath();
+      ctx.ellipse(pestle.x, riceTopY + 2, squishW / 2, squishH, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawPestle() {
+    var px = pestle.x;
+    var py = pestle.y;  // 杵头中心
+    var tilt = pestle.tilt;
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(tilt);
+
+    var headW = CONFIG.pestleHeadWidth;
+    var headH = CONFIG.pestleHeadHeight;
+    var squish = pestle.squish;
+
+    // 阴影
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, headH / 2 + 6, headW * 0.45, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --- 杵柄（木杆） ---
+    var handleLen = CONFIG.pestleTotalLength - headH;
+    var handleW = CONFIG.pestleWidth;
+
+    // 木杆渐变
+    var handleGrad = ctx.createLinearGradient(-handleW / 2, 0, handleW / 2, 0);
+    handleGrad.addColorStop(0, '#8b5a2b');
+    handleGrad.addColorStop(0.3, '#a67c4e');
+    handleGrad.addColorStop(0.5, '#c49a6c');
+    handleGrad.addColorStop(0.7, '#a67c4e');
+    handleGrad.addColorStop(1, '#6b4420');
+
+    ctx.fillStyle = handleGrad;
+    ctx.beginPath();
+    // 杆身（从杵头向上）
+    var handleTopY = -headH / 2 - handleLen;
+    ctx.moveTo(-handleW / 2, -headH / 2 + 4);
+    ctx.lineTo(-handleW / 2 + 1, handleTopY + 6);
+    ctx.quadraticCurveTo(-handleW / 2 + 2, handleTopY, 0, handleTopY);
+    ctx.quadraticCurveTo(handleW / 2 - 2, handleTopY, handleW / 2 - 1, handleTopY + 6);
+    ctx.lineTo(handleW / 2, -headH / 2 + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // 木纹
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = '#5a3d1a';
+    ctx.lineWidth = 0.8;
+    for (var i = 0; i < 5; i++) {
+      var wx = -handleW / 2 + 4 + i * (handleW - 8) / 4;
+      ctx.beginPath();
+      ctx.moveTo(wx, -headH / 2 + 8);
+      ctx.bezierCurveTo(
+        wx + 1, handleTopY + handleLen * 0.3,
+        wx - 1, handleTopY + handleLen * 0.6,
+        wx + 0.5, handleTopY + 10
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 握痕高亮（hover / grabbed 时）
+    if (pestle.state === 'hover' || pestle.state === 'grabbed') {
+      ctx.save();
+      var gripY = -headH / 2 - handleLen * 0.15;
+      var gripH = 36;
+      var gripGrad = ctx.createLinearGradient(0, gripY - gripH / 2, 0, gripY + gripH / 2);
+      gripGrad.addColorStop(0, 'rgba(255, 220, 140, 0)');
+      gripGrad.addColorStop(0.5, 'rgba(255, 220, 140, ' + (pestle.state === 'grabbed' ? 0.55 : 0.3) + ')');
+      gripGrad.addColorStop(1, 'rgba(255, 220, 140, 0)');
+      ctx.fillStyle = gripGrad;
+      ctx.fillRect(-handleW / 2 - 2, gripY - gripH / 2, handleW + 4, gripH);
+      ctx.restore();
+    }
+
+    // 杵头（被挤压的木头撞头）
+    var squishedHeadH = headH * (1 - squish * 0.3);
+    var squishedHeadW = headW * (1 + squish * 0.15);
+
+    var headGrad = ctx.createLinearGradient(-squishedHeadW / 2, 0, squishedHeadW / 2, 0);
+    headGrad.addColorStop(0, '#6b4420');
+    headGrad.addColorStop(0.2, '#9c6a35');
+    headGrad.addColorStop(0.5, '#c49060');
+    headGrad.addColorStop(0.8, '#9c6a35');
+    headGrad.addColorStop(1, '#5a3818');
+
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    // 杵头形状：中间鼓，两端略收
+    var hh = squishedHeadH / 2;
+    var hw = squishedHeadW / 2;
+    ctx.moveTo(-hw * 0.85, -hh);
+    ctx.quadraticCurveTo(-hw, -hh * 0.3, -hw * 0.95, 0);
+    ctx.quadraticCurveTo(-hw, hh * 0.3, -hw * 0.85, hh);
+    ctx.lineTo(hw * 0.85, hh);
+    ctx.quadraticCurveTo(hw, hh * 0.3, hw * 0.95, 0);
+    ctx.quadraticCurveTo(hw, -hh * 0.3, hw * 0.85, -hh);
+    ctx.closePath();
+    ctx.fill();
+
+    // 杵头底部（撞击面）深色磨损
+    var bottomGrad = ctx.createLinearGradient(0, hh - 8, 0, hh + 2);
+    bottomGrad.addColorStop(0, 'rgba(80, 50, 20, 0)');
+    bottomGrad.addColorStop(1, 'rgba(60, 35, 12, 0.6)');
+    ctx.fillStyle = bottomGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, hh - 2, hw * 0.85, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 杵头铁箍（上下各一道）
+    ctx.save();
+    ctx.fillStyle = '#4a3a2a';
+    ctx.fillRect(-hw * 0.9, -hh + 2, hw * 1.8, 4);
+    ctx.fillRect(-hw * 0.9, hh - 6, hw * 1.8, 4);
+    // 箍的高光
+    ctx.fillStyle = 'rgba(255, 220, 160, 0.2)';
+    ctx.fillRect(-hw * 0.9, -hh + 2, hw * 1.8, 1.5);
+    ctx.fillRect(-hw * 0.9, hh - 6, hw * 1.8, 1.5);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    // 米粒
+    var t = riceProgress.value;
+    var riceR = Math.round(235 + (245 - 235) * t);
+    var riceG = Math.round(220 + (240 - 220) * t);
+    var riceB = Math.round(185 + (220 - 185) * t);
+
+    ctx.save();
+    ctx.fillStyle = 'rgb(' + riceR + ',' + riceG + ',' + riceB + ')';
+    for (var i = 0; i < riceParticles.length; i++) {
+      var p = riceParticles[i];
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.life);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.r, p.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 谷壳
+    ctx.save();
+    ctx.fillStyle = '#d4a84a';
+    for (var j = 0; j < huskParticles.length; j++) {
+      var h = huskParticles[j];
+      ctx.save();
+      ctx.globalAlpha = h.life * 0.9;
+      ctx.translate(h.x, h.y);
+      ctx.rotate(h.rotation);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, h.w, h.h, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 尘雾
+    for (var k = 0; k < dustParticles.length; k++) {
+      var d = dustParticles[k];
+      ctx.save();
+      ctx.globalAlpha = d.opacity * d.life;
+      var dustGrad = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r);
+      dustGrad.addColorStop(0, 'rgba(245, 230, 200, 0.6)');
+      dustGrad.addColorStop(1, 'rgba(245, 230, 200, 0)');
+      ctx.fillStyle = dustGrad;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawShockwaves() {
+    for (var i = 0; i < shockwaves.length; i++) {
+      var s = shockwaves[i];
+      ctx.save();
+      ctx.globalAlpha = s.opacity;
+      ctx.strokeStyle = '#fff8e0';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y, s.r, s.r * 0.35, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ============================================================
+  //  主循环
+  // ============================================================
+  function startLoop() {
+    running = true;
+    lastTime = performance.now();
+    loop(lastTime);
+  }
+
+  function loop(now) {
+    if (!running || paused) return;
+    rafId = requestAnimationFrame(loop);
+
+    var dt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (dt > 0.05) dt = 0.05; // 防止切页后大跳
+
+    updatePhysics(dt);
+    updateParticles(dt);
+    render();
+  }
+
+  // ============================================================
+  //  升级宣告
+  // ============================================================
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) {}
+  }
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // ============================================================
+  //  启动
+  // ============================================================
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>

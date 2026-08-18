@@ -1,0 +1,3098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>旧书体温计</title>
+<style>
+  /* ========== RESET & BASE ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    width: 100%;
+    font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    background: #E8E0D0;
+    color: #2C2416;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { border: none; background: none; cursor: pointer; font-family: inherit; color: inherit; }
+  input, textarea, select { font-family: inherit; color: inherit; }
+  ul { list-style: none; }
+
+  :root {
+    --paper-bg: #F5F0E6;
+    --paper-card: #FFFDF7;
+    --leather-brown: #8B7355;
+    --leather-dark: #6B5A42;
+    --gold-stamp: #C4A265;
+    --stamp-red: #8B0000;
+    --stamp-red-soft: #A52A2A;
+    --temp-high: #D4573B;
+    --temp-low: #7A9E7E;
+    --ink-dark: #2C2416;
+    --ink-light: #6B5D4F;
+    --ink-faint: #B8A88F;
+    --tab-active: #8B7355;
+    --tab-inactive: #B8A88F;
+  }
+
+  /* ========== CUSTOM CURSOR ========== */
+  .pen-cursor {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-4px, -2px);
+    transition: transform 0.15s ease-out;
+    display: none;
+  }
+  body.has-cursor .pen-cursor { display: block; }
+  body.has-cursor, body.has-cursor * { cursor: none !important; }
+  body.clicking .pen-cursor { transform: translate(-4px, -2px) scale(0.85) rotate(-10deg); }
+
+  /* ========== PHONE FRAME ========== */
+  .phone-wrap {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 390px;
+    height: 844px;
+    background: var(--paper-bg);
+    border-radius: 48px;
+    box-shadow:
+      0 0 0 12px #1a1a1a,
+      0 0 0 14px #2a2a2a,
+      0 40px 80px rgba(0,0,0,0.3),
+      0 10px 30px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 130px;
+    height: 32px;
+    background: #1a1a1a;
+    border-radius: 0 0 20px 20px;
+    z-index: 1000;
+  }
+  .status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    z-index: 999;
+    padding-top: 6px;
+  }
+  .status-right { display: flex; align-items: center; gap: 5px; }
+  .status-right svg { width: 18px; height: 18px; }
+
+  /* ========== NAV BAR ========== */
+  .nav-bar {
+    position: absolute;
+    top: 44px;
+    left: 0;
+    right: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    background: transparent;
+  }
+  .nav-title {
+    font-size: 17px;
+    font-weight: 600;
+    font-family: "Noto Serif SC", serif;
+    color: var(--ink-dark);
+    letter-spacing: 0.5px;
+  }
+  .nav-back {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-dark);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .nav-back.show { opacity: 1; pointer-events: auto; }
+  .nav-back:active { opacity: 0.5; }
+
+  .capsule {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 88px;
+    height: 32px;
+    border: 1px solid rgba(139, 115, 85, 0.3);
+    border-radius: 16px;
+    background: rgba(255, 253, 247, 0.6);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .capsule-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(139, 115, 85, 0.2);
+  }
+  .capsule-btn {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--leather-brown);
+  }
+  .capsule-btn svg { width: 18px; height: 18px; }
+
+  /* ========== PAGE CONTAINER ========== */
+  .pages {
+    position: absolute;
+    top: 88px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+  }
+  .page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--paper-bg);
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(100%);
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+    scrollbar-width: none;
+  }
+  .page::-webkit-scrollbar { display: none; }
+  .page.active { transform: translateX(0); }
+  .page.tab-page { transform: translateX(0); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .page.tab-page.active { opacity: 1; pointer-events: auto; }
+  .page.tab-page.sliding-out { transform: translateX(-30%); opacity: 0; transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s; }
+
+  .page-content { padding-bottom: 100px; }
+
+  /* ========== PULL TO REFRESH ========== */
+  .pull-indicator {
+    position: absolute;
+    top: -50px;
+    left: 0;
+    right: 0;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--ink-light);
+    font-size: 13px;
+    transition: top 0.3s;
+    z-index: 10;
+  }
+  .pull-indicator.show { top: 0; }
+  .pull-indicator .feather-icon {
+    animation: feather-spin 2s linear infinite;
+    display: inline-block;
+  }
+  @keyframes feather-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* ========== TAB BAR ========== */
+  .tab-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 84px;
+    background: rgba(255, 253, 247, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(139, 115, 85, 0.15);
+    display: flex;
+    z-index: 400;
+    padding-bottom: 24px;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--tab-inactive);
+    font-size: 10px;
+    position: relative;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s;
+  }
+  .tab-item.active { color: var(--tab-active); }
+  .tab-item.bounce { transform: translateY(-2px); }
+  .tab-item svg { width: 24px; height: 24px; }
+  .tab-dot {
+    position: absolute;
+    bottom: 18px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--leather-brown);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .tab-item.active .tab-dot { opacity: 1; }
+
+  /* ========== HOME PAGE ========== */
+  .home-header {
+    padding: 8px 20px 16px;
+  }
+  .home-stat-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .home-stat-num {
+    font-family: "Noto Serif SC", serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--ink-dark);
+    line-height: 1;
+  }
+  .home-stat-label {
+    font-size: 13px;
+    color: var(--ink-light);
+  }
+  .home-subtitle {
+    font-size: 12px;
+    color: var(--ink-light);
+    font-family: "Noto Serif SC", serif;
+    opacity: 0.7;
+  }
+  .section-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    padding: 8px 20px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: var(--leather-brown);
+    border-radius: 2px;
+  }
+
+  /* Book list items */
+  .book-list { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .book-item-wrap { position: relative; overflow: hidden; border-radius: 12px; }
+  .book-item-actions {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: stretch;
+    z-index: 0;
+  }
+  .book-action-btn {
+    width: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .book-action-btn.detail { background: var(--leather-brown); }
+  .book-action-btn.delete { background: var(--stamp-red); }
+
+  .book-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--paper-card);
+    border-radius: 12px;
+    position: relative;
+    z-index: 1;
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .book-item:active { transform: scale(0.98); }
+  .book-item.swiped { transform: translateX(-128px); }
+
+  .book-spine {
+    width: 36px;
+    height: 52px;
+    border-radius: 3px 6px 6px 3px;
+    flex-shrink: 0;
+    position: relative;
+    box-shadow: inset -3px 0 6px rgba(0,0,0,0.15), 2px 2px 4px rgba(0,0,0,0.1);
+  }
+  .book-spine::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 4px;
+    bottom: 4px;
+    width: 1px;
+    background: rgba(255,255,255,0.3);
+  }
+  .book-spine::after {
+    content: '';
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    bottom: 3px;
+    width: 2px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.25), rgba(0,0,0,0.1));
+  }
+
+  .book-info { flex: 1; min-width: 0; }
+  .book-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+  .book-meta {
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .book-temp {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .book-temp svg { width: 14px; height: 14px; }
+  .book-temp-value {
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .book-date {
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-top: 4px;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 40px;
+    text-align: center;
+  }
+  .empty-card {
+    width: 140px;
+    height: 180px;
+    background: var(--paper-card);
+    border: 1px solid var(--ink-faint);
+    border-radius: 4px;
+    position: relative;
+    margin-bottom: 20px;
+    animation: float-breath 3s ease-in-out infinite;
+    box-shadow: 0 4px 12px rgba(139, 115, 85, 0.1);
+  }
+  @keyframes float-breath {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-6px) rotate(-1deg); }
+  }
+  .empty-card::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: 10px;
+    right: 10px;
+    height: 1px;
+    background: var(--ink-faint);
+  }
+  .empty-card::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border: 2px solid var(--stamp-red);
+    border-radius: 50%;
+    opacity: 0.5;
+    transform: rotate(15deg);
+  }
+  .empty-card-lines {
+    position: absolute;
+    top: 30px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .empty-card-line {
+    height: 4px;
+    background: var(--ink-faint);
+    border-radius: 2px;
+    opacity: 0.5;
+  }
+  .empty-card-line:nth-child(1) { width: 80%; }
+  .empty-card-line:nth-child(2) { width: 60%; }
+  .empty-card-line:nth-child(3) { width: 90%; }
+  .empty-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 16px;
+    color: var(--ink-dark);
+    margin-bottom: 6px;
+  }
+  .empty-desc {
+    font-size: 12px;
+    color: var(--ink-light);
+    margin-bottom: 20px;
+  }
+
+  /* ========== BUTTONS ========== */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--leather-brown);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(139, 115, 85, 0.3);
+  }
+  .btn-primary:active { transform: scale(0.97); box-shadow: 0 2px 6px rgba(139, 115, 85, 0.2); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--leather-brown);
+    border: 1px solid var(--leather-brown);
+  }
+  .btn-block { width: 100%; }
+  .btn-lg { padding: 14px 28px; font-size: 15px; border-radius: 28px; }
+
+  /* ========== REGISTER PAGE ========== */
+  .form-page { padding: 4px 20px 20px; }
+  .form-group {
+    margin-bottom: 22px;
+    position: relative;
+  }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--ink-light);
+    margin-bottom: 8px;
+    font-family: "Noto Serif SC", serif;
+  }
+  .form-input {
+    width: 100%;
+    padding: 10px 0;
+    border: none;
+    border-bottom: 1px solid var(--ink-faint);
+    background: transparent;
+    font-size: 15px;
+    color: var(--ink-dark);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input::placeholder { color: var(--ink-faint); }
+  .form-input:focus {
+    border-bottom-color: var(--leather-brown);
+  }
+  .form-input-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 1.5px;
+    width: 0;
+    background: var(--leather-brown);
+    transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .form-input:focus + .form-input-line { width: 100%; }
+
+  .color-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+  .color-swatch {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .color-swatch.selected {
+    border-color: var(--gold-stamp);
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(196, 162, 101, 0.4);
+  }
+  .color-swatch.selected::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.6);
+  }
+
+  .source-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .source-chip {
+    padding: 6px 14px;
+    border-radius: 16px;
+    background: rgba(139, 115, 85, 0.08);
+    color: var(--ink-light);
+    font-size: 13px;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .source-chip.active {
+    background: var(--paper-card);
+    color: var(--leather-brown);
+    border-color: var(--leather-brown);
+    font-weight: 500;
+  }
+
+  .form-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px 12px;
+    border: 1px solid var(--ink-faint);
+    border-radius: 8px;
+    background: var(--paper-card);
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-textarea:focus { border-color: var(--leather-brown); }
+
+  /* ========== SYMPTOM CHECK PAGE ========== */
+  .symptom-header {
+    padding: 4px 20px 12px;
+    text-align: center;
+  }
+  .symptom-book-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 4px;
+  }
+  .symptom-progress-text {
+    font-size: 12px;
+    color: var(--ink-light);
+  }
+  .symptom-progress-bar {
+    height: 3px;
+    background: rgba(139, 115, 85, 0.15);
+    margin: 10px 20px 16px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .symptom-progress-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--temp-low), var(--temp-high));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .symptom-list { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .symptom-card {
+    background: var(--paper-card);
+    border-radius: 12px;
+    padding: 14px 16px;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+    position: relative;
+  }
+  .symptom-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(139, 115, 85, 0.12);
+  }
+  .symptom-card:active { transform: translateY(0) scale(0.99); }
+  .symptom-card.checked {
+    border-color: var(--gold-stamp);
+    background: linear-gradient(135deg, #FFFDF7 0%, #FAF4E5 100%);
+  }
+  .symptom-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .symptom-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(139, 115, 85, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .symptom-card.checked .symptom-icon { background: rgba(196, 162, 101, 0.2); }
+  .symptom-icon svg { width: 20px; height: 20px; color: var(--leather-brown); }
+  .symptom-name {
+    font-family: "Noto Serif SC", serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    flex: 1;
+  }
+  .symptom-status {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .symptom-status.none { background: rgba(122, 158, 126, 0.15); color: var(--temp-low); }
+  .symptom-status.mild { background: rgba(196, 162, 101, 0.2); color: #9B7D3D; }
+  .symptom-status.moderate { background: rgba(212, 87, 59, 0.15); color: var(--temp-high); }
+  .symptom-status.severe { background: rgba(139, 0, 0, 0.15); color: var(--stamp-red); }
+  .symptom-desc {
+    font-size: 12px;
+    color: var(--ink-light);
+    line-height: 1.5;
+    margin-top: 4px;
+    padding-left: 46px;
+  }
+  .symptom-checkmark {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    width: 22px;
+    height: 22px;
+    opacity: 0;
+    transform: scale(0);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .symptom-card.checked .symptom-checkmark {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  /* Bottom action bar */
+  .bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 20px 28px;
+    background: linear-gradient(to top, var(--paper-bg) 60%, transparent);
+    z-index: 100;
+  }
+
+  /* ========== ACTION SHEET ========== */
+  .action-sheet-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(44, 36, 22, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 600;
+  }
+  .action-sheet-mask.show { opacity: 1; pointer-events: auto; }
+  .action-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--paper-card);
+    border-radius: 16px 16px 0 0;
+    padding: 12px 0 24px;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 601;
+    max-height: 70%;
+    overflow-y: auto;
+  }
+  .action-sheet.show { transform: translateY(0); }
+  .action-sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--ink-faint);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+  .action-sheet-title {
+    text-align: center;
+    font-family: "Noto Serif SC", serif;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 4px 20px 12px;
+    color: var(--ink-dark);
+    border-bottom: 1px solid rgba(139, 115, 85, 0.1);
+  }
+
+  .severity-selector {
+    padding: 20px 20px 8px;
+  }
+  .severity-illustration {
+    height: 80px;
+    background: rgba(139, 115, 85, 0.05);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .severity-options {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .severity-opt {
+    flex: 1;
+    padding: 10px 4px;
+    text-align: center;
+    border-radius: 10px;
+    background: rgba(139, 115, 85, 0.06);
+    font-size: 12px;
+    color: var(--ink-light);
+    transition: all 0.2s;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+  }
+  .severity-opt.active {
+    background: var(--paper-card);
+    font-weight: 600;
+    color: var(--ink-dark);
+  }
+  .severity-opt.active[data-severity="mild"] { border-color: #C4A265; color: #9B7D3D; }
+  .severity-opt.active[data-severity="moderate"] { border-color: var(--temp-high); color: var(--temp-high); }
+  .severity-opt.active[data-severity="severe"] { border-color: var(--stamp-red); color: var(--stamp-red); }
+  .severity-opt.active[data-severity="none"] { border-color: var(--temp-low); color: var(--temp-low); }
+
+  .severity-slider-wrap {
+    padding: 0 8px 16px;
+  }
+  .severity-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-top: 6px;
+    padding: 0 2px;
+  }
+  .slider-track {
+    height: 6px;
+    background: rgba(139, 115, 85, 0.15);
+    border-radius: 3px;
+    position: relative;
+  }
+  .slider-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: linear-gradient(to right, var(--temp-low), var(--gold-stamp), var(--temp-high), var(--stamp-red));
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .slider-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 22px;
+    height: 22px;
+    background: #fff;
+    border: 2px solid var(--leather-brown);
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: left 0.3s;
+  }
+
+  .action-sheet-desc {
+    padding: 0 20px 16px;
+    font-size: 12px;
+    color: var(--ink-light);
+    line-height: 1.6;
+  }
+  .action-sheet-confirm {
+    margin: 0 20px;
+    padding: 14px;
+    background: var(--leather-brown);
+    color: #fff;
+    border-radius: 24px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .action-sheet-cancel {
+    margin: 8px 20px 0;
+    padding: 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-light);
+  }
+
+  /* ========== THERMOMETER RESULT PAGE ========== */
+  .result-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 24px 24px;
+  }
+  .result-book-name {
+    font-family: "Noto Serif SC", serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 4px;
+  }
+  .result-book-sub {
+    font-size: 12px;
+    color: var(--ink-light);
+    margin-bottom: 20px;
+  }
+
+  .thermometer-wrap {
+    width: 120px;
+    height: 320px;
+    position: relative;
+    margin: 10px 0 24px;
+  }
+  .thermometer-body {
+    position: absolute;
+    left: 50%;
+    top: 20px;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 260px;
+    background: rgba(255, 253, 247, 0.8);
+    border: 2px solid var(--leather-brown);
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .thermometer-bulb {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    background: var(--stamp-red-soft);
+    border-radius: 50%;
+    border: 3px solid var(--leather-brown);
+    z-index: 2;
+  }
+  .thermometer-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0%;
+    background: linear-gradient(to top, var(--stamp-red-soft), var(--temp-high), var(--gold-stamp), var(--temp-low));
+    border-radius: 0 0 18px 18px;
+    transition: height 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .thermometer-scales {
+    position: absolute;
+    right: -30px;
+    top: 20px;
+    height: 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--ink-light);
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .thermometer-scales span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .thermometer-scales span::before {
+    content: '';
+    width: 8px;
+    height: 1px;
+    background: var(--ink-faint);
+  }
+  .thermometer-value-display {
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .temp-value {
+    font-size: 48px;
+    font-weight: 700;
+    font-family: "Noto Serif SC", serif;
+    background: linear-gradient(to right, var(--temp-low), var(--temp-high));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .temp-unit {
+    font-size: 16px;
+    color: var(--ink-light);
+    font-family: "Noto Serif SC", serif;
+  }
+
+  .result-card {
+    width: 100%;
+    background: var(--paper-card);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .result-card-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-bottom: 8px;
+  }
+  .result-diagnosis {
+    font-size: 14px;
+    color: var(--ink-dark);
+    line-height: 1.6;
+    font-family: "Noto Serif SC", serif;
+  }
+  .result-symptoms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .result-symptom-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: rgba(139, 115, 85, 0.08);
+    color: var(--ink-dark);
+  }
+  .result-symptom-tag.severe { background: rgba(139, 0, 0, 0.1); color: var(--stamp-red); }
+  .result-symptom-tag.moderate { background: rgba(212, 87, 59, 0.1); color: var(--temp-high); }
+  .result-symptom-tag.mild { background: rgba(196, 162, 101, 0.15); color: #9B7D3D; }
+
+  .result-actions {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+    margin-top: auto;
+  }
+  .result-actions .btn { flex: 1; }
+
+  /* Stamp animation overlay */
+  .stamp-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 700;
+    opacity: 0;
+  }
+  .stamp-overlay.stamping { animation: stamp-pop 0.8s ease-out forwards; }
+  .stamp-seal {
+    width: 120px;
+    height: 120px;
+    border: 4px solid var(--stamp-red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Noto Serif SC", serif;
+    color: var(--stamp-red);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    opacity: 0.85;
+    transform: rotate(-15deg) scale(0);
+    position: relative;
+  }
+  .stamp-overlay.stamping .stamp-seal { animation: stamp-strike 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards; }
+  @keyframes stamp-pop {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes stamp-strike {
+    0% { transform: rotate(-15deg) scale(2); filter: blur(3px); }
+    60% { transform: rotate(-15deg) scale(0.95); filter: blur(0); }
+    75% { transform: rotate(-12deg) scale(1.05); }
+    100% { transform: rotate(-15deg) scale(1); filter: blur(0); }
+  }
+  .stamp-seal::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1.5px solid var(--stamp-red);
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+  .stamp-bleed {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(139,0,0,0.15) 0%, transparent 70%);
+    filter: blur(8px);
+    opacity: 0;
+  }
+  .stamp-overlay.stamping .stamp-bleed { animation: stamp-bleed 0.6s ease-out 0.3s forwards; }
+  @keyframes stamp-bleed {
+    0% { opacity: 0; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ========== ARCHIVE PAGE ========== */
+  .archive-header {
+    padding: 8px 20px 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .archive-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink-dark);
+  }
+  .archive-count {
+    font-size: 12px;
+    color: var(--ink-light);
+  }
+  .archive-filter {
+    padding: 0 16px 12px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .archive-filter::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0;
+    padding: 5px 14px;
+    font-size: 12px;
+    border-radius: 14px;
+    background: rgba(139, 115, 85, 0.08);
+    color: var(--ink-light);
+    transition: all 0.2s;
+  }
+  .filter-chip.active {
+    background: var(--leather-brown);
+    color: #fff;
+  }
+
+  .medical-cards {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .medical-card {
+    background: var(--paper-card);
+    border-radius: 4px;
+    padding: 16px 16px 14px;
+    position: relative;
+    border: 1px solid rgba(139, 115, 85, 0.15);
+    box-shadow: 0 2px 8px rgba(139, 115, 85, 0.08);
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s;
+    cursor: pointer;
+    perspective: 800px;
+    transform-style: preserve-3d;
+  }
+  .medical-card:hover {
+    transform: translateY(-4px) rotateX(3deg) rotateY(-2deg);
+    box-shadow: 0 8px 24px rgba(139, 115, 85, 0.18);
+  }
+  .medical-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--leather-brown),
+      var(--leather-brown) 3px,
+      transparent 3px,
+      transparent 8px
+    );
+    opacity: 0.4;
+    border-radius: 4px 4px 0 0;
+  }
+  .mc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(139, 115, 85, 0.2);
+  }
+  .mc-number {
+    font-size: 11px;
+    color: var(--ink-light);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.5px;
+  }
+  .mc-temp {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .mc-temp svg { width: 14px; height: 14px; }
+  .mc-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 2px;
+  }
+  .mc-author {
+    font-size: 12px;
+    color: var(--ink-light);
+    margin-bottom: 8px;
+  }
+  .mc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .mc-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    background: rgba(139, 115, 85, 0.08);
+    color: var(--ink-dark);
+  }
+  .mc-note {
+    font-size: 12px;
+    color: var(--ink-light);
+    font-style: italic;
+    line-height: 1.5;
+    font-family: "Noto Serif SC", serif;
+    position: relative;
+    padding-left: 12px;
+  }
+  .mc-note::before {
+    content: '医';
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+    color: var(--stamp-red);
+    font-style: normal;
+    font-weight: 700;
+  }
+  .mc-date {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 8px;
+    text-align: right;
+  }
+  .mc-stamp {
+    position: absolute;
+    top: 24px;
+    right: 14px;
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--stamp-red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--stamp-red);
+    font-size: 11px;
+    font-weight: 700;
+    font-family: "Noto Serif SC", serif;
+    transform: rotate(12deg);
+    opacity: 0.75;
+    letter-spacing: 0;
+  }
+  .mc-stamp::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px solid var(--stamp-red);
+    border-radius: 50%;
+    opacity: 0.5;
+  }
+
+  /* ========== PROFILE PAGE ========== */
+  .profile-header {
+    padding: 12px 20px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .profile-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--leather-brown), var(--gold-stamp));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: "Noto Serif SC", serif;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .profile-info { flex: 1; }
+  .profile-name {
+    font-family: "Noto Serif SC", serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 2px;
+  }
+  .profile-desc {
+    font-size: 12px;
+    color: var(--ink-light);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 0 16px 16px;
+  }
+  .stat-card {
+    background: var(--paper-card);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .stat-number {
+    font-family: "Noto Serif SC", serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink-dark);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 2px;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--ink-light);
+  }
+
+  .chart-section {
+    margin: 0 16px 16px;
+    background: var(--paper-card);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .chart-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chart-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: var(--gold-stamp);
+    border-radius: 2px;
+  }
+  .common-symptoms { display: flex; flex-direction: column; gap: 10px; }
+  .symptom-rank {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .symptom-rank-name {
+    width: 72px;
+    font-size: 12px;
+    color: var(--ink-dark);
+    flex-shrink: 0;
+  }
+  .symptom-rank-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(139, 115, 85, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .symptom-rank-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--leather-brown), var(--gold-stamp));
+    border-radius: 4px;
+    width: 0;
+    transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .symptom-rank-count {
+    width: 28px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--ink-light);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .settings-list {
+    margin: 0 16px 16px;
+    background: var(--paper-card);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .setting-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.08);
+    font-size: 14px;
+    color: var(--ink-dark);
+  }
+  .setting-item:last-child { border-bottom: none; }
+  .setting-item svg { width: 18px; height: 18px; color: var(--leather-brown); flex-shrink: 0; }
+  .setting-item span { flex: 1; }
+  .setting-arrow { color: var(--ink-faint); }
+  .setting-arrow svg { width: 14px; height: 14px; color: var(--ink-faint); }
+
+  /* ========== MEDICAL DETAIL PAGE ========== */
+  .detail-page {
+    padding: 4px 20px 24px;
+  }
+  .detail-book-card {
+    background: var(--paper-card);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .detail-book-spine-big {
+    width: 50px;
+    height: 72px;
+    border-radius: 4px 8px 8px 4px;
+    margin: 0 auto 12px;
+    box-shadow: inset -4px 0 8px rgba(0,0,0,0.15), 2px 4px 8px rgba(0,0,0,0.12);
+    position: relative;
+  }
+  .detail-book-spine-big::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 5px;
+    bottom: 5px;
+    width: 1.5px;
+    background: rgba(255,255,255,0.3);
+  }
+  .detail-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink-dark);
+    margin-bottom: 4px;
+  }
+  .detail-author {
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-bottom: 12px;
+  }
+  .detail-temp-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .detail-temp-big {
+    font-size: 36px;
+    font-weight: 700;
+    font-family: "Noto Serif SC", serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .detail-temp-unit {
+    font-size: 14px;
+    color: var(--ink-light);
+  }
+
+  .detail-section {
+    background: var(--paper-card);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+  }
+  .detail-section-title {
+    font-family: "Noto Serif SC", serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-dark);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .detail-section-title::before {
+    content: '';
+    width: 3px;
+    height: 12px;
+    background: var(--leather-brown);
+    border-radius: 2px;
+  }
+  .detail-symptom-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(139, 115, 85, 0.1);
+    font-size: 13px;
+  }
+  .detail-symptom-row:last-child { border-bottom: none; }
+  .detail-symptom-name { color: var(--ink-dark); display: flex; align-items: center; gap: 8px; }
+  .detail-symptom-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .sev-none { background: var(--temp-low); }
+  .sev-mild { background: var(--gold-stamp); }
+  .sev-moderate { background: var(--temp-high); }
+  .sev-severe { background: var(--stamp-red); }
+  .detail-symptom-sev { font-size: 12px; color: var(--ink-light); }
+
+  /* ========== FLOATING ADD BUTTON ========== */
+  .fab {
+    position: absolute;
+    right: 20px;
+    bottom: 100px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--leather-brown);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(139, 115, 85, 0.4);
+    z-index: 300;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(139, 115, 85, 0.3); }
+  .fab svg { width: 22px; height: 22px; }
+
+  /* Toast */
+  .toast {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    background: rgba(44, 36, 22, 0.85);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.25s;
+    z-index: 800;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .empty-card { animation: none; }
+  }
+
+  /* Mobile: hide phone frame, show full screen */
+  @media (max-width: 480px) {
+    .phone-wrap {
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+      box-shadow: none;
+      top: 0;
+      left: 0;
+      transform: none;
+    }
+    .phone-notch { display: none; }
+    body.has-cursor .pen-cursor { display: none; }
+    body.has-cursor, body.has-cursor * { cursor: auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="pen-cursor" id="penCursor">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#2C2416" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 21L6 18L16 8L13 5L3 15L3 21Z"/>
+    <path d="M13 5L16 2L22 8L19 11"/>
+    <path d="M6 18L13 11"/>
+  </svg>
+</div>
+
+<div class="phone-wrap">
+  <div class="phone-notch"></div>
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="status-right">
+      <svg viewBox="0 0 18 18" fill="currentColor">
+        <path d="M1 12 L9 5 L17 12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <circle cx="9" cy="14" r="1.5" fill="currentColor"/>
+      </svg>
+      <svg viewBox="0 0 18 18" fill="currentColor">
+        <rect x="1" y="6" width="13" height="6" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/>
+        <rect x="15" y="8" width="2" height="2" rx="0.5" fill="currentColor"/>
+        <rect x="2.5" y="7.5" width="9" height="3" rx="0.5" fill="currentColor"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Nav bar -->
+  <div class="nav-bar">
+    <button class="nav-back" id="navBack" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+    <div class="nav-title" id="navTitle">旧书体温计</div>
+    <div class="capsule">
+      <div class="capsule-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="1"/>
+          <circle cx="19" cy="12" r="1"/>
+          <circle cx="5" cy="12" r="1"/>
+        </svg>
+      </div>
+      <div class="capsule-divider"></div>
+      <div class="capsule-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pages container -->
+  <div class="pages" id="pages">
+    <!-- HOME PAGE (Tab) -->
+    <div class="page tab-page active" id="page-home" data-tab="home">
+      <div class="pull-indicator" id="pullIndicator">
+        <span class="feather-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
+            <line x1="16" y1="8" x2="2" y2="22"/>
+            <line x1="17.5" y1="15" x2="9" y2="15"/>
+          </svg>
+        </span>
+        <span>正在翻找病历…</span>
+      </div>
+      <div class="page-content">
+        <div class="home-header">
+          <div class="home-stat-row">
+            <span class="home-stat-num" id="homeStatNum">0</span>
+            <span class="home-stat-label">本 在诊</span>
+          </div>
+          <div class="home-subtitle">每一本旧书，都值得被温柔诊断</div>
+        </div>
+
+        <div class="section-title">最近登记</div>
+        <div class="book-list" id="homeBookList"></div>
+
+        <div class="empty-state" id="homeEmpty" style="display:none;">
+          <div class="empty-card">
+            <div class="empty-card-lines">
+              <div class="empty-card-line"></div>
+              <div class="empty-card-line"></div>
+              <div class="empty-card-line"></div>
+              <div class="empty-card-line" style="width:70%"></div>
+              <div class="empty-card-line" style="width:85%"></div>
+            </div>
+          </div>
+          <div class="empty-title">还没有旧书来就诊</div>
+          <div class="empty-desc">快带你的第一本旧书来做个检查吧</div>
+          <button class="btn btn-primary" onclick="goToRegister()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            登记旧书
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTER PAGE -->
+    <div class="page" id="page-register">
+      <div class="page-content form-page">
+        <div class="form-group">
+          <label class="form-label">书名</label>
+          <input type="text" class="form-input" id="inputTitle" placeholder="请输入书名">
+          <div class="form-input-line"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">作者</label>
+          <input type="text" class="form-input" id="inputAuthor" placeholder="请输入作者">
+          <div class="form-input-line"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">购入来源</label>
+          <div class="source-options" id="sourceOptions">
+            <div class="source-chip" data-source="二手书店">二手书店</div>
+            <div class="source-chip" data-source="旧书摊">旧书摊</div>
+            <div class="source-chip" data-source="网络">网络</div>
+            <div class="source-chip" data-source="朋友赠送">朋友赠送</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">购入价格（元）</label>
+          <input type="number" class="form-input" id="inputPrice" placeholder="请输入价格">
+          <div class="form-input-line"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">封面色调</label>
+          <div class="color-picker-grid" id="colorPicker">
+            <div class="color-swatch" data-color="#8B4513" style="background:#8B4513"></div>
+            <div class="color-swatch" data-color="#2F4F4F" style="background:#2F4F4F"></div>
+            <div class="color-swatch" data-color="#704214" style="background:#704214"></div>
+            <div class="color-swatch" data-color="#556B2F" style="background:#556B2F"></div>
+            <div class="color-swatch" data-color="#8B0000" style="background:#8B0000"></div>
+            <div class="color-swatch" data-color="#4A4A4A" style="background:#4A4A4A"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">出版社 / 年份（选填）</label>
+          <input type="text" class="form-input" id="inputPublisher" placeholder="如：人民文学出版社 1991">
+          <div class="form-input-line"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注</label>
+          <textarea class="form-textarea" id="inputNote" placeholder="记录购书心情、书籍来历……"></textarea>
+        </div>
+
+        <div style="height: 20px;"></div>
+      </div>
+      <div class="bottom-bar">
+        <button class="btn btn-primary btn-block btn-lg" onclick="startSymptomCheck()">开始检查症状</button>
+      </div>
+    </div>
+
+    <!-- SYMPTOM CHECK PAGE -->
+    <div class="page" id="page-symptoms">
+      <div class="page-content">
+        <div class="symptom-header">
+          <div class="symptom-book-title" id="symptomBookTitle">书籍名</div>
+          <div class="symptom-progress-text"><span id="checkedCount">0</span> / 8 项已检查</div>
+        </div>
+        <div class="symptom-progress-bar">
+          <div class="symptom-progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="symptom-list" id="symptomList"></div>
+        <div style="height: 100px;"></div>
+      </div>
+      <div class="bottom-bar">
+        <button class="btn btn-primary btn-block btn-lg" onclick="showResult()">查看体温结果</button>
+      </div>
+    </div>
+
+    <!-- RESULT PAGE -->
+    <div class="page" id="page-result">
+      <div class="page-content result-page">
+        <div class="result-book-name" id="resultBookName">书名</div>
+        <div class="result-book-sub" id="resultBookSub">作者 · 出版社</div>
+
+        <div class="thermometer-wrap">
+          <div class="thermometer-body">
+            <div class="thermometer-fill" id="thermFill"></div>
+          </div>
+          <div class="thermometer-bulb"></div>
+          <div class="thermometer-scales">
+            <span>100</span>
+            <span>75</span>
+            <span>50</span>
+            <span>25</span>
+            <span>0</span>
+          </div>
+        </div>
+
+        <div class="thermometer-value-display">
+          <span class="temp-value" id="tempValue">0</span>
+          <span class="temp-unit">°C</span>
+        </div>
+
+        <div class="result-card">
+          <div class="result-card-title">医生诊断</div>
+          <div class="result-diagnosis" id="resultDiagnosis">正在诊断中……</div>
+          <div class="result-symptoms" id="resultSymptoms"></div>
+        </div>
+
+        <div class="result-actions">
+          <button class="btn btn-secondary" onclick="recheckSymptoms()">重新检查</button>
+          <button class="btn btn-primary" onclick="saveToArchive()">存入病历</button>
+        </div>
+      </div>
+      <!-- Stamp overlay -->
+      <div class="stamp-overlay" id="stampOverlay">
+        <div class="stamp-bleed"></div>
+        <div class="stamp-seal">病历<br>存档</div>
+      </div>
+    </div>
+
+    <!-- ARCHIVE PAGE (Tab) -->
+    <div class="page tab-page" id="page-archive" data-tab="archive">
+      <div class="page-content">
+        <div class="archive-header">
+          <div class="archive-title">病历档案</div>
+          <div class="archive-count"><span id="archiveCount">0</span> 份病历</div>
+        </div>
+        <div class="archive-filter">
+          <div class="filter-chip active" data-filter="all">全部</div>
+          <div class="filter-chip" data-filter="healthy">健康（&gt;80°）</div>
+          <div class="filter-chip" data-filter="mild">轻微（60-80°）</div>
+          <div class="filter-chip" data-filter="severe">重症（&lt;60°）</div>
+        </div>
+        <div class="medical-cards" id="archiveCards"></div>
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+
+    <!-- MEDICAL DETAIL PAGE -->
+    <div class="page" id="page-detail">
+      <div class="page-content detail-page">
+        <div class="detail-book-card">
+          <div class="detail-book-spine-big" id="detailSpine"></div>
+          <div class="detail-title" id="detailTitle">书名</div>
+          <div class="detail-author" id="detailAuthor">作者</div>
+          <div class="detail-temp-row">
+            <span class="detail-temp-big" id="detailTemp">0</span>
+            <span class="detail-temp-unit">°C 体温</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">症状记录</div>
+          <div id="detailSymptoms"></div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">医生批注</div>
+          <div class="mc-note" id="detailNote" style="padding-left:20px; font-size:13px; color: var(--ink-dark); font-style: italic; line-height:1.7;"></div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">书籍信息</div>
+          <div class="detail-symptom-row">
+            <span class="detail-symptom-name">购入来源</span>
+            <span class="detail-symptom-sev" id="detailSource">—</span>
+          </div>
+          <div class="detail-symptom-row">
+            <span class="detail-symptom-name">购入价格</span>
+            <span class="detail-symptom-sev" id="detailPrice">—</span>
+          </div>
+          <div class="detail-symptom-row">
+            <span class="detail-symptom-name">检查日期</span>
+            <span class="detail-symptom-sev" id="detailDate">—</span>
+          </div>
+        </div>
+        <div style="height: 20px;"></div>
+      </div>
+    </div>
+
+    <!-- PROFILE PAGE (Tab) -->
+    <div class="page tab-page" id="page-profile" data-tab="profile">
+      <div class="page-content">
+        <div class="profile-header">
+          <div class="profile-avatar" id="profileAvatar">旧</div>
+          <div class="profile-info">
+            <div class="profile-name">旧书收藏家</div>
+            <div class="profile-desc">守护每一本历经岁月的书</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-number" id="statTotal">0</div>
+            <div class="stat-label">总藏书本</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="statAvg">0</div>
+            <div class="stat-label">平均体温</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="statHealthy">0</div>
+            <div class="stat-label">健康本数</div>
+          </div>
+        </div>
+
+        <div class="chart-section">
+          <div class="chart-title">最常见症状</div>
+          <div class="common-symptoms" id="commonSymptoms"></div>
+        </div>
+
+        <div class="settings-list">
+          <div class="setting-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>设置</span>
+            <span class="setting-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+          <div class="setting-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>意见反馈</span>
+            <span class="setting-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+          <div class="setting-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>关于旧书体温计</span>
+            <span class="setting-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar" id="tabBar">
+    <div class="tab-item active" data-tab="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span>首页</span>
+      <div class="tab-dot"></div>
+    </div>
+    <div class="tab-item" data-tab="archive">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      <span>档案</span>
+      <div class="tab-dot"></div>
+    </div>
+    <div class="tab-item" data-tab="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      <span>我的</span>
+      <div class="tab-dot"></div>
+    </div>
+  </div>
+
+  <!-- FAB (visible on home & archive tabs) -->
+  <button class="fab" id="fab" onclick="goToRegister()" aria-label="登记旧书">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  </button>
+
+  <!-- Action Sheet -->
+  <div class="action-sheet-mask" id="actionSheetMask" onclick="closeActionSheet()"></div>
+  <div class="action-sheet" id="actionSheet">
+    <div class="action-sheet-handle"></div>
+    <div class="action-sheet-title" id="actionSheetTitle">症状严重程度</div>
+    <div class="severity-selector">
+      <div class="severity-illustration" id="severityIllustration">
+        <!-- Illustration will be drawn with CSS -->
+      </div>
+      <div class="severity-options" id="severityOptions">
+        <div class="severity-opt" data-severity="none">无</div>
+        <div class="severity-opt" data-severity="mild">轻微</div>
+        <div class="severity-opt" data-severity="moderate">中度</div>
+        <div class="severity-opt" data-severity="severe">严重</div>
+      </div>
+      <div class="severity-slider-wrap">
+        <div class="slider-track">
+          <div class="slider-fill" id="sliderFill" style="width: 0%"></div>
+          <div class="slider-thumb" id="sliderThumb" style="left: 0%"></div>
+        </div>
+        <div class="severity-labels">
+          <span>健康</span>
+          <span>轻微</span>
+          <span>中度</span>
+          <span>严重</span>
+        </div>
+      </div>
+    </div>
+    <div class="action-sheet-desc" id="actionSheetDesc"></div>
+    <div class="action-sheet-confirm" onclick="confirmSeverity()">确认</div>
+    <div class="action-sheet-cancel" onclick="closeActionSheet()">取消</div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== DATA ==========
+  const SYMPTOMS = [
+    { key: 'water', name: '水渍', icon: 'water', desc: '页面边缘出现水渍痕迹，纸张变形褶皱，严重者页面粘连' },
+    { key: 'foxing', name: '黄斑/狐斑', icon: 'foxing', desc: '纸张因氧化出现黄褐色斑点，通常从边缘向中心扩散' },
+    { key: 'annotation', name: '批注/划线', icon: 'pen', desc: '前读者留下的笔迹、划线、折角，反映阅读痕迹' },
+    { key: 'stamp', name: '藏书印/借书章', icon: 'stamp', desc: '图书馆或私人藏书印章，红色或蓝色印泥' },
+    { key: 'spine', name: '书脊磨损', icon: 'book', desc: '书脊开裂、掉漆、书线外露' },
+    { key: 'loose', name: '页面脱落', icon: 'page', desc: '装订松动，单页或多页脱离书脊' },
+    { key: 'worm', name: '虫蛀', icon: 'bug', desc: '书页出现小孔或隧道状蛀痕' },
+    { key: 'odor', name: '异味', icon: 'wind', desc: '发霉味、烟味、潮湿味' }
+  ];
+
+  const SEVERITY_SCORE = { none: 0, mild: 5, moderate: 12, severe: 20 };
+  const SEVERITY_LABELS = { none: '无', mild: '轻微', moderate: '中度', severe: '严重' };
+
+  const SAMPLE_BOOKS = [
+    {
+      id: 'b1',
+      title: '围城',
+      author: '钱钟书',
+      publisher: '人民文学出版社 1991',
+      source: '二手书店',
+      price: 45,
+      color: '#8B4513',
+      note: '扉页有前主人题字，购于上海福州路旧书店。',
+      symptoms: { foxing: 'mild', annotation: 'moderate', water: 'none', stamp: 'none', spine: 'none', loose: 'none', worm: 'none', odor: 'none' },
+      temperature: 72,
+      date: '2024-03-15',
+      archived: true
+    },
+    {
+      id: 'b2',
+      title: '平凡的世界',
+      author: '路遥',
+      publisher: '中国文联出版公司 1986',
+      source: '旧书摊',
+      price: 20,
+      color: '#704214',
+      note: '三册全，书脊磨损较严重，第一册有轻微水渍。',
+      symptoms: { spine: 'severe', loose: 'mild', water: 'moderate', foxing: 'none', annotation: 'none', stamp: 'none', worm: 'none', odor: 'none' },
+      temperature: 58,
+      date: '2024-02-20',
+      archived: true
+    },
+    {
+      id: 'b3',
+      title: '红楼梦',
+      author: '曹雪芹',
+      publisher: '人民文学出版社 1982',
+      source: '朋友赠送',
+      price: 0,
+      color: '#8B0000',
+      note: '上中下三册，朋友家传旧藏，扉页有私人藏书印。',
+      symptoms: { stamp: 'mild', water: 'none', foxing: 'none', annotation: 'none', spine: 'none', loose: 'none', worm: 'none', odor: 'none' },
+      temperature: 85,
+      date: '2024-04-08',
+      archived: true
+    },
+    {
+      id: 'b4',
+      title: '瓦尔登湖',
+      author: '梭罗',
+      publisher: '上海译文出版社 1993',
+      source: '网络',
+      price: 15,
+      color: '#2F4F4F',
+      note: '纸面泛黄斑，书口有水渍痕，有明显霉味。',
+      symptoms: { water: 'severe', foxing: 'moderate', odor: 'moderate', annotation: 'none', stamp: 'none', spine: 'none', loose: 'none', worm: 'none' },
+      temperature: 45,
+      date: '2024-01-10',
+      archived: true
+    },
+    {
+      id: 'b5',
+      title: '百年孤独',
+      author: '加西亚·马尔克斯',
+      publisher: '上海译文出版社 1984',
+      source: '二手书店',
+      price: 80,
+      color: '#556B2F',
+      note: '一版一印，品相极佳，只有少量铅笔批注可擦除。',
+      symptoms: { annotation: 'mild', water: 'none', foxing: 'none', stamp: 'none', spine: 'none', loose: 'none', worm: 'none', odor: 'none' },
+      temperature: 91,
+      date: '2024-05-22',
+      archived: true
+    }
+  ];
+
+  // ========== STATE ==========
+  let books = [];
+  let currentTab = 'home';
+  let pageStack = []; // stack of page ids (non-tab pages)
+  let currentBook = null; // book being registered/checked
+  let currentSymptomKey = null;
+  let tempSeverity = 'none';
+  let archiveFilter = 'all';
+  let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ========== STORAGE ==========
+  const STORAGE_KEY = 'oldbook_thermometer_books_v1';
+
+  function loadBooks() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        books = JSON.parse(stored);
+      } else {
+        books = [...SAMPLE_BOOKS];
+        saveBooks();
+      }
+    } catch(e) {
+      books = [...SAMPLE_BOOKS];
+    }
+  }
+
+  function saveBooks() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+    } catch(e) {}
+  }
+
+  // ========== PAGE NAVIGATION ==========
+  const tabPages = ['home', 'archive', 'profile'];
+  const navTitles = {
+    'home': '旧书体温计',
+    'archive': '病历档案',
+    'profile': '我的',
+    'register': '登记旧书',
+    'symptoms': '症状检查',
+    'result': '体温结果',
+    'detail': '病历详情'
+  };
+
+  function goToTab(tab) {
+    if (currentTab === tab && pageStack.length === 0) return;
+    currentTab = tab;
+
+    // Clear page stack
+    pageStack = [];
+
+    // Hide all pages
+    document.querySelectorAll('.page.tab-page').forEach(p => {
+      p.classList.remove('active');
+    });
+    // Show target tab
+    const target = document.getElementById('page-' + tab);
+    if (target) target.classList.add('active');
+
+    // Update tab bar
+    document.querySelectorAll('.tab-item').forEach(t => {
+      t.classList.remove('active');
+      if (t.dataset.tab === tab) {
+        t.classList.add('active');
+        if (!reducedMotion) {
+          t.classList.add('bounce');
+          setTimeout(() => t.classList.remove('bounce'), 300);
+        }
+      }
+    });
+
+    // Update nav
+    document.getElementById('navTitle').textContent = navTitles[tab] || '';
+    document.getElementById('navBack').classList.remove('show');
+
+    // FAB visibility
+    const fab = document.getElementById('fab');
+    if (tab === 'home' || tab === 'archive') {
+      fab.style.display = 'flex';
+    } else {
+      fab.style.display = 'none';
+    }
+
+    // Refresh content
+    if (tab === 'home') renderHome();
+    if (tab === 'archive') renderArchive();
+    if (tab === 'profile') renderProfile();
+  }
+
+  function pushPage(pageId) {
+    const newPage = document.getElementById('page-' + pageId);
+    if (!newPage) return;
+
+    pageStack.push(pageId);
+    newPage.style.transform = 'translateX(100%)';
+    // Force reflow
+    void newPage.offsetWidth;
+    newPage.classList.add('active');
+    newPage.style.transform = '';
+
+    document.getElementById('navTitle').textContent = navTitles[pageId] || '';
+    document.getElementById('navBack').classList.add('show');
+
+    document.getElementById('fab').style.display = 'none';
+
+    // Scroll to top
+    newPage.scrollTop = 0;
+  }
+
+  function popPage() {
+    if (pageStack.length === 0) {
+      goToTab(currentTab);
+      return;
+    }
+    const pageId = pageStack.pop();
+    const page = document.getElementById('page-' + pageId);
+    if (page) {
+      page.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        page.classList.remove('active');
+        page.style.transform = '';
+      }, 320);
+    }
+
+    // Update nav title to current top of stack or tab
+    const current = pageStack.length > 0 ? pageStack[pageStack.length - 1] : currentTab;
+    document.getElementById('navTitle').textContent = navTitles[current] || '';
+
+    if (pageStack.length === 0) {
+      document.getElementById('navBack').classList.remove('show');
+      const fab = document.getElementById('fab');
+      if (currentTab === 'home' || currentTab === 'archive') {
+        fab.style.display = 'flex';
+      }
+    }
+
+    // Refresh previous page if needed
+    const topPage = pageStack.length > 0 ? pageStack[pageStack.length - 1] : currentTab;
+    if (topPage === 'home') renderHome();
+    if (topPage === 'archive') renderArchive();
+    if (topPage === 'profile') renderProfile();
+  }
+
+  // ========== ICON HELPERS ==========
+  function symptomIconSvg(key) {
+    const icons = {
+      water: '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>',
+      foxing: '<circle cx="7" cy="8" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="2" fill="currentColor"/><circle cx="11" cy="15" r="1.8" fill="currentColor"/><circle cx="17" cy="17" r="1" fill="currentColor"/><circle cx="6" cy="14" r="0.8" fill="currentColor"/>',
+      pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+      stamp: '<rect x="5" y="8" width="14" height="10" rx="1"/><path d="M8 21h8"/><path d="M10 18v3M14 18v3"/>',
+      book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+      page: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+      bug: '<rect x="8" y="6" width="8" height="14" rx="4"/><path d="M8 8L4 6M8 12L3 12M8 16L4 18M16 8l4-2M16 12l5 0M16 16l4 2"/>',
+      wind: '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>'
+    };
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${icons[key] || icons.water}</svg>`;
+  }
+
+  function thermometerIconSvg(color) {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+    </svg>`;
+  }
+
+  // ========== HOME PAGE ==========
+  function renderHome() {
+    const activeBooks = books.filter(b => !b.archived);
+    const allArchived = books.filter(b => b.archived);
+
+    // Show recent books from all (both archived and active) for the list
+    const recent = [...books].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+    const statNum = books.length;
+
+    const statEl = document.getElementById('homeStatNum');
+    animateNumber(statEl, parseInt(statEl.textContent) || 0, statNum, 600);
+
+    const listEl = document.getElementById('homeBookList');
+    const emptyEl = document.getElementById('homeEmpty');
+
+    if (recent.length === 0) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'flex';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    listEl.innerHTML = recent.map(book => {
+      const tempColor = book.temperature >= 80 ? 'var(--temp-low)' : book.temperature >= 60 ? 'var(--gold-stamp)' : 'var(--temp-high)';
+      return `
+        <div class="book-item-wrap">
+          <div class="book-item-actions">
+            <div class="book-action-btn detail" onclick="event.stopPropagation(); viewBookDetail('${book.id}')">详情</div>
+            <div class="book-action-btn delete" onclick="event.stopPropagation(); deleteBook('${book.id}')">删除</div>
+          </div>
+          <div class="book-item" data-id="${book.id}" onclick="handleBookItemClick(this, '${book.id}')">
+            <div class="book-spine" style="background: linear-gradient(to right, ${adjustColor(book.color, -20)}, ${book.color}, ${adjustColor(book.color, 15)})"></div>
+            <div class="book-info">
+              <div class="book-title">${book.title}</div>
+              <div class="book-meta">${book.author} · ${book.publisher || '旧版'}</div>
+              <div class="book-temp">
+                ${thermometerIconSvg(tempColor)}
+                <span class="book-temp-value" style="color:${tempColor}">${book.temperature}°</span>
+              </div>
+            </div>
+            <div class="book-date">${formatDate(book.date)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function handleBookItemClick(el, id) {
+    // Check if already swiped
+    if (el.classList.contains('swiped')) {
+      el.classList.remove('swiped');
+      return;
+    }
+    viewBookDetail(id);
+  }
+
+  // Left-swipe handling (simple touch simulation)
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let swipedItem = null;
+
+  document.addEventListener('touchstart', function(e) {
+    const item = e.target.closest('.book-item');
+    if (item) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      swipedItem = item;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    // not tracking move for simplicity
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    const item = e.target.closest('.book-item');
+    if (item && swipedItem === item) {
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const dx = touchStartX - endX;
+      const dy = Math.abs(touchStartY - endY);
+      if (dx > 40 && dy < 40) {
+        // Swipe left - show actions
+        document.querySelectorAll('.book-item.swiped').forEach(i => {
+          if (i !== item) i.classList.remove('swiped');
+        });
+        item.classList.add('swiped');
+      } else if (dx < -20) {
+        item.classList.remove('swiped');
+      }
+    }
+  }, { passive: true });
+
+  // Mouse version for desktop
+  let mouseDownX = 0;
+  let mouseDownItem = null;
+  document.addEventListener('mousedown', function(e) {
+    const item = e.target.closest('.book-item');
+    if (item) {
+      mouseDownX = e.clientX;
+      mouseDownItem = item;
+    }
+  });
+  document.addEventListener('mouseup', function(e) {
+    const item = e.target.closest('.book-item');
+    if (item && mouseDownItem === item) {
+      const dx = mouseDownX - e.clientX;
+      if (dx > 40) {
+        document.querySelectorAll('.book-item.swiped').forEach(i => {
+          if (i !== item) i.classList.remove('swiped');
+        });
+        item.classList.add('swiped');
+      } else if (dx < -20) {
+        item.classList.remove('swiped');
+      }
+    }
+    mouseDownItem = null;
+  });
+
+  // ========== REGISTER PAGE ==========
+  let selectedSource = '';
+  let selectedColor = '';
+
+  function initRegisterPage() {
+    selectedSource = '';
+    selectedColor = '';
+    document.getElementById('inputTitle').value = '';
+    document.getElementById('inputAuthor').value = '';
+    document.getElementById('inputPrice').value = '';
+    document.getElementById('inputPublisher').value = '';
+    document.getElementById('inputNote').value = '';
+    document.querySelectorAll('.source-chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.color-swatch').forEach(c => c.classList.remove('selected'));
+  }
+
+  document.addEventListener('click', function(e) {
+    const chip = e.target.closest('.source-chip');
+    if (chip) {
+      document.querySelectorAll('.source-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      selectedSource = chip.dataset.source;
+    }
+
+    const swatch = e.target.closest('.color-swatch');
+    if (swatch) {
+      document.querySelectorAll('.color-swatch').forEach(c => c.classList.remove('selected'));
+      swatch.classList.add('selected');
+      selectedColor = swatch.dataset.color;
+    }
+
+    const tabItem = e.target.closest('.tab-item');
+    if (tabItem) {
+      goToTab(tabItem.dataset.tab);
+    }
+
+    const filterChip = e.target.closest('.filter-chip');
+    if (filterChip) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      filterChip.classList.add('active');
+      archiveFilter = filterChip.dataset.filter;
+      renderArchive();
+    }
+  });
+
+  function goToRegister() {
+    initRegisterPage();
+    pushPage('register');
+  }
+
+  function startSymptomCheck() {
+    const title = document.getElementById('inputTitle').value.trim();
+    const author = document.getElementById('inputAuthor').value.trim();
+    const price = document.getElementById('inputPrice').value;
+    const publisher = document.getElementById('inputPublisher').value.trim();
+    const note = document.getElementById('inputNote').value.trim();
+
+    if (!title) { showToast('请输入书名'); return; }
+    if (!selectedColor) { showToast('请选择封面色调'); return; }
+
+    currentBook = {
+      id: 'b' + Date.now(),
+      title,
+      author: author || '佚名',
+      publisher: publisher || '',
+      source: selectedSource || '未填写',
+      price: price ? parseFloat(price) : 0,
+      color: selectedColor,
+      note,
+      symptoms: {},
+      temperature: 100,
+      date: new Date().toISOString().split('T')[0],
+      archived: false
+    };
+
+    SYMPTOMS.forEach(s => { currentBook.symptoms[s.key] = 'none'; });
+
+    renderSymptomPage();
+    pushPage('symptoms');
+  }
+
+  // ========== SYMPTOM PAGE ==========
+  function renderSymptomPage() {
+    document.getElementById('symptomBookTitle').textContent = currentBook.title;
+    const list = document.getElementById('symptomList');
+
+    list.innerHTML = SYMPTOMS.map(s => {
+      const sev = currentBook.symptoms[s.key] || 'none';
+      const checked = sev !== 'none';
+      const sevLabel = SEVERITY_LABELS[sev];
+      return `
+        <div class="symptom-card ${checked ? 'checked' : ''}" data-key="${s.key}" onclick="openActionSheet('${s.key}')">
+          <div class="symptom-card-header">
+            <div class="symptom-icon">${symptomIconSvg(s.icon)}</div>
+            <div class="symptom-name">${s.name}</div>
+            <span class="symptom-status ${sev}">${sevLabel}</span>
+          </div>
+          <div class="symptom-desc">${s.desc}</div>
+          <div class="symptom-checkmark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#C4A265" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5" stroke-dasharray="24" stroke-dashoffset="0"/>
+            </svg>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    updateSymptomProgress();
+  }
+
+  function updateSymptomProgress() {
+    const checked = SYMPTOMS.filter(s => currentBook.symptoms[s.key] !== 'none').length;
+    document.getElementById('checkedCount').textContent = checked;
+    document.getElementById('progressFill').style.width = (checked / SYMPTOMS.length * 100) + '%';
+  }
+
+  // ========== ACTION SHEET ==========
+  function openActionSheet(symptomKey) {
+    currentSymptomKey = symptomKey;
+    const symptom = SYMPTOMS.find(s => s.key === symptomKey);
+    tempSeverity = currentBook.symptoms[symptomKey] || 'none';
+
+    document.getElementById('actionSheetTitle').textContent = symptom.name;
+    document.getElementById('actionSheetDesc').textContent = symptom.desc;
+
+    // Update severity options
+    document.querySelectorAll('.severity-opt').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.severity === tempSeverity);
+    });
+    updateSlider();
+    updateIllustration(symptomKey, tempSeverity);
+
+    document.getElementById('actionSheetMask').classList.add('show');
+    document.getElementById('actionSheet').classList.add('show');
+  }
+
+  function closeActionSheet() {
+    document.getElementById('actionSheetMask').classList.remove('show');
+    document.getElementById('actionSheet').classList.remove('show');
+  }
+
+  document.querySelectorAll('.severity-opt').forEach(opt => {
+    opt.addEventListener('click', function() {
+      tempSeverity = this.dataset.severity;
+      document.querySelectorAll('.severity-opt').forEach(o => o.classList.remove('active'));
+      this.classList.add('active');
+      updateSlider();
+      updateIllustration(currentSymptomKey, tempSeverity);
+    });
+  });
+
+  function updateSlider() {
+    const positions = { none: 0, mild: 33, moderate: 66, severe: 100 };
+    const pos = positions[tempSeverity];
+    document.getElementById('sliderFill').style.width = pos + '%';
+    document.getElementById('sliderThumb').style.left = pos + '%';
+  }
+
+  function updateIllustration(key, severity) {
+    const el = document.getElementById('severityIllustration');
+    const level = { none: 0, mild: 1, moderate: 2, severe: 3 }[severity];
+
+    let html = '';
+    switch(key) {
+      case 'water':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<path d="M20 50 Q60 45 100 52 T180 48 L180 70 L20 70 Z" fill="rgba(100,130,160,0.25)" stroke="rgba(100,130,160,0.4)" stroke-width="1"/>' : ''}
+            ${level >= 2 ? '<path d="M20 40 Q50 38 80 42 T140 38 T180 40" stroke="rgba(100,130,160,0.35)" stroke-width="1" fill="none"/><path d="M20 58 Q55 55 90 59 T160 56 T180 58" stroke="rgba(100,130,160,0.3)" stroke-width="1" fill="none"/>' : ''}
+            ${level >= 3 ? '<ellipse cx="60" cy="40" rx="20" ry="8" fill="rgba(100,130,160,0.2)"/><ellipse cx="130" cy="45" rx="25" ry="10" fill="rgba(100,130,160,0.15)"/>' : ''}
+          </svg>
+        `;
+        break;
+      case 'foxing':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<circle cx="60" cy="35" r="4" fill="rgba(180,140,60,0.5)"/><circle cx="120" cy="50" r="3" fill="rgba(180,140,60,0.4)"/><circle cx="90" cy="25" r="2" fill="rgba(180,140,60,0.5)"/>' : ''}
+            ${level >= 2 ? '<circle cx="45" cy="45" r="6" fill="rgba(180,140,60,0.4)"/><circle cx="140" cy="30" r="5" fill="rgba(180,140,60,0.5)"/><circle cx="80" cy="55" r="4" fill="rgba(180,140,60,0.4)"/><circle cx="160" cy="55" r="3" fill="rgba(180,140,60,0.3)"/><circle cx="30" cy="25" r="2" fill="rgba(180,140,60,0.4)"/>' : ''}
+            ${level >= 3 ? '<circle cx="55" cy="30" r="8" fill="rgba(160,110,40,0.4)"/><circle cx="130" cy="45" r="10" fill="rgba(160,110,40,0.35)"/><circle cx="100" cy="60" r="6" fill="rgba(160,110,40,0.4)"/><circle cx="75" cy="38" r="5" fill="rgba(180,140,60,0.5)"/><circle cx="155" cy="35" r="4" fill="rgba(180,140,60,0.5)"/>' : ''}
+          </svg>
+        `;
+        break;
+      case 'annotation':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<line x1="40" y1="30" x2="120" y2="30" stroke="#2C2416" stroke-width="1"/><line x1="40" y1="42" x2="100" y2="42" stroke="#2C2416" stroke-width="1"/><line x1="40" y1="54" x2="130" y2="54" stroke="#2C2416" stroke-width="1" stroke-dasharray="60 3"/>' : ''}
+            ${level >= 2 ? '<path d="M40 30 L40 26 L60 26" stroke="#D4573B" stroke-width="1.2" fill="none"/><path d="M75 42 L75 38 L100 38" stroke="#D4573B" stroke-width="1.2" fill="none"/><text x="130" y="48" font-size="8" fill="#8B0000" font-family="serif">批注</text>' : ''}
+            ${level >= 3 ? '<path d="M50 55 Q55 50 60 55 Q65 60 70 55" stroke="#8B0000" stroke-width="1.2" fill="none"/><path d="M90 55 Q95 50 100 55 Q105 60 110 55" stroke="#8B0000" stroke-width="1.2" fill="none"/><line x1="40" y1="30" x2="130" y2="30" stroke="#D4573B" stroke-width="1.5" stroke-dasharray="4 2"/><text x="140" y="25" font-size="7" fill="#8B0000" font-family="serif" transform="rotate(-5 140 25)">好！</text>' : ''}
+          </svg>
+        `;
+        break;
+      case 'stamp':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<circle cx="150" cy="35" r="15" stroke="rgba(139,0,0,0.5)" stroke-width="1.5" fill="none" transform="rotate(8 150 35)"/><text x="150" y="38" text-anchor="middle" font-size="9" fill="rgba(139,0,0,0.6)" font-family="serif" transform="rotate(8 150 35)">藏书</text>' : ''}
+            ${level >= 2 ? '<circle cx="150" cy="35" r="18" stroke="rgba(139,0,0,0.6)" stroke-width="2" fill="none" transform="rotate(8 150 35)"/><circle cx="150" cy="35" r="14" stroke="rgba(139,0,0,0.4)" stroke-width="1" fill="none" transform="rotate(8 150 35)"/><text x="150" y="38" text-anchor="middle" font-size="10" fill="rgba(139,0,0,0.7)" font-family="serif" font-weight="bold" transform="rotate(8 150 35)">藏书印</text><rect x="40" y="40" width="30" height="20" stroke="rgba(0,80,150,0.4)" stroke-width="1" fill="none"/><text x="55" y="53" text-anchor="middle" font-size="6" fill="rgba(0,80,150,0.5)">借书</text>' : ''}
+            ${level >= 3 ? '<circle cx="150" cy="35" r="20" stroke="rgba(139,0,0,0.7)" stroke-width="2.5" fill="rgba(139,0,0,0.08)" transform="rotate(8 150 35)"/><circle cx="150" cy="35" r="16" stroke="rgba(139,0,0,0.5)" stroke-width="1" fill="none" transform="rotate(8 150 35)"/><text x="150" y="38" text-anchor="middle" font-size="11" fill="rgba(139,0,0,0.8)" font-family="serif" font-weight="bold" transform="rotate(8 150 35)">珍藏之印</text><rect x="35" y="38" width="35" height="24" stroke="rgba(0,80,150,0.5)" stroke-width="1.2" fill="rgba(0,80,150,0.05)"/><text x="52" y="52" text-anchor="middle" font-size="7" fill="rgba(0,80,150,0.6)" font-weight="bold">图书馆</text>' : ''}
+          </svg>
+        `;
+        break;
+      case 'spine':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="80" y="5" width="40" height="70" rx="3" fill="#8B7355" stroke="#6B5A42" stroke-width="1"/>
+            <rect x="82" y="8" width="2" height="64" fill="rgba(255,255,255,0.2)"/>
+            ${level >= 1 ? '<path d="M80 60 L120 60" stroke="#4A3C28" stroke-width="2" stroke-dasharray="2 3"/>' : ''}
+            ${level >= 2 ? '<path d="M80 40 L120 40" stroke="#3A2C18" stroke-width="2.5"/><path d="M80 65 L120 65" stroke="#4A3C28" stroke-width="1.5" stroke-dasharray="1 2"/><path d="M90 5 L90 75" stroke="#4A3C28" stroke-width="1" stroke-dasharray="1 1" opacity="0.6"/>' : ''}
+            ${level >= 3 ? '<path d="M82 15 L118 15" stroke="#2A1C08" stroke-width="3"/><path d="M80 35 L120 35" stroke="#2A1C08" stroke-width="2.5"/><path d="M82 55 L118 55" stroke="#2A1C08" stroke-width="2"/><line x1="100" y1="5" x2="100" y2="75" stroke="#2A1C08" stroke-width="1.5" stroke-dasharray="1 1"/><path d="M85 25 L88 30 L85 35" stroke="#2A1C08" stroke-width="1" fill="none"/>' : ''}
+          </svg>
+        `;
+        break;
+      case 'loose':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="140" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<line x1="150" y1="15" x2="150" y2="65" stroke="#B8A88F" stroke-width="1" stroke-dasharray="3 2"/>' : ''}
+            ${level >= 2 ? '<rect x="155" y="20" width="20" height="50" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" transform="rotate(3 165 45)"/><line x1="150" y1="15" x2="150" y2="65" stroke="#B8A88F" stroke-width="1" stroke-dasharray="3 2"/>' : ''}
+            ${level >= 3 ? '<rect x="155" y="18" width="18" height="48" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" transform="rotate(8 164 42)"/><rect x="170" y="25" width="16" height="40" fill="#FFFDF7" stroke="#8B7355" stroke-width="0.8" transform="rotate(-5 178 45)"/><rect x="145" y="30" width="12" height="30" fill="#FFFDF7" stroke="#8B7355" stroke-width="0.8" transform="rotate(-12 151 45)"/>' : ''}
+          </svg>
+        `;
+        break;
+      case 'worm':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<circle cx="60" cy="30" r="2" fill="#4A3C28"/><circle cx="100" cy="45" r="1.5" fill="#4A3C28"/><circle cx="140" cy="35" r="2" fill="#4A3C28"/>' : ''}
+            ${level >= 2 ? '<circle cx="50" cy="25" r="2.5" fill="#4A3C28"/><circle cx="80" cy="50" r="2" fill="#4A3C28"/><circle cx="120" cy="28" r="2.5" fill="#4A3C28"/><circle cx="155" cy="55" r="1.5" fill="#4A3C28"/><path d="M70 35 Q72 38 70 41 Q68 44 70 47" stroke="#4A3C28" stroke-width="1.5" fill="none"/>' : ''}
+            ${level >= 3 ? '<circle cx="45" cy="35" r="3" fill="#3A2C18"/><circle cx="75" cy="22" r="2.5" fill="#3A2C18"/><circle cx="110" cy="45" r="3" fill="#3A2C18"/><circle cx="145" cy="30" r="2.5" fill="#3A2C18"/><circle cx="170" cy="50" r="2" fill="#3A2C18"/><path d="M90 30 Q93 35 90 40 Q87 45 90 50 Q93 55 90 60" stroke="#3A2C18" stroke-width="2" fill="none"/><path d="M130 20 Q133 25 130 30 Q127 35 130 40" stroke="#3A2C18" stroke-width="1.5" fill="none"/>' : ''}
+          </svg>
+        `;
+        break;
+      case 'odor':
+        html = `
+          <svg viewBox="0 0 200 80" width="100%" height="100%">
+            <rect x="20" y="10" width="160" height="60" fill="#FFFDF7" stroke="#8B7355" stroke-width="1" rx="2"/>
+            ${level >= 1 ? '<path d="M60 50 Q65 45 60 40 Q55 35 60 30" stroke="#8B7355" stroke-width="1.5" fill="none" opacity="0.5"/><path d="M100 55 Q105 50 100 45 Q95 40 100 35" stroke="#8B7355" stroke-width="1.5" fill="none" opacity="0.5"/>' : ''}
+            ${level >= 2 ? '<path d="M50 55 Q57 48 50 42 Q43 36 50 30 Q57 24 50 18" stroke="#6B5D4F" stroke-width="1.5" fill="none" opacity="0.6"/><path d="M90 60 Q97 53 90 47 Q83 41 90 35 Q97 29 90 23" stroke="#6B5D4F" stroke-width="1.5" fill="none" opacity="0.6"/><path d="M130 55 Q137 48 130 42 Q123 36 130 30" stroke="#6B5D4F" stroke-width="1.5" fill="none" opacity="0.5"/>' : ''}
+            ${level >= 3 ? '<path d="M40 60 Q50 50 40 40 Q30 30 40 20 Q50 12 40 5" stroke="#4A3C28" stroke-width="2" fill="none" opacity="0.6"/><path d="M80 62 Q90 52 80 42 Q70 32 80 22 Q90 14 80 7" stroke="#4A3C28" stroke-width="2" fill="none" opacity="0.6"/><path d="M120 60 Q130 50 120 40 Q110 30 120 20 Q130 12 120 5" stroke="#4A3C28" stroke-width="2" fill="none" opacity="0.6"/><path d="M160 55 Q168 48 160 40 Q152 32 160 25" stroke="#4A3C28" stroke-width="1.5" fill="none" opacity="0.5"/>' : ''}
+          </svg>
+        `;
+        break;
+      default:
+        html = '<div style="font-size: 36px;">📖</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function confirmSeverity() {
+    if (!currentSymptomKey || !currentBook) return;
+    currentBook.symptoms[currentSymptomKey] = tempSeverity;
+    currentBook.temperature = calculateTemperature(currentBook.symptoms);
+    renderSymptomPage();
+    closeActionSheet();
+  }
+
+  function calculateTemperature(symptoms) {
+    let total = 0;
+    SYMPTOMS.forEach(s => {
+      total += SEVERITY_SCORE[symptoms[s.key] || 'none'];
+    });
+    return Math.max(0, Math.min(100, 100 - total));
+  }
+
+  // ========== RESULT PAGE ==========
+  let resultAnimating = false;
+
+  function showResult() {
+    if (!currentBook) return;
+
+    document.getElementById('resultBookName').textContent = currentBook.title;
+    document.getElementById('resultBookSub').textContent = currentBook.author + (currentBook.publisher ? ' · ' + currentBook.publisher : '');
+
+    // Diagnosis
+    const temp = currentBook.temperature;
+    const diagnosis = generateDiagnosis(currentBook);
+    document.getElementById('resultDiagnosis').textContent = diagnosis;
+
+    // Symptoms tags
+    const activeSymptoms = SYMPTOMS.filter(s => currentBook.symptoms[s.key] !== 'none');
+    const tagsHtml = activeSymptoms.map(s => {
+      const sev = currentBook.symptoms[s.key];
+      return `<span class="result-symptom-tag ${sev}">${s.name}·${SEVERITY_LABELS[sev]}</span>`;
+    }).join('');
+    document.getElementById('resultSymptoms').innerHTML = tagsHtml || '<span style="font-size:12px;color:var(--ink-light);">未见明显症状</span>';
+
+    pushPage('result');
+
+    // Animate thermometer
+    setTimeout(() => {
+      animateThermometer(temp);
+    }, 100);
+  }
+
+  function generateDiagnosis(book) {
+    const temp = book.temperature;
+    const symps = book.symptoms;
+    const severe = SYMPTOMS.filter(s => symps[s.key] === 'severe').map(s => s.name);
+    const moderate = SYMPTOMS.filter(s => symps[s.key] === 'moderate').map(s => s.name);
+
+    if (temp >= 90) {
+      return '此书面色红润，精气神俱佳。偶有微瑕，不损风姿。建议妥善安置，可入藏善本之列。';
+    } else if (temp >= 75) {
+      return '此书整体状况尚可，虽有岁月痕迹但无伤筋骨。' + (moderate.length ? '注意' + moderate.join('、') + '的发展。' : '建议干燥避光保存。');
+    } else if (temp >= 60) {
+      return '此书已有明显岁月侵蚀，' + (severe.length ? '尤以' + severe.join('、') + '为重。' : '多处症状需关注。') + '建议尽快处理，防止进一步老化。';
+    } else if (temp >= 40) {
+      return '此书身体虚弱，' + (severe.length ? '患有' + severe.join('、') + '等重症。' : '多处症状较为严重。') + '需立即进行修复手术，否则恐有散佚之虞。';
+    } else {
+      return '此书病入膏肓，' + (severe.length ? severe.join('、') + '均已严重。' : '症状全面告急。') + '建议送入修复科重症监护，能否康复全看造化。';
+    }
+  }
+
+  function animateThermometer(targetTemp) {
+    const fill = document.getElementById('thermFill');
+    const tempEl = document.getElementById('tempValue');
+    const duration = reducedMotion ? 50 : 1500;
+    const startTime = performance.now();
+    const startTemp = 0;
+
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(startTemp + (targetTemp - startTemp) * eased);
+
+      fill.style.height = current + '%';
+      tempEl.textContent = current;
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function recheckSymptoms() {
+    popPage();
+  }
+
+  function saveToArchive() {
+    if (!currentBook) return;
+
+    // Stamp animation
+    const overlay = document.getElementById('stampOverlay');
+    overlay.classList.add('stamping');
+
+    setTimeout(() => {
+      currentBook.archived = true;
+      books.push(currentBook);
+      saveBooks();
+
+      setTimeout(() => {
+        overlay.classList.remove('stamping');
+        showToast('病历已存档');
+        // Go back to archive tab
+        setTimeout(() => {
+          // Clear stack and go to archive
+          pageStack = [];
+          document.querySelectorAll('.page').forEach(p => {
+            if (!p.classList.contains('tab-page')) {
+              p.classList.remove('active');
+            }
+          });
+          goToTab('archive');
+        }, 600);
+      }, 400);
+    }, 600);
+  }
+
+  // ========== ARCHIVE PAGE ==========
+  function renderArchive() {
+    const archived = books.filter(b => b.archived);
+    document.getElementById('archiveCount').textContent = archived.length;
+
+    let filtered = archived;
+    if (archiveFilter === 'healthy') {
+      filtered = archived.filter(b => b.temperature >= 80);
+    } else if (archiveFilter === 'mild') {
+      filtered = archived.filter(b => b.temperature >= 60 && b.temperature < 80);
+    } else if (archiveFilter === 'severe') {
+      filtered = archived.filter(b => b.temperature < 60);
+    }
+
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const container = document.getElementById('archiveCards');
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding: 40px 20px;">
+          <div class="empty-card" style="width: 120px; height: 150px; margin-bottom: 16px;"></div>
+          <div class="empty-title">暂无病历档案</div>
+          <div class="empty-desc">登记旧书并完成检查后，病历会保存在这里</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = filtered.map((book, idx) => {
+      const activeSymps = SYMPTOMS.filter(s => book.symptoms[s.key] !== 'none');
+      const tagsHtml = activeSymps.slice(0, 4).map(s => {
+        return `<span class="mc-tag">${s.name}</span>`;
+      }).join('');
+
+      const tempColor = book.temperature >= 80 ? 'var(--temp-low)' : book.temperature >= 60 ? 'var(--gold-stamp)' : 'var(--stamp-red)';
+
+      return `
+        <div class="medical-card" onclick="viewBookDetail('${book.id}')">
+          <div class="mc-header">
+            <div class="mc-number">病历号 ${String(idx + 1).padStart(4, '0')}</div>
+            <div class="mc-temp" style="color:${tempColor}">
+              ${thermometerIconSvg(tempColor)}
+              ${book.temperature}°
+            </div>
+          </div>
+          <div class="mc-title">${book.title}</div>
+          <div class="mc-author">${book.author}${book.publisher ? ' · ' + book.publisher : ''}</div>
+          <div class="mc-tags">${tagsHtml || '<span class="mc-tag">健康</span>'}</div>
+          <div class="mc-note">${generateDiagnosis(book).slice(0, 40)}…</div>
+          <div class="mc-date">${formatDate(book.date)} 初诊</div>
+          <div class="mc-stamp">存档</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ========== DETAIL PAGE ==========
+  function viewBookDetail(id) {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+
+    document.getElementById('detailSpine').style.background = `linear-gradient(to right, ${adjustColor(book.color, -20)}, ${book.color}, ${adjustColor(book.color, 15)})`;
+    document.getElementById('detailTitle').textContent = book.title;
+    document.getElementById('detailAuthor').textContent = book.author + (book.publisher ? ' · ' + book.publisher : '');
+
+    const temp = book.temperature;
+    const tempEl = document.getElementById('detailTemp');
+    tempEl.textContent = '0';
+    const tempColor = temp >= 80 ? 'var(--temp-low)' : temp >= 60 ? 'var(--gold-stamp)' : 'var(--stamp-red)';
+    tempEl.style.color = tempColor;
+
+    // Symptoms
+    const sympsEl = document.getElementById('detailSymptoms');
+    sympsEl.innerHTML = SYMPTOMS.map(s => {
+      const sev = book.symptoms[s.key] || 'none';
+      return `
+        <div class="detail-symptom-row">
+          <span class="detail-symptom-name">
+            <span class="detail-symptom-dot sev-${sev}"></span>
+            ${s.name}
+          </span>
+          <span class="detail-symptom-sev">${SEVERITY_LABELS[sev]}</span>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('detailNote').textContent = generateDiagnosis(book);
+    document.getElementById('detailSource').textContent = book.source || '—';
+    document.getElementById('detailPrice').textContent = book.price ? book.price + ' 元' : '—';
+    document.getElementById('detailDate').textContent = formatDate(book.date);
+
+    pushPage('detail');
+
+    // Animate number
+    setTimeout(() => {
+      animateNumber(tempEl, 0, temp, 800);
+    }, 200);
+  }
+
+  function deleteBook(id) {
+    books = books.filter(b => b.id !== id);
+    saveBooks();
+    showToast('已删除');
+    renderHome();
+    renderArchive();
+  }
+
+  // ========== PROFILE PAGE ==========
+  let profileAnimated = false;
+
+  function renderProfile() {
+    const archived = books.filter(b => b.archived);
+    const total = archived.length;
+    const avg = total > 0 ? Math.round(archived.reduce((sum, b) => sum + b.temperature, 0) / total) : 0;
+    const healthy = archived.filter(b => b.temperature >= 80).length;
+
+    if (!profileAnimated) {
+      profileAnimated = true;
+      animateNumber(document.getElementById('statTotal'), 0, total, 800);
+      animateNumber(document.getElementById('statAvg'), 0, avg, 800);
+      animateNumber(document.getElementById('statHealthy'), 0, healthy, 800);
+    } else {
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statAvg').textContent = avg;
+      document.getElementById('statHealthy').textContent = healthy;
+    }
+
+    // Common symptoms
+    const counts = {};
+    SYMPTOMS.forEach(s => { counts[s.key] = 0; });
+    archived.forEach(book => {
+      SYMPTOMS.forEach(s => {
+        if (book.symptoms[s.key] && book.symptoms[s.key] !== 'none') {
+          counts[s.key]++;
+        }
+      });
+    });
+
+    const ranked = SYMPTOMS.map(s => ({ ...s, count: counts[s.key] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const maxCount = Math.max(1, ...ranked.map(r => r.count));
+
+    const container = document.getElementById('commonSymptoms');
+    container.innerHTML = ranked.map(r => `
+      <div class="symptom-rank">
+        <span class="symptom-rank-name">${r.name}</span>
+        <div class="symptom-rank-bar">
+          <div class="symptom-rank-fill" data-count="${r.count}" data-max="${maxCount}"></div>
+        </div>
+        <span class="symptom-rank-count">${r.count}</span>
+      </div>
+    `).join('');
+
+    // Animate bars
+    setTimeout(() => {
+      document.querySelectorAll('.symptom-rank-fill').forEach(el => {
+        const count = parseInt(el.dataset.count);
+        const max = parseInt(el.dataset.max);
+        el.style.width = (count / max * 100) + '%';
+      });
+    }, 100);
+  }
+
+  // ========== UTILITY ==========
+  function formatDate(dateStr) {
+    const d = new Date(dateStr);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+
+  function adjustColor(hex, amount) {
+    const num = parseInt(hex.slice(1), 16);
+    let r = (num >> 16) + amount;
+    let g = ((num >> 8) & 0x00FF) + amount;
+    let b = (num & 0x0000FF) + amount;
+    r = Math.max(0, Math.min(255, r));
+    g = Math.max(0, Math.min(255, g));
+    b = Math.max(0, Math.min(255, b));
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => {
+      toast.classList.remove('show');
+    }, 1800);
+  }
+
+  function animateNumber(el, from, to, duration) {
+    if (reducedMotion) {
+      el.textContent = to;
+      return;
+    }
+    const startTime = performance.now();
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(from + (to - from) * eased);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ========== CUSTOM CURSOR ==========
+  const penCursor = document.getElementById('penCursor');
+  let cursorVisible = false;
+
+  function moveCursor(e) {
+    const rect = document.querySelector('.phone-wrap').getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+      penCursor.style.left = e.clientX + 'px';
+      penCursor.style.top = e.clientY + 'px';
+      if (!cursorVisible) {
+        document.body.classList.add('has-cursor');
+        cursorVisible = true;
+      }
+    } else {
+      if (cursorVisible) {
+        document.body.classList.remove('has-cursor');
+        cursorVisible = false;
+      }
+    }
+  }
+
+  // Only show custom cursor on desktop (not touch)
+  if (!('ontouchstart' in window)) {
+    document.addEventListener('mousemove', moveCursor);
+    document.addEventListener('mousedown', () => document.body.classList.add('clicking'));
+    document.addEventListener('mouseup', () => document.body.classList.remove('clicking'));
+  }
+
+  // ========== PULL TO REFRESH ==========
+  let pullStartY = 0;
+  let pullDistance = 0;
+  let isPulling = false;
+  const homePage = document.getElementById('page-home');
+  const pullIndicator = document.getElementById('pullIndicator');
+
+  homePage.addEventListener('touchstart', function(e) {
+    if (homePage.scrollTop <= 0) {
+      pullStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }, { passive: true });
+
+  homePage.addEventListener('touchmove', function(e) {
+    if (!isPulling) return;
+    const dy = e.touches[0].clientY - pullStartY;
+    if (dy > 0 && homePage.scrollTop <= 0) {
+      pullDistance = Math.min(80, dy * 0.5);
+      homePage.querySelector('.page-content').style.transform = `translateY(${pullDistance}px)`;
+      pullIndicator.style.top = (pullDistance - 50) + 'px';
+    }
+  }, { passive: true });
+
+  homePage.addEventListener('touchend', function() {
+    if (!isPulling) return;
+    isPulling = false;
+    const content = homePage.querySelector('.page-content');
+
+    if (pullDistance > 40) {
+      // Refresh
+      pullIndicator.classList.add('show');
+      pullIndicator.style.top = '0px';
+      content.style.transform = 'translateY(50px)';
+
+      setTimeout(() => {
+        renderHome();
+        content.style.transform = '';
+        pullIndicator.style.top = '-50px';
+        pullIndicator.classList.remove('show');
+        showToast('已刷新');
+      }, 800);
+    } else {
+      content.style.transform = '';
+      pullIndicator.style.top = '-50px';
+    }
+    pullDistance = 0;
+  });
+
+  // ========== NAV BACK ==========
+  document.getElementById('navBack').addEventListener('click', function() {
+    popPage();
+  });
+
+  // ========== INIT ==========
+  function init() {
+    loadBooks();
+    goToTab('home');
+
+    // Page visibility - pause animations
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        // Any running animations would naturally pause via RAF
+      }
+    });
+  }
+
+  // Expose functions globally
+  window.goToRegister = goToRegister;
+  window.startSymptomCheck = startSymptomCheck;
+  window.openActionSheet = openActionSheet;
+  window.closeActionSheet = closeActionSheet;
+  window.confirmSeverity = confirmSeverity;
+  window.showResult = showResult;
+  window.recheckSymptoms = recheckSymptoms;
+  window.saveToArchive = saveToArchive;
+  window.viewBookDetail = viewBookDetail;
+  window.deleteBook = deleteBook;
+  window.handleBookItemClick = handleBookItemClick;
+
+  init();
+
+  // Announce upgrade capability
+  try {
+    function announceUpgrade() {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+  } catch(e) {}
+
+})();
+</script>
+
+</body>
+</html>
