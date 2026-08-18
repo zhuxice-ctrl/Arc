@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<title>羽翼航线 Flyway Atlas</title>
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ============ RESET & BASE ============ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: 'Noto Sans SC', -apple-system, sans-serif;
+  background: #0E1832;
+  color: #C9D2E0;
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+  user-select: none;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: none; }
+.serif { font-family: 'Cormorant Garamond', 'Noto Serif SC', serif; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ============ CSS VARIABLES ============ */
+:root {
+  --night: #0E1832;
+  --night-deep: #080E1F;
+  --star-silver: #C9D2E0;
+  --candle-gold: #E8B34B;
+  --dark-silver: #5B6478;
+  --land-outline: #2A3A5C;
+  --land-fill: rgba(42, 58, 92, 0.35);
+  --card-bg: rgba(14, 24, 50, 0.92);
+  --card-border: rgba(201, 210, 224, 0.15);
+}
+
+/* ============ STAR FIELD ============ */
+#stars {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  will-change: transform;
+}
+.star {
+  position: absolute;
+  background: #C9D2E0;
+  border-radius: 50%;
+  opacity: 0.6;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.9; }
+}
+.star.s1 { width: 1px; height: 1px; animation: twinkle 3s ease-in-out infinite; }
+.star.s2 { width: 1.5px; height: 1.5px; animation: twinkle 4s ease-in-out infinite; }
+.star.s3 { width: 2px; height: 2px; animation: twinkle 5s ease-in-out infinite; }
+
+/* ============ CUSTOM CURSOR ============ */
+#cursor {
+  position: fixed;
+  top: 0; left: 0;
+  width: 40px; height: 40px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+#cursor.visible { opacity: 1; }
+.cursor-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px; height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 1px solid #C9D2E0;
+  border-radius: 50%;
+  transition: border-color 0.3s ease, width 0.2s ease, height 0.2s ease, margin 0.2s ease;
+}
+#cursor.flying .cursor-ring {
+  border-color: #E8B34B;
+  width: 48px; height: 48px;
+  margin: -24px 0 0 -24px;
+}
+.cursor-crosshair {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+}
+.cursor-crosshair::before,
+.cursor-crosshair::after {
+  content: '';
+  position: absolute;
+  background: #C9D2E0;
+  transition: background 0.3s ease;
+}
+.cursor-crosshair::before {
+  left: 50%; top: 0;
+  width: 1px; height: 100%;
+  margin-left: -0.5px;
+}
+.cursor-crosshair::after {
+  top: 50%; left: 0;
+  height: 1px; width: 100%;
+  margin-top: -0.5px;
+}
+#cursor.flying .cursor-crosshair::before,
+#cursor.flying .cursor-crosshair::after {
+  background: #E8B34B;
+}
+
+/* ============ HEADER ============ */
+.header {
+  position: fixed;
+  top: 32px; left: 40px;
+  z-index: 10;
+  pointer-events: none;
+}
+.header h1 {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  font-size: 28px;
+  font-weight: 500;
+  color: #C9D2E0;
+  letter-spacing: 2px;
+  line-height: 1.2;
+}
+.header h1 .title-en {
+  display: block;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 400;
+  color: #5B6478;
+  letter-spacing: 3px;
+  margin-top: 4px;
+}
+.header .subtitle {
+  font-size: 12px;
+  color: #5B6478;
+  margin-top: 12px;
+  letter-spacing: 1px;
+}
+
+/* ============ MAP ============ */
+#map-container {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  cursor: none;
+}
+#map-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#map-world {
+  transition: none;
+  will-change: transform;
+}
+
+/* Continent outlines */
+.continent {
+  fill: var(--land-fill);
+  stroke: var(--land-outline);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Routes */
+.route-path {
+  fill: none;
+  stroke: rgba(232, 179, 75, 0.3);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease, opacity 0.3s ease;
+}
+.route-path:hover {
+  stroke: rgba(232, 179, 75, 0.9);
+  stroke-width: 2;
+}
+.route-path.dimmed { opacity: 0.15; }
+.route-path.highlighted {
+  stroke: rgba(232, 179, 75, 1);
+  stroke-width: 2;
+}
+
+/* Route flowing light animation */
+@keyframes routeFlow {
+  0% { stroke-dashoffset: 200; }
+  100% { stroke-dashoffset: 0; }
+}
+.route-flow {
+  fill: none;
+  stroke: #E8B34B;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 198;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+.route-flow.active {
+  opacity: 0.6;
+  animation: routeFlow 4s linear infinite;
+}
+.route-flow.active.flight {
+  opacity: 1;
+  stroke-width: 2;
+}
+
+/* Route start label */
+.route-label {
+  fill: #C9D2E0;
+  font-size: 11px;
+  font-family: 'Noto Sans SC', sans-serif;
+  cursor: pointer;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s ease, fill 0.3s ease;
+}
+.route-label.highlighted {
+  opacity: 1;
+  fill: #E8B34B;
+}
+.route-label.dimmed { opacity: 0.2; }
+
+/* Stopovers */
+.stopover-group { pointer-events: none; }
+.stopover-dot {
+  fill: #2A3A5C;
+  stroke: #5B6478;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transition: fill 0.6s ease, stroke 0.6s ease;
+}
+.stopover-dot.lit {
+  fill: #E8B34B;
+  stroke: #E8B34B;
+}
+.stopover-halo {
+  fill: none;
+  stroke: #E8B34B;
+  stroke-width: 1;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+}
+.stopover-halo.lit {
+  animation: haloSpread 1.5s ease-out forwards;
+}
+@keyframes haloSpread {
+  0% { r: 3; opacity: 0.8; }
+  100% { r: 25; opacity: 0; }
+}
+.stopover-label {
+  fill: #C9D2E0;
+  font-size: 10px;
+  font-family: 'Noto Sans SC', sans-serif;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.stopover-label.lit { opacity: 0.8; }
+
+/* Flight dot */
+#flight-dot {
+  fill: #E8B34B;
+  filter: drop-shadow(0 0 4px #E8B34B);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#flight-dot.active { opacity: 1; }
+
+/* ============ ROUTE INDEX SIDEBAR ============ */
+#route-index {
+  position: fixed;
+  top: 50%;
+  right: 32px;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 220px;
+  pointer-events: auto;
+}
+.index-header {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #5B6478;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(91, 100, 120, 0.3);
+}
+.route-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.route-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  text-align: left;
+  transition: background 0.2s ease, color 0.2s ease;
+  width: 100%;
+  cursor: none;
+}
+.route-btn:hover {
+  background: rgba(232, 179, 75, 0.08);
+}
+.route-btn:hover .route-btn-name { color: #E8B34B; }
+.route-btn.active {
+  background: rgba(232, 179, 75, 0.12);
+}
+.route-btn.active .route-btn-name { color: #E8B34B; }
+.route-btn-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #5B6478;
+  width: 22px;
+  flex-shrink: 0;
+}
+.route-btn.active .route-btn-num { color: #E8B34B; }
+.route-btn-name {
+  font-size: 13px;
+  color: #C9D2E0;
+  transition: color 0.2s ease;
+}
+.route-btn-latin {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 10px;
+  color: #5B6478;
+  margin-top: 2px;
+}
+
+/* ============ DATA CARD ============ */
+#data-card {
+  position: fixed;
+  top: 50%;
+  right: 280px;
+  transform: translateY(-50%) translateX(20px);
+  width: 340px;
+  z-index: 9;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 28px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  backdrop-filter: blur(8px);
+}
+#data-card.visible {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+  pointer-events: auto;
+}
+.card-species {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(91, 100, 120, 0.3);
+}
+.card-name {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: #E8B34B;
+  letter-spacing: 1px;
+}
+.card-latin {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: #5B6478;
+  margin-top: 4px;
+}
+.card-route-title {
+  font-size: 12px;
+  color: #5B6478;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+.card-route-val {
+  font-size: 14px;
+  color: #C9D2E0;
+  margin-bottom: 16px;
+}
+.card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.stat-label {
+  font-size: 10px;
+  color: #5B6478;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  color: #C9D2E0;
+}
+.card-stopovers {
+  margin-bottom: 20px;
+}
+.card-stopovers-title {
+  font-size: 11px;
+  color: #5B6478;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.stopover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stopover-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #5B6478;
+  transition: color 0.3s ease;
+}
+.stopover-item.active {
+  color: #E8B34B;
+}
+.stopover-item .stop-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #2A3A5C;
+  border: 1px solid #5B6478;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+.stopover-item.active .stop-dot {
+  background: #E8B34B;
+  border-color: #E8B34B;
+  box-shadow: 0 0 6px #E8B34B;
+}
+.card-iucn {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.iucn-cr { color: #E85A4B; border-color: rgba(232, 90, 75, 0.4); }
+.iucn-en { color: #E8914B; border-color: rgba(232, 145, 75, 0.4); }
+.iucn-nt { color: #E8B34B; border-color: rgba(232, 179, 75, 0.4); }
+.iucn-lc { color: #7EC8A4; border-color: rgba(126, 200, 164, 0.4); }
+.card-why {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #C9D2E0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(91, 100, 120, 0.2);
+}
+.card-why::before {
+  content: '为什么值得记住';
+  display: block;
+  font-size: 10px;
+  color: #5B6478;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+/* Station counter within card */
+.station-counter {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #E8B34B;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.station-counter.show { opacity: 1; }
+
+/* ============ PROGRESS BAR ============ */
+#progress-bar {
+  position: fixed;
+  bottom: 80px;
+  left: 40px;
+  right: 300px;
+  z-index: 8;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+#progress-bar.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.progress-track {
+  height: 2px;
+  background: rgba(91, 100, 120, 0.3);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #E8B34B, #F0C76B);
+  width: 0%;
+  border-radius: 1px;
+  transition: width 0.1s linear;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #5B6478;
+}
+.progress-info .progress-val { color: #C9D2E0; }
+.progress-info .progress-pct { color: #E8B34B; }
+
+/* ============ SUMMARY OVERLAY ============ */
+#summary {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+#summary.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.summary-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 24, 50, 0.7);
+  backdrop-filter: blur(4px);
+}
+.summary-card {
+  position: relative;
+  background: var(--card-bg);
+  border: 1px solid rgba(232, 179, 75, 0.3);
+  border-radius: 8px;
+  padding: 48px 56px;
+  text-align: center;
+  transform: translateY(20px);
+  transition: transform 0.6s ease;
+}
+#summary.visible .summary-card { transform: translateY(0); }
+.summary-title {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  font-size: 16px;
+  color: #5B6478;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.summary-species {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  font-size: 28px;
+  color: #E8B34B;
+  letter-spacing: 2px;
+  margin-bottom: 32px;
+}
+.summary-stats {
+  display: flex;
+  gap: 48px;
+  margin-bottom: 32px;
+}
+.summary-stat {
+  text-align: center;
+}
+.summary-stat-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 32px;
+  color: #C9D2E0;
+  font-weight: 500;
+}
+.summary-stat-label {
+  font-size: 11px;
+  color: #5B6478;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+.summary-close {
+  padding: 10px 28px;
+  border: 1px solid rgba(232, 179, 75, 0.5);
+  border-radius: 4px;
+  color: #E8B34B;
+  font-size: 13px;
+  letter-spacing: 1px;
+  transition: background 0.2s ease;
+  cursor: none;
+}
+.summary-close:hover {
+  background: rgba(232, 179, 75, 0.1);
+}
+
+/* ============ BOTTOM BAR ============ */
+.bottom-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 40px;
+  right: 40px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.bottom-bar-text {
+  font-size: 11px;
+  color: #5B6478;
+  letter-spacing: 1px;
+}
+.bottom-bar-btns {
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+}
+.bottom-btn {
+  padding: 6px 14px;
+  border: 1px solid rgba(91, 100, 120, 0.4);
+  border-radius: 3px;
+  font-size: 11px;
+  color: #5B6478;
+  letter-spacing: 1px;
+  transition: all 0.2s ease;
+  cursor: none;
+}
+.bottom-btn:hover {
+  color: #C9D2E0;
+  border-color: #5B6478;
+}
+.bottom-btn.primary {
+  color: #E8B34B;
+  border-color: rgba(232, 179, 75, 0.5);
+}
+.bottom-btn.primary:hover {
+  background: rgba(232, 179, 75, 0.1);
+}
+.bottom-btn.hidden { display: none; }
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 1024px) {
+  .header { top: 20px; left: 24px; }
+  .header h1 { font-size: 22px; }
+  #route-index {
+    right: 20px;
+    width: 180px;
+  }
+  #data-card {
+    right: 220px;
+    width: 280px;
+    padding: 20px;
+  }
+  #progress-bar { right: 220px; left: 24px; bottom: 70px; }
+  .bottom-bar { left: 24px; right: 24px; bottom: 16px; }
+}
+
+@media (max-width: 768px) {
+  body { cursor: auto; }
+  #cursor { display: none; }
+  button, .route-path, .route-btn, .bottom-btn, .summary-close { cursor: pointer; }
+  
+  .header { top: 16px; left: 20px; }
+  .header h1 { font-size: 18px; letter-spacing: 1px; }
+  .header h1 .title-en { font-size: 12px; margin-top: 2px; }
+  .header .subtitle { font-size: 10px; margin-top: 8px; }
+  
+  #route-index {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    transform: none;
+    width: 100%;
+    background: rgba(14, 24, 50, 0.95);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--card-border);
+    padding: 16px 20px 20px;
+    z-index: 15;
+    transform: translateY(calc(100% - 44px));
+    transition: transform 0.4s ease;
+  }
+  #route-index.open {
+    transform: translateY(0);
+  }
+  .index-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+  }
+  .index-header::after {
+    content: '展开';
+    font-size: 10px;
+    color: #5B6478;
+  }
+  #route-index.open .index-header::after { content: '收起'; }
+  .route-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  
+  #data-card {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    transform: translateY(100%);
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+    padding: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+    z-index: 16;
+  }
+  #data-card.visible {
+    transform: translateY(0);
+  }
+  
+  #progress-bar {
+    left: 20px;
+    right: 20px;
+    bottom: 60px;
+  }
+  
+  .bottom-bar {
+    bottom: 12px;
+    left: 20px;
+    right: 20px;
+  }
+  .bottom-bar-text { font-size: 10px; }
+  
+  .summary-card { padding: 32px 28px; margin: 0 20px; }
+  .summary-species { font-size: 22px; margin-bottom: 24px; }
+  .summary-stats { gap: 24px; margin-bottom: 24px; }
+  .summary-stat-val { font-size: 24px; }
+}
+
+@media (max-width: 480px) {
+  .route-list { grid-template-columns: 1fr; }
+  .card-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-value { font-size: 13px; }
+  .summary-stats { flex-direction: column; gap: 16px; }
+}
+
+/* ============ REDUCED MOTION ============ */
+@media (prefers-reduced-motion: reduce) {
+  body { cursor: auto; }
+  #cursor { display: none !important; }
+  button, .route-path, .route-btn { cursor: pointer; }
+  
+  .star { animation: none !important; opacity: 0.6 !important; }
+  .route-flow { animation: none !important; }
+  .stopover-halo.lit { animation: none !important; opacity: 0; }
+  
+  #map-world,
+  #data-card,
+  #progress-bar,
+  #summary,
+  .summary-card {
+    transition: none !important;
+  }
+  
+  .route-path,
+  .route-btn,
+  .bottom-btn,
+  .stopover-dot,
+  .stopover-label {
+    transition: none !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Stars -->
+<div id="stars" aria-hidden="true"></div>
+
+<!-- Custom cursor -->
+<div id="cursor" aria-hidden="true">
+  <div class="cursor-ring"></div>
+  <div class="cursor-crosshair"></div>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <h1>羽翼航线 <span class="title-en">Flyway Atlas</span></h1>
+  <p class="subtitle">全球八条候鸟迁徙航线 · 夜航图</p>
+</header>
+
+<!-- Map -->
+<div id="map-container">
+  <svg id="map-svg" viewBox="0 0 2000 1000" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <g id="map-world">
+      <!-- Continents -->
+      <g id="continents">
+        <!-- North America -->
+        <path class="continent" d="M 100 140 L 150 105 L 230 95 L 340 100 L 420 125 L 475 175 L 475 260 L 445 335 L 410 395 L 375 440 L 340 450 L 310 425 L 270 385 L 235 345 L 200 300 L 165 255 L 135 205 L 105 165 Z"/>
+        <!-- Greenland -->
+        <path class="continent" d="M 620 85 L 690 100 L 710 160 L 670 205 L 615 180 L 595 130 Z"/>
+        <!-- South America -->
+        <path class="continent" d="M 370 470 L 430 475 L 490 510 L 515 585 L 500 670 L 470 760 L 440 860 L 415 880 L 390 860 L 370 790 L 355 700 L 345 610 L 350 520 L 355 475 Z"/>
+        <!-- Europe -->
+        <path class="continent" d="M 830 185 L 875 165 L 950 155 L 1010 175 L 1030 230 L 1000 285 L 950 300 L 890 275 L 840 255 L 825 215 Z"/>
+        <!-- Africa -->
+        <path class="continent" d="M 875 315 L 945 305 L 1000 330 L 1030 390 L 1020 480 L 1000 570 L 960 660 L 915 710 L 875 705 L 850 640 L 840 550 L 850 460 L 855 380 L 860 335 Z"/>
+        <!-- Asia -->
+        <path class="continent" d="M 1010 155 L 1100 110 L 1250 90 L 1450 85 L 1580 110 L 1660 195 L 1630 290 L 1560 340 L 1470 350 L 1440 400 L 1420 450 L 1380 485 L 1310 510 L 1260 480 L 1210 450 L 1170 495 L 1110 475 L 1070 395 L 1035 310 L 1010 240 Z"/>
+        <!-- India subcontinent -->
+        <path class="continent" d="M 1090 370 L 1160 365 L 1190 410 L 1170 485 L 1120 475 L 1090 420 Z"/>
+        <!-- Japan -->
+        <path class="continent" d="M 1570 290 L 1600 285 L 1610 310 L 1595 350 L 1575 355 L 1565 320 Z"/>
+        <!-- Australia -->
+        <path class="continent" d="M 1415 625 L 1500 610 L 1590 635 L 1620 705 L 1580 775 L 1510 785 L 1440 745 L 1410 680 Z"/>
+        <!-- New Zealand -->
+        <path class="continent" d="M 1660 775 L 1688 790 L 1700 835 L 1685 860 L 1660 845 L 1650 805 Z"/>
+        <!-- Antarctica -->
+        <path class="continent" d="M 200 945 L 500 950 L 800 945 L 1100 955 L 1400 945 L 1700 950 L 1780 945 L 1760 975 L 220 975 Z"/>
+        <!-- Madagascar -->
+        <path class="continent" d="M 1035 520 L 1055 520 L 1055 570 L 1040 580 L 1030 550 Z"/>
+        <!-- UK -->
+        <path class="continent" d="M 835 175 L 855 170 L 858 200 L 840 210 Z"/>
+        <!-- Indonesia / Philippines archipelago (simplified) -->
+        <path class="continent" d="M 1350 490 L 1400 480 L 1420 510 L 1390 530 L 1345 515 Z"/>
+        <path class="continent" d="M 1330 530 L 1380 535 L 1390 560 L 1350 565 Z"/>
+        <path class="continent" d="M 1300 525 L 1320 540 L 1310 560 L 1290 545 Z"/>
+      </g>
+      <!-- Routes layer -->
+      <g id="routes"></g>
+      <!-- Stopovers layer -->
+      <g id="stopovers"></g>
+      <!-- Flight progress dot -->
+      <circle id="flight-dot" r="4" fill="#E8B34B" opacity="0" filter="url(#glow)"/>
+    </g>
+  </svg>
+</div>
+
+<!-- Route Index -->
+<aside id="route-index">
+  <div class="index-header">航线索引 · Routes</div>
+  <div class="route-list" id="route-list"></div>
+</aside>
+
+<!-- Data Card -->
+<aside id="data-card">
+  <div class="station-counter" id="station-counter"></div>
+  <div class="card-species">
+    <div class="card-name" id="card-name">斑尾塍鹬</div>
+    <div class="card-latin" id="card-latin">Limosa lapponica</div>
+  </div>
+  <div class="card-route-title">迁徙路线</div>
+  <div class="card-route-val" id="card-route">阿拉斯加 → 新西兰</div>
+  <div class="card-stats">
+    <div class="stat">
+      <div class="stat-label">总里程</div>
+      <div class="stat-value" id="card-distance">11,000 km</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">约需天数</div>
+      <div class="stat-value" id="card-days">11 天</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">飞行高度</div>
+      <div class="stat-value" id="card-altitude">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">体重变化</div>
+      <div class="stat-value" id="card-weight">↓ 50%</div>
+    </div>
+  </div>
+  <div class="card-stopovers">
+    <div class="card-stopovers-title">关键停歇地</div>
+    <div class="stopover-list" id="stopover-list"></div>
+  </div>
+  <div class="card-iucn" id="card-iucn">近危 (NT)</div>
+  <div class="card-why" id="card-why">
+    已知不间断飞行距离最长的鸟类，从阿拉斯加直飞新西兰，中途不降落、不进食，相当于人类连续跑 260 场马拉松。
+  </div>
+</aside>
+
+<!-- Progress Bar -->
+<div id="progress-bar">
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <div class="progress-info">
+    <span>已飞距离</span>
+    <span class="progress-val"><span id="progress-km">0</span> / <span id="total-km">0</span> km</span>
+    <span class="progress-pct" id="progress-pct">0%</span>
+  </div>
+</div>
+
+<!-- Summary overlay -->
+<div id="summary">
+  <div class="summary-bg"></div>
+  <div class="summary-card">
+    <div class="summary-title">抵达越冬地</div>
+    <div class="summary-species" id="summary-species">斑尾塍鹬</div>
+    <div class="summary-stats">
+      <div class="summary-stat">
+        <div class="summary-stat-val" id="sum-dist">11,000</div>
+        <div class="summary-stat-label">总里程 (km)</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-stat-val" id="sum-days">11</div>
+        <div class="summary-stat-label">跨越天数</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-stat-val" id="sum-weight">-50%</div>
+        <div class="summary-stat-label">体重变化</div>
+      </div>
+    </div>
+    <button class="summary-close" id="summary-close">返回全景</button>
+  </div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottom-bar">
+  <div class="bottom-bar-text">点击航线或右侧物种开启伴飞模式 · 滚轮缩放 · 拖拽平移</div>
+  <div class="bottom-bar-btns">
+    <button class="bottom-btn" id="btn-showall">显示全部</button>
+    <button class="bottom-btn primary hidden" id="btn-overview">返回全景</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ====== ROUTES DATA ======
+  const routes = [
+    {
+      id: 0,
+      name: '斑尾塍鹬',
+      latin: 'Limosa lapponica',
+      en: 'Bar-tailed Godwit',
+      origin: '阿拉斯加',
+      destination: '新西兰',
+      distance: 11000,
+      days: 11,
+      altitude: null,
+      weight: '↓ 50%',
+      iucn: 'nt',
+      iucnText: '近危 (NT)',
+      why: '已知不间断飞行距离最长的鸟类，从阿拉斯加直飞新西兰，中途不降落、不进食，相当于人类连续跑 260 场马拉松。',
+      path: 'M 180 175 Q 350 270 650 400 Q 1000 550 1400 700 Q 1560 770 1670 815',
+      startLabel: { x: 130, y: 165, text: '斑尾塍鹬' },
+      stopovers: [
+        { name: '阿留申群岛上空', x: 380, y: 255, progress: 0.15 },
+        { name: '夏威夷以北海域', x: 780, y: 450, progress: 0.42 }
+      ]
+    },
+    {
+      id: 1,
+      name: '北极燕鸥',
+      latin: 'Sterna paradisaea',
+      en: 'Arctic Tern',
+      origin: '北极圈',
+      destination: '南极',
+      distance: 19000,
+      days: 60,
+      altitude: null,
+      weight: '↓ 30%',
+      iucn: 'lc',
+      iucnText: '无危 (LC)',
+      why: '地球上迁徙距离最长的动物，追逐两极的夏天度过两个极昼——它们的一生，是一场永不停歇的"永恒白昼"。一生飞行距离相当于往返月球三次。',
+      path: 'M 550 70 Q 480 250 550 450 Q 650 680 820 935',
+      startLabel: { x: 460, y: 60, text: '北极燕鸥' },
+      stopovers: [
+        { name: '北大西洋渔场', x: 520, y: 230, progress: 0.2 },
+        { name: '巴西沿岸', x: 580, y: 520, progress: 0.5 },
+        { name: '南大洋西风带', x: 700, y: 780, progress: 0.78 }
+      ]
+    },
+    {
+      id: 2,
+      name: '斑头雁',
+      latin: 'Anser indicus',
+      en: 'Bar-headed Goose',
+      origin: '蒙古高原',
+      destination: '印度',
+      distance: 2500,
+      days: 3,
+      altitude: '8,800 m',
+      weight: '↓ 20%',
+      iucn: 'lc',
+      iucnText: '无危 (LC)',
+      why: '世界上飞得最高的候鸟之一，能在珠穆朗玛峰高度巡航。它们的血红蛋白比其他鸟类更高效结合氧气，是适应极端高海拔的演化奇迹。',
+      path: 'M 1260 245 Q 1200 320 1140 415',
+      startLabel: { x: 1270, y: 235, text: '斑头雁' },
+      stopovers: [
+        { name: '青海湖', x: 1220, y: 295, progress: 0.3 },
+        { name: '喜马拉雅山脊', x: 1175, y: 355, progress: 0.58 }
+      ]
+    },
+    {
+      id: 3,
+      name: '红腹滨鹬',
+      latin: 'Calidris canutus',
+      en: 'Red Knot',
+      origin: '加拿大北极',
+      destination: '火地岛',
+      distance: 15000,
+      days: 28,
+      altitude: null,
+      weight: '先↑50% 后↓60%',
+      iucn: 'nt',
+      iucnText: '近危 (NT)',
+      why: '其迁徙与鲎的产卵期精确同步，短短两周内在特拉华湾靠吃鲎卵体重翻倍，是自然界最著名的协同演化案例之一。',
+      path: 'M 320 130 Q 360 300 375 485 Q 430 680 465 870',
+      startLabel: { x: 250, y: 120, text: '红腹滨鹬' },
+      stopovers: [
+        { name: '特拉华湾', x: 370, y: 360, progress: 0.28 },
+        { name: '巴西东北海岸', x: 420, y: 560, progress: 0.55 },
+        { name: '巴塔哥尼亚', x: 450, y: 760, progress: 0.82 }
+      ]
+    },
+    {
+      id: 4,
+      name: '家燕',
+      latin: 'Hirundo rustica',
+      en: 'Barn Swallow',
+      origin: '东亚',
+      destination: '东南亚·澳洲',
+      distance: 6000,
+      days: 20,
+      altitude: null,
+      weight: '↓ 25%',
+      iucn: 'lc',
+      iucnText: '无危 (LC)',
+      why: '与人类共生最密切的候鸟之一，每年春天返回同一屋檐下筑巢。数千万只集群迁徙的"燕潮"，是许多人童年记忆里的"春天使者"。',
+      path: 'M 1330 295 Q 1400 430 1445 545 Q 1490 620 1540 690',
+      startLabel: { x: 1340, y: 285, text: '家燕' },
+      stopovers: [
+        { name: '中国南方', x: 1380, y: 400, progress: 0.25 },
+        { name: '中南半岛', x: 1420, y: 490, progress: 0.48 },
+        { name: '印度尼西亚', x: 1470, y: 590, progress: 0.7 }
+      ]
+    },
+    {
+      id: 5,
+      name: '白鹤',
+      latin: 'Leucogeranus leucogeranus',
+      en: 'Siberian Crane',
+      origin: '西伯利亚',
+      destination: '鄱阳湖',
+      distance: 5000,
+      days: 14,
+      altitude: null,
+      weight: '↓ 15%',
+      iucn: 'cr',
+      iucnText: '极危 (CR)',
+      why: '世界上最濒危的鹤类之一，全球仅存约 4,000 只。98% 的种群在同一个湖泊越冬——鄱阳湖，单一生境的丧失可能导致整个物种灭绝。',
+      path: 'M 1230 175 Q 1255 275 1305 375',
+      startLabel: { x: 1150, y: 170, text: '白鹤' },
+      stopovers: [
+        { name: '扎龙湿地', x: 1240, y: 230, progress: 0.22 },
+        { name: '辽河三角洲', x: 1270, y: 300, progress: 0.5 },
+        { name: '黄河三角洲', x: 1290, y: 345, progress: 0.72 }
+      ]
+    },
+    {
+      id: 6,
+      name: '黑脸琵鹭',
+      latin: 'Platalea minor',
+      en: 'Black-faced Spoonbill',
+      origin: '朝鲜半岛',
+      destination: '华南·台湾',
+      distance: 2000,
+      days: 5,
+      altitude: null,
+      weight: '↓ 10%',
+      iucn: 'en',
+      iucnText: '濒危 (EN)',
+      why: '东亚特有的珍稀水鸟，黑脸+琵琶形喙极具辨识度。曾一度濒临灭绝仅剩几百只，经中日韩三国协作保护，种群才缓慢恢复至约 6,000 只。',
+      path: 'M 1345 310 Q 1335 365 1315 415',
+      startLabel: { x: 1355, y: 300, text: '黑脸琵鹭' },
+      stopovers: [
+        { name: '崇明东滩', x: 1330, y: 360, progress: 0.45 },
+        { name: '厦门湾', x: 1320, y: 395, progress: 0.72 }
+      ]
+    },
+    {
+      id: 7,
+      name: '白鹳',
+      latin: 'Ciconia ciconia',
+      en: 'White Stork',
+      origin: '欧洲',
+      destination: '非洲',
+      distance: 10000,
+      days: 25,
+      altitude: null,
+      weight: '↓ 35%',
+      iucn: 'lc',
+      iucnText: '无危 (LC)',
+      why: '传说中"送子鸟"的原型。它们依赖热气流滑翔迁徙，为了避开宽阔的地中海，绕道博斯普鲁斯海峡和黎凡特走廊，春秋季数十万只汇聚形成壮观的"白鹳河"。',
+      path: 'M 900 215 Q 955 360 970 470 Q 965 575 955 675',
+      startLabel: { x: 910, y: 205, text: '白鹳' },
+      stopovers: [
+        { name: '博斯普鲁斯海峡', x: 935, y: 290, progress: 0.22 },
+        { name: '以色列谷地', x: 960, y: 395, progress: 0.42 },
+        { name: '尼罗河谷', x: 965, y: 510, progress: 0.65 },
+        { name: '东非高原', x: 960, y: 620, progress: 0.85 }
+      ]
+    }
+  ];
+
+  // ====== STATE ======
+  const state = {
+    currentRouteId: null,
+    isFlying: false,
+    flightProgress: 0,
+    flightSpeed: 0.00035, // progress per ms
+    lastFlightTime: 0,
+    activeStopoverIdx: -1,
+    mapTransform: { tx: 0, ty: 0, scale: 1 },
+    targetTransform: { tx: 0, ty: 0, scale: 1 },
+    isDragging: false,
+    dragStart: { x: 0, y: 0, tx: 0, ty: 0 },
+    reducedMotion: false,
+    cursorPos: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    cursorTarget: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    mousePos: { x: 0, y: 0 },
+    parallaxOffset: { x: 0, y: 0 },
+    showAllRoutes: true,
+    rafId: null,
+    animationRunning: true,
+    allRoutesShowing: true
+  };
+
+  // ====== DOM ======
+  const svg = document.getElementById('map-svg');
+  const mapWorld = document.getElementById('map-world');
+  const routesGroup = document.getElementById('routes');
+  const stopoversGroup = document.getElementById('stopovers');
+  const flightDot = document.getElementById('flight-dot');
+  const routeListEl = document.getElementById('route-list');
+  const dataCard = document.getElementById('data-card');
+  const progressBar = document.getElementById('progress-bar');
+  const progressFill = document.getElementById('progress-fill');
+  const progressKm = document.getElementById('progress-km');
+  const totalKm = document.getElementById('total-km');
+  const progressPct = document.getElementById('progress-pct');
+  const stationCounter = document.getElementById('station-counter');
+  const starsContainer = document.getElementById('stars');
+  const cursorEl = document.getElementById('cursor');
+  const summaryEl = document.getElementById('summary');
+  const btnOverview = document.getElementById('btn-overview');
+  const btnShowAll = document.getElementById('btn-showall');
+  const routeIndex = document.getElementById('route-index');
+
+  const cardName = document.getElementById('card-name');
+  const cardLatin = document.getElementById('card-latin');
+  const cardRoute = document.getElementById('card-route');
+  const cardDistance = document.getElementById('card-distance');
+  const cardDays = document.getElementById('card-days');
+  const cardAltitude = document.getElementById('card-altitude');
+  const cardWeight = document.getElementById('card-weight');
+  const stopoverListEl = document.getElementById('stopover-list');
+  const cardIucn = document.getElementById('card-iucn');
+  const cardWhy = document.getElementById('card-why');
+
+  // ====== INITIALIZATION ======
+  function init() {
+    checkReducedMotion();
+    createStars();
+    createRoutes();
+    createStopovers();
+    createRouteList();
+    setupEvents();
+    startAnimationLoop();
+    announceUpgrade();
+  }
+
+  function checkReducedMotion() {
+    state.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!state.reducedMotion) {
+      cursorEl.classList.add('visible');
+    }
+  }
+
+  // ====== STARS ======
+  function createStars() {
+    const count = 80;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < count; i++) {
+      const star = document.createElement('div');
+      const sizeClass = i % 3 === 0 ? 's3' : (i % 2 === 0 ? 's2' : 's1');
+      star.className = 'star ' + sizeClass;
+      star.style.left = Math.random() * 100 + '%';
+      star.style.top = Math.random() * 100 + '%';
+      star.style.animationDelay = (Math.random() * 5) + 's';
+      star.dataset.parallax = (Math.random() * 0.3 + 0.1).toFixed(2);
+      frag.appendChild(star);
+    }
+    starsContainer.appendChild(frag);
+  }
+
+  // ====== ROUTES SVG ======
+  function createRoutes() {
+    routes.forEach(route => {
+      // Base dashed path
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', route.path);
+      path.setAttribute('class', 'route-path');
+      path.setAttribute('id', 'route-path-' + route.id);
+      path.dataset.routeId = route.id;
+      path.addEventListener('mouseenter', () => onRouteHover(route.id, true));
+      path.addEventListener('mouseleave', () => onRouteHover(route.id, false));
+      path.addEventListener('click', () => startFlight(route.id));
+      routesGroup.appendChild(path);
+
+      // Flowing light path
+      const flow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      flow.setAttribute('d', route.path);
+      flow.setAttribute('class', 'route-flow');
+      flow.setAttribute('id', 'route-flow-' + route.id);
+      flow.dataset.routeId = route.id;
+      routesGroup.appendChild(flow);
+
+      // Start label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', route.startLabel.x);
+      label.setAttribute('y', route.startLabel.y);
+      label.setAttribute('class', 'route-label');
+      label.setAttribute('id', 'route-label-' + route.id);
+      label.textContent = route.startLabel.text;
+      routesGroup.appendChild(label);
+    });
+  }
+
+  // ====== STOPOVERS ======
+  function createStopovers() {
+    routes.forEach(route => {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'stopover-group');
+      g.setAttribute('id', 'stopover-group-' + route.id);
+      g.style.opacity = '0';
+
+      route.stopovers.forEach((stop, idx) => {
+        const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        halo.setAttribute('cx', stop.x);
+        halo.setAttribute('cy', stop.y);
+        halo.setAttribute('r', '3');
+        halo.setAttribute('class', 'stopover-halo');
+        halo.setAttribute('id', 'halo-' + route.id + '-' + idx);
+        g.appendChild(halo);
+
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', stop.x);
+        dot.setAttribute('cy', stop.y);
+        dot.setAttribute('r', '3');
+        dot.setAttribute('class', 'stopover-dot');
+        dot.setAttribute('id', 'stopdot-' + route.id + '-' + idx);
+        g.appendChild(dot);
+
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', stop.x + 8);
+        label.setAttribute('y', stop.y + 4);
+        label.setAttribute('class', 'stopover-label');
+        label.setAttribute('id', 'stoplabel-' + route.id + '-' + idx);
+        label.textContent = stop.name;
+        g.appendChild(label);
+      });
+
+      stopoversGroup.appendChild(g);
+    });
+  }
+
+  // ====== ROUTE LIST ======
+  function createRouteList() {
+    routes.forEach(route => {
+      const btn = document.createElement('button');
+      btn.className = 'route-btn';
+      btn.dataset.routeId = route.id;
+      btn.innerHTML = `
+        <span class="route-btn-num mono">${String(route.id + 1).padStart(2, '0')}</span>
+        <span class="route-btn-text">
+          <div class="route-btn-name">${route.name}</div>
+          <div class="route-btn-latin serif">${route.latin}</div>
+        </span>
+      `;
+      btn.addEventListener('mouseenter', () => onRouteHover(route.id, true));
+      btn.addEventListener('mouseleave', () => onRouteHover(route.id, false));
+      btn.addEventListener('click', () => startFlight(route.id));
+      routeListEl.appendChild(btn);
+    });
+  }
+
+  // ====== HOVER HIGHLIGHT ======
+  function onRouteHover(routeId, isHover) {
+    if (state.isFlying && state.currentRouteId === routeId) return;
+    
+    const path = document.getElementById('route-path-' + routeId);
+    const flow = document.getElementById('route-flow-' + routeId);
+    const label = document.getElementById('route-label-' + routeId);
+    const btn = document.querySelector(`.route-btn[data-route-id="${routeId}"]`);
+    
+    if (isHover) {
+      path.classList.add('highlighted');
+      flow.classList.add('active');
+      label.classList.add('highlighted');
+      if (btn) btn.classList.add('active');
+      
+      // Dim other routes for focus
+      if (state.currentRouteId === null) {
+        routes.forEach(r => {
+          if (r.id !== routeId) {
+            document.getElementById('route-path-' + r.id).classList.add('dimmed');
+            document.getElementById('route-label-' + r.id).classList.add('dimmed');
+          }
+        });
+      }
+    } else {
+      path.classList.remove('highlighted');
+      flow.classList.remove('active');
+      label.classList.remove('highlighted');
+      if (btn && state.currentRouteId !== routeId) btn.classList.remove('active');
+      
+      if (state.currentRouteId === null) {
+        routes.forEach(r => {
+          document.getElementById('route-path-' + r.id).classList.remove('dimmed');
+          document.getElementById('route-label-' + r.id).classList.remove('dimmed');
+        });
+      }
+    }
+  }
+
+  // ====== DATA CARD ======
+  function showDataCard(routeId) {
+    const route = routes[routeId];
+    cardName.textContent = route.name;
+    cardLatin.textContent = route.latin;
+    cardRoute.textContent = route.origin + ' → ' + route.destination;
+    cardDistance.textContent = route.distance.toLocaleString() + ' km';
+    cardDays.textContent = route.days + ' 天';
+    cardAltitude.textContent = route.altitude || '—';
+    cardWeight.textContent = route.weight;
+    cardIucn.textContent = route.iucnText;
+    cardIucn.className = 'card-iucn iucn-' + route.iucn;
+    cardWhy.textContent = route.why;
+    totalKm.textContent = route.distance.toLocaleString();
+
+    // Stopovers list
+    stopoverListEl.innerHTML = '';
+    route.stopovers.forEach((stop, idx) => {
+      const item = document.createElement('div');
+      item.className = 'stopover-item';
+      item.id = 'stop-item-' + idx;
+      item.innerHTML = `<span class="stop-dot"></span>${stop.name}`;
+      stopoverListEl.appendChild(item);
+    });
+
+    dataCard.classList.add('visible');
+    progressBar.classList.add('visible');
+    stationCounter.classList.remove('show');
+  }
+
+  function updateStationCounter(idx, route) {
+    if (idx >= 0) {
+      stationCounter.textContent = '第 ' + (idx + 1) + ' 站 · ' + route.stopovers[idx].name;
+      stationCounter.classList.add('show');
+    } else {
+      stationCounter.textContent = '起点 · ' + route.origin;
+      stationCounter.classList.add('show');
+    }
+  }
+
+  function updateStopoverList(idx) {
+    const items = stopoverListEl.querySelectorAll('.stopover-item');
+    items.forEach((item, i) => {
+      if (i <= idx) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  // ====== FLIGHT LOGIC ======
+  let flightPathEl = null;
+  let flightPathLength = 0;
+
+  function startFlight(routeId) {
+    // Clear previous flight
+    if (state.isFlying) {
+      resetFlight();
+    }
+    
+    state.currentRouteId = routeId;
+    const route = routes[routeId];
+    
+    // Setup path for pointAtLength
+    flightPathEl = document.getElementById('route-path-' + routeId);
+    flightPathLength = flightPathEl.getTotalLength();
+    
+    // Dim other routes
+    routes.forEach(r => {
+      const pathEl = document.getElementById('route-path-' + r.id);
+      const labelEl = document.getElementById('route-label-' + r.id);
+      const flowEl = document.getElementById('route-flow-' + r.id);
+      const btnEl = document.querySelector(`.route-btn[data-route-id="${r.id}"]`);
+      
+      if (r.id === routeId) {
+        pathEl.classList.add('highlighted');
+        pathEl.classList.remove('dimmed');
+        labelEl.classList.add('highlighted');
+        labelEl.classList.remove('dimmed');
+        flowEl.classList.add('active', 'flight');
+        if (btnEl) btnEl.classList.add('active');
+      } else {
+        pathEl.classList.add('dimmed');
+        labelEl.classList.add('dimmed');
+        flowEl.classList.remove('active', 'flight');
+        if (btnEl) btnEl.classList.remove('active');
+      }
+    });
+    
+    // Show stopovers group
+    const stopGroup = document.getElementById('stopover-group-' + routeId);
+    stopGroup.style.opacity = '1';
+    
+    // Show data card
+    showDataCard(routeId);
+    
+    // Show overview button
+    btnOverview.classList.remove('hidden');
+    btnShowAll.classList.add('hidden');
+    
+    // Activate cursor flying state
+    cursorEl.classList.add('flying');
+    
+    // Reset state
+    state.flightProgress = 0;
+    state.activeStopoverIdx = -1;
+    state.lastFlightTime = performance.now();
+    state.isFlying = true;
+    
+    // Show flight dot
+    flightDot.classList.add('active');
+    
+    // Initial update
+    updateFlightPosition(0);
+    
+    // Mobile: open index so user can see
+    if (window.innerWidth <= 768) {
+      routeIndex.classList.remove('open');
+    }
+  }
+
+  function resetFlight() {
+    if (state.currentRouteId === null) return;
+    
+    const prevId = state.currentRouteId;
+    
+    // Hide flight dot
+    flightDot.classList.remove('active');
+    
+    // Hide stopovers
+    const stopGroup = document.getElementById('stopover-group-' + prevId);
+    if (stopGroup) stopGroup.style.opacity = '0';
+    
+    // Reset flow
+    const flowEl = document.getElementById('route-flow-' + prevId);
+    if (flowEl) flowEl.classList.remove('active', 'flight');
+    
+    // Reset stopover visuals
+    const route = routes[prevId];
+    route.stopovers.forEach((_, idx) => {
+      const dot = document.getElementById('stopdot-' + prevId + '-' + idx);
+      const halo = document.getElementById('halo-' + prevId + '-' + idx);
+      const label = document.getElementById('stoplabel-' + prevId + '-' + idx);
+      if (dot) dot.classList.remove('lit');
+      if (halo) halo.classList.remove('lit');
+      if (label) label.classList.remove('lit');
+    });
+    
+    state.isFlying = false;
+    state.flightProgress = 0;
+    state.activeStopoverIdx = -1;
+    
+    // Reset cursor
+    cursorEl.classList.remove('flying');
+  }
+
+  function updateFlightPosition(progress) {
+    const route = routes[state.currentRouteId];
+    
+    // Position dot along path
+    const point = flightPathEl.getPointAtLength(progress * flightPathLength);
+    flightDot.setAttribute('cx', point.x);
+    flightDot.setAttribute('cy', point.y);
+    
+    // Update progress bar
+    const pct = Math.round(progress * 100);
+    progressFill.style.width = pct + '%';
+    progressPct.textContent = pct + '%';
+    progressKm.textContent = Math.round(progress * route.distance).toLocaleString();
+    
+    // Camera follow with slight look-ahead
+    const lookAhead = Math.min(progress + 0.03, 1);
+    const lookPoint = flightPathEl.getPointAtLength(lookAhead * flightPathLength);
+    
+    // Calculate target transform: center on point with zoom
+    const targetScale = 2.2;
+    const vbW = 2000, vbH = 1000;
+    const tx = vbW / 2 - lookPoint.x * targetScale;
+    const ty = vbH / 2 - lookPoint.y * targetScale;
+    
+    state.targetTransform.tx = tx;
+    state.targetTransform.ty = ty;
+    state.targetTransform.scale = targetScale;
+    
+    // Check stopover activation
+    route.stopovers.forEach((stop, idx) => {
+      if (progress >= stop.progress && idx > state.activeStopoverIdx) {
+        state.activeStopoverIdx = idx;
+        activateStopover(route.id, idx);
+      }
+    });
+  }
+
+  function activateStopover(routeId, idx) {
+    const dot = document.getElementById('stopdot-' + routeId + '-' + idx);
+    const halo = document.getElementById('halo-' + routeId + '-' + idx);
+    const label = document.getElementById('stoplabel-' + routeId + '-' + idx);
+    
+    if (dot) dot.classList.add('lit');
+    if (label) label.classList.add('lit');
+    
+    // Halo animation - reset then play
+    if (halo) {
+      halo.classList.remove('lit');
+      // Force reflow
+      void halo.getBBox();
+      halo.classList.add('lit');
+    }
+    
+    // Update data card
+    updateStationCounter(idx, routes[routeId]);
+    updateStopoverList(idx);
+    
+    // Data card content transition
+    dataCard.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+  }
+
+  function endFlight() {
+    state.isFlying = false;
+    
+    const route = routes[state.currentRouteId];
+    
+    // Full progress
+    progressFill.style.width = '100%';
+    progressPct.textContent = '100%';
+    progressKm.textContent = route.distance.toLocaleString();
+    
+    // Show summary
+    showSummary(route);
+  }
+
+  function showSummary(route) {
+    document.getElementById('summary-species').textContent = route.name;
+    document.getElementById('sum-dist').textContent = '0';
+    document.getElementById('sum-days').textContent = '0';
+    document.getElementById('sum-weight').textContent = route.weight;
+    
+    summaryEl.classList.add('visible');
+    
+    // Animate counters
+    animateCounter('sum-dist', 0, route.distance, 1500);
+    animateCounter('sum-days', 0, route.days, 1500);
+  }
+
+  function hideSummary() {
+    summaryEl.classList.remove('visible');
+  }
+
+  function animateCounter(elId, from, to, duration) {
+    const el = document.getElementById(elId);
+    const start = performance.now();
+    
+    function tick(now) {
+      const elapsed = now - start;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      const val = Math.round(from + (to - from) * eased);
+      el.textContent = val.toLocaleString();
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ====== RETURN TO OVERVIEW ======
+  function returnToOverview() {
+    hideSummary();
+    resetFlight();
+    
+    // Reset all routes visual
+    routes.forEach(r => {
+      const pathEl = document.getElementById('route-path-' + r.id);
+      const labelEl = document.getElementById('route-label-' + r.id);
+      const flowEl = document.getElementById('route-flow-' + r.id);
+      const btnEl = document.querySelector(`.route-btn[data-route-id="${r.id}"]`);
+      
+      pathEl.classList.remove('dimmed', 'highlighted');
+      labelEl.classList.remove('dimmed', 'highlighted');
+      flowEl.classList.remove('active', 'flight');
+      if (btnEl) btnEl.classList.remove('active');
+    });
+    
+    // Hide data card
+    dataCard.classList.remove('visible');
+    progressBar.classList.remove('visible');
+    stationCounter.classList.remove('show');
+    
+    // Reset buttons
+    btnOverview.classList.add('hidden');
+    btnShowAll.classList.remove('hidden');
+    
+    // Reset camera
+    state.targetTransform = { tx: 0, ty: 0, scale: 1 };
+    state.currentRouteId = null;
+  }
+
+  // ====== MAP PAN/ZOOM ======
+  function applyMapTransform() {
+    const t = state.mapTransform;
+    mapWorld.setAttribute('transform', `translate(${t.tx}, ${t.ty}) scale(${t.scale})`);
+  }
+
+  function easeToward(current, target, factor, dt) {
+    // Framerate-independent lerp
+    const speed = 1 - Math.pow(1 - factor, dt / 16.67);
+    return current + (target - current) * speed;
+  }
+
+  // ====== EVENTS ======
+  function setupEvents() {
+    // Mouse move for cursor and parallax
+    document.addEventListener('mousemove', onMouseMove);
+    
+    // Mouse leave window
+    document.addEventListener('mouseleave', () => {
+      cursorEl.classList.remove('visible');
+    });
+    document.addEventListener('mouseenter', () => {
+      if (!state.reducedMotion) cursorEl.classList.add('visible');
+    });
+    
+    // Map drag
+    svg.addEventListener('mousedown', onMapMouseDown);
+    document.addEventListener('mousemove', onMapMouseMove);
+    document.addEventListener('mouseup', onMapMouseUp);
+    
+    // Touch events for mobile
+    svg.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    
+    // Wheel zoom
+    svg.addEventListener('wheel', onMapWheel, { passive: false });
+    
+    // Buttons
+    btnOverview.addEventListener('click', returnToOverview);
+    btnShowAll.addEventListener('click', toggleShowAll);
+    document.getElementById('summary-close').addEventListener('click', returnToOverview);
+    
+    // Mobile route index toggle
+    if (window.innerWidth <= 768) {
+      const header = document.querySelector('.index-header');
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', () => {
+        routeIndex.classList.toggle('open');
+      });
+    }
+    
+    // Visibility change (pause RAF when hidden)
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    
+    // Resize
+    window.addEventListener('resize', onResize);
+  }
+
+  function onMouseMove(e) {
+    state.cursorTarget.x = e.clientX;
+    state.cursorTarget.y = e.clientY;
+    state.mousePos.x = e.clientX;
+    state.mousePos.y = e.clientY;
+    
+    if (!state.cursorVisible) {
+      state.cursorVisible = true;
+    }
+  }
+
+  function onMapMouseDown(e) {
+    if (state.isFlying) return;
+    state.isDragging = true;
+    state.dragStart.x = e.clientX;
+    state.dragStart.y = e.clientY;
+    state.dragStart.tx = state.mapTransform.tx;
+    state.dragStart.ty = state.mapTransform.ty;
+    
+    // Convert mouse delta to SVG coordinate delta
+    const svgRect = svg.getBoundingClientRect();
+    const vbW = 2000, vbH = 1000;
+    state.dragStart.scaleX = vbW / svgRect.width;
+    state.dragStart.scaleY = vbH / svgRect.height;
+  }
+
+  function onMapMouseMove(e) {
+    if (!state.isDragging || state.isFlying) return;
+    
+    const dx = (e.clientX - state.dragStart.x) * state.dragStart.scaleX * state.mapTransform.scale;
+    const dy = (e.clientY - state.dragStart.y) * state.dragStart.scaleY * state.mapTransform.scale;
+    
+    state.mapTransform.tx = state.dragStart.tx + dx;
+    state.mapTransform.ty = state.dragStart.ty + dy;
+    state.targetTransform.tx = state.mapTransform.tx;
+    state.targetTransform.ty = state.mapTransform.ty;
+  }
+
+  function onMapMouseUp() {
+    state.isDragging = false;
+  }
+
+  // Touch support
+  let touchStartDist = 0;
+  let touchStartScale = 1;
+  let touchMode = null; // 'drag' or 'pinch'
+
+  function onTouchStart(e) {
+    if (state.isFlying) return;
+    if (e.touches.length === 1) {
+      touchMode = 'drag';
+      state.isDragging = true;
+      state.dragStart.x = e.touches[0].clientX;
+      state.dragStart.y = e.touches[0].clientY;
+      state.dragStart.tx = state.mapTransform.tx;
+      state.dragStart.ty = state.mapTransform.ty;
+      const svgRect = svg.getBoundingClientRect();
+      state.dragStart.scaleX = 2000 / svgRect.width;
+      state.dragStart.scaleY = 1000 / svgRect.height;
+    } else if (e.touches.length === 2) {
+      touchMode = 'pinch';
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchStartDist = Math.sqrt(dx * dx + dy * dy);
+      touchStartScale = state.mapTransform.scale;
+    }
+    e.preventDefault();
+  }
+
+  function onTouchMove(e) {
+    if (state.isFlying) return;
+    e.preventDefault();
+    
+    if (touchMode === 'drag' && state.isDragging && e.touches.length === 1) {
+      const dx = (e.touches[0].clientX - state.dragStart.x) * state.dragStart.scaleX * state.mapTransform.scale;
+      const dy = (e.touches[0].clientY - state.dragStart.y) * state.dragStart.scaleY * state.mapTransform.scale;
+      state.mapTransform.tx = state.dragStart.tx + dx;
+      state.mapTransform.ty = state.dragStart.ty + dy;
+      state.targetTransform.tx = state.mapTransform.tx;
+      state.targetTransform.ty = state.mapTransform.ty;
+    } else if (touchMode === 'pinch' && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const newScale = Math.max(1, Math.min(4, touchStartScale * (dist / touchStartDist)));
+      
+      // Zoom toward center of touch
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      
+      const svgRect = svg.getBoundingClientRect();
+      const relX = (cx - svgRect.left) / svgRect.width * 2000;
+      const relY = (cy - svgRect.top) / svgRect.height * 1000;
+      
+      const worldX = (relX - state.mapTransform.tx) / state.mapTransform.scale;
+      const worldY = (relY - state.mapTransform.ty) / state.mapTransform.scale;
+      
+      state.mapTransform.scale = newScale;
+      state.mapTransform.tx = relX - worldX * newScale;
+      state.mapTransform.ty = relY - worldY * newScale;
+      state.targetTransform.scale = newScale;
+      state.targetTransform.tx = state.mapTransform.tx;
+      state.targetTransform.ty = state.mapTransform.ty;
+    }
+  }
+
+  function onTouchEnd() {
+    state.isDragging = false;
+    touchMode = null;
+  }
+
+  function onMapWheel(e) {
+    if (state.isFlying) return;
+    e.preventDefault();
+    
+    const svgRect = svg.getBoundingClientRect();
+    const vbW = 2000, vbH = 1000;
+    
+    // Mouse position in SVG coords
+    const relX = (e.clientX - svgRect.left) / svgRect.width * vbW;
+    const relY = (e.clientY - svgRect.top) / svgRect.height * vbH;
+    
+    // World position before zoom
+    const worldX = (relX - state.mapTransform.tx) / state.mapTransform.scale;
+    const worldY = (relY - state.mapTransform.ty) / state.mapTransform.scale;
+    
+    // New scale
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newScale = Math.max(1, Math.min(4, state.mapTransform.scale * zoomFactor));
+    
+    // Compute new translate to keep worldX/worldY under cursor
+    const newTx = relX - worldX * newScale;
+    const newTy = relY - worldY * newScale;
+    
+    state.mapTransform.scale = newScale;
+    state.mapTransform.tx = newTx;
+    state.mapTransform.ty = newTy;
+    state.targetTransform.scale = newScale;
+    state.targetTransform.tx = newTx;
+    state.targetTransform.ty = newTy;
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      state.animationRunning = false;
+      if (state.rafId) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+    } else {
+      state.animationRunning = true;
+      state.lastFlightTime = performance.now();
+      if (!state.rafId) {
+        startAnimationLoop();
+      }
+    }
+  }
+
+  function onResize() {
+    // Reset on significant breakpoint changes
+  }
+
+  function toggleShowAll() {
+    state.allRoutesShowing = !state.allRoutesShowing;
+    btnShowAll.textContent = state.allRoutesShowing ? '显示全部' : '收起航线';
+    
+    routes.forEach(r => {
+      const pathEl = document.getElementById('route-path-' + r.id);
+      const labelEl = document.getElementById('route-label-' + r.id);
+      
+      if (state.allRoutesShowing) {
+        pathEl.style.opacity = '';
+        labelEl.style.opacity = '';
+      } else {
+        pathEl.style.opacity = '0';
+        labelEl.style.opacity = '0';
+      }
+    });
+  }
+
+  // ====== ANIMATION LOOP ======
+  function startAnimationLoop() {
+    let lastTime = performance.now();
+    
+    function loop(now) {
+      if (!state.animationRunning) return;
+      
+      const dt = now - lastTime;
+      lastTime = now;
+      
+      // 1. Cursor follow (smoothed)
+      updateCursor(dt);
+      
+      // 2. Star parallax (subtle)
+      updateParallax(dt);
+      
+      // 3. Map transform easing
+      if (!state.isDragging) {
+        state.mapTransform.tx = easeToward(state.mapTransform.tx, state.targetTransform.tx, 0.08, dt);
+        state.mapTransform.ty = easeToward(state.mapTransform.ty, state.targetTransform.ty, 0.08, dt);
+        state.mapTransform.scale = easeToward(state.mapTransform.scale, state.targetTransform.scale, 0.08, dt);
+      }
+      applyMapTransform();
+      
+      // 4. Flight animation
+      if (state.isFlying && flightPathEl) {
+        state.flightProgress += state.flightSpeed * dt;
+        
+        if (state.flightProgress >= 1) {
+          state.flightProgress = 1;
+          updateFlightPosition(1);
+          updateStationCounter(routes[state.currentRouteId].stopovers.length - 1, routes[state.currentRouteId]);
+          updateStopoverList(routes[state.currentRouteId].stopovers.length - 1);
+          endFlight();
+        } else {
+          updateFlightPosition(state.flightProgress);
+        }
+      }
+      
+      state.rafId = requestAnimationFrame(loop);
+    }
+    
+    state.rafId = requestAnimationFrame(loop);
+  }
+
+  function updateCursor(dt) {
+    if (state.reducedMotion) return;
+    
+    // Eased follow
+    state.cursorPos.x += (state.cursorTarget.x - state.cursorPos.x) * Math.min(0.2, dt / 8);
+    state.cursorPos.y += (state.cursorTarget.y - state.cursorPos.y) * Math.min(0.2, dt / 8);
+    
+    cursorEl.style.transform = `translate(${state.cursorPos.x}px, ${state.cursorPos.y}px) translate(-50%, -50%)`;
+  }
+
+  function updateParallax(dt) {
+    if (state.reducedMotion) return;
+    
+    // Mouse parallax for stars (very subtle)
+    const targetX = (state.mousePos.x / window.innerWidth - 0.5) * 10;
+    const targetY = (state.mousePos.y / window.innerHeight - 0.5) * 6;
+    
+    state.parallaxOffset.x += (targetX - state.parallaxOffset.x) * 0.02;
+    state.parallaxOffset.y += (targetY - state.parallaxOffset.y) * 0.02;
+    
+    starsContainer.style.transform = `translate(${state.parallaxOffset.x}px, ${state.parallaxOffset.y}px)`;
+  }
+
+  // ====== UPGRADE ANNOUNCEMENT ======
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) { /* ignore */ }
+  }
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // ====== CLEANUP ======
+  window.addEventListener('beforeunload', () => {
+    if (state.rafId) cancelAnimationFrame(state.rafId);
+  });
+
+  // ====== START ======
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>
