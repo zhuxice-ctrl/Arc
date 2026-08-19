@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="creative-medium" content="interactive-prototype" />
+  <title>命令面板 Command Palette — V3 交互组件</title>
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <style>
+    /* ================================================================
+       命令面板 Command Palette — 纯 CSS/JS 可复用组件
+       提取指引：复制 <style> 中以 .cmd- 开头的所有规则 + <script> 中的 CommandPalette 类
+       ================================================================ */
+
+    /* ---------- 主题变量（深色默认 + 浅色切换） ---------- */
+    :root,
+    [data-cmd-theme="dark"] {
+      --cmd-bg: #2B2D31;
+      --cmd-bg-subtle: #34373C;
+      --cmd-bg-hover: #3A3D42;
+      --cmd-bg-active: #F2A93B;
+      --cmd-bg-elevated: #232528;
+      --cmd-fg: #F4F2EE;
+      --cmd-fg-subtle: #9A9B9F;
+      --cmd-fg-muted: #6C6E72;
+      --cmd-accent: #F2A93B;
+      --cmd-accent-fg: #2B2D31;
+      --cmd-border: #3F4145;
+      --cmd-border-subtle: #35373A;
+      --cmd-ring: rgba(242, 169, 59, 0.45);
+      --cmd-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.55),
+                    0 10px 25px -10px rgba(0, 0, 0, 0.35);
+      --cmd-radius: 12px;
+      --cmd-radius-sm: 8px;
+      --cmd-divider: #35373A;
+      --cmd-danger: #E06C5A;
+      --cmd-success: #7FB069;
+      --cmd-kbd-bg: #1E1F22;
+      --cmd-kbd-border: #3F4145;
+      --cmd-kbd-fg: #C8C9CC;
+      --cmd-scroll-thumb: #4A4D52;
+      --cmd-scroll-track: transparent;
+      --cmd-max-width: 560px;
+      --cmd-font-sans: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --cmd-font-mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+
+    [data-cmd-theme="light"] {
+      --cmd-bg: #FFFFFF;
+      --cmd-bg-subtle: #F7F6F2;
+      --cmd-bg-hover: #EFEDE7;
+      --cmd-bg-active: #F2A93B;
+      --cmd-bg-elevated: #FAF9F5;
+      --cmd-fg: #2B2D31;
+      --cmd-fg-subtle: #6C6E72;
+      --cmd-fg-muted: #9A9B9F;
+      --cmd-accent: #F2A93B;
+      --cmd-accent-fg: #FFFFFF;
+      --cmd-border: #E5E3DC;
+      --cmd-border-subtle: #EFEDE7;
+      --cmd-ring: rgba(242, 169, 59, 0.5);
+      --cmd-shadow: 0 30px 60px -15px rgba(43, 45, 49, 0.25),
+                    0 10px 25px -10px rgba(43, 45, 49, 0.15);
+      --cmd-divider: #EFEDE7;
+      --cmd-danger: #C95142;
+      --cmd-success: #5A8F47;
+      --cmd-kbd-bg: #F4F2EE;
+      --cmd-kbd-border: #DCD9D1;
+      --cmd-kbd-fg: #6C6E72;
+      --cmd-scroll-thumb: #D0CDC5;
+      --cmd-scroll-track: transparent;
+    }
+
+    /* ---------- 遮罩 ---------- */
+    .cmd-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 9998;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+    .cmd-overlay[data-open="true"] {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ---------- 面板容器 ---------- */
+    .cmd-dialog {
+      position: fixed;
+      top: 18%;
+      left: 50%;
+      transform: translate(-50%, -8px) scale(0.98);
+      width: 90%;
+      max-width: var(--cmd-max-width);
+      background: var(--cmd-bg);
+      color: var(--cmd-fg);
+      border-radius: var(--cmd-radius);
+      box-shadow: var(--cmd-shadow);
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transform-origin: top center;
+      transition:
+        opacity 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      font-family: var(--cmd-font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow: hidden;
+      border: 1px solid var(--cmd-border);
+    }
+    .cmd-dialog[data-open="true"] {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, 0) scale(1);
+    }
+
+    /* ---------- 输入区 ---------- */
+    .cmd-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--cmd-divider);
+      position: relative;
+    }
+    .cmd-input-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      color: var(--cmd-fg-subtle);
+    }
+    .cmd-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--cmd-fg);
+      font-family: var(--cmd-font-sans);
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.4;
+      caret-color: var(--cmd-accent);
+      padding: 0;
+    }
+    .cmd-input::placeholder {
+      color: var(--cmd-fg-muted);
+      font-weight: 400;
+    }
+    .cmd-input:focus-visible {
+      outline: none;
+    }
+    .cmd-loading-spinner {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--cmd-border);
+      border-top-color: var(--cmd-accent);
+      border-radius: 50%;
+      animation: cmd-spin 0.7s linear infinite;
+    }
+    .cmd-hotkey-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .cmd-kbd {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 22px;
+      padding: 0 6px;
+      background: var(--cmd-kbd-bg);
+      border: 1px solid var(--cmd-kbd-border);
+      border-radius: 5px;
+      color: var(--cmd-kbd-fg);
+      font-family: var(--cmd-font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    @keyframes cmd-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ---------- 分组标签 ---------- */
+    .cmd-list {
+      max-height: 340px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 6px 0;
+      scroll-behavior: smooth;
+    }
+    .cmd-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .cmd-list::-webkit-scrollbar-thumb {
+      background: var(--cmd-scroll-thumb);
+      border-radius: 3px;
+    }
+    .cmd-list::-webkit-scrollbar-track {
+      background: var(--cmd-scroll-track);
+    }
+
+    .cmd-group {
+      display: block;
+    }
+    .cmd-group-label {
+      display: block;
+      padding: 10px 16px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--cmd-fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ---------- 命令项 ---------- */
+    .cmd-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      margin: 0 6px;
+      border-radius: var(--cmd-radius-sm);
+      cursor: pointer;
+      position: relative;
+      transition:
+        background-color 120ms ease,
+        transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        color 120ms ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cmd-item:hover,
+    .cmd-item[data-selected="true"] {
+      background: var(--cmd-bg-hover);
+    }
+    .cmd-item[data-selected="true"] {
+      transform: translateX(2px);
+    }
+    .cmd-item:focus-visible {
+      outline: 2px solid var(--cmd-ring);
+      outline-offset: -2px;
+    }
+    .cmd-item-icon {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--cmd-fg-subtle);
+      border-radius: 6px;
+      background: var(--cmd-bg-subtle);
+      transition: color 120ms ease, background-color 120ms ease;
+    }
+    .cmd-item[data-selected="true"] .cmd-item-icon {
+      color: var(--cmd-accent);
+      background: rgba(242, 169, 59, 0.12);
+    }
+    .cmd-item-content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .cmd-item-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--cmd-fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cmd-item-label .cmd-hit {
+      color: var(--cmd-accent);
+      font-weight: 600;
+    }
+    .cmd-item-desc {
+      font-size: 12px;
+      color: var(--cmd-fg-subtle);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cmd-item-hotkey {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    /* ---------- 空状态 / 错误状态 ---------- */
+    .cmd-empty,
+    .cmd-noresults,
+    .cmd-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 48px 20px;
+      text-align: center;
+    }
+    .cmd-empty-icon,
+    .cmd-error-icon {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 4px;
+    }
+    .cmd-empty-title,
+    .cmd-noresults-title,
+    .cmd-error-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cmd-fg);
+    }
+    .cmd-empty-desc,
+    .cmd-noresults-desc,
+    .cmd-error-desc {
+      font-size: 12px;
+      color: var(--cmd-fg-subtle);
+      max-width: 280px;
+    }
+    .cmd-error-icon { color: var(--cmd-danger); }
+    .cmd-error-title { color: var(--cmd-danger); }
+
+    /* ---------- 底部状态条 ---------- */
+    .cmd-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      border-top: 1px solid var(--cmd-divider);
+      background: var(--cmd-bg-elevated);
+      font-size: 11px;
+      color: var(--cmd-fg-muted);
+    }
+    .cmd-footer-hints {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .cmd-footer-hint {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cmd-footer-hint .cmd-kbd {
+      height: 18px;
+      min-width: 16px;
+      font-size: 10px;
+      padding: 0 4px;
+    }
+
+    /* ---------- Toast ---------- */
+    .cmd-toast-stack {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .cmd-toast {
+      min-width: 220px;
+      max-width: 360px;
+      padding: 12px 16px;
+      background: var(--cmd-bg);
+      color: var(--cmd-fg);
+      border: 1px solid var(--cmd-border);
+      border-radius: var(--cmd-radius-sm);
+      box-shadow: var(--cmd-shadow);
+      font-family: var(--cmd-font-sans);
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      transform: translateX(20px);
+      opacity: 0;
+      transition:
+        opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .cmd-toast[data-show="true"] {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .cmd-toast-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-top: 1px;
+    }
+    .cmd-toast-icon[data-type="success"] { color: var(--cmd-success); }
+    .cmd-toast-icon[data-type="error"] { color: var(--cmd-danger); }
+    .cmd-toast-icon[data-type="info"] { color: var(--cmd-accent); }
+    .cmd-toast-text { flex: 1; line-height: 1.5; }
+    .cmd-toast-text strong { font-weight: 600; }
+
+    /* ---------- 禁用状态 ---------- */
+    .cmd-dialog[data-disabled="true"] {
+      opacity: 0.75;
+      pointer-events: none;
+      filter: grayscale(0.5);
+    }
+
+    /* ---------- 响应式 ---------- */
+    @media (max-width: 640px) {
+      .cmd-dialog {
+        top: 10%;
+        width: calc(100% - 24px);
+        max-width: none;
+      }
+      .cmd-footer-hints {
+        display: none;
+      }
+      .cmd-item-desc {
+        display: none;
+      }
+    }
+
+    /* ---------- 减少动画 ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      .cmd-overlay,
+      .cmd-dialog,
+      .cmd-item,
+      .cmd-item-icon,
+      .cmd-toast {
+        transition: none !important;
+      }
+      .cmd-loading-spinner {
+        animation: none !important;
+      }
+    }
+
+    /* ================================================================
+       展示页样式（非组件核心，抽取时可删除）
+       ================================================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--cmd-font-sans);
+      background: #1E1F22;
+      color: #F4F2EE;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .showcase-header {
+      padding: 32px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #2B2D31;
+    }
+    .showcase-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .showcase-title .tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      background: rgba(242, 169, 59, 0.15);
+      color: #F2A93B;
+      border-radius: 20px;
+      letter-spacing: 0;
+    }
+    .showcase-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .theme-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      background: #2B2D31;
+      color: #F4F2EE;
+      border: 1px solid #3F4145;
+      border-radius: 8px;
+      font-family: var(--cmd-font-sans);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+    .theme-btn:hover { background: #34373C; }
+    .theme-btn:focus-visible {
+      outline: 2px solid rgba(242, 169, 59, 0.5);
+      outline-offset: 2px;
+    }
+
+    .showcase-main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .hero {
+      text-align: center;
+      max-width: 520px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(242, 169, 59, 0.12);
+      border: 1px solid rgba(242, 169, 59, 0.3);
+      border-radius: 100px;
+      color: #F2A93B;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 44px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin: 0 0 16px;
+    }
+    .hero p {
+      font-size: 16px;
+      line-height: 1.65;
+      color: #9A9B9F;
+      margin: 0 0 32px;
+    }
+    .hero-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 20px;
+      background: #F2A93B;
+      color: #2B2D31;
+      border: none;
+      border-radius: 10px;
+      font-family: var(--cmd-font-sans);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 150ms ease;
+    }
+    .hero-trigger:hover {
+      background: #E89A22;
+      transform: translateY(-1px);
+    }
+    .hero-trigger:active {
+      transform: translateY(0);
+    }
+    .hero-trigger:focus-visible {
+      outline: 2px solid rgba(242, 169, 59, 0.6);
+      outline-offset: 3px;
+    }
+    .hero-hint {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #6C6E72;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .hero-hint .cmd-kbd {
+      background: #2B2D31;
+      border-color: #3F4145;
+      color: #9A9B9F;
+    }
+
+    .showcase-states {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0 40px 40px;
+    }
+    .state-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #2B2D31;
+      color: #F4F2EE;
+      border: 1px solid #3F4145;
+      border-radius: 8px;
+      font-family: var(--cmd-font-sans);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background-color 150ms ease, border-color 150ms ease;
+      text-align: center;
+    }
+    .state-btn:hover {
+      background: #34373C;
+      border-color: #F2A93B;
+    }
+    .state-btn:focus-visible {
+      outline: 2px solid rgba(242, 169, 59, 0.5);
+      outline-offset: 2px;
+    }
+    .state-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #6C6E72;
+      flex-shrink: 0;
+    }
+    .state-btn:hover .state-dot { background: #F2A93B; }
+
+    .showcase-footer {
+      padding: 24px 40px;
+      border-top: 1px solid #2B2D31;
+      color: #6C6E72;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .showcase-footer a {
+      color: #9A9B9F;
+      text-decoration: none;
+    }
+    .showcase-footer a:hover { color: #F2A93B; }
+
+    @media (max-width: 640px) {
+      .showcase-header { padding: 20px; }
+      .showcase-main { padding: 20px; }
+      .hero h1 { font-size: 32px; }
+      .showcase-states { padding: 0 20px 20px; }
+      .showcase-footer {
+        padding: 20px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+      }
+    }
+
+    /* 浅色主题下的展示页 */
+    body[data-cmd-theme="light"] {
+      background: #F4F2EE;
+      color: #2B2D31;
+    }
+    body[data-cmd-theme="light"] .showcase-header { border-bottom-color: #E5E3DC; }
+    body[data-cmd-theme="light"] .theme-btn {
+      background: #FFFFFF;
+      color: #2B2D31;
+      border-color: #E5E3DC;
+    }
+    body[data-cmd-theme="light"] .theme-btn:hover { background: #F7F6F2; }
+    body[data-cmd-theme="light"] .hero p { color: #6C6E72; }
+    body[data-cmd-theme="light"] .state-btn {
+      background: #FFFFFF;
+      color: #2B2D31;
+      border-color: #E5E3DC;
+    }
+    body[data-cmd-theme="light"] .state-btn:hover {
+      background: #F7F6F2;
+      border-color: #F2A93B;
+    }
+    body[data-cmd-theme="light"] .hero-hint { color: #9A9B9F; }
+    body[data-cmd-theme="light"] .hero-hint .cmd-kbd {
+      background: #FFFFFF;
+      border-color: #E5E3DC;
+      color: #6C6E72;
+    }
+    body[data-cmd-theme="light"] .showcase-footer { border-top-color: #E5E3DC; }
+  </style>
+</head>
+<body data-cmd-theme="dark">
+
+  <!-- 展示页头部 -->
+  <header class="showcase-header">
+    <div class="showcase-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F2A93B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+        <path d="M7 9h.01M12 9h.01M17 9h.01M7 13h10M7 17h6"></path>
+      </svg>
+      命令面板 Command Palette
+      <span class="tag">V3 组件</span>
+    </div>
+    <div class="showcase-controls">
+      <button class="theme-btn" id="themeToggle" type="button" aria-label="切换主题">
+        <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+        </svg>
+        <span id="themeLabel">浅色</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 展示页主区 -->
+  <main class="showcase-main">
+    <div class="hero">
+      <div class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+          <path d="M7 9h.01M12 9h.01M17 9h.01M7 13h10"></path>
+        </svg>
+        全局命令入口 ⌘K
+      </div>
+      <h1>不碰鼠标<br/>完成一切操作</h1>
+      <p>模糊搜索 · 分组导航 · 键盘盲打 · 最近命令记忆<br/>一套可立即接入任意项目的生产级命令面板</p>
+      <button class="hero-trigger" id="openPaletteBtn" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+        打开命令面板
+      </button>
+      <div class="hero-hint">
+        <span class="cmd-kbd">⌘</span><span class="cmd-kbd">K</span>
+        <span>快捷唤起</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- 状态演示按钮 -->
+  <section class="showcase-states" aria-label="状态演示">
+    <button class="state-btn" data-state="open" type="button">
+      <span class="state-dot"></span>默认打开（最近命令）
+    </button>
+    <button class="state-btn" data-state="typing" type="button">
+      <span class="state-dot"></span>输入搜索
+    </button>
+    <button class="state-btn" data-state="loading" type="button">
+      <span class="state-dot"></span>加载中
+    </button>
+    <button class="state-btn" data-state="noresults" type="button">
+      <span class="state-dot"></span>无结果
+    </button>
+    <button class="state-btn" data-state="error" type="button">
+      <span class="state-dot"></span>错误状态
+    </button>
+    <button class="state-btn" data-state="disabled" type="button">
+      <span class="state-dot"></span>禁用状态
+    </button>
+    <button class="state-btn" data-state="success" type="button">
+      <span class="state-dot"></span>执行成功（Toast）
+    </button>
+  </section>
+
+  <footer class="showcase-footer">
+    <span>V3 命令面板组件 · 石墨灰 × 琥珀色</span>
+    <span>按 <kbd class="cmd-kbd" style="height:18px;font-size:10px;padding:0 4px;">⌘</kbd> + <kbd class="cmd-kbd" style="height:18px;font-size:10px;padding:0 4px;">K</kbd> 快速唤起</span>
+  </footer>
+
+  <!-- 命令面板 DOM 结构（组件本体，可独立抽取） -->
+  <div class="cmd-overlay" id="cmdOverlay" aria-hidden="true"></div>
+
+  <div class="cmd-dialog" id="cmdDialog" role="dialog" aria-modal="true"
+       aria-labelledby="cmdInput" aria-label="命令面板" data-open="false">
+    <div class="cmd-input-wrap">
+      <svg class="cmd-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.3-4.3"></path>
+      </svg>
+      <input type="text" class="cmd-input" id="cmdInput"
+             placeholder="输入命令，或搜索..." autocomplete="off"
+             aria-autocomplete="list" aria-controls="cmdListbox" aria-expanded="true" />
+      <div class="cmd-hotkey-badge" id="cmdHotkey" aria-hidden="true">
+        <span class="cmd-kbd">esc</span>
+      </div>
+    </div>
+
+    <div class="cmd-list" id="cmdList" role="listbox" aria-label="命令列表">
+      <!-- 动态渲染 -->
+    </div>
+
+    <div class="cmd-footer">
+      <span id="cmdCount">0 个命令</span>
+      <div class="cmd-footer-hints">
+        <span class="cmd-footer-hint"><span class="cmd-kbd">↑</span><span class="cmd-kbd">↓</span> 导航</span>
+        <span class="cmd-footer-hint"><span class="cmd-kbd">↵</span> 执行</span>
+        <span class="cmd-footer-hint"><span class="cmd-kbd">esc</span> 关闭</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div class="cmd-toast-stack" id="cmdToastStack" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    /* ================================================================
+       CommandPalette — 可复用命令面板组件
+       用法：
+         const palette = new CommandPalette({
+           commands: [{ id, label, group, description, hotkey, action, icon }],
+           onExecute: (cmd) => {},
+           maxRecent: 5,
+           placeholder: '输入命令...'
+         });
+         palette.open();
+         palette.close();
+       抽取：复制本类 + 上方 .cmd- 前缀的所有 CSS 即可
+       ================================================================ */
+
+    class CommandPalette {
+      constructor(options = {}) {
+        this.commands = options.commands || [];
+        this.onExecute = options.onExecute || function () {};
+        this.maxRecent = options.maxRecent || 5;
+        this.placeholder = options.placeholder || '输入命令，或搜索...';
+        this.theme = options.theme || 'dark';
+
+        // 状态
+        this.isOpen = false;
+        this.isDisabled = false;
+        this.isLoading = false;
+        this.query = '';
+        this.selectedIndex = 0;
+        this.results = [];
+        this.flatResults = [];
+        this.recentIds = [];
+        this.mode = 'default'; // default | loading | error | noresults
+
+        // 定时器引用（便于卸载清理）
+        this._timers = new Set();
+        this._animationFrame = null;
+        this._visibilityHandler = null;
+
+        // DOM 引用
+        this.overlay = document.getElementById('cmdOverlay');
+        this.dialog = document.getElementById('cmdDialog');
+        this.input = document.getElementById('cmdInput');
+        this.list = document.getElementById('cmdList');
+        this.countEl = document.getElementById('cmdCount');
+        this.toastStack = document.getElementById('cmdToastStack');
+
+        if (this.input) this.input.placeholder = this.placeholder;
+        this._applyTheme(this.theme);
+
+        // 事件绑定
+        this._bindEvents();
+
+        // 加载最近命令
+        try {
+          const saved = localStorage.getItem('cmdPalette.recent');
+          if (saved) this.recentIds = JSON.parse(saved);
+        } catch (e) { /* 静默失败 */ }
+
+        // 页面可见性变化时暂停/恢复定时器
+        this._visibilityHandler = () => {
+          if (document.hidden) {
+            this._pauseTimers();
+          } else {
+            this._resumeTimers();
+          }
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
+      }
+
+      _applyTheme(theme) {
+        const root = document.documentElement;
+        const body = document.body;
+        if (theme === 'light') {
+          root.setAttribute('data-cmd-theme', 'light');
+          if (body) body.setAttribute('data-cmd-theme', 'light');
+        } else {
+          root.setAttribute('data-cmd-theme', 'dark');
+          if (body) body.setAttribute('data-cmd-theme', 'dark');
+        }
+        this.theme = theme;
+      }
+
+      setTheme(theme) {
+        this._applyTheme(theme);
+      }
+
+      _bindEvents() {
+        // 全局快捷键：⌘K / Ctrl+K
+        this._globalKeyHandler = (e) => {
+          const isMod = e.metaKey || e.ctrlKey;
+          if (isMod && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            if (this.isDisabled) return;
+            this.toggle();
+          }
+          if (e.key === 'Escape' && this.isOpen) {
+            e.preventDefault();
+            this.close();
+          }
+        };
+        document.addEventListener('keydown', this._globalKeyHandler);
+
+        // 输入框
+        if (this.input) {
+          this.input.addEventListener('input', (e) => {
+            this._onInput(e.target.value);
+          });
+          this.input.addEventListener('keydown', (e) => this._onKeyDown(e));
+        }
+
+        // 点击遮罩关闭
+        if (this.overlay) {
+          this.overlay.addEventListener('click', () => this.close());
+        }
+
+        // 防止点击面板内部冒泡关闭
+        if (this.dialog) {
+          this.dialog.addEventListener('click', (e) => e.stopPropagation());
+        }
+      }
+
+      _onInput(value) {
+        this.query = value;
+        this.selectedIndex = 0;
+        if (this.isLoading) return;
+
+        if (!value.trim()) {
+          this.mode = 'default';
+          this._renderDefault();
+          return;
+        }
+
+        this.mode = 'results';
+        this.results = this._fuzzySearch(value);
+        this.flatResults = this._flattenResults(this.results);
+
+        if (this.flatResults.length === 0) {
+          this.mode = 'noresults';
+          this._renderNoResults();
+        } else {
+          this._renderResults();
+        }
+        this._updateCount();
+      }
+
+      /* ---------- 模糊搜索（子序列匹配 + 命中高亮） ---------- */
+      _fuzzySearch(query) {
+        const q = query.toLowerCase().trim();
+        const groups = {};
+
+        for (const cmd of this.commands) {
+          const label = cmd.label.toLowerCase();
+          const desc = (cmd.description || '').toLowerCase();
+          const { score, indices } = this._subsequenceMatch(label, q);
+          const descScore = this._subsequenceMatch(desc, q).score * 0.5;
+          const totalScore = Math.max(score, descScore);
+
+          if (totalScore > 0 || label.includes(q)) {
+            const group = cmd.group || '其他';
+            if (!groups[group]) groups[group] = [];
+            groups[group].push({
+              ...cmd,
+              score: totalScore,
+              hitIndices: indices && indices.length ? indices : this._findSubstring(label, q),
+            });
+          }
+        }
+
+        // 按分数排序 + 分组
+        const result = [];
+        for (const [groupName, items] of Object.entries(groups)) {
+          items.sort((a, b) => b.score - a.score);
+          result.push({ group: groupName, items });
+        }
+        // 组排序：有操作组排前面
+        const groupOrder = ['操作', '导航', '搜索', '设置', '其他'];
+        result.sort((a, b) => {
+          const ia = groupOrder.indexOf(a.group);
+          const ib = groupOrder.indexOf(b.group);
+          if (ia === -1 && ib === -1) return 0;
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        });
+        return result;
+      }
+
+      _subsequenceMatch(text, query) {
+        if (!query) return { score: 0, indices: [] };
+        const indices = [];
+        let ti = 0;
+        let qi = 0;
+        let consecutive = 0;
+        let maxConsecutive = 0;
+
+        while (ti < text.length && qi < query.length) {
+          if (text[ti] === query[qi]) {
+            indices.push(ti);
+            consecutive++;
+            maxConsecutive = Math.max(maxConsecutive, consecutive);
+            qi++;
+          } else {
+            consecutive = 0;
+          }
+          ti++;
+        }
+
+        if (qi < query.length) return { score: 0, indices: [] };
+        // 分数：基于命中数 + 连续度 + 起始位置权重
+        const startBonus = indices[0] < 3 ? 3 : 0;
+        const score = (indices.length * 2) + (maxConsecutive * 3) + startBonus;
+        return { score, indices };
+      }
+
+      _findSubstring(text, query) {
+        const idx = text.indexOf(query);
+        if (idx === -1) return [];
+        const indices = [];
+        for (let i = 0; i < query.length; i++) indices.push(idx + i);
+        return indices;
+      }
+
+      _flattenResults(groups) {
+        const flat = [];
+        for (const g of groups) {
+          for (const item of g.items) {
+            flat.push(item);
+          }
+        }
+        return flat;
+      }
+
+      /* ---------- 渲染 ---------- */
+      _renderDefault() {
+        if (!this.list) return;
+        const recentCommands = this._getRecentCommands();
+        let html = '';
+
+        if (recentCommands.length > 0) {
+          html += `<div class="cmd-group" role="presentation">`;
+          html += `<span class="cmd-group-label">最近使用</span>`;
+          recentCommands.forEach((cmd, i) => {
+            html += this._renderItem(cmd, i, i === this.selectedIndex);
+          });
+          html += `</div>`;
+        }
+
+        // 展示分组推荐
+        const grouped = this._groupAllCommands();
+        let globalIdx = recentCommands.length;
+        for (const g of grouped) {
+          const showItems = g.items.slice(0, g.group === '操作' ? 6 : 4);
+          if (showItems.length === 0) continue;
+          html += `<div class="cmd-group" role="presentation">`;
+          html += `<span class="cmd-group-label">${g.group}</span>`;
+          showItems.forEach((cmd, i) => {
+            html += this._renderItem(cmd, globalIdx + i, globalIdx + i === this.selectedIndex);
+          });
+          html += `</div>`;
+          globalIdx += showItems.length;
+        }
+
+        // 缓存默认列表的扁平数组用于键盘导航
+        this._defaultFlat = [];
+        for (const c of recentCommands) this._defaultFlat.push(c);
+        for (const g of grouped) {
+          const showItems = g.items.slice(0, g.group === '操作' ? 6 : 4);
+          for (const c of showItems) this._defaultFlat.push(c);
+        }
+
+        this.list.innerHTML = html;
+        this._bindItemEvents();
+        this._updateCount();
+      }
+
+      _renderResults() {
+        if (!this.list) return;
+        let html = '';
+        let globalIdx = 0;
+        for (const g of this.results) {
+          html += `<div class="cmd-group" role="presentation">`;
+          html += `<span class="cmd-group-label">${g.group}</span>`;
+          g.items.forEach((cmd, i) => {
+            html += this._renderItem(cmd, globalIdx + i, globalIdx + i === this.selectedIndex);
+          });
+          html += `</div>`;
+          globalIdx += g.items.length;
+        }
+        this.list.innerHTML = html;
+        this._bindItemEvents();
+        this._scrollToSelected();
+      }
+
+      _renderItem(cmd, idx, selected) {
+        const icon = cmd.icon || '⚡';
+        const labelHtml = this._highlightLabel(cmd.label, cmd.hitIndices);
+        const hotkeyHtml = cmd.hotkey
+          ? `<div class="cmd-item-hotkey">${cmd.hotkey.split('+').map(k => `<span class="cmd-kbd">${k}</span>`).join('')}</div>`
+          : '';
+        const descHtml = cmd.description
+          ? `<div class="cmd-item-desc">${cmd.description}</div>`
+          : '';
+        return `
+          <div class="cmd-item" role="option" data-index="${idx}"
+               data-selected="${selected}" aria-selected="${selected}"
+               tabindex="-1" data-cmd-id="${cmd.id}">
+            <div class="cmd-item-icon">${this._getIconSvg(icon, 14)}</div>
+            <div class="cmd-item-content">
+              <div class="cmd-item-label">${labelHtml}</div>
+              ${descHtml}
+            </div>
+            ${hotkeyHtml}
+          </div>
+        `;
+      }
+
+      _highlightLabel(label, indices) {
+        if (!indices || indices.length === 0) return label;
+        const indexSet = new Set(indices);
+        let html = '';
+        for (let i = 0; i < label.length; i++) {
+          if (indexSet.has(i)) {
+            html += `<span class="cmd-hit">${label[i]}</span>`;
+          } else {
+            html += label[i];
+          }
+        }
+        return html;
+      }
+
+      _getIconSvg(icon, size) {
+        const s = size || 14;
+        const icons = {
+          'plus': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+          'export': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          'copy': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+          'settings': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+          'search': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+          'moon': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+          'sun': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
+          'users': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+          'keyboard': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h12"/></svg>`,
+          'file': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+          'home': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+          'trash': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+          'share': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
+          'lightning': `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+        };
+        return icons[icon] || icons['lightning'];
+      }
+
+      _renderNoResults() {
+        if (!this.list) return;
+        const q = this.query.replace(/</g, '&lt;');
+        this.list.innerHTML = `
+          <div class="cmd-noresults" role="status">
+            <svg class="cmd-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--cmd-fg-muted);">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+              <path d="M8 11h6"/>
+            </svg>
+            <div class="cmd-noresults-title">未找到匹配的命令</div>
+            <div class="cmd-noresults-desc">试试搜索「新建」「设置」「导出」等关键词</div>
+          </div>
+        `;
+        this._updateCount();
+      }
+
+      _renderError(message) {
+        if (!this.list) return;
+        this.list.innerHTML = `
+          <div class="cmd-error" role="alert">
+            <svg class="cmd-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div class="cmd-error-title">加载失败</div>
+            <div class="cmd-error-desc">${message || '命令列表暂不可用，请稍后重试'}</div>
+          </div>
+        `;
+        this._updateCount();
+      }
+
+      _renderLoading() {
+        if (!this.list) return;
+        this.list.innerHTML = `
+          <div class="cmd-empty" role="status" aria-live="polite">
+            <div class="cmd-loading-spinner" style="width:24px;height:24px;border-width:2.5px;margin-bottom:8px;"></div>
+            <div class="cmd-empty-title" style="margin-top:0;">正在加载命令...</div>
+            <div class="cmd-empty-desc">请稍候</div>
+          </div>
+        `;
+        this._updateCount();
+      }
+
+      _bindItemEvents() {
+        if (!this.list) return;
+        const items = this.list.querySelectorAll('.cmd-item');
+        items.forEach((item) => {
+          item.addEventListener('mouseenter', () => {
+            const idx = parseInt(item.getAttribute('data-index'), 10);
+            this._setSelected(idx, false);
+          });
+          item.addEventListener('click', () => {
+            const idx = parseInt(item.getAttribute('data-index'), 10);
+            this._executeByIndex(idx);
+          });
+        });
+      }
+
+      _updateCount() {
+        if (!this.countEl) return;
+        const total = this.mode === 'default'
+          ? (this._defaultFlat ? this._defaultFlat.length : 0)
+          : this.flatResults.length;
+        this.countEl.textContent = total > 0 ? `${total} 个命令` : '无匹配结果';
+      }
+
+      /* ---------- 键盘导航 ---------- */
+      _onKeyDown(e) {
+        const total = this._getTotalItems();
+        if (total === 0 && e.key !== 'Escape') return;
+
+        switch (e.key) {
+          case 'ArrowDown':
+            e.preventDefault();
+            this._setSelected((this.selectedIndex + 1) % total);
+            break;
+          case 'ArrowUp':
+            e.preventDefault();
+            this._setSelected((this.selectedIndex - 1 + total) % total);
+            break;
+          case 'Enter':
+            e.preventDefault();
+            if (total > 0) this._executeByIndex(this.selectedIndex);
+            break;
+          case 'Home':
+            e.preventDefault();
+            if (total > 0) this._setSelected(0);
+            break;
+          case 'End':
+            e.preventDefault();
+            if (total > 0) this._setSelected(total - 1);
+            break;
+        }
+      }
+
+      _setSelected(idx, scroll = true) {
+        this.selectedIndex = idx;
+        if (!this.list) return;
+        const items = this.list.querySelectorAll('.cmd-item');
+        items.forEach((item, i) => {
+          const isSel = i === idx;
+          item.setAttribute('data-selected', isSel ? 'true' : 'false');
+          item.setAttribute('aria-selected', isSel ? 'true' : 'false');
+        });
+        if (scroll) this._scrollToSelected();
+      }
+
+      _scrollToSelected() {
+        if (!this.list) return;
+        const items = this.list.querySelectorAll('.cmd-item');
+        const selected = items[this.selectedIndex];
+        if (!selected) return;
+        const listRect = this.list.getBoundingClientRect();
+        const itemRect = selected.getBoundingClientRect();
+        if (itemRect.top < listRect.top) {
+          this.list.scrollTop -= listRect.top - itemRect.top + 8;
+        } else if (itemRect.bottom > listRect.bottom) {
+          this.list.scrollTop += itemRect.bottom - listRect.bottom + 8;
+        }
+      }
+
+      _getTotalItems() {
+        if (this.mode === 'default') {
+          return this._defaultFlat ? this._defaultFlat.length : 0;
+        }
+        return this.flatResults.length;
+      }
+
+      _getCurrentCommand(index) {
+        if (this.mode === 'default') {
+          return this._defaultFlat ? this._defaultFlat[index] : null;
+        }
+        return this.flatResults[index];
+      }
+
+      /* ---------- 执行命令 ---------- */
+      _executeByIndex(index) {
+        const cmd = this._getCurrentCommand(index);
+        if (!cmd) return;
+        this._execute(cmd);
+      }
+
+      _execute(cmd) {
+        // 记录最近使用
+        this._addToRecent(cmd.id);
+
+        // 模拟异步命令：带 async 标记的命令走 loading→success/error 流程
+        if (cmd.async) {
+          this.setLoading(true, cmd.label);
+          const delay = cmd.delay || 1200;
+          const shouldFail = cmd.shouldFail;
+
+          const timer = setTimeout(() => {
+            this._timers.delete(timer);
+            this.setLoading(false);
+            if (shouldFail) {
+              this.setError('网络连接失败，请检查网络后重试');
+              this.showToast(`${cmd.label} 失败`, 'error');
+            } else {
+              this.mode = 'results';
+              this._onInput(this.query);
+              this.showToast(`${cmd.label} 完成`, 'success');
+              try { this.onExecute(cmd); } catch (e) { /* 忽略回调错误 */ }
+            }
+          }, delay);
+          this._timers.add(timer);
+        } else {
+          this.showToast(`${cmd.label} 已执行`, 'success');
+          this.close();
+          try { this.onExecute(cmd); } catch (e) { /* 忽略回调错误 */ }
+        }
+      }
+
+      _addToRecent(id) {
+        this.recentIds = this.recentIds.filter(x => x !== id);
+        this.recentIds.unshift(id);
+        if (this.recentIds.length > this.maxRecent) {
+          this.recentIds = this.recentIds.slice(0, this.maxRecent);
+        }
+        try {
+          localStorage.setItem('cmdPalette.recent', JSON.stringify(this.recentIds));
+        } catch (e) { /* 静默 */ }
+      }
+
+      _getRecentCommands() {
+        const result = [];
+        for (const id of this.recentIds) {
+          const cmd = this.commands.find(c => c.id === id);
+          if (cmd) result.push(cmd);
+        }
+        return result;
+      }
+
+      _groupAllCommands() {
+        const groups = {};
+        for (const cmd of this.commands) {
+          const g = cmd.group || '其他';
+          if (!groups[g]) groups[g] = [];
+          groups[g].push(cmd);
+        }
+        const result = [];
+        const groupOrder = ['操作', '导航', '搜索', '设置', '其他'];
+        for (const g of groupOrder) {
+          if (groups[g]) result.push({ group: g, items: groups[g] });
+        }
+        for (const [name, items] of Object.entries(groups)) {
+          if (!groupOrder.includes(name)) result.push({ group: name, items });
+        }
+        return result;
+      }
+
+      /* ---------- 公共 API ---------- */
+      open() {
+        if (this.isOpen || this.isDisabled) return;
+        this.isOpen = true;
+        this.query = '';
+        this.selectedIndex = 0;
+        this.mode = 'default';
+        this.results = [];
+        this.flatResults = [];
+
+        if (this.dialog) this.dialog.setAttribute('data-open', 'true');
+        if (this.overlay) {
+          this.overlay.setAttribute('data-open', 'true');
+          this.overlay.setAttribute('aria-hidden', 'false');
+        }
+        if (this.input) {
+          this.input.value = '';
+          // 下一帧聚焦，确保动画开始后输入框就绪
+          requestAnimationFrame(() => {
+            this.input.focus();
+          });
+        }
+        this._renderDefault();
+      }
+
+      close() {
+        if (!this.isOpen) return;
+        this.isOpen = false;
+        if (this.dialog) this.dialog.setAttribute('data-open', 'false');
+        if (this.overlay) {
+          this.overlay.setAttribute('data-open', 'false');
+          this.overlay.setAttribute('aria-hidden', 'true');
+        }
+        if (this.input) this.input.blur();
+      }
+
+      toggle() {
+        this.isOpen ? this.close() : this.open();
+      }
+
+      setLoading(loading, label) {
+        this.isLoading = loading;
+        const hotkeyEl = document.getElementById('cmdHotkey');
+        if (loading) {
+          this.mode = 'loading';
+          this._renderLoading();
+          if (hotkeyEl) {
+            hotkeyEl.innerHTML = '<div class="cmd-loading-spinner" style="width:14px;height:14px;"></div>';
+          }
+        } else {
+          if (hotkeyEl) {
+            hotkeyEl.innerHTML = '<span class="cmd-kbd">esc</span>';
+          }
+        }
+      }
+
+      setError(message) {
+        this.mode = 'error';
+        this._renderError(message);
+      }
+
+      setDisabled(disabled) {
+        this.isDisabled = disabled;
+        if (this.dialog) {
+          this.dialog.setAttribute('data-disabled', disabled ? 'true' : 'false');
+        }
+        if (disabled && this.isOpen) {
+          this.close();
+        }
+      }
+
+      addCommand(cmd) {
+        if (!cmd.id) return;
+        const existing = this.commands.findIndex(c => c.id === cmd.id);
+        if (existing >= 0) {
+          this.commands[existing] = { ...this.commands[existing], ...cmd };
+        } else {
+          this.commands.push(cmd);
+        }
+        if (this.isOpen && this.mode === 'default') {
+          this._renderDefault();
+        }
+      }
+
+      removeCommand(id) {
+        this.commands = this.commands.filter(c => c.id !== id);
+        if (this.isOpen && this.mode === 'default') {
+          this._renderDefault();
+        }
+      }
+
+      /* ---------- Toast ---------- */
+      showToast(message, type) {
+        if (!this.toastStack) return;
+        const t = type || 'success';
+        const toast = document.createElement('div');
+        toast.className = 'cmd-toast';
+        toast.setAttribute('data-type', t);
+        toast.setAttribute('role', 'status');
+        const iconSvg = t === 'success'
+          ? `<svg class="cmd-toast-icon" data-type="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+          : t === 'error'
+          ? `<svg class="cmd-toast-icon" data-type="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+          : `<svg class="cmd-toast-icon" data-type="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+
+        toast.innerHTML = `${iconSvg}<div class="cmd-toast-text">${message}</div>`;
+        this.toastStack.appendChild(toast);
+
+        // 触发入场动画
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            toast.setAttribute('data-show', 'true');
+          });
+        });
+
+        // 自动消失
+        const timer = setTimeout(() => {
+          this._timers.delete(timer);
+          toast.setAttribute('data-show', 'false');
+          const removeTimer = setTimeout(() => {
+            this._timers.delete(removeTimer);
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 220);
+          this._timers.add(removeTimer);
+        }, 2200);
+        this._timers.add(timer);
+      }
+
+      /* ---------- 定时器管理（页面可见性暂停） ---------- */
+      _pauseTimers() {
+        // 记录剩余时间的简单处理：对 toast 不精确暂停，
+        // 但保留对 async 命令 loading 定时器的引用以便销毁
+        // （生产级可用时间戳计算剩余时间，此处简化为不暂停短定时器）
+        // 关键：卸载时全部清除，见 destroy()
+      }
+      _resumeTimers() { /* 见上 */ }
+
+      /* ---------- 销毁 ---------- */
+      destroy() {
+        // 清除所有定时器
+        for (const t of this._timers) clearTimeout(t);
+        this._timers.clear();
+        if (this._animationFrame) cancelAnimationFrame(this._animationFrame);
+
+        // 移除事件监听
+        document.removeEventListener('keydown', this._globalKeyHandler);
+        if (this._visibilityHandler) {
+          document.removeEventListener('visibilitychange', this._visibilityHandler);
+        }
+
+        // 清理 DOM（仅当组件自己创建的 DOM 时才删；此处复用页面已有元素）
+      }
+    }
+
+    /* ================================================================
+       展示页脚本（非组件核心，抽取时可删除）
+       ================================================================ */
+
+    // 示例命令数据（真实业务场景下的常见命令）
+    const sampleCommands = [
+      // 操作
+      { id: 'new-doc', label: '新建文档', group: '操作', description: '创建一篇空白文档', hotkey: '⌘+N', icon: 'plus' },
+      { id: 'export-pdf', label: '导出为 PDF', group: '操作', description: '将当前页面导出为 PDF 文件', icon: 'export', async: true, delay: 1400 },
+      { id: 'copy-link', label: '复制当前链接', group: '操作', description: '将当前页面链接复制到剪贴板', hotkey: '⌘+Shift+C', icon: 'copy' },
+      { id: 'invite-member', label: '邀请成员', group: '操作', description: '通过邮箱邀请新成员加入团队', icon: 'users', async: true, delay: 900 },
+      { id: 'delete-current', label: '删除当前页面', group: '操作', description: '永久删除当前页面（不可恢复）', icon: 'trash', async: true, delay: 800, shouldFail: true },
+      { id: 'share-page', label: '分享页面', group: '操作', description: '生成可分享的链接', icon: 'share' },
+      // 导航
+      { id: 'go-home', label: '跳转到首页', group: '导航', description: '返回工作区首页', hotkey: 'G+H', icon: 'home' },
+      { id: 'go-settings', label: '跳转到设置', group: '导航', description: '打开个人设置页面', hotkey: 'G+S', icon: 'settings' },
+      { id: 'go-files', label: '跳转到文件', group: '导航', description: '查看所有文件和文档', icon: 'file' },
+      // 搜索
+      { id: 'search-zhangsan', label: '搜索：张三', group: '搜索', description: '在工作区中搜索张三相关内容', icon: 'search' },
+      { id: 'search-lisi', label: '搜索：李四', group: '搜索', description: '在工作区中搜索李四相关内容', icon: 'search' },
+      { id: 'search-report', label: '搜索：季度报告', group: '搜索', description: '查找所有季度报告文档', icon: 'search' },
+      // 设置
+      { id: 'toggle-theme', label: '切换深色模式', group: '设置', description: '在浅色和深色主题之间切换', hotkey: '⌘+Shift+L', icon: 'moon' },
+      { id: 'view-shortcuts', label: '查看快捷键', group: '设置', description: '查看所有键盘快捷键', hotkey: '?', icon: 'keyboard' },
+    ];
+
+    // 初始化
+    const palette = new CommandPalette({
+      commands: sampleCommands,
+      maxRecent: 4,
+      placeholder: '输入命令，或搜索...',
+      theme: 'dark',
+      onExecute: (cmd) => {
+        // 主题切换特殊处理
+        if (cmd.id === 'toggle-theme') {
+          const nextTheme = palette.theme === 'dark' ? 'light' : 'dark';
+          palette.setTheme(nextTheme);
+          updateThemeButton(nextTheme);
+        }
+      },
+    });
+
+    // 触发按钮
+    const openBtn = document.getElementById('openPaletteBtn');
+    if (openBtn) {
+      openBtn.addEventListener('click', () => palette.open());
+    }
+
+    // 主题切换
+    const themeToggle = document.getElementById('themeToggle');
+    const themeLabel = document.getElementById('themeLabel');
+    const themeIcon = document.getElementById('themeIcon');
+
+    function updateThemeButton(theme) {
+      if (theme === 'light') {
+        themeLabel.textContent = '深色';
+        themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+      } else {
+        themeLabel.textContent = '浅色';
+        themeIcon.innerHTML = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>';
+      }
+    }
+
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        const nextTheme = palette.theme === 'dark' ? 'light' : 'dark';
+        palette.setTheme(nextTheme);
+        updateThemeButton(nextTheme);
+      });
+    }
+
+    // 状态演示按钮
+    document.querySelectorAll('.state-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const state = btn.getAttribute('data-state');
+        switch (state) {
+          case 'open':
+            palette.setDisabled(false);
+            palette.open();
+            break;
+          case 'typing':
+            palette.setDisabled(false);
+            palette.open();
+            setTimeout(() => {
+              if (palette.input) {
+                palette.input.value = '新';
+                palette._onInput('新');
+                palette.input.focus();
+              }
+            }, 200);
+            break;
+          case 'loading':
+            palette.setDisabled(false);
+            palette.open();
+            setTimeout(() => palette.setLoading(true), 150);
+            break;
+          case 'noresults':
+            palette.setDisabled(false);
+            palette.open();
+            setTimeout(() => {
+              if (palette.input) {
+                palette.input.value = 'zzzzzz';
+                palette._onInput('zzzzzz');
+              }
+            }, 150);
+            break;
+          case 'error':
+            palette.setDisabled(false);
+            palette.open();
+            setTimeout(() => palette.setError('命令服务连接超时，请检查网络后重试'), 150);
+            break;
+          case 'disabled':
+            palette.setDisabled(true);
+            palette.showToast('命令面板已禁用', 'info');
+            break;
+          case 'success':
+            palette.showToast('命令执行成功', 'success');
+            break;
+        }
+      });
+    });
+
+    // 宣告可升级为全栈应用
+    function announceUpgrade() {
+      window.parent && window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+  </script>
+</body>
+</html>
