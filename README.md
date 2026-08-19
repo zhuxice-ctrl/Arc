@@ -100,7 +100,11 @@ Art/
 ## 调度
 
 - 心跳调度器：间隔 20 分钟，ID `trigger_meta_4kqbbxzy82y5n`
-- 创作任务：`auto_4kunaef1pp0a4`（仅 `auto run` 供心跳调用）
-- 并行窗口：3 个（每轮派发 3 版设计）
+- 单板块自动任务（每次只产出 1 件作品）：
+  - V1 网页：`auto_4kvhdppjcnw4a`
+  - V2 手机：`auto_4kvhdwd91xmsj`
+  - V3 组件：`auto_4kvhdx843y005`
+- 并行窗口：3 个（V1/V2/V3 各 1 个，每类最多 1 个在跑）
+- 旧三合一任务 `auto_4kunaef1pp0a4` 已停用
 - 心跳协调者负责：质检、修复、提交 GitHub、续派新任务
 - 创作任务只负责产出 mock 和本地整理（不 push GitHub）
