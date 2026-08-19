@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<title>灯塔 · 光束显影</title>
+<style>
+  /* ========== Reset & Base ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "PingFang SC","Microsoft YaHei",sans-serif;
+    background: #060B0F;
+    color: #E8E4D8;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+  }
+
+  /* ========== Color Tokens ========== */
+  :root {
+    --sea-deep: #060B0F;
+    --sea-surface: #0A1216;
+    --beam-gold: #F0BE5A;
+    --beam-glow: #F5D78A;
+    --glass-gray: #7E939C;
+    --fog-white: #E8E4D8;
+    --brass: #9A7B3F;
+    --brass-dark: #6B5428;
+    --signal-red: #B8452E;
+  }
+
+  /* ========== Top Bar ========== */
+  .top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 100;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    pointer-events: none;
+  }
+  .site-title {
+    font-family: "Songti SC","STSong","Noto Serif SC","SimSun",serif;
+    font-size: 14px;
+    color: var(--fog-white);
+    opacity: 0.7;
+  }
+  .site-title::before {
+    content: "";
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--beam-gold);
+    border-radius: 50%;
+    margin-right: 10px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px var(--beam-gold);
+  }
+  .chapter-index {
+    display: flex;
+    gap: 28px;
+    pointer-events: auto;
+  }
+  .chapter-index span {
+    color: var(--glass-gray);
+    font-size: 11px;
+    cursor: none;
+    position: relative;
+    padding: 4px 0;
+    transition: color 0.3s ease;
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  .chapter-index span::before {
+    content: attr(data-num);
+    font-size: 10px;
+    margin-right: 4px;
+    opacity: 0.5;
+  }
+  .chapter-index span:hover {
+    color: var(--beam-gold);
+    text-shadow: 0 0 8px rgba(240,190,90,0.5);
+  }
+  .chapter-index span.active {
+    color: var(--beam-gold);
+  }
+  .chapter-index span.active::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: var(--beam-gold);
+    box-shadow: 0 0 6px var(--beam-gold);
+  }
+  .light-status {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    opacity: 0.8;
+  }
+  .light-label {
+    color: var(--glass-gray);
+    font-size: 10px;
+  }
+  .light-name {
+    color: var(--brass);
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid var(--brass-dark);
+    border-radius: 2px;
+  }
+
+  /* ========== Stage SVG ========== */
+  .stage {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+  }
+  .sea-bg {
+    fill: #0A1216;
+  }
+  .sky-bg {
+    fill: url(#skyGradient);
+  }
+
+  /* Stars */
+  .star {
+    fill: #E8E4D8;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.9; }
+  }
+  .star { animation: twinkle 4s ease-in-out infinite; }
+  .star:nth-child(3n) { animation-duration: 5.5s; animation-delay: 0.5s; }
+  .star:nth-child(5n) { animation-duration: 3.2s; animation-delay: 1.2s; }
+  .star:nth-child(7n) { animation-duration: 6.8s; animation-delay: 2s; }
+
+  /* Fog */
+  .fog-particle {
+    fill: #E8E4D8;
+    opacity: 0.04;
+  }
+  @keyframes fogDrift {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-200px); }
+  }
+  .fog-particle { animation: fogDrift 40s linear infinite; }
+
+  /* Waves */
+  .wave {
+    fill: none;
+    stroke: #1A2A33;
+    stroke-width: 1.5;
+  }
+  .wave-1 { stroke: #14222B; }
+  .wave-2 { stroke: #182830; }
+  .wave-3 { stroke: #1C2E36; }
+
+  @keyframes waveMove1 {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-120px); }
+  }
+  @keyframes waveMove2 {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-80px); }
+  }
+  @keyframes waveMove3 {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50px); }
+  }
+  .wave-1 { animation: waveMove1 12s ease-in-out infinite alternate; }
+  .wave-2 { animation: waveMove2 18s ease-in-out infinite alternate; }
+  .wave-3 { animation: waveMove3 25s ease-in-out infinite alternate; }
+
+  /* Wave highlights — brighter in beam */
+  .wave-highlight {
+    fill: none;
+    stroke: var(--beam-gold);
+    stroke-width: 1;
+    opacity: 0;
+    mix-blend-mode: screen;
+  }
+
+  /* Lighthouse */
+  .lighthouse-body {
+    fill: #1a252b;
+    stroke: #2a3a42;
+    stroke-width: 1;
+  }
+  .lighthouse-trim {
+    fill: var(--brass-dark);
+  }
+  .lighthouse-window {
+    fill: var(--beam-gold);
+    opacity: 0.6;
+  }
+  @keyframes windowBreath {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+  }
+  .lighthouse-window { animation: windowBreath 3s ease-in-out infinite; }
+
+  .lantern-room {
+    fill: #1a252b;
+    stroke: var(--glass-gray);
+    stroke-width: 1;
+  }
+  .lantern-glass {
+    fill: var(--glass-gray);
+    opacity: 0.3;
+  }
+  .lens-prism {
+    fill: none;
+    stroke: var(--beam-glow);
+    stroke-width: 1;
+    opacity: 0.5;
+  }
+  .light-source {
+    fill: var(--beam-gold);
+    filter: url(#glowFilter);
+  }
+
+  /* Beam */
+  .beam-group {
+    transform-origin: 730px 450px;
+    will-change: transform;
+  }
+  .beam-outer {
+    fill: url(#beamGradientOuter);
+    mix-blend-mode: screen;
+    opacity: 0.4;
+  }
+  .beam-main {
+    fill: url(#beamGradientMain);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+  .beam-core {
+    fill: url(#beamGradientCore);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+  }
+
+  /* Buoys */
+  .buoy-light {
+    filter: url(#buoyGlow);
+  }
+  .buoy-red { fill: var(--signal-red); }
+  .buoy-green { fill: #3D8B5F; }
+  @keyframes buoyBlinkRed {
+    0%, 60%, 100% { opacity: 0.3; }
+    5%, 15% { opacity: 1; }
+  }
+  @keyframes buoyBlinkGreen {
+    0%, 45%, 100% { opacity: 1; }
+    50%, 95% { opacity: 0.2; }
+  }
+  .buoy-red .buoy-light { animation: buoyBlinkRed 4s ease-in-out infinite; }
+  .buoy-green .buoy-light { animation: buoyBlinkGreen 3.5s ease-in-out infinite; }
+
+  /* Brass handle */
+  .brass-handle {
+    cursor: none;
+    pointer-events: none;
+  }
+  .brass-ring {
+    fill: none;
+    stroke: var(--brass);
+    stroke-width: 2;
+    opacity: 0.6;
+  }
+  .brass-ring-inner {
+    fill: none;
+    stroke: var(--brass-dark);
+    stroke-width: 1;
+    opacity: 0.4;
+  }
+  .brass-knob {
+    fill: var(--brass);
+  }
+
+  /* Lens highlight sweep */
+  .lens-highlight {
+    fill: var(--beam-glow);
+    opacity: 0;
+  }
+
+  /* Fog horn rings */
+  .fog-ring {
+    fill: none;
+    stroke: var(--beam-gold);
+    stroke-width: 1.5;
+    opacity: 0;
+  }
+
+  /* ========== Panels ========== */
+  .panel {
+    position: fixed;
+    width: 340px;
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    filter: blur(4px);
+    transition: opacity 0.6s ease, transform 0.6s ease, filter 0.6s ease;
+  }
+  .panel.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  .panel-inner {
+    position: relative;
+    padding: 24px 28px 28px;
+    border: 1px solid rgba(126,147,156,0.25);
+    background: rgba(6,11,15,0.85);
+    backdrop-filter: blur(4px);
+  }
+  .panel-inner::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 24px; height: 1px;
+    background: var(--brass);
+  }
+  .panel-inner::after {
+    content: "";
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 24px; height: 1px;
+    background: var(--brass);
+  }
+  .panel-num {
+    position: absolute;
+    top: -10px; left: 28px;
+    background: #060B0F;
+    padding: 0 8px;
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    font-size: 10px;
+    color: var(--brass);
+    letter-spacing: 0.15em;
+  }
+  .panel-title {
+    font-family: "Songti SC","STSong","Noto Serif SC","SimSun",serif;
+    font-size: 20px;
+    color: var(--fog-white);
+    margin-bottom: 4px;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+  }
+  .panel-subtitle {
+    font-size: 11px;
+    color: var(--glass-gray);
+    letter-spacing: 0.2em;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(126,147,156,0.15);
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  .panel-body {
+    font-size: 13px;
+    line-height: 1.9;
+    color: #C8C4B8;
+  }
+  .panel-body p { margin-bottom: 12px; }
+  .panel-body p:last-child { margin-bottom: 0; }
+
+  /* Per-panel positioning */
+  .panel-0 { right: 5%; top: 50%; transform: translateY(-50%) translateX(20px); }
+  .panel-0.visible { transform: translateY(-50%) translateX(0); }
+
+  .panel-1 { right: 6%; bottom: 8%; transform: translateY(16px); }
+  .panel-1.visible { transform: translateY(0); }
+
+  .panel-2 { left: 6%; bottom: 8%; transform: translateY(16px); }
+  .panel-2.visible { transform: translateY(0); }
+
+  .panel-3 { left: 5%; top: 50%; transform: translateY(-50%) translateX(-20px); }
+  .panel-3.visible { transform: translateY(-50%) translateX(0); }
+
+  .panel-4 { left: 6%; top: 80px; transform: translateY(-16px); }
+  .panel-4.visible { transform: translateY(0); }
+
+  .panel-5 { right: 6%; top: 80px; transform: translateY(-16px); }
+  .panel-5.visible { transform: translateY(0); }
+
+  /* Panel 0: Fresnel lens diagram */
+  .fresnel-diagram {
+    width: 100%;
+    height: 120px;
+    margin: 12px 0;
+  }
+  .fresnel-note {
+    font-size: 10px;
+    color: var(--glass-gray);
+    text-align: center;
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    letter-spacing: 0.1em;
+  }
+
+  /* Panel 1: Light pattern controls */
+  .light-patterns {
+    display: flex;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .pattern-btn {
+    flex: 1;
+    padding: 8px 4px;
+    border: 1px solid rgba(126,147,156,0.3);
+    background: transparent;
+    color: var(--glass-gray);
+    font-size: 11px;
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    cursor: none;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .pattern-btn:hover {
+    border-color: var(--brass);
+    color: var(--fog-white);
+  }
+  .pattern-btn.active {
+    border-color: var(--beam-gold);
+    color: var(--beam-gold);
+    box-shadow: 0 0 8px rgba(240,190,90,0.2);
+  }
+  .pattern-visual {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(10,18,22,0.6);
+    border: 1px solid rgba(126,147,156,0.1);
+  }
+  .pattern-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--beam-gold);
+    opacity: 0.2;
+    transition: opacity 0.1s ease;
+    box-shadow: 0 0 6px var(--beam-gold);
+  }
+  .pattern-dot.lit { opacity: 1; }
+
+  /* Panel 2: Keeper schedule */
+  .schedule {
+    margin: 12px 0;
+    border-left: 1px solid rgba(154,123,63,0.3);
+    padding-left: 16px;
+  }
+  .schedule-row {
+    display: flex;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 12px;
+  }
+  .schedule-time {
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    color: var(--brass);
+    min-width: 46px;
+    font-size: 11px;
+  }
+  .schedule-task {
+    color: #C8C4B8;
+  }
+
+  /* Panel 3: Fog horn button */
+  .fog-horn-btn {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px;
+    background: transparent;
+    border: 1px solid var(--brass);
+    color: var(--brass);
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    cursor: none;
+    transition: all 0.3s ease;
+    font-family: "Songti SC","STSong","Noto Serif SC","SimSun",serif;
+    position: relative;
+    overflow: hidden;
+  }
+  .fog-horn-btn:hover {
+    background: rgba(154,123,63,0.15);
+    color: var(--fog-white);
+    box-shadow: 0 0 16px rgba(154,123,63,0.2);
+  }
+  .fog-horn-btn:active { transform: scale(0.98); }
+
+  /* Panel 4: Archive entries */
+  .archive-list { margin-top: 4px; }
+  .archive-item {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(126,147,156,0.1);
+    position: relative;
+  }
+  .archive-item:last-child { border-bottom: none; }
+  .archive-id {
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    font-size: 10px;
+    color: var(--brass);
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+  .archive-name {
+    font-family: "Songti SC","STSong","Noto Serif SC","SimSun",serif;
+    font-size: 15px;
+    color: var(--fog-white);
+    margin-bottom: 4px;
+  }
+  .archive-meta {
+    font-size: 11px;
+    color: var(--glass-gray);
+    line-height: 1.7;
+  }
+  .archive-meta span { margin-right: 10px; }
+
+  /* Panel 5: Journal */
+  .journal {
+    font-family: "Songti SC","STSong","Noto Serif SC","SimSun",serif;
+    font-size: 13px;
+    line-height: 2.1;
+    color: #D0CCC0;
+    padding: 8px 4px;
+    background-image: repeating-linear-gradient(
+      transparent,
+      transparent 27px,
+      rgba(126,147,156,0.08) 27px,
+      rgba(126,147,156,0.08) 28px
+    );
+  }
+  .journal-date {
+    font-family: ui-monospace,"SF Mono",Menlo,monospace;
+    font-size: 11px;
+    color: var(--brass);
+    margin-bottom: 12px;
+    letter-spacing: 0.1em;
+  }
+  .journal-signature {
+    text-align: right;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--glass-gray);
+  }
+
+  /* ========== Custom Cursor ========== */
+  .cursor {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 24px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9999;
+    mix-blend-mode: difference;
+  }
+  .cursor-ring {
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid var(--beam-gold);
+    border-radius: 50%;
+    transition: transform 0.15s ease, border-color 0.2s ease;
+  }
+  .cursor-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 3px;
+    height: 3px;
+    background: var(--beam-gold);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 6px var(--beam-gold);
+  }
+  .cursor.dragging .cursor-ring {
+    transform: scale(1.8);
+    border-color: #fff;
+  }
+  .cursor.dragging .cursor-dot {
+    background: #fff;
+    box-shadow: 0 0 10px #fff;
+  }
+
+  /* ========== Reduced Motion ========== */
+  @media (prefers-reduced-motion: reduce) {
+    .star, .fog-particle, .wave, .lighthouse-window,
+    .buoy-red .buoy-light, .buoy-green .buoy-light {
+      animation: none !important;
+    }
+    .star { opacity: 0.5; }
+    .wave { transform: none !important; }
+    .panel { transition: opacity 0.3s ease; }
+  }
+
+  /* ========== Responsive ========== */
+  @media (max-width: 768px) {
+    .top-bar {
+      padding: 0 16px;
+      height: 48px;
+    }
+    .site-title { font-size: 12px; }
+    .chapter-index { gap: 12px; }
+    .chapter-index span { font-size: 10px; }
+    .light-status { display: none; }
+
+    .panel {
+      width: calc(100% - 32px);
+      left: 16px !important;
+      right: 16px !important;
+      top: auto !important;
+      bottom: 20px !important;
+      transform: translateY(20px) !important;
+    }
+    .panel.visible {
+      transform: translateY(0) !important;
+    }
+    .panel-4, .panel-5 {
+      bottom: 20px !important;
+      top: auto !important;
+    }
+
+    .cursor { display: none; }
+    body { cursor: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== Top Bar ========== -->
+<header class="top-bar">
+  <div class="site-title">灯塔 · 光束显影</div>
+  <nav class="chapter-index" id="chapterIndex">
+    <span data-sector="0" data-num="01">菲涅尔透镜</span>
+    <span data-sector="1" data-num="02">灯质</span>
+    <span data-sector="2" data-num="03">灯守人</span>
+    <span data-sector="3" data-num="04">雾号</span>
+    <span data-sector="4" data-num="05">灯塔档案</span>
+    <span data-sector="5" data-num="06">守灯日志</span>
+  </nav>
+  <div class="light-status">
+    <span class="light-label">灯质</span>
+    <span class="light-name" id="lightName">单闪</span>
+  </div>
+</header>
+
+<!-- ========== Stage SVG ========== -->
+<svg class="stage" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" id="stage">
+  <defs>
+    <!-- Sky gradient -->
+    <linearGradient id="skyGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#04080C"/>
+      <stop offset="72%" stop-color="#060B0F"/>
+    </linearGradient>
+
+    <!-- Beam gradients -->
+    <linearGradient id="beamGradientOuter" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#F5D78A" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#F5D78A" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#F5D78A" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="beamGradientMain" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#F0BE5A" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#F0BE5A" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#F0BE5A" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="beamGradientCore" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#FFF4D6" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#F0BE5A" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#F0BE5A" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Glow filters -->
+    <filter id="glowFilter" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="buoyGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Sky -->
+  <rect class="sky-bg" x="0" y="0" width="1920" height="778"/>
+
+  <!-- Stars -->
+  <g class="stars" id="stars"></g>
+
+  <!-- Sea -->
+  <rect class="sea-bg" x="0" y="778" width="1920" height="302"/>
+
+  <!-- Waves (back to front) -->
+  <g class="waves" id="waves">
+    <path class="wave wave-3" d="M0,820 Q120,815 240,820 T480,820 T720,820 T960,820 T1200,820 T1440,820 T1680,820 T1920,820 T2160,820"/>
+    <path class="wave wave-2" d="M0,880 Q100,872 200,880 T400,880 T600,880 T800,880 T1000,880 T1200,880 T1400,880 T1600,880 T1800,880 T2000,880"/>
+    <path class="wave wave-1" d="M0,950 Q80,940 160,950 T320,950 T480,950 T640,950 T800,950 T960,950 T1120,950 T1280,950 T1440,950 T1600,950 T1760,950 T1920,950 T2080,950"/>
+  </g>
+
+  <!-- Fog -->
+  <g class="fog" id="fog"></g>
+
+  <!-- Lighthouse -->
+  <g class="lighthouse" id="lighthouse">
+    <!-- Base -->
+    <polygon class="lighthouse-body" points="700,778 760,778 750,700 710,700"/>
+    <!-- Lower tower -->
+    <polygon class="lighthouse-body" points="710,700 750,700 746,600 714,600"/>
+    <!-- Mid tower with window -->
+    <polygon class="lighthouse-body" points="714,600 746,600 744,540 716,540"/>
+    <rect class="lighthouse-window" x="724" y="560" width="12" height="20" rx="1"/>
+    <!-- Upper tower -->
+    <polygon class="lighthouse-body" points="716,540 744,540 742,490 718,490"/>
+    <!-- Gallery deck -->
+    <rect class="lighthouse-trim" x="708" y="480" width="44" height="6"/>
+    <!-- Lantern room base -->
+    <rect class="lantern-room" x="715" y="440" width="30" height="40"/>
+    <!-- Lantern glass panels -->
+    <rect class="lantern-glass" x="718" y="444" width="24" height="30"/>
+    <!-- Lens prism rings -->
+    <ellipse class="lens-prism" cx="730" cy="459" rx="14" ry="10"/>
+    <ellipse class="lens-prism" cx="730" cy="459" rx="10" ry="7"/>
+    <ellipse class="lens-prism" cx="730" cy="459" rx="6" ry="4"/>
+    <!-- Lens highlight -->
+    <ellipse class="lens-highlight" id="lensHighlight" cx="740" cy="456" rx="3" ry="5"/>
+    <!-- Lantern roof -->
+    <polygon class="lighthouse-trim" points="712,440 748,440 740,420 720,420"/>
+    <!-- Spire -->
+    <line x1="730" y1="420" x2="730" y2="400" stroke="#9A7B3F" stroke-width="2"/>
+    <circle cx="730" cy="397" r="3" fill="#9A7B3F"/>
+    <!-- Light source -->
+    <circle class="light-source" id="lightSource" cx="730" cy="459" r="5"/>
+  </g>
+
+  <!-- Beam Group (rotatable) -->
+  <g class="beam-group" id="beamGroup">
+    <!-- Outer glow cone -->
+    <path class="beam-outer" d="M730,450 L1600,310 Q1650,450 1600,590 Z"/>
+    <!-- Main beam cone -->
+    <path class="beam-main" d="M730,450 L1550,360 Q1590,450 1550,540 Z"/>
+    <!-- Core beam -->
+    <path class="beam-core" d="M730,450 L1500,410 Q1530,450 1500,490 Z"/>
+  </g>
+
+  <!-- Wave highlights (brightened by beam) -->
+  <g id="waveHighlights" style="mix-blend-mode: screen; opacity: 0.6;">
+    <path class="wave-highlight" d="M0,820 Q120,815 240,820 T480,820 T720,820 T960,820 T1200,820 T1440,820 T1680,820 T1920,820 T2160,820" style="stroke-width: 2; opacity: 0.3;"/>
+  </g>
+
+  <!-- Buoys -->
+  <g class="buoys" id="buoys">
+    <g class="buoy buoy-red" transform="translate(1100, 830)">
+      <rect x="-3" y="-8" width="6" height="10" fill="#2A3A42"/>
+      <circle class="buoy-light" cx="0" cy="-10" r="4"/>
+    </g>
+    <g class="buoy buoy-green" transform="translate(1400, 890)">
+      <rect x="-3" y="-8" width="6" height="10" fill="#2A3A42"/>
+      <circle class="buoy-light" cx="0" cy="-10" r="4"/>
+    </g>
+    <g class="buoy buoy-red" transform="translate(300, 860)">
+      <rect x="-3" y="-8" width="6" height="10" fill="#2A3A42"/>
+      <circle class="buoy-light" cx="0" cy="-10" r="4"/>
+    </g>
+  </g>
+
+  <!-- Brass handle ring -->
+  <g class="brass-handle" id="brassHandle">
+    <circle class="brass-ring" cx="730" cy="520" r="38"/>
+    <circle class="brass-ring-inner" cx="730" cy="520" r="32"/>
+    <circle class="brass-knob" cx="768" cy="520" r="4"/>
+    <text x="730" y="572" fill="#7E939C" font-size="9" text-anchor="middle" font-family="ui-monospace, monospace" letter-spacing="2">DRAG</text>
+  </g>
+
+  <!-- Fog horn sound rings -->
+  <g id="fogRings"></g>
+</svg>
+
+<!-- ========== Sector 0: Fresnel Lens (Right) ========== -->
+<article class="panel panel-0" id="panel-0">
+  <div class="panel-inner">
+    <span class="panel-num">第 一 章 · 光 学</span>
+    <h2 class="panel-title">菲涅尔透镜</h2>
+    <div class="panel-subtitle">FRESNEL LENS · 1822</div>
+    <div class="panel-body">
+      <p>1822 年，法国物理学家奥古斯丁·菲涅尔发明了这种阶梯状的透镜。它把厚重的传统透镜拆成一圈圈同心棱镜，每一环都把光线折射向同一焦点，既保留了大透镜的聚光能力，又大幅减轻了重量与厚度。</p>
+      <svg class="fresnel-diagram" viewBox="0 0 300 120">
+        <line x1="150" y1="10" x2="150" y2="110" stroke="#7E939C" stroke-width="0.5" stroke-dasharray="2,3"/>
+        <circle cx="150" cy="60" r="3" fill="#F0BE5A" filter="url(#glowFilter)"/>
+        <path d="M200,20 L215,30 L215,90 L200,100 Z" fill="none" stroke="#F5D78A" stroke-width="1" opacity="0.6"/>
+        <path d="M215,30 L225,40 L225,80 L215,90 Z" fill="none" stroke="#F5D78A" stroke-width="1" opacity="0.6"/>
+        <path d="M225,40 L232,50 L232,70 L225,80 Z" fill="none" stroke="#F5D78A" stroke-width="1" opacity="0.6"/>
+        <line x1="153" y1="60" x2="200" y2="25" stroke="#F0BE5A" stroke-width="0.8" opacity="0.5"/>
+        <line x1="153" y1="60" x2="200" y2="95" stroke="#F0BE5A" stroke-width="0.8" opacity="0.5"/>
+        <line x1="153" y1="60" x2="232" y2="55" stroke="#FFF4D6" stroke-width="1" opacity="0.7"/>
+        <line x1="153" y1="60" x2="232" y2="65" stroke="#FFF4D6" stroke-width="1" opacity="0.7"/>
+        <text x="250" y="65" fill="#7E939C" font-size="9" font-family="ui-monospace, monospace">阶梯棱镜</text>
+        <text x="30" y="65" fill="#9A7B3F" font-size="9" font-family="ui-monospace, monospace">光源</text>
+      </svg>
+      <p>按尺寸分为六级，一级透镜可高逾两米，能把光源亮度放大数万倍，光程远达二十余海里。在那个没有电的年代，这是人类把光送得最远的方式。</p>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Sector 1: Light Characteristic (Bottom-Right) ========== -->
+<article class="panel panel-1" id="panel-1">
+  <div class="panel-inner">
+    <span class="panel-num">第 二 章 · 信 号</span>
+    <h2 class="panel-title">灯质：光的语言</h2>
+    <div class="panel-subtitle">CHARACTERISTIC · 光 候</div>
+    <div class="panel-body">
+      <p>每座灯塔都有独特的闪光节奏，航海者仅凭节奏就能辨认塔的身份。这种节奏在航海上称为「灯质」。</p>
+      <div class="light-patterns" id="patternBtns">
+        <button class="pattern-btn active" data-pattern="single">单闪</button>
+        <button class="pattern-btn" data-pattern="triple">联闪三次</button>
+        <button class="pattern-btn" data-pattern="equal">等明暗</button>
+      </div>
+      <div class="pattern-visual" id="patternVisual">
+        <span class="pattern-dot lit"></span>
+        <span class="pattern-dot"></span>
+        <span class="pattern-dot"></span>
+        <span class="pattern-dot"></span>
+        <span class="pattern-dot"></span>
+      </div>
+      <p style="margin-top: 12px; font-size: 11px; color: #7E939C;">单闪：每隔固定时间闪亮一次，是最常见的灯质。</p>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Sector 2: Keeper (Bottom-Left) ========== -->
+<article class="panel panel-2" id="panel-2">
+  <div class="panel-inner">
+    <span class="panel-num">第 三 章 · 值 守</span>
+    <h2 class="panel-title">灯守人</h2>
+    <div class="panel-subtitle">LIGHTHOUSE KEEPER · 守 灯 者</div>
+    <div class="panel-body">
+      <p>一座灯塔就是一个人的世界。上油、点灯、上发条、擦拭透镜、记录日志、雾中鸣号——日复一日，年复一年。</p>
+      <div class="schedule">
+        <div class="schedule-row">
+          <span class="schedule-time">05:30</span>
+          <span class="schedule-task">黎明熄灯，关闭透镜百叶</span>
+        </div>
+        <div class="schedule-row">
+          <span class="schedule-time">08:00</span>
+          <span class="schedule-task">擦拭透镜玻璃，去除盐霜</span>
+        </div>
+        <div class="schedule-row">
+          <span class="schedule-time">10:00</span>
+          <span class="schedule-task">给重锤机构上发条</span>
+        </div>
+        <div class="schedule-row">
+          <span class="schedule-time">14:00</span>
+          <span class="schedule-task">检查灯油储备，记录日志</span>
+        </div>
+        <div class="schedule-row">
+          <span class="schedule-time">18:00</span>
+          <span class="schedule-task">黄昏点灯，开启透镜旋转</span>
+        </div>
+        <div class="schedule-row">
+          <span class="schedule-time">00:00</span>
+          <span class="schedule-task">午夜巡机，雾中鸣放雾号</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Sector 3: Fog Horn (Left) ========== -->
+<article class="panel panel-3" id="panel-3">
+  <div class="panel-inner">
+    <span class="panel-num">第 四 章 · 声 号</span>
+    <h2 class="panel-title">雾号</h2>
+    <div class="panel-subtitle">FOG SIGNAL · 雾 中 信 标</div>
+    <div class="panel-body">
+      <p>大雾天气里，光失去了作用，声音便接了班。从最早的雾钟、雾炮，到后来的雾笛（diaphone），低沉的鸣响可在雾中传出数海里。</p>
+      <p>雾笛靠压缩空气驱动，发出的「嗡——」声有独特的识别节奏，航船凭间隔长短即可定位。</p>
+      <button class="fog-horn-btn" id="fogHornBtn">鸣 放 雾 号</button>
+      <p style="margin-top: 10px; font-size: 11px; color: #7E939C; text-align: center;">点击按钮，听一次雾中低鸣</p>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Sector 4: Archives (Top-Left) ========== -->
+<article class="panel panel-4" id="panel-4">
+  <div class="panel-inner">
+    <span class="panel-num">第 五 章 · 档 案</span>
+    <h2 class="panel-title">灯塔档案</h2>
+    <div class="panel-subtitle">LIGHTHOUSE ARCHIVE · 四 座 中 国 灯 塔</div>
+    <div class="panel-body">
+      <div class="archive-list">
+        <div class="archive-item">
+          <div class="archive-id">LH-001 · 花鸟山</div>
+          <div class="archive-name">花鸟山灯塔</div>
+          <div class="archive-meta">
+            <span>浙江嵊泗</span><span>1870 年建</span><br>
+            <span>人称「远东第一大灯塔」</span>
+          </div>
+        </div>
+        <div class="archive-item">
+          <div class="archive-id">LH-002 · 老铁山</div>
+          <div class="archive-name">老铁山灯塔</div>
+          <div class="archive-meta">
+            <span>辽宁旅顺</span><span>1893 年建</span><br>
+            <span>守望黄渤两海分界</span>
+          </div>
+        </div>
+        <div class="archive-item">
+          <div class="archive-id">LH-003 · 小青岛</div>
+          <div class="archive-name">小青岛灯塔</div>
+          <div class="archive-meta">
+            <span>山东青岛</span><span>1900 年建</span><br>
+            <span>青岛湾畔白色塔身</span>
+          </div>
+        </div>
+        <div class="archive-item">
+          <div class="archive-id">LH-004 · 木兰</div>
+          <div class="archive-name">木兰灯塔</div>
+          <div class="archive-meta">
+            <span>海南文昌</span><span>1995 年建成</span><br>
+            <span>塔高约 72 米，亚洲最高灯塔之一</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Sector 5: Journal (Top-Right) ========== -->
+<article class="panel panel-5" id="panel-5">
+  <div class="panel-inner">
+    <span class="panel-num">第 六 章 · 手 记</span>
+    <h2 class="panel-title">守灯日志</h2>
+    <div class="panel-subtitle">KEEPER'S LOG · 一 九 四 七 年</div>
+    <div class="panel-body">
+      <div class="journal">
+        <div class="journal-date">十一月廿三日 · 东北风七级</div>
+        <p>浪高过了塔楼二层。入夜前把灯油补足，重锤上满发条。透镜转起来的时候，整个灯室都在微微震颤。</p>
+        <p>午夜时分，大雾从东边压过来，光束在雾里折成一团白。按规程鸣了雾号，第一声出去，海面上静得没有回音。第二声刚落，远远听见有船鸣笛应答——心里那块石头才算落地。</p>
+        <p>今晨又有候鸟撞在灯玻璃上，一只鸥，已经埋在了灯塔后头。灯太亮了，鸟把光当成了月亮。</p>
+        <div class="journal-signature">—— 守灯人 记</div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- ========== Custom Cursor ========== -->
+<div class="cursor" id="cursor">
+  <div class="cursor-ring"></div>
+  <div class="cursor-dot"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ==================== State ====================
+  const state = {
+    beamAngle: 0,          // degrees, 0 = right
+    beamVel: 0,            // angular velocity (degrees per frame at 60fps baseline)
+    dragging: false,
+    dragStartX: 0,
+    dragStartAngle: 0,
+    lastMoveX: 0,
+    lastMoveTime: 0,
+    activeSector: -1,
+    reducedMotion: false,
+    visible: true,
+    lightPattern: 'single',
+    lightTime: 0,
+    audioCtx: null,
+    fogRingTime: 0,
+    sweepVelFactor: 1,
+  };
+
+  const SECTOR_COUNT = 6;
+  const SECTOR_SIZE = 360 / SECTOR_COUNT;
+  const SENSITIVITY = 0.35; // degrees per pixel of horizontal drag
+
+  // Lighthouse lantern position (in SVG viewBox coords)
+  const LIGHTHOUSE_X = 730;
+  const LIGHTHOUSE_Y = 450;
+
+  // ==================== DOM Refs ====================
+  const beamGroup = document.getElementById('beamGroup');
+  const cursorEl = document.getElementById('cursor');
+  const lightSource = document.getElementById('lightSource');
+  const lensHighlight = document.getElementById('lensHighlight');
+  const lightNameEl = document.getElementById('lightName');
+  const fogHornBtn = document.getElementById('fogHornBtn');
+  const fogRingsG = document.getElementById('fogRings');
+  const patternVisual = document.getElementById('patternVisual');
+  const patternDots = patternVisual ? patternVisual.querySelectorAll('.pattern-dot') : [];
+  const chapterIndex = document.getElementById('chapterIndex');
+  const indexItems = chapterIndex ? chapterIndex.querySelectorAll('span') : [];
+
+  const panels = [];
+  for (let i = 0; i < SECTOR_COUNT; i++) {
+    const p = document.getElementById('panel-' + i);
+    if (p) panels.push(p);
+  }
+
+  // ==================== Stars ====================
+  function generateStars() {
+    const g = document.getElementById('stars');
+    if (!g) return;
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      star.setAttribute('class', 'star');
+      const x = Math.random() * 1920;
+      const y = Math.random() * 750; // only in sky area
+      const r = Math.random() < 0.8 ? 0.8 : 1.4;
+      star.setAttribute('cx', x);
+      star.setAttribute('cy', y);
+      star.setAttribute('r', r);
+      star.style.animationDelay = (Math.random() * 5) + 's';
+      g.appendChild(star);
+    }
+  }
+
+  // ==================== Fog Particles ====================
+  function generateFog() {
+    const g = document.getElementById('fog');
+    if (!g) return;
+    const count = 30;
+    for (let i = 0; i < count; i++) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      p.setAttribute('class', 'fog-particle');
+      const x = Math.random() * 2200 - 100;
+      const y = 400 + Math.random() * 500;
+      const rx = 60 + Math.random() * 120;
+      const ry = 20 + Math.random() * 40;
+      p.setAttribute('cx', x);
+      p.setAttribute('cy', y);
+      p.setAttribute('rx', rx);
+      p.setAttribute('ry', ry);
+      p.style.opacity = (0.02 + Math.random() * 0.03).toString();
+      p.style.animationDelay = (Math.random() * -40) + 's';
+      p.style.animationDuration = (30 + Math.random() * 20) + 's';
+      g.appendChild(p);
+    }
+  }
+
+  // ==================== Custom Cursor ====================
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let cursorTargetX = cursorX;
+  let cursorTargetY = cursorY;
+
+  function updateCursor() {
+    // Smooth follow
+    cursorX += (cursorTargetX - cursorX) * 0.2;
+    cursorY += (cursorTargetY - cursorY) * 0.2;
+    cursorEl.style.left = cursorX + 'px';
+    cursorEl.style.top = cursorY + 'px';
+  }
+
+  document.addEventListener('pointermove', function(e) {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+  }, { passive: true });
+
+  // ==================== Drag to Rotate Beam ====================
+  function onPointerDown(e) {
+    // Ignore if clicking on interactive elements inside panels
+    if (e.target.closest('.panel') && e.target.closest('.panel').classList.contains('visible')) {
+      // Let panel interactions work normally
+      return;
+    }
+    state.dragging = true;
+    state.dragStartX = e.clientX;
+    state.dragStartAngle = state.beamAngle;
+    state.lastMoveX = e.clientX;
+    state.lastMoveTime = performance.now();
+    state.beamVel = 0;
+    cursorEl.classList.add('dragging');
+    document.body.setPointerCapture && e.pointerId && document.body.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e) {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+
+    if (!state.dragging) return;
+
+    const dx = e.clientX - state.dragStartX;
+    const newAngle = state.dragStartAngle + dx * SENSITIVITY;
+    state.beamAngle = newAngle;
+
+    // Track velocity for inertia
+    const now = performance.now();
+    const dt = now - state.lastMoveTime;
+    if (dt > 0) {
+      const moveDx = e.clientX - state.lastMoveX;
+      const vel = (moveDx * SENSITIVITY) / (dt / 16.67); // per frame
+      // Smooth velocity
+      state.beamVel = state.beamVel * 0.7 + vel * 0.3;
+    }
+    state.lastMoveX = e.clientX;
+    state.lastMoveTime = now;
+  }
+
+  function onPointerUp(e) {
+    if (!state.dragging) return;
+    state.dragging = false;
+    cursorEl.classList.remove('dragging');
+    // Apply a minimum inertia if velocity is very small from damping
+    if (Math.abs(state.beamVel) < 0.05) state.beamVel = 0;
+  }
+
+  document.addEventListener('pointerdown', onPointerDown);
+  document.addEventListener('pointermove', onPointerMove, { passive: true });
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('pointercancel', onPointerUp);
+
+  // ==================== Chapter Index Click ====================
+  let tweenActive = false;
+  let tweenTarget = 0;
+  let tweenStart = 0;
+  let tweenDuration = 0;
+  let tweenElapsed = 0;
+
+  function rotateToSector(sectorIndex) {
+    const targetCenter = (sectorIndex + 0.5) * SECTOR_SIZE;
+    // Find shortest angular distance
+    let diff = targetCenter - state.beamAngle;
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+
+    tweenStart = state.beamAngle;
+    tweenTarget = state.beamAngle + diff;
+    tweenDuration = 800 + Math.abs(diff) * 2; // proportional to distance
+    tweenElapsed = 0;
+    tweenActive = true;
+    state.beamVel = 0;
+  }
+
+  indexItems.forEach(function(item) {
+    item.addEventListener('click', function() {
+      const s = parseInt(item.getAttribute('data-sector'), 10);
+      if (!isNaN(s)) rotateToSector(s);
+    });
+  });
+
+  // Easing function (ease out cubic)
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  // ==================== Light Pattern ====================
+  const patternNames = {
+    single: '单闪',
+    triple: '联闪三次',
+    equal: '等明暗',
+  };
+
+  function setLightPattern(pattern) {
+    state.lightPattern = pattern;
+    state.lightTime = 0;
+    lightNameEl.textContent = patternNames[pattern] || '单闪';
+
+    // Update button states
+    const btns = document.querySelectorAll('.pattern-btn');
+    btns.forEach(function(btn) {
+      if (btn.getAttribute('data-pattern') === pattern) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Update description
+    const descMap = {
+      single: '单闪：每隔固定时间闪亮一次，是最常见的灯质。',
+      triple: '联闪三次：一组连发三次闪光，分组间隔较长。',
+      equal: '等明暗：明与暗时间相等，节奏均匀。',
+    };
+    const descEl = document.querySelector('#panel-1 .panel-body p:last-of-type');
+    if (descEl && descMap[pattern]) descEl.textContent = descMap[pattern];
+  }
+
+  const patternBtns = document.querySelectorAll('.pattern-btn');
+  patternBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const p = btn.getAttribute('data-pattern');
+      if (p) setLightPattern(p);
+    });
+  });
+
+  function updateLightPattern(dt) {
+    state.lightTime += dt;
+    let on = true;
+    const t = state.lightTime;
+
+    if (state.lightPattern === 'single') {
+      // 0.3s on, 2.7s off = 3s cycle
+      const cycle = 3000;
+      const phase = t % cycle;
+      on = phase < 300;
+    } else if (state.lightPattern === 'triple') {
+      // 3 flashes: 0.2s on / 0.2s off, repeated 3x, then 2s off
+      const cycle = 3200;
+      const phase = t % cycle;
+      if (phase < 200) on = true;
+      else if (phase < 400) on = false;
+      else if (phase < 600) on = true;
+      else if (phase < 800) on = false;
+      else if (phase < 1000) on = true;
+      else on = false;
+
+      // Visual indicator dots
+      if (patternDots.length >= 5) {
+        patternDots[0].style.opacity = (phase < 200) ? '1' : '0.15';
+        patternDots[1].style.opacity = (phase >= 400 && phase < 600) ? '1' : '0.15';
+        patternDots[2].style.opacity = (phase >= 800 && phase < 1000) ? '1' : '0.15';
+        patternDots[3].style.opacity = '0.15';
+        patternDots[4].style.opacity = '0.15';
+      }
+    } else if (state.lightPattern === 'equal') {
+      // 1.5s on, 1.5s off
+      const cycle = 3000;
+      const phase = t % cycle;
+      on = phase < 1500;
+
+      if (patternDots.length >= 5) {
+        const frac = phase / 1500;
+        const litCount = on ? Math.ceil(frac * 5) : 0;
+        for (let i = 0; i < patternDots.length; i++) {
+          patternDots[i].style.opacity = (i < litCount) ? '1' : '0.15';
+        }
+      }
+    }
+
+    // Single pattern visual
+    if (state.lightPattern === 'single' && patternDots.length >= 5) {
+      const lit = on ? 5 : 0;
+      for (let i = 0; i < patternDots.length; i++) {
+        patternDots[i].style.opacity = (i < lit) ? '1' : '0.15';
+      }
+    }
+
+    // Apply to light source
+    const targetOpacity = on ? 1 : 0.25;
+    // Smooth transition
+    const currentOpacity = parseFloat(lightSource.getAttribute('data-opacity') || '1');
+    const newOpacity = currentOpacity + (targetOpacity - currentOpacity) * 0.3;
+    lightSource.setAttribute('data-opacity', newOpacity.toString());
+    lightSource.style.opacity = newOpacity.toString();
+  }
+
+  // ==================== Fog Horn ====================
+  function playFogHorn() {
+    // Create sound rings visually even if audio fails
+    createFogRing();
+
+    // Audio
+    try {
+      if (!state.audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        state.audioCtx = new AC();
+      }
+      const ctx = state.audioCtx;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const now = ctx.currentTime;
+      // Two oscillators for a deep horn sound
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(90, now);
+      osc2.frequency.setValueAtTime(135, now);
+      // Slight detune for richness
+      osc1.frequency.linearRampToValueAtTime(85, now + 1.5);
+      osc2.frequency.linearRampToValueAtTime(130, now + 1.5);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.1);
+      gain.gain.linearRampToValueAtTime(0.2, now + 1.0);
+      gain.gain.linearRampToValueAtTime(0, now + 1.8);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 2);
+      osc2.stop(now + 2);
+
+      // Multiple rings for a longer blast
+      setTimeout(createFogRing, 300);
+      setTimeout(createFogRing, 600);
+    } catch (e) {
+      // Silent failure
+    }
+  }
+
+  function createFogRing() {
+    if (!fogRingsG) return;
+    const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    ring.setAttribute('class', 'fog-ring');
+    ring.setAttribute('cx', LIGHTHOUSE_X);
+    ring.setAttribute('cy', LIGHTHOUSE_Y);
+    ring.setAttribute('r', '30');
+    ring.style.opacity = '0.6';
+    ring.style.transition = 'none';
+    fogRingsG.appendChild(ring);
+
+    // Animate with RAF (part of main loop)
+    fogRings.push({
+      el: ring,
+      r: 30,
+      opacity: 0.6,
+      life: 0,
+      maxLife: 2000,
+    });
+  }
+
+  const fogRings = [];
+
+  function updateFogRings(dt) {
+    for (let i = fogRings.length - 1; i >= 0; i--) {
+      const ring = fogRings[i];
+      ring.life += dt;
+      const t = ring.life / ring.maxLife;
+      if (t >= 1) {
+        ring.el.remove();
+        fogRings.splice(i, 1);
+        continue;
+      }
+      ring.r = 30 + t * 400;
+      ring.opacity = 0.6 * (1 - t);
+      ring.el.setAttribute('r', ring.r.toString());
+      ring.el.style.opacity = ring.opacity.toString();
+      ring.el.setAttribute('stroke', '#F0BE5A');
+    }
+  }
+
+  if (fogHornBtn) {
+    fogHornBtn.addEventListener('click', playFogHorn);
+  }
+
+  // ==================== Sector / Panel Logic ====================
+  function updatePanels() {
+    let closestSector = -1;
+    let closestDist = Infinity;
+
+    for (let i = 0; i < SECTOR_COUNT; i++) {
+      const center = (i + 0.5) * SECTOR_SIZE;
+      let diff = Math.abs(state.beamAngle - center);
+      diff = diff % 360;
+      if (diff > 180) diff = 360 - diff;
+
+      // Smooth visibility based on angular distance
+      const threshold = 22; // degrees - full visibility
+      const fadeZone = 18; // degrees over which it fades out
+      let visibility = 0;
+
+      if (diff < threshold) {
+        visibility = 1;
+      } else if (diff < threshold + fadeZone) {
+        visibility = 1 - (diff - threshold) / fadeZone;
+      }
+
+      if (panels[i]) {
+        if (visibility > 0.01) {
+          panels[i].classList.add('visible');
+          panels[i].style.opacity = visibility.toString();
+        } else {
+          panels[i].classList.remove('visible');
+          panels[i].style.opacity = '0';
+        }
+      }
+
+      if (diff < closestDist) {
+        closestDist = diff;
+        closestSector = i;
+      }
+    }
+
+    // Update chapter index active state
+    if (closestSector !== state.activeSector && closestDist < 30) {
+      state.activeSector = closestSector;
+      indexItems.forEach(function(item, idx) {
+        if (idx === closestSector) item.classList.add('active');
+        else item.classList.remove('active');
+      });
+    }
+
+    // Lens highlight sweeps with beam
+    if (!state.reducedMotion) {
+      const rad = state.beamAngle * Math.PI / 180;
+      const hx = LIGHTHOUSE_X + Math.cos(rad) * 13;
+      const hy = LIGHTHOUSE_Y + Math.sin(rad) * 8;
+      lensHighlight.setAttribute('cx', hx.toString());
+      lensHighlight.setAttribute('cy', hy.toString());
+      lensHighlight.style.opacity = '0.8';
+    }
+  }
+
+  // ==================== Main RAF Loop ====================
+  let rafId = null;
+  let lastTime = 0;
+
+  function loop(now) {
+    if (!state.visible) {
+      rafId = requestAnimationFrame(loop);
+      lastTime = now;
+      return;
+    }
+
+    const dt = Math.min(now - lastTime, 50); // cap at 50ms
+    lastTime = now;
+
+    // Tween (chapter index click rotation)
+    if (tweenActive) {
+      tweenElapsed += dt;
+      const t = Math.min(tweenElapsed / tweenDuration, 1);
+      const eased = easeOutCubic(t);
+      state.beamAngle = tweenStart + (tweenTarget - tweenStart) * eased;
+      if (t >= 1) {
+        tweenActive = false;
+        state.beamVel = 0;
+      }
+    }
+
+    // Beam physics (inertia)
+    if (!state.dragging && !tweenActive) {
+      if (Math.abs(state.beamVel) > 0.01) {
+        state.beamAngle += state.beamVel * (dt / 16.67);
+        // Damping
+        state.beamVel *= Math.pow(0.955, dt / 16.67);
+      } else if (Math.abs(state.beamVel) > 0) {
+        state.beamVel = 0;
+      }
+    }
+
+    // Normalize angle
+    state.beamAngle = ((state.beamAngle % 360) + 360) % 360;
+
+    // Apply beam rotation
+    beamGroup.style.transform = 'rotate(' + state.beamAngle + 'deg)';
+
+    // Update sweep velocity factor (beam brightness changes with rotation speed)
+    const speed = Math.abs(state.beamVel) + (tweenActive ? 1 : 0);
+    state.sweepVelFactor = Math.min(1 + speed * 0.02, 1.3);
+
+    // Update cursor
+    updateCursor();
+
+    // Update panels
+    updatePanels();
+
+    // Update light pattern
+    updateLightPattern(dt);
+
+    // Update fog rings
+    updateFogRings(dt);
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // ==================== Visibility Handling ====================
+  document.addEventListener('visibilitychange', function() {
+    state.visible = !document.hidden;
+    if (state.visible) {
+      lastTime = performance.now();
+    }
+  });
+
+  // ==================== Cleanup ====================
+  window.addEventListener('beforeunload', function() {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (state.audioCtx) {
+      try { state.audioCtx.close(); } catch (e) {}
+    }
+  });
+
+  // ==================== Reduced Motion ====================
+  function checkReducedMotion() {
+    state.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  checkReducedMotion();
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', checkReducedMotion);
+
+  // ==================== Archive Number Ink Reveal ====================
+  // Typewriter-like reveal for archive IDs when panel becomes visible
+  const archiveIds = document.querySelectorAll('.archive-id');
+  // We use CSS opacity transitions, but add a slight delay to archive items for "ink spread" feel
+  const archiveItems = document.querySelectorAll('.archive-item');
+  archiveItems.forEach(function(item, idx) {
+    item.style.transitionDelay = (idx * 0.08) + 's';
+  });
+
+  // ==================== Initialize ====================
+  function init() {
+    generateStars();
+    generateFog();
+
+    // Set initial state: beam at 0° (right), sector 0 active
+    state.beamAngle = 0;
+    state.activeSector = 0;
+    if (indexItems[0]) indexItems[0].classList.add('active');
+
+    // Start loop
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(loop);
+
+    // Give a tiny initial rotation to show it moves
+    setTimeout(function() {
+      if (!state.dragging && !tweenActive) {
+        state.beamVel = 0.3;
+      }
+    }, 1500);
+  }
+
+  // Run
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Announce upgrade availability
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) { /* ignore */ }
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+})();
+</script>
+</body>
+</html>
