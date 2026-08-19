@@ -1,0 +1,2078 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>稿件看板 · Kanban</title>
+  <meta name="creative-medium" content="interactive-prototype">
+  <style>
+    /* ========================================================
+       看板组件 CSS 变量主题
+       复制组件到新项目时，只需修改这些变量即可换肤
+       ======================================================== */
+    :root {
+      --kb-bg: #FAF7F1;           /* 暖纸米白 底色 */
+      --kb-surface: #F1ECE2;      /* 列背景 略深一档 */
+      --kb-card: #FFFFFF;         /* 卡片底色 */
+      --kb-text: #23292A;         /* 墨色文字 */
+      --kb-text-secondary: #8CA199; /* 竹青灰 辅助文字 */
+      --kb-accent: #1E4A43;       /* 墨青 主色/焦点/计数 */
+      --kb-accent-soft: rgba(30, 74, 67, 0.12);
+      --kb-danger: #B4552D;       /* 赭红 警示/WIP满 */
+      --kb-danger-soft: rgba(180, 85, 45, 0.12);
+      --kb-border: #E5DFD3;       /* 边框色 */
+      --kb-shadow-sm: 0 1px 2px rgba(35, 41, 42, 0.06);
+      --kb-shadow-md: 0 4px 12px rgba(35, 41, 42, 0.1);
+      --kb-shadow-lg: 0 12px 32px rgba(35, 41, 42, 0.18);
+      --kb-radius: 8px;
+      --kb-radius-sm: 4px;
+      --kb-duration: 180ms;
+      --kb-duration-slow: 250ms;
+      --kb-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+      --kb-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --kb-card-gap: 10px;
+      --kb-column-gap: 16px;
+      --kb-font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      :root {
+        --kb-duration: 0ms;
+        --kb-duration-slow: 0ms;
+      }
+    }
+
+    /* ========================================================
+       演示页面样式
+       ======================================================== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--kb-font-stack);
+      background: var(--kb-bg);
+      color: var(--kb-text);
+      min-height: 100vh;
+      padding: 24px 32px 48px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page-header {
+      max-width: 1280px;
+      margin: 0 auto 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .page-header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--kb-accent);
+      letter-spacing: 0.02em;
+    }
+
+    .page-header .subtitle {
+      font-size: 13px;
+      color: var(--kb-text-secondary);
+    }
+
+    .page-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 24px;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--kb-text-secondary);
+    }
+
+    .page-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .page-legend-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 20px;
+      padding: 0 6px;
+      font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+      font-size: 11px;
+      background: var(--kb-surface);
+      border: 1px solid var(--kb-border);
+      border-radius: var(--kb-radius-sm);
+      color: var(--kb-text);
+    }
+
+    .wip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--kb-accent);
+    }
+
+    .wip-dot.is-full { background: var(--kb-danger); }
+
+    .demo-row {
+      max-width: 1280px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .demo-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      color: var(--kb-accent);
+      background: var(--kb-accent-soft);
+      border: 1px solid transparent;
+      border-radius: var(--kb-radius-sm);
+      cursor: pointer;
+      transition: background var(--kb-duration) var(--kb-ease-out);
+      user-select: none;
+    }
+
+    .demo-btn:hover { background: rgba(30, 74, 67, 0.2); }
+    .demo-btn:active { transform: translateY(1px); }
+    .demo-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-log {
+      flex: 1;
+      min-width: 200px;
+      max-height: 36px;
+      overflow: hidden;
+      font-size: 12px;
+      color: var(--kb-text-secondary);
+      font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 2px;
+    }
+
+    .status-log-line {
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity var(--kb-duration) var(--kb-ease-out),
+                  transform var(--kb-duration) var(--kb-ease-out);
+    }
+
+    .status-log-line.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .status-log-line:nth-child(n+4) { display: none; }
+
+    /* ========================================================
+       看板组件核心样式
+       ======================================================== */
+    .kb-board {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--kb-column-gap);
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--kb-border) transparent;
+    }
+
+    .kb-board::-webkit-scrollbar { height: 6px; }
+    .kb-board::-webkit-scrollbar-track { background: transparent; }
+    .kb-board::-webkit-scrollbar-thumb {
+      background: var(--kb-border);
+      border-radius: 3px;
+    }
+
+    .kb-column {
+      flex: 0 0 260px;
+      display: flex;
+      flex-direction: column;
+      background: var(--kb-surface);
+      border-radius: var(--kb-radius);
+      transition: background var(--kb-duration) var(--kb-ease-out);
+      max-height: calc(100vh - 180px);
+      min-height: 120px;
+    }
+
+    .kb-column.is-disabled { opacity: 0.75; }
+    .kb-column.is-disabled .kb-cards { cursor: not-allowed; }
+
+    .kb-column.is-drag-over-allowed {
+      background: var(--kb-accent-soft);
+    }
+
+    .kb-column.is-drag-over-denied {
+      background: var(--kb-danger-soft);
+    }
+
+    .kb-column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 10px;
+      flex-shrink: 0;
+    }
+
+    .kb-column-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--kb-text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .kb-column-title-wip {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--kb-accent);
+      flex-shrink: 0;
+      transition: background var(--kb-duration) var(--kb-ease-out);
+    }
+
+    .kb-column.is-wip-full .kb-column-title-wip { background: var(--kb-danger); }
+    .kb-column.is-drag-over-denied .kb-column-title-wip { background: var(--kb-danger); }
+
+    .kb-column-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--kb-text-secondary);
+      padding: 2px 8px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 999px;
+      transition: all var(--kb-duration) var(--kb-ease-out);
+    }
+
+    .kb-column.is-wip-full .kb-column-count {
+      color: var(--kb-danger);
+      background: var(--kb-danger-soft);
+    }
+
+    .kb-cards {
+      flex: 1;
+      padding: 4px 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--kb-card-gap);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--kb-border) transparent;
+      min-height: 40px;
+    }
+
+    .kb-cards::-webkit-scrollbar { width: 4px; }
+    .kb-cards::-webkit-scrollbar-track { background: transparent; }
+    .kb-cards::-webkit-scrollbar-thumb {
+      background: var(--kb-border);
+      border-radius: 2px;
+    }
+
+    .kb-card {
+      position: relative;
+      background: var(--kb-card);
+      border-radius: var(--kb-radius-sm);
+      padding: 10px 12px 10px 14px;
+      box-shadow: var(--kb-shadow-sm);
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      outline: none;
+      transition: box-shadow var(--kb-duration) var(--kb-ease-out),
+                  transform var(--kb-duration) var(--kb-ease-out),
+                  opacity var(--kb-duration) var(--kb-ease-out);
+      border: 1px solid transparent;
+    }
+
+    .kb-column.is-disabled .kb-card { cursor: default; }
+
+    .kb-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+      background: var(--kb-accent);
+    }
+
+    .kb-card[data-priority="high"]::before { background: var(--kb-danger); }
+    .kb-card[data-priority="medium"]::before { background: var(--kb-accent); }
+    .kb-card[data-priority="low"]::before { background: var(--kb-text-secondary); }
+
+    .kb-card:hover {
+      box-shadow: var(--kb-shadow-md);
+    }
+
+    .kb-card:focus-visible {
+      border-color: var(--kb-accent);
+      box-shadow: 0 0 0 3px var(--kb-accent-soft);
+    }
+
+    .kb-card.is-dragging {
+      position: fixed;
+      z-index: 1000;
+      cursor: grabbing;
+      pointer-events: none;
+      box-shadow: var(--kb-shadow-lg);
+      transform: scale(1.02) rotate(2deg);
+      opacity: 0.95;
+      transition: box-shadow var(--kb-duration) var(--kb-ease-out);
+      will-change: transform;
+    }
+
+    .kb-card.is-drag-original {
+      opacity: 0.35;
+      cursor: grabbing;
+    }
+
+    .kb-card.is-snapping {
+      position: fixed;
+      z-index: 1000;
+      pointer-events: none;
+      will-change: transform;
+      transition: transform var(--kb-duration) var(--kb-ease-spring);
+    }
+
+    .kb-card.is-rejecting {
+      position: fixed;
+      z-index: 1000;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .kb-card-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--kb-text);
+      line-height: 1.45;
+      margin-bottom: 8px;
+    }
+
+    .kb-card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .kb-card-tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--kb-accent-soft);
+      color: var(--kb-accent);
+    }
+
+    .kb-card-tag[data-tag="快讯"] {
+      background: var(--kb-danger-soft);
+      color: var(--kb-danger);
+    }
+
+    .kb-card-tag[data-tag="人物"] {
+      background: rgba(180, 130, 60, 0.15);
+      color: #8A5A20;
+    }
+
+    .kb-card-tag[data-tag="文化"] {
+      background: rgba(100, 80, 140, 0.15);
+      color: #5A4A8A;
+    }
+
+    .kb-card-tag[data-tag="生活"] {
+      background: rgba(60, 140, 100, 0.15);
+      color: #2A6A52;
+    }
+
+    .kb-card-tag[data-tag="视觉"] {
+      background: rgba(200, 130, 100, 0.15);
+      color: #8A4A30;
+    }
+
+    .kb-card-assignee {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--kb-surface);
+      color: var(--kb-text-secondary);
+      font-size: 10px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--kb-border);
+    }
+
+    /* 占位符 - 目标位置间隙 */
+    .kb-placeholder {
+      flex-shrink: 0;
+      background: var(--kb-accent-soft);
+      border: 2px dashed var(--kb-accent);
+      border-radius: var(--kb-radius-sm);
+      opacity: 0.7;
+      height: 0;
+      overflow: hidden;
+      transition: height 200ms ease-out;
+    }
+
+    .kb-column.is-drag-over-denied .kb-placeholder {
+      background: var(--kb-danger-soft);
+      border-color: var(--kb-danger);
+    }
+
+    /* 骨架加载卡片 */
+    .kb-loading-card {
+      position: relative;
+      background: var(--kb-card);
+      border-radius: var(--kb-radius-sm);
+      padding: 10px 12px 10px 14px;
+      box-shadow: var(--kb-shadow-sm);
+      overflow: hidden;
+    }
+
+    .kb-loading-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      animation: kb-skeleton-shimmer 1.5s ease-in-out infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .kb-loading-card::before { animation: none; }
+    }
+
+    @keyframes kb-skeleton-shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .kb-loading-line {
+      height: 12px;
+      border-radius: 2px;
+      background: var(--kb-surface);
+      margin-bottom: 8px;
+    }
+
+    .kb-loading-line.title { width: 80%; }
+    .kb-loading-line.meta-row {
+      display: flex;
+      justify-content: space-between;
+      background: transparent;
+      margin-bottom: 0;
+    }
+
+    .kb-loading-tag {
+      width: 40px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--kb-surface);
+    }
+
+    .kb-loading-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--kb-surface);
+    }
+
+    /* 拒放抖动动画 */
+    @keyframes kb-shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+
+    .kb-card.is-shaking { animation: kb-shake 250ms ease-in-out; }
+
+    /* 空列提示 */
+    .kb-empty-hint {
+      padding: 24px 12px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--kb-text-secondary);
+      border: 1px dashed var(--kb-border);
+      border-radius: var(--kb-radius-sm);
+    }
+
+    /* 键盘拖拽模式指示 */
+    .kb-card.is-keyboard-lifted {
+      box-shadow: var(--kb-shadow-lg);
+      transform: scale(1.02) rotate(1deg);
+      border-color: var(--kb-accent);
+      box-shadow: 0 0 0 3px var(--kb-accent-soft), var(--kb-shadow-lg);
+    }
+
+    /* 用法文档区块 */
+    .docs-section {
+      max-width: 1280px;
+      margin: 40px auto 0;
+      padding-top: 24px;
+      border-top: 1px solid var(--kb-border);
+    }
+
+    .docs-section h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--kb-accent);
+      margin-bottom: 12px;
+    }
+
+    .docs-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--kb-text);
+      margin: 16px 0 8px;
+    }
+
+    .docs-section p {
+      font-size: 13px;
+      color: var(--kb-text-secondary);
+      margin-bottom: 8px;
+      line-height: 1.6;
+    }
+
+    .docs-section code {
+      font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+      font-size: 12px;
+      background: var(--kb-surface);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--kb-accent);
+    }
+
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .docs-card {
+      background: var(--kb-surface);
+      border-radius: var(--kb-radius);
+      padding: 14px 16px;
+    }
+
+    .docs-card h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--kb-text);
+      margin-bottom: 8px;
+    }
+
+    .docs-card ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .docs-card li {
+      font-size: 12px;
+      color: var(--kb-text-secondary);
+      padding: 3px 0;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .docs-card li::before {
+      content: '';
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--kb-accent);
+      flex-shrink: 0;
+      margin-top: 6px;
+    }
+
+    /* 键盘操作提示浮层 */
+    .kb-keyboard-hint {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--kb-text);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--kb-duration) var(--kb-ease-out),
+                  transform var(--kb-duration) var(--kb-ease-out);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
+    }
+
+    .kb-keyboard-hint.is-visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .kb-keyboard-hint kbd {
+      font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>稿件看板 · Kanban</h1>
+    <p class="subtitle">独立编辑部稿件流转看板。支持拖拽、键盘操作、WIP 上限约束。</p>
+    <div class="page-legend">
+      <div class="page-legend-item">
+        <span class="wip-dot"></span>
+        <span>WIP 在制品限制</span>
+      </div>
+      <div class="page-legend-item">
+        <span class="wip-dot is-full"></span>
+        <span>已达上限（拒收）</span>
+      </div>
+      <div class="page-legend-item">
+        <span class="page-legend-key">Space</span>
+        <span>拾起 / 放下</span>
+      </div>
+      <div class="page-legend-item">
+        <span class="page-legend-key">← →</span>
+        <span>切换列</span>
+      </div>
+      <div class="page-legend-item">
+        <span class="page-legend-key">↑ ↓</span>
+        <span>移动位置</span>
+      </div>
+      <div class="page-legend-item">
+        <span class="page-legend-key">Esc</span>
+        <span>取消</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="demo-row">
+    <button class="demo-btn" id="addCardBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      模拟新增卡片
+    </button>
+    <div class="status-log" id="statusLog" aria-live="polite"></div>
+  </div>
+
+  <div id="kanban" class="kb-board" role="application" aria-label="稿件看板"></div>
+
+  <section class="docs-section">
+    <h2>用法文档</h2>
+    <div class="docs-grid">
+      <div class="docs-card">
+        <h4>快速开始</h4>
+        <ul>
+          <li>复制 HTML 中 <code>.kb-board</code> 容器</li>
+          <li>复制 style 中所有 <code>.kb-*</code> 样式</li>
+          <li>复制 script 中 <code>Kanban</code> 类</li>
+          <li>实例化：<code>new Kanban(el, options)</code></li>
+        </ul>
+      </div>
+      <div class="docs-card">
+        <h4>配置项</h4>
+        <ul>
+          <li><code>columns</code> 列定义数组（id / title / wipLimit / disabled）</li>
+          <li><code>cards</code> 卡片数据数组（id / title / column / tag / priority / assignee）</li>
+          <li><code>onMove(cardId, fromCol, toCol, toIndex)</code> 移动回调</li>
+          <li><code>onAdd(card)</code> 新增回调</li>
+        </ul>
+      </div>
+      <div class="docs-card">
+        <h4>主题变量</h4>
+        <ul>
+          <li><code>--kb-bg</code> 页面底色</li>
+          <li><code>--kb-surface</code> 列背景</li>
+          <li><code>--kb-accent</code> 主色（墨青）</li>
+          <li><code>--kb-danger</code> 警示色（赭红）</li>
+          <li><code>--kb-radius</code> 圆角大小</li>
+          <li><code>--kb-duration</code> 动画时长</li>
+        </ul>
+      </div>
+      <div class="docs-card">
+        <h4>状态机</h4>
+        <ul>
+          <li>卡片：rest / hover / focus / dragging / loading</li>
+          <li>列：rest / drag-over-allowed / drag-over-denied / empty / disabled</li>
+          <li>WIP 满：列头计数变赭红，拒收拖入</li>
+          <li>所有状态带对应 ARIA 属性</li>
+        </ul>
+      </div>
+      <div class="docs-card">
+        <h4>键盘操作</h4>
+        <ul>
+          <li><code>Tab</code> 在卡片间移动焦点</li>
+          <li><code>Space</code> 或 <code>Enter</code> 拾起 / 放下卡片</li>
+          <li><code>← →</code> 向左 / 右切换列</li>
+          <li><code>↑ ↓</code> 向上 / 下移动位置</li>
+          <li><code>Esc</code> 取消拖拽，返回原位</li>
+        </ul>
+      </div>
+      <div class="docs-card">
+        <h4>健壮性</h4>
+        <ul>
+          <li>零未定义引用，类型守卫完整</li>
+          <li>rAF / 定时器随页面可见性暂停</li>
+          <li>快速操作不叠加定时器（单例管理）</li>
+          <li>pointercancel 正确清理拖拽状态</li>
+          <li>支持 <code>prefers-reduced-motion</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="kb-keyboard-hint" id="kbHint" aria-hidden="true">
+    <kbd>Space</kbd> 拾起
+    <kbd>←→</kbd> 换列
+    <kbd>↑↓</kbd> 移动
+    <kbd>Enter</kbd> 放下
+    <kbd>Esc</kbd> 取消
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    /* ==========================================================
+       Kanban 组件 — 生产级看板
+       纯 vanilla JS，无依赖，自包含可抽取
+       ========================================================== */
+
+    function Kanban(element, options) {
+      if (!element) { throw new Error('Kanban: element is required'); }
+      options = options || {};
+
+      this.el = element;
+      this.columns = Array.isArray(options.columns) ? options.columns : [];
+      this.cards = Array.isArray(options.cards) ? options.cards : [];
+      this.onMove = typeof options.onMove === 'function' ? options.onMove : null;
+      this.onAdd = typeof options.onAdd === 'function' ? options.onAdd : null;
+
+      // 拖拽状态
+      this._drag = {
+        active: false,
+        cardId: null,
+        cardEl: null,
+        originalEl: null,
+        pointerOffsetX: 0,
+        pointerOffsetY: 0,
+        startColumn: null,
+        startIndex: -1,
+        targetColumn: null,
+        targetIndex: -1,
+        placeholderEl: null,
+        pointerId: null,
+        rafId: null,
+        pendingX: 0,
+        pendingY: 0,
+        lastMoveTime: 0,
+        fromKeyboard: false
+      };
+
+      // 键盘拖拽状态
+      this._kbd = {
+        active: false,
+        cardId: null,
+        cardEl: null,
+        startColumn: null,
+        startIndex: -1,
+        targetColumn: null,
+        targetIndex: -1,
+        placeholderEl: null
+      };
+
+      // 加载状态管理（单例）
+      this._loading = {
+        active: false,
+        timerId: null,
+        cardId: null
+      };
+
+      // 页面可见性
+      this._pageVisible = true;
+      this._visibilityHandler = this._onVisibilityChange.bind(this);
+
+      // 全局 pointer 监听（绑定到实例）
+      this._boundPointerMove = this._onPointerMove.bind(this);
+      this._boundPointerUp = this._onPointerUp.bind(this);
+      this._boundPointerCancel = this._onPointerCancel.bind(this);
+
+      this._init();
+    }
+
+    Kanban.prototype._init = function() {
+      this._render();
+      this._bindEvents();
+      document.addEventListener('visibilitychange', this._visibilityHandler);
+    };
+
+    Kanban.prototype._render = function() {
+      var board = this.el;
+      board.innerHTML = '';
+
+      for (var i = 0; i < this.columns.length; i++) {
+        var col = this.columns[i];
+        var colEl = document.createElement('div');
+        colEl.className = 'kb-column';
+        colEl.setAttribute('data-column-id', col.id);
+        colEl.setAttribute('role', 'list');
+        colEl.setAttribute('aria-label', col.title);
+        if (col.disabled) {
+          colEl.classList.add('is-disabled');
+          colEl.setAttribute('aria-disabled', 'true');
+        }
+
+        // 列头
+        var header = document.createElement('div');
+        header.className = 'kb-column-header';
+
+        var titleWrap = document.createElement('div');
+        titleWrap.className = 'kb-column-title';
+        var wipDot = document.createElement('span');
+        wipDot.className = 'kb-column-title-wip';
+        titleWrap.appendChild(wipDot);
+        titleWrap.appendChild(document.createTextNode(col.title));
+
+        var count = document.createElement('span');
+        count.className = 'kb-column-count';
+        count.setAttribute('data-count', '');
+
+        header.appendChild(titleWrap);
+        header.appendChild(count);
+        colEl.appendChild(header);
+
+        // 卡片容器
+        var cardsContainer = document.createElement('div');
+        cardsContainer.className = 'kb-cards';
+        cardsContainer.setAttribute('data-cards', '');
+
+        colEl.appendChild(cardsContainer);
+        board.appendChild(colEl);
+      }
+
+      // 渲染卡片
+      for (var j = 0; j < this.cards.length; j++) {
+        this._renderCard(this.cards[j]);
+      }
+
+      this._updateCounts();
+      this._updateWipStates();
+    };
+
+    Kanban.prototype._renderCard = function(cardData) {
+      var colEl = this._getColumnEl(cardData.column);
+      if (!colEl) { return null; }
+      var cardsContainer = colEl.querySelector('[data-cards]');
+      if (!cardsContainer) { return null; }
+
+      var cardEl = document.createElement('div');
+      cardEl.className = 'kb-card';
+      cardEl.setAttribute('data-card-id', cardData.id);
+      cardEl.setAttribute('data-priority', cardData.priority || 'medium');
+      cardEl.setAttribute('role', 'listitem');
+      cardEl.setAttribute('tabindex', '0');
+      cardEl.setAttribute('aria-grabbed', 'false');
+
+      var titleEl = document.createElement('div');
+      titleEl.className = 'kb-card-title';
+      titleEl.textContent = cardData.title;
+      cardEl.appendChild(titleEl);
+
+      var metaEl = document.createElement('div');
+      metaEl.className = 'kb-card-meta';
+
+      var tagEl = document.createElement('span');
+      tagEl.className = 'kb-card-tag';
+      tagEl.setAttribute('data-tag', cardData.tag || '');
+      tagEl.textContent = cardData.tag || '';
+      metaEl.appendChild(tagEl);
+
+      var assigneeEl = document.createElement('div');
+      assigneeEl.className = 'kb-card-assignee';
+      assigneeEl.textContent = this._getInitials(cardData.assignee || '');
+      assigneeEl.setAttribute('title', cardData.assignee || '');
+      metaEl.appendChild(assigneeEl);
+
+      cardEl.appendChild(metaEl);
+
+      cardsContainer.appendChild(cardEl);
+      return cardEl;
+    };
+
+    Kanban.prototype._getInitials = function(name) {
+      if (!name) { return '?'; }
+      // 中文名取最后一个字的首字母？不，直接取后两个字
+      if (name.length > 2) {
+        return name.slice(-2);
+      }
+      return name;
+    };
+
+    Kanban.prototype._getColumnEl = function(columnId) {
+      return this.el.querySelector('.kb-column[data-column-id="' + columnId + '"]');
+    };
+
+    Kanban.prototype._getColumnData = function(columnId) {
+      for (var i = 0; i < this.columns.length; i++) {
+        if (this.columns[i].id === columnId) { return this.columns[i]; }
+      }
+      return null;
+    };
+
+    Kanban.prototype._getCardData = function(cardId) {
+      for (var i = 0; i < this.cards.length; i++) {
+        if (this.cards[i].id === cardId) { return this.cards[i]; }
+      }
+      return null;
+    };
+
+    Kanban.prototype._getColumnCardCount = function(columnId) {
+      var count = 0;
+      for (var i = 0; i < this.cards.length; i++) {
+        if (this.cards[i].column === columnId) { count++; }
+      }
+      return count;
+    };
+
+    Kanban.prototype._getCardIndexInColumn = function(cardId, columnId) {
+      var colEl = this._getColumnEl(columnId);
+      if (!colEl) { return -1; }
+      var cards = colEl.querySelectorAll('[data-cards] > .kb-card:not(.is-drag-original)');
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].getAttribute('data-card-id') === cardId) { return i; }
+      }
+      return -1;
+    };
+
+    Kanban.prototype._updateCounts = function() {
+      var cols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < cols.length; i++) {
+        var colId = cols[i].getAttribute('data-column-id');
+        var count = this._getColumnCardCount(colId);
+        var colData = this._getColumnData(colId);
+        var countEl = cols[i].querySelector('[data-count]');
+        if (countEl && colData) {
+          var limitStr = colData.wipLimit === Infinity ? '∞' : colData.wipLimit;
+          countEl.textContent = count + ' / ' + limitStr;
+        }
+      }
+    };
+
+    Kanban.prototype._updateWipStates = function() {
+      var cols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < cols.length; i++) {
+        var colId = cols[i].getAttribute('data-column-id');
+        var colData = this._getColumnData(colId);
+        if (!colData || colData.wipLimit === Infinity) { continue; }
+        var count = this._getColumnCardCount(colId);
+        if (count >= colData.wipLimit) {
+          cols[i].classList.add('is-wip-full');
+        } else {
+          cols[i].classList.remove('is-wip-full');
+        }
+      }
+    };
+
+    Kanban.prototype._canDropOnColumn = function(columnId, fromColumnId) {
+      var colData = this._getColumnData(columnId);
+      if (!colData) { return false; }
+      if (colData.disabled) { return false; }
+      // 同列移动总是允许（不改变数量）
+      if (columnId === fromColumnId) { return true; }
+      // WIP 检查
+      if (colData.wipLimit === Infinity) { return true; }
+      var currentCount = this._getColumnCardCount(columnId);
+      return currentCount < colData.wipLimit;
+    };
+
+    /* ========================================================
+       事件绑定
+       ======================================================== */
+
+    Kanban.prototype._bindEvents = function() {
+      var self = this;
+
+      // 事件委托：卡片 pointerdown
+      this.el.addEventListener('pointerdown', function(e) {
+        var cardEl = e.target.closest('.kb-card');
+        if (!cardEl) { return; }
+        if (e.button !== 0) { return; } // 仅左键
+        var colEl = cardEl.closest('.kb-column');
+        if (!colEl) { return; }
+        var colData = self._getColumnData(colEl.getAttribute('data-column-id'));
+        if (colData && colData.disabled) { return; }
+        self._startDrag(cardEl, e.clientX, e.clientY, e.pointerId);
+      });
+
+      // 键盘事件
+      this.el.addEventListener('keydown', function(e) {
+        var cardEl = e.target.closest('.kb-card');
+        if (!cardEl) { return; }
+        self._onCardKeydown(e, cardEl);
+      });
+
+      // 键盘焦点提示
+      this.el.addEventListener('focusin', function(e) {
+        var cardEl = e.target.closest('.kb-card');
+        if (cardEl) {
+          self._showKeyboardHint();
+        }
+      });
+    };
+
+    /* ========================================================
+       指针拖拽
+       ======================================================== */
+
+    Kanban.prototype._startDrag = function(cardEl, clientX, clientY, pointerId) {
+      var cardId = cardEl.getAttribute('data-card-id');
+      if (!cardId) { return; }
+      var cardData = this._getCardData(cardId);
+      if (!cardData) { return; }
+
+      var rect = cardEl.getBoundingClientRect();
+
+      // 标记原始卡片为半透明
+      cardEl.classList.add('is-drag-original');
+
+      // 创建拖拽中的浮动卡片
+      var dragEl = cardEl.cloneNode(true);
+      dragEl.classList.remove('is-drag-original');
+      dragEl.classList.add('is-dragging');
+      dragEl.style.width = rect.width + 'px';
+      dragEl.style.height = rect.height + 'px';
+      dragEl.style.left = rect.left + 'px';
+      dragEl.style.top = rect.top + 'px';
+      document.body.appendChild(dragEl);
+
+      // 记录起始位置
+      var colEl = cardEl.closest('.kb-column');
+      var startColumn = colEl.getAttribute('data-column-id');
+      var startIndex = this._getCardIndexInColumn(cardId, startColumn);
+
+      // 创建占位符
+      var placeholder = document.createElement('div');
+      placeholder.className = 'kb-placeholder';
+      placeholder.style.height = rect.height + 'px';
+
+      // 把占位符插到原卡片之前（先高度为0，再展开）
+      placeholder.style.height = '0px';
+      cardEl.parentNode.insertBefore(placeholder, cardEl);
+      // 下一帧展开
+      requestAnimationFrame(function() {
+        placeholder.style.height = rect.height + 'px';
+      });
+
+      this._drag = {
+        active: true,
+        cardId: cardId,
+        cardEl: dragEl,
+        originalEl: cardEl,
+        pointerOffsetX: clientX - rect.left,
+        pointerOffsetY: clientY - rect.top,
+        startColumn: startColumn,
+        startIndex: startIndex,
+        targetColumn: startColumn,
+        targetIndex: startIndex,
+        placeholderEl: placeholder,
+        pointerId: pointerId,
+        rafId: null,
+        pendingX: clientX,
+        pendingY: clientY,
+        cardWidth: rect.width,
+        cardHeight: rect.height,
+        fromKeyboard: false
+      };
+
+      // 设置 ARIA
+      cardEl.setAttribute('aria-grabbed', 'true');
+      dragEl.setAttribute('aria-grabbed', 'true');
+
+      // 捕获指针
+      try {
+        cardEl.setPointerCapture(pointerId);
+      } catch (err) {
+        // setPointerCapture 失败不影响功能
+      }
+
+      // 全局事件
+      document.addEventListener('pointermove', this._boundPointerMove);
+      document.addEventListener('pointerup', this._boundPointerUp);
+      document.addEventListener('pointercancel', this._boundPointerCancel);
+
+      // 初始位置
+      this._updateDragPosition(clientX, clientY);
+    };
+
+    Kanban.prototype._onPointerMove = function(e) {
+      if (!this._drag.active) { return; }
+      if (e.pointerId !== this._drag.pointerId) { return; }
+
+      this._drag.pendingX = e.clientX;
+      this._drag.pendingY = e.clientY;
+
+      if (!this._drag.rafId) {
+        var self = this;
+        this._drag.rafId = requestAnimationFrame(function() {
+          self._drag.rafId = null;
+          if (self._pageVisible && self._drag.active) {
+            self._updateDragPosition(self._drag.pendingX, self._drag.pendingY);
+          }
+        });
+      }
+    };
+
+    Kanban.prototype._updateDragPosition = function(clientX, clientY) {
+      var drag = this._drag;
+      if (!drag.active || !drag.cardEl) { return; }
+
+      var x = clientX - drag.pointerOffsetX;
+      var y = clientY - drag.pointerOffsetY;
+
+      drag.cardEl.style.transform = 'translate(' + x + 'px, ' + y + 'px) scale(1.02) rotate(2deg)';
+      drag.cardEl.style.left = '0';
+      drag.cardEl.style.top = '0';
+
+      // 计算目标列和位置
+      this._computeDropTarget(clientX, clientY);
+    };
+
+    Kanban.prototype._computeDropTarget = function(clientX, clientY) {
+      var drag = this._drag;
+      if (!drag.active) { return; }
+
+      var cols = this.el.querySelectorAll('.kb-column');
+      var targetColId = null;
+      var targetIndex = -1;
+      var bestCol = null;
+      var bestDistance = Infinity;
+
+      // 找到指针下方最近的列
+      for (var i = 0; i < cols.length; i++) {
+        var rect = cols[i].getBoundingClientRect();
+        // 检查指针是否在列的水平范围内
+        if (clientX >= rect.left && clientX <= rect.right) {
+          targetColId = cols[i].getAttribute('data-column-id');
+          bestCol = cols[i];
+          break;
+        }
+        // 否则找最近的列（水平距离）
+        var distance = Math.min(Math.abs(clientX - rect.left), Math.abs(clientX - rect.right));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestCol = cols[i];
+          targetColId = cols[i].getAttribute('data-column-id');
+        }
+      }
+
+      if (!targetColId || !bestCol) { return; }
+
+      // 计算在列中的插入位置
+      var cardsContainer = bestCol.querySelector('[data-cards]');
+      if (!cardsContainer) { return; }
+
+      var cards = cardsContainer.querySelectorAll('.kb-card:not(.is-drag-original), .kb-loading-card');
+      var insertIndex = cards.length;
+      var containerRect = cardsContainer.getBoundingClientRect();
+
+      for (var j = 0; j < cards.length; j++) {
+        var cardRect = cards[j].getBoundingClientRect();
+        var cardMidY = cardRect.top + cardRect.height / 2;
+        if (clientY < cardMidY) {
+          insertIndex = j;
+          break;
+        }
+      }
+
+      // 如果指针在容器上方很远，放在最前
+      if (clientY < containerRect.top - 20) {
+        insertIndex = 0;
+      }
+
+      // 更新目标
+      if (targetColId !== drag.targetColumn || insertIndex !== drag.targetIndex) {
+        drag.targetColumn = targetColId;
+        drag.targetIndex = insertIndex;
+        this._updatePlaceholder();
+      }
+    };
+
+    Kanban.prototype._updatePlaceholder = function() {
+      var drag = this._drag;
+      if (!drag.active || !drag.placeholderEl) { return; }
+
+      var canDrop = this._canDropOnColumn(drag.targetColumn, drag.startColumn);
+
+      // 更新列状态
+      var allCols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < allCols.length; i++) {
+        allCols[i].classList.remove('is-drag-over-allowed', 'is-drag-over-denied');
+      }
+
+      var targetColEl = this._getColumnEl(drag.targetColumn);
+      if (targetColEl) {
+        if (canDrop) {
+          targetColEl.classList.add('is-drag-over-allowed');
+        } else {
+          targetColEl.classList.add('is-drag-over-denied');
+        }
+      }
+
+      if (!canDrop) {
+        // 不可投放：占位符保留在原位（起始位置）
+        var startColEl = this._getColumnEl(drag.startColumn);
+        if (startColEl) {
+          var startCardsContainer = startColEl.querySelector('[data-cards]');
+          if (startCardsContainer && drag.placeholderEl.parentNode !== startCardsContainer) {
+            // 移回起始列的原位置
+            var originalIndex = drag.startIndex;
+            var sibs = startCardsContainer.querySelectorAll('.kb-card:not(.is-drag-original), .kb-loading-card');
+            if (sibs[originalIndex]) {
+              startCardsContainer.insertBefore(drag.placeholderEl, sibs[originalIndex]);
+            } else {
+              startCardsContainer.appendChild(drag.placeholderEl);
+            }
+          }
+        }
+        return;
+      }
+
+      // 可投放：移动占位符到目标位置
+      var targetCardsContainer = targetColEl.querySelector('[data-cards]');
+      if (!targetCardsContainer) { return; }
+
+      var targetCards = targetCardsContainer.querySelectorAll('.kb-card:not(.is-drag-original), .kb-loading-card');
+
+      if (drag.targetIndex >= targetCards.length) {
+        targetCardsContainer.appendChild(drag.placeholderEl);
+      } else if (targetCards[drag.targetIndex]) {
+        targetCardsContainer.insertBefore(drag.placeholderEl, targetCards[drag.targetIndex]);
+      }
+    };
+
+    Kanban.prototype._onPointerUp = function(e) {
+      if (!this._drag.active) { return; }
+      if (e.pointerId !== this._drag.pointerId) { return; }
+      this._endDrag();
+    };
+
+    Kanban.prototype._onPointerCancel = function(e) {
+      if (!this._drag.active) { return; }
+      if (e.pointerId !== this._drag.pointerId) { return; }
+      this._endDrag(true); // 取消
+    };
+
+    Kanban.prototype._endDrag = function(canceled) {
+      var drag = this._drag;
+      if (!drag.active) { return; }
+
+      var canDrop = !canceled && this._canDropOnColumn(drag.targetColumn, drag.startColumn);
+
+      // 移除全局监听
+      document.removeEventListener('pointermove', this._boundPointerMove);
+      document.removeEventListener('pointerup', this._boundPointerUp);
+      document.removeEventListener('pointercancel', this._boundPointerCancel);
+
+      // 取消 rAF
+      if (drag.rafId) {
+        cancelAnimationFrame(drag.rafId);
+        drag.rafId = null;
+      }
+
+      // 清除列状态
+      var allCols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < allCols.length; i++) {
+        allCols[i].classList.remove('is-drag-over-allowed', 'is-drag-over-denied');
+      }
+
+      var self = this;
+
+      if (canDrop && (drag.targetColumn !== drag.startColumn || drag.targetIndex !== drag.startIndex)) {
+        // 成功投放：动画吸附到目标位置
+        this._animateDropToPlaceholder(function() {
+          self._commitMove();
+          self._cleanupDrag();
+        });
+      } else if (!canDrop && !canceled) {
+        // 拒放：弹回 + 抖动
+        this._animateReject(function() {
+          self._cleanupDrag();
+        });
+      } else {
+        // 取消或原位放下：直接恢复
+        this._animateReturn(function() {
+          self._cleanupDrag();
+        });
+      }
+    };
+
+    Kanban.prototype._animateDropToPlaceholder = function(callback) {
+      var drag = this._drag;
+      if (!drag.cardEl || !drag.placeholderEl) {
+        if (callback) { callback(); }
+        return;
+      }
+
+      var placeholderRect = drag.placeholderEl.getBoundingClientRect();
+      var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // 切换到吸附态（带过渡）
+      drag.cardEl.classList.remove('is-dragging');
+      drag.cardEl.classList.add('is-snapping');
+
+      var targetX = placeholderRect.left;
+      var targetY = placeholderRect.top;
+
+      // 应用目标位置
+      requestAnimationFrame(function() {
+        if (drag.cardEl) {
+          drag.cardEl.style.transform = 'translate(' + targetX + 'px, ' + targetY + 'px) scale(1) rotate(0deg)';
+        }
+      });
+
+      if (prefersReduced) {
+        if (callback) { callback(); }
+      } else {
+        setTimeout(function() {
+          if (callback) { callback(); }
+        }, 180);
+      }
+    };
+
+    Kanban.prototype._animateReject = function(callback) {
+      var drag = this._drag;
+      if (!drag.cardEl || !drag.originalEl) {
+        if (callback) { callback(); }
+        return;
+      }
+
+      var originalRect = drag.originalEl.getBoundingClientRect();
+      var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // 先弹回原位
+      drag.cardEl.classList.remove('is-dragging');
+      drag.cardEl.classList.add('is-rejecting');
+      drag.cardEl.style.transition = 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)';
+      drag.cardEl.style.transform = 'translate(' + originalRect.left + 'px, ' + originalRect.top + 'px) scale(1) rotate(0deg)';
+
+      var self = this;
+      var totalDuration = prefersReduced ? 0 : 250;
+
+      setTimeout(function() {
+        // 到达原位后抖动
+        if (!prefersReduced && drag.cardEl) {
+          drag.cardEl.classList.add('is-shaking');
+          totalDuration = 250;
+        }
+        setTimeout(function() {
+          if (callback) { callback(); }
+        }, prefersReduced ? 0 : 250);
+      }, totalDuration);
+    };
+
+    Kanban.prototype._animateReturn = function(callback) {
+      var drag = this._drag;
+      if (!drag.cardEl || !drag.originalEl) {
+        if (callback) { callback(); }
+        return;
+      }
+
+      var originalRect = drag.originalEl.getBoundingClientRect();
+      var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      drag.cardEl.classList.remove('is-dragging');
+      drag.cardEl.classList.add('is-snapping');
+      drag.cardEl.style.transform = 'translate(' + originalRect.left + 'px, ' + originalRect.top + 'px) scale(1) rotate(0deg)';
+
+      if (prefersReduced) {
+        if (callback) { callback(); }
+      } else {
+        setTimeout(function() {
+          if (callback) { callback(); }
+        }, 180);
+      }
+    };
+
+    Kanban.prototype._commitMove = function() {
+      var drag = this._drag;
+      if (!drag.cardId) { return; }
+
+      var cardData = this._getCardData(drag.cardId);
+      if (!cardData) { return; }
+
+      var fromColumn = drag.startColumn;
+      var toColumn = drag.targetColumn;
+
+      // 先更新数据模型
+      cardData.column = toColumn;
+
+      // 重新计算目标索引（可能因动画期间 DOM 变化而有偏差）
+      // 实际的 DOM 移动在 _cleanupDrag 中做，但这里触发回调
+      if (this.onMove) {
+        try {
+          this.onMove(drag.cardId, fromColumn, toColumn, drag.targetIndex);
+        } catch (err) {
+          // 回调错误不影响组件
+        }
+      }
+    };
+
+    Kanban.prototype._cleanupDrag = function() {
+      var drag = this._drag;
+
+      // 移除浮动卡片
+      if (drag.cardEl && drag.cardEl.parentNode) {
+        drag.cardEl.parentNode.removeChild(drag.cardEl);
+      }
+
+      // 移除占位符
+      if (drag.placeholderEl && drag.placeholderEl.parentNode) {
+        drag.placeholderEl.parentNode.removeChild(drag.placeholderEl);
+      }
+
+      // 恢复原始卡片
+      if (drag.originalEl) {
+        drag.originalEl.classList.remove('is-drag-original');
+        drag.originalEl.setAttribute('aria-grabbed', 'false');
+      }
+
+      // 如果是成功的移动，需要把原始卡片移到目标位置
+      if (drag.cardId && drag.targetColumn) {
+        var cardData = this._getCardData(drag.cardId);
+        if (cardData && cardData.column === drag.targetColumn) {
+          // 移动 DOM
+          var targetColEl = this._getColumnEl(drag.targetColumn);
+          if (targetColEl) {
+            var targetContainer = targetColEl.querySelector('[data-cards]');
+            if (targetContainer && drag.originalEl && drag.originalEl.parentNode !== targetContainer) {
+              targetContainer.appendChild(drag.originalEl);
+            }
+            // 按索引插入
+            var cards = targetContainer.querySelectorAll('.kb-card, .kb-loading-card');
+            if (drag.targetIndex >= 0 && drag.targetIndex < cards.length) {
+              if (cards[drag.targetIndex] !== drag.originalEl) {
+                targetContainer.insertBefore(drag.originalEl, cards[drag.targetIndex]);
+              }
+            } else if (drag.targetIndex >= cards.length) {
+              targetContainer.appendChild(drag.originalEl);
+            }
+          }
+        }
+      }
+
+      // 更新计数和 WIP 状态
+      this._updateCounts();
+      this._updateWipStates();
+
+      // 焦点回到卡片
+      if (drag.originalEl) {
+        try { drag.originalEl.focus(); } catch (err) {}
+      }
+
+      // 重置拖拽状态
+      this._drag = {
+        active: false,
+        cardId: null,
+        cardEl: null,
+        originalEl: null,
+        pointerOffsetX: 0,
+        pointerOffsetY: 0,
+        startColumn: null,
+        startIndex: -1,
+        targetColumn: null,
+        targetIndex: -1,
+        placeholderEl: null,
+        pointerId: null,
+        rafId: null,
+        pendingX: 0,
+        pendingY: 0,
+        fromKeyboard: false
+      };
+    };
+
+    /* ========================================================
+       键盘操作
+       ======================================================== */
+
+    Kanban.prototype._onCardKeydown = function(e, cardEl) {
+      var cardId = cardEl.getAttribute('data-card-id');
+      if (!cardId) { return; }
+      var cardData = this._getCardData(cardId);
+      if (!cardData) { return; }
+
+      var colEl = cardEl.closest('.kb-column');
+      var colData = colEl ? this._getColumnData(colEl.getAttribute('data-column-id')) : null;
+
+      // 禁用列不响应
+      if (colData && colData.disabled) { return; }
+
+      if (!this._kbd.active) {
+        // 非拖拽模式
+        if (e.key === ' ' || e.key === 'Enter' || e.key === 'Spacebar') {
+          e.preventDefault();
+          this._startKeyboardDrag(cardEl);
+        }
+      } else {
+        // 键盘拖拽模式中
+        if (this._kbd.cardId !== cardId) {
+          // 焦点不在当前拖拽卡片上，不处理
+          return;
+        }
+
+        e.preventDefault();
+
+        switch (e.key) {
+          case 'ArrowLeft':
+            this._keyboardMoveColumn(-1);
+            break;
+          case 'ArrowRight':
+            this._keyboardMoveColumn(1);
+            break;
+          case 'ArrowUp':
+            this._keyboardMovePosition(-1);
+            break;
+          case 'ArrowDown':
+            this._keyboardMovePosition(1);
+            break;
+          case 'Enter':
+          case ' ':
+          case 'Spacebar':
+            this._endKeyboardDrag(false);
+            break;
+          case 'Escape':
+            this._endKeyboardDrag(true);
+            break;
+        }
+      }
+    };
+
+    Kanban.prototype._startKeyboardDrag = function(cardEl) {
+      var cardId = cardEl.getAttribute('data-card-id');
+      if (!cardId) { return; }
+
+      var colEl = cardEl.closest('.kb-column');
+      if (!colEl) { return; }
+      var columnId = colEl.getAttribute('data-column-id');
+      var index = this._getCardIndexInColumn(cardId, columnId);
+
+      // 获取卡片尺寸
+      var rect = cardEl.getBoundingClientRect();
+
+      // 创建占位符
+      var placeholder = document.createElement('div');
+      placeholder.className = 'kb-placeholder';
+      placeholder.style.height = '0px';
+      cardEl.parentNode.insertBefore(placeholder, cardEl);
+
+      requestAnimationFrame(function() {
+        placeholder.style.height = rect.height + 'px';
+      });
+
+      cardEl.classList.add('is-keyboard-lifted');
+      cardEl.setAttribute('aria-grabbed', 'true');
+
+      this._kbd = {
+        active: true,
+        cardId: cardId,
+        cardEl: cardEl,
+        startColumn: columnId,
+        startIndex: index,
+        targetColumn: columnId,
+        targetIndex: index,
+        placeholderEl: placeholder
+      };
+
+      // 高亮起始列
+      this._updateKeyboardColumnState();
+      this._showKeyboardHint();
+    };
+
+    Kanban.prototype._keyboardMoveColumn = function(direction) {
+      var kbd = this._kbd;
+      if (!kbd.active) { return; }
+
+      var currentIdx = -1;
+      for (var i = 0; i < this.columns.length; i++) {
+        if (this.columns[i].id === kbd.targetColumn) {
+          currentIdx = i;
+          break;
+        }
+      }
+
+      if (currentIdx < 0) { return; }
+
+      var nextIdx = currentIdx + direction;
+      // 边界检查
+      while (nextIdx >= 0 && nextIdx < this.columns.length) {
+        var nextCol = this.columns[nextIdx];
+        if (!nextCol.disabled) { break; }
+        nextIdx += direction;
+      }
+
+      if (nextIdx < 0 || nextIdx >= this.columns.length) { return; }
+      if (this.columns[nextIdx].disabled) { return; }
+
+      var targetColId = this.columns[nextIdx].id;
+      var targetColEl = this._getColumnEl(targetColId);
+      if (!targetColEl) { return; }
+
+      // 检查 WIP
+      var canDrop = this._canDropOnColumn(targetColId, kbd.startColumn);
+      if (!canDrop) {
+        // 拒收：抖动提示
+        if (kbd.cardEl) {
+          kbd.cardEl.classList.remove('is-shaking');
+          // 强制重绘
+          void kbd.cardEl.offsetWidth;
+          kbd.cardEl.classList.add('is-shaking');
+          var self = this;
+          setTimeout(function() {
+            if (kbd.cardEl) { kbd.cardEl.classList.remove('is-shaking'); }
+          }, 250);
+        }
+        return;
+      }
+
+      kbd.targetColumn = targetColId;
+
+      // 计算目标列的插入位置（取与当前索引相近的位置）
+      var targetCards = targetColEl.querySelectorAll('[data-cards] > .kb-card, [data-cards] > .kb-loading-card');
+      var targetIndex = Math.min(kbd.targetIndex, targetCards.length);
+      kbd.targetIndex = targetIndex;
+
+      // 移动占位符
+      this._movePlaceholderTo(kbd.targetColumn, kbd.targetIndex);
+      this._updateKeyboardColumnState();
+    };
+
+    Kanban.prototype._keyboardMovePosition = function(direction) {
+      var kbd = this._kbd;
+      if (!kbd.active) { return; }
+
+      var targetColEl = this._getColumnEl(kbd.targetColumn);
+      if (!targetColEl) { return; }
+
+      var targetCards = targetColEl.querySelectorAll('[data-cards] > .kb-card, [data-cards] > .kb-loading-card');
+      var newIndex = kbd.targetIndex + direction;
+
+      if (newIndex < 0) { return; }
+      if (newIndex > targetCards.length) { return; }
+
+      kbd.targetIndex = newIndex;
+      this._movePlaceholderTo(kbd.targetColumn, kbd.targetIndex);
+    };
+
+    Kanban.prototype._movePlaceholderTo = function(columnId, index) {
+      var kbd = this._kbd;
+      if (!kbd.placeholderEl) { return; }
+
+      var colEl = this._getColumnEl(columnId);
+      if (!colEl) { return; }
+      var cardsContainer = colEl.querySelector('[data-cards]');
+      if (!cardsContainer) { return; }
+
+      var cards = cardsContainer.querySelectorAll('.kb-card, .kb-loading-card');
+
+      if (index >= cards.length) {
+        cardsContainer.appendChild(kbd.placeholderEl);
+      } else if (cards[index]) {
+        cardsContainer.insertBefore(kbd.placeholderEl, cards[index]);
+      }
+    };
+
+    Kanban.prototype._updateKeyboardColumnState = function() {
+      var kbd = this._kbd;
+
+      var allCols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < allCols.length; i++) {
+        allCols[i].classList.remove('is-drag-over-allowed', 'is-drag-over-denied');
+      }
+
+      var targetColEl = this._getColumnEl(kbd.targetColumn);
+      if (targetColEl) {
+        targetColEl.classList.add('is-drag-over-allowed');
+      }
+    };
+
+    Kanban.prototype._endKeyboardDrag = function(canceled) {
+      var kbd = this._kbd;
+      if (!kbd.active) { return; }
+
+      var self = this;
+      var cardData = this._getCardData(kbd.cardId);
+
+      if (!canceled && cardData && (kbd.targetColumn !== kbd.startColumn || kbd.targetIndex !== kbd.startIndex)) {
+        // 成功放下
+        cardData.column = kbd.targetColumn;
+
+        // 移动 DOM
+        if (kbd.cardEl) {
+          var targetColEl = this._getColumnEl(kbd.targetColumn);
+          if (targetColEl) {
+            var targetContainer = targetColEl.querySelector('[data-cards]');
+            if (targetContainer) {
+              var cards = targetContainer.querySelectorAll('.kb-card, .kb-loading-card');
+              if (kbd.targetIndex >= cards.length) {
+                targetContainer.appendChild(kbd.cardEl);
+              } else if (cards[kbd.targetIndex]) {
+                targetContainer.insertBefore(kbd.cardEl, cards[kbd.targetIndex]);
+              }
+            }
+          }
+        }
+
+        if (this.onMove) {
+          try {
+            this.onMove(kbd.cardId, kbd.startColumn, kbd.targetColumn, kbd.targetIndex);
+          } catch (err) {}
+        }
+      } else if (canceled) {
+        // 取消：占位符已经在原位了（同列时），确保原位
+        // 什么都不做，占位符移除后卡片就在原位
+      }
+
+      // 移除占位符
+      if (kbd.placeholderEl && kbd.placeholderEl.parentNode) {
+        kbd.placeholderEl.style.height = '0px';
+        setTimeout(function() {
+          if (kbd.placeholderEl && kbd.placeholderEl.parentNode) {
+            kbd.placeholderEl.parentNode.removeChild(kbd.placeholderEl);
+          }
+        }, 150);
+      }
+
+      // 恢复卡片状态
+      if (kbd.cardEl) {
+        kbd.cardEl.classList.remove('is-keyboard-lifted');
+        kbd.cardEl.setAttribute('aria-grabbed', 'false');
+        try { kbd.cardEl.focus(); } catch (err) {}
+      }
+
+      // 清除列状态
+      var allCols = this.el.querySelectorAll('.kb-column');
+      for (var i = 0; i < allCols.length; i++) {
+        allCols[i].classList.remove('is-drag-over-allowed', 'is-drag-over-denied');
+      }
+
+      // 更新计数
+      this._updateCounts();
+      this._updateWipStates();
+
+      // 重置
+      this._kbd = {
+        active: false,
+        cardId: null,
+        cardEl: null,
+        startColumn: null,
+        startIndex: -1,
+        targetColumn: null,
+        targetIndex: -1,
+        placeholderEl: null
+      };
+
+      this._hideKeyboardHint();
+    };
+
+    /* ========================================================
+       加载状态 / 新增卡片
+       ======================================================== */
+
+    Kanban.prototype.addCard = function(cardData, targetColumnId) {
+      if (!cardData || !cardData.id) { return; }
+      if (!targetColumnId) { targetColumnId = this.columns[0] ? this.columns[0].id : null; }
+      if (!targetColumnId) { return; }
+
+      // 快速连点保护：如果正在加载，忽略
+      if (this._loading.active) { return; }
+
+      // WIP 检查
+      var colData = this._getColumnData(targetColumnId);
+      if (!colData || colData.disabled) { return; }
+      if (colData.wipLimit !== Infinity) {
+        var currentCount = this._getColumnCardCount(targetColumnId);
+        if (currentCount >= colData.wipLimit) { return; }
+      }
+
+      this._loading.active = true;
+      this._loading.cardId = cardData.id;
+
+      // 创建骨架卡片
+      var colEl = this._getColumnEl(targetColumnId);
+      if (!colEl) {
+        this._loading.active = false;
+        return;
+      }
+      var cardsContainer = colEl.querySelector('[data-cards]');
+      if (!cardsContainer) {
+        this._loading.active = false;
+        return;
+      }
+
+      var skeletonEl = document.createElement('div');
+      skeletonEl.className = 'kb-loading-card';
+      skeletonEl.setAttribute('data-loading-id', cardData.id);
+
+      var line1 = document.createElement('div');
+      line1.className = 'kb-loading-line title';
+      skeletonEl.appendChild(line1);
+
+      var metaRow = document.createElement('div');
+      metaRow.className = 'kb-loading-line meta-row';
+      var tag = document.createElement('div');
+      tag.className = 'kb-loading-tag';
+      var avatar = document.createElement('div');
+      avatar.className = 'kb-loading-avatar';
+      metaRow.appendChild(tag);
+      metaRow.appendChild(avatar);
+      skeletonEl.appendChild(metaRow);
+
+      cardsContainer.appendChild(skeletonEl);
+      this._updateCounts();
+      this._updateWipStates();
+
+      var self = this;
+      // 模拟加载（1200ms）
+      this._loading.timerId = setTimeout(function() {
+        if (!self._pageVisible) {
+          // 页面不可见时延后
+          self._loading.timerId = setTimeout(arguments.callee, 200);
+          return;
+        }
+
+        // 替换为真实卡片
+        cardData.column = targetColumnId;
+        self.cards.push(cardData);
+
+        var newCardEl = self._renderCard(cardData);
+        if (newCardEl && skeletonEl.parentNode) {
+          skeletonEl.parentNode.insertBefore(newCardEl, skeletonEl);
+        }
+        if (skeletonEl.parentNode) {
+          skeletonEl.parentNode.removeChild(skeletonEl);
+        }
+
+        self._updateCounts();
+        self._updateWipStates();
+
+        self._loading.active = false;
+        self._loading.timerId = null;
+        self._loading.cardId = null;
+
+        if (self.onAdd) {
+          try { self.onAdd(cardData); } catch (err) {}
+        }
+      }, 1200);
+    };
+
+    /* ========================================================
+       页面可见性管理
+       ======================================================== */
+
+    Kanban.prototype._onVisibilityChange = function() {
+      this._pageVisible = !document.hidden;
+
+      if (!this._pageVisible) {
+        // 页面隐藏：取消 rAF
+        if (this._drag.rafId) {
+          cancelAnimationFrame(this._drag.rafId);
+          this._drag.rafId = null;
+        }
+      }
+    };
+
+    /* ========================================================
+       键盘提示浮层
+       ======================================================== */
+
+    Kanban.prototype._showKeyboardHint = function() {
+      var hint = document.getElementById('kbHint');
+      if (hint) {
+        hint.classList.add('is-visible');
+        hint.setAttribute('aria-hidden', 'false');
+      }
+    };
+
+    Kanban.prototype._hideKeyboardHint = function() {
+      var hint = document.getElementById('kbHint');
+      if (hint) {
+        hint.classList.remove('is-visible');
+        hint.setAttribute('aria-hidden', 'true');
+      }
+    };
+
+    /* ========================================================
+       公共 API
+       ======================================================== */
+
+    Kanban.prototype.getState = function() {
+      return {
+        columns: JSON.parse(JSON.stringify(this.columns)),
+        cards: JSON.parse(JSON.stringify(this.cards))
+      };
+    };
+
+    Kanban.prototype.destroy = function() {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+      document.removeEventListener('pointermove', this._boundPointerMove);
+      document.removeEventListener('pointerup', this._boundPointerUp);
+      document.removeEventListener('pointercancel', this._boundPointerCancel);
+
+      if (this._loading.timerId) {
+        clearTimeout(this._loading.timerId);
+      }
+      if (this._drag.rafId) {
+        cancelAnimationFrame(this._drag.rafId);
+      }
+
+      this.el.innerHTML = '';
+    };
+
+    // 暴露到全局
+    window.Kanban = Kanban;
+
+  })();
+
+
+  /* ==========================================================
+     演示页面初始化
+     ========================================================== */
+  (function() {
+    'use strict';
+
+    var logEl = document.getElementById('statusLog');
+    var logCount = 0;
+
+    function addLog(text) {
+      if (!logEl) { return; }
+      logCount++;
+      var line = document.createElement('div');
+      line.className = 'status-log-line';
+      line.textContent = '[' + logCount + '] ' + text;
+      logEl.insertBefore(line, logEl.firstChild);
+      // 触发动画
+      requestAnimationFrame(function() {
+        line.classList.add('is-visible');
+      });
+      // 只保留最近 5 条
+      while (logEl.children.length > 5) {
+        logEl.removeChild(logEl.lastChild);
+      }
+    }
+
+    // 列配置
+    var columns = [
+      { id: 'ideation', title: '选题池', wipLimit: Infinity, disabled: false },
+      { id: 'writing', title: '撰稿中', wipLimit: 3, disabled: false },
+      { id: 'review', title: '审校', wipLimit: 2, disabled: false },
+      { id: 'layout', title: '排版', wipLimit: 2, disabled: false },
+      { id: 'published', title: '已发布', wipLimit: Infinity, disabled: true }
+    ];
+
+    // 卡片数据
+    var cards = [
+      { id: 'c1', title: '城市菜市场的消失与重生', column: 'ideation', tag: '深度', priority: 'high', assignee: '陈曦' },
+      { id: 'c2', title: '县城咖啡地图：第 4 次走访', column: 'ideation', tag: '专栏', priority: 'medium', assignee: '林野' },
+      { id: 'c3', title: 'AI 时代的独立书店生存录', column: 'ideation', tag: '深度', priority: 'low', assignee: '周牧' },
+      { id: 'c4', title: '一位古籍修复师的三十年', column: 'ideation', tag: '人物', priority: 'high', assignee: '苏婉' },
+
+      { id: 'c5', title: '东北小城的候鸟经济', column: 'writing', tag: '深度', priority: 'medium', assignee: '陈曦' },
+      { id: 'c6', title: '预制菜进餐桌，谁在买单？', column: 'writing', tag: '快讯', priority: 'high', assignee: '吴涛' },
+
+      { id: 'c7', title: '城市夜跑族观察', column: 'review', tag: '生活', priority: 'medium', assignee: '郑远' },
+      { id: 'c8', title: '老巷子里的新茶铺', column: 'review', tag: '视觉', priority: 'low', assignee: '苏婉' },
+
+      { id: 'c9', title: '地下乐队的夏天之后', column: 'layout', tag: '文化', priority: 'medium', assignee: '林野' },
+
+      { id: 'c10', title: '社区菜园：屋顶上的春天', column: 'published', tag: '生活', priority: 'low', assignee: '周牧' },
+      { id: 'c11', title: '小城青年返乡创业记', column: 'published', tag: '人物', priority: 'high', assignee: '吴涛' },
+      { id: 'c12', title: '方言保护，一场与时间的赛跑', column: 'published', tag: '深度', priority: 'medium', assignee: '郑远' }
+    ];
+
+    // 待新增的卡片池
+    var newCardPool = [
+      { title: '年轻人为何迷上 City Walk', tag: '生活', priority: 'medium', assignee: '陈曦' },
+      { title: '二手书店的数字化转型', tag: '深度', priority: 'low', assignee: '周牧' },
+      { title: '独立杂志的小众生意经', tag: '文化', priority: 'medium', assignee: '林野' },
+      { title: '播客时代的深度报道', tag: '快讯', priority: 'high', assignee: '吴涛' }
+    ];
+    var newCardIndex = 0;
+
+    // 初始化看板
+    var boardEl = document.getElementById('kanban');
+    var kanban = new Kanban(boardEl, {
+      columns: columns,
+      cards: cards,
+      onMove: function(cardId, fromCol, toCol, toIndex) {
+        var fromTitle = getColTitle(fromCol);
+        var toTitle = getColTitle(toCol);
+        var cardData = kanban._getCardData(cardId);
+        var cardTitle = cardData ? cardData.title : cardId;
+        addLog('移动："' + cardTitle + '" → ' + toTitle + '（第 ' + (toIndex + 1) + ' 位）');
+      },
+      onAdd: function(card) {
+        addLog('新增："' + card.title + '" → 选题池');
+      }
+    });
+
+    function getColTitle(colId) {
+      for (var i = 0; i < columns.length; i++) {
+        if (columns[i].id === colId) { return columns[i].title; }
+      }
+      return colId;
+    }
+
+    // 模拟新增按钮
+    var addBtn = document.getElementById('addCardBtn');
+    if (addBtn) {
+      addBtn.addEventListener('click', function() {
+        var cardData = newCardPool[newCardIndex % newCardPool.length];
+        newCardIndex++;
+        var newId = 'new-' + Date.now();
+        kanban.addCard({
+          id: newId,
+          title: cardData.title,
+          tag: cardData.tag,
+          priority: cardData.priority,
+          assignee: cardData.assignee
+        }, 'ideation');
+      });
+    }
+
+    // 暴露 kanban 实例方便调试
+    window.__kanban = kanban;
+
+  })();
+  </script>
+</body>
+</html>
