@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>老式缝纫机踏板 · 交互组件</title>
+<style>
+  :root {
+    --iron: #23262b;
+    --iron-light: #2e3238;
+    --iron-dark: #17191c;
+    --brass: #b08a3e;
+    --brass-light: #c9a257;
+    --brass-dark: #8a6c2c;
+    --wood: #6b4a32;
+    --wood-light: #8a5f40;
+    --wood-dark: #4a3221;
+    --vermilion: #c63d2f;
+    --vermilion-dark: #9e2f24;
+    --fabric: #e6dcc8;
+    --fabric-dark: #cfc5af;
+    --bg: #3d2f24;
+    --bg-light: #4d3a2c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: #e6dcc8;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Custom cursor - thimble */
+  .cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 32px;
+    height: 32px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.06s ease-out;
+    will-change: transform;
+  }
+  .cursor.pressing {
+    transform: translate(-50%, -40%) scaleY(0.75);
+  }
+  .cursor svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 30%, #5a4535 0%, var(--bg) 60%, #2a1f17 100%);
+    cursor: none;
+  }
+
+  .machine-wrapper {
+    position: relative;
+    width: min(95vw, 960px);
+    aspect-ratio: 9 / 6.5;
+  }
+
+  .machine-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* UI overlay */
+  .ui-top {
+    position: absolute;
+    top: 6%;
+    left: 6%;
+    right: 6%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .hint {
+    font-size: clamp(12px, 1.6vw, 16px);
+    color: #c9b99a;
+    opacity: 0.8;
+    letter-spacing: 0.05em;
+  }
+  .hint strong {
+    color: var(--vermilion);
+    font-weight: 600;
+  }
+  .stitch-counter {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .stitch-counter .num {
+    font-size: clamp(24px, 4vw, 42px);
+    font-weight: 700;
+    color: var(--vermilion);
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }
+  .stitch-counter .label {
+    font-size: clamp(10px, 1.2vw, 13px);
+    color: #9a8a70;
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+  }
+
+  .sewing-indicator {
+    position: absolute;
+    bottom: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .sewing-indicator .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--iron-light);
+    opacity: 0.4;
+    transition: all 0.15s;
+  }
+  .sewing-indicator.sewing .dot {
+    background: var(--vermilion);
+    opacity: 1;
+    animation: dotBlink 0.2s ease-in-out infinite alternate;
+  }
+  .sewing-indicator.sewing .dot:nth-child(2) { animation-delay: 0.07s; }
+  .sewing-indicator.sewing .dot:nth-child(3) { animation-delay: 0.14s; }
+  @keyframes dotBlink {
+    from { transform: scale(1); opacity: 0.5; }
+    to { transform: scale(1.3); opacity: 1; }
+  }
+
+  /* Reduced motion fallback */
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { display: none; }
+    .stage { cursor: default; }
+    .sewing-indicator.sewing .dot { animation: none; }
+  }
+
+  /* Shake effect for contact feedback */
+  .shake {
+    animation: frameShake 0.08s ease-out;
+  }
+  @keyframes frameShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-1.5px); }
+    75% { transform: translateX(1.5px); }
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+  <!-- Custom cursor -->
+  <div class="cursor" id="cursor">
+    <svg viewBox="0 0 32 32">
+      <defs>
+        <radialGradient id="thimbleGrad" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#d4a86b"/>
+          <stop offset="60%" stop-color="#b08a3e"/>
+          <stop offset="100%" stop-color="#7a6028"/>
+        </radialGradient>
+      </defs>
+      <!-- Thimble body -->
+      <ellipse cx="16" cy="17" rx="10" ry="11" fill="url(#thimbleGrad)" stroke="#6a5220" stroke-width="1"/>
+      <!-- Top rim -->
+      <ellipse cx="16" cy="8" rx="10" ry="3.5" fill="#c9a257" stroke="#6a5220" stroke-width="1"/>
+      <!-- Dimple pattern -->
+      <circle cx="12" cy="14" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="16" cy="13" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="20" cy="14" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="11" cy="18" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="16" cy="17.5" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="21" cy="18" r="0.8" fill="#6a5220" opacity="0.6"/>
+      <circle cx="13" cy="22" r="0.8" fill="#6a5220" opacity="0.5"/>
+      <circle cx="19" cy="22" r="0.8" fill="#6a5220" opacity="0.5"/>
+      <!-- Point at bottom -->
+      <path d="M13 26 Q16 29 19 26" fill="none" stroke="#8a6c2c" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <div class="machine-wrapper" id="wrapper">
+    <div class="ui-top">
+      <div class="hint">按住<strong>向下拖动</strong>踏板 · 踩动飞轮</div>
+      <div class="stitch-counter">
+        <div class="num" id="stitchNum">0</div>
+        <div class="label">已缝针数</div>
+      </div>
+    </div>
+
+    <svg class="machine-svg" id="machine" viewBox="0 0 900 650" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <!-- Wood texture gradient -->
+        <linearGradient id="woodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7a5540"/>
+          <stop offset="40%" stop-color="#6b4a32"/>
+          <stop offset="100%" stop-color="#4d3522"/>
+        </linearGradient>
+        <linearGradient id="woodSideGrad" x1="100%" y1="0%" x2="0%" y2="0%">
+          <stop offset="0%" stop-color="#5a3d28"/>
+          <stop offset="50%" stop-color="#6b4a32"/>
+          <stop offset="100%" stop-color="#8a5f40"/>
+        </linearGradient>
+        <!-- Cast iron gradient -->
+        <linearGradient id="ironGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#3a3e45"/>
+          <stop offset="30%" stop-color="#292d33"/>
+          <stop offset="70%" stop-color="#1e2126"/>
+          <stop offset="100%" stop-color="#141619"/>
+        </linearGradient>
+        <radialGradient id="ironRound" cx="35%" cy="30%" r="75%">
+          <stop offset="0%" stop-color="#3a3e45"/>
+          <stop offset="60%" stop-color="#23262b"/>
+          <stop offset="100%" stop-color="#0d0f11"/>
+        </radialGradient>
+        <!-- Brass gradient -->
+        <linearGradient id="brassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#d4a86b"/>
+          <stop offset="50%" stop-color="#b08a3e"/>
+          <stop offset="100%" stop-color="#7a6028"/>
+        </linearGradient>
+        <radialGradient id="brassRound" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#e0b978"/>
+          <stop offset="55%" stop-color="#b08a3e"/>
+          <stop offset="100%" stop-color="#6a5220"/>
+        </radialGradient>
+        <!-- Vermilion thread gradient -->
+        <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e0523f"/>
+          <stop offset="50%" stop-color="#c63d2f"/>
+          <stop offset="100%" stop-color="#8a281d"/>
+        </linearGradient>
+        <!-- Fabric gradient -->
+        <linearGradient id="fabricGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#eee5d0"/>
+          <stop offset="100%" stop-color="#d6ccb6"/>
+        </linearGradient>
+        <!-- Belt gradient -->
+        <linearGradient id="beltGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#3a2a1e"/>
+          <stop offset="50%" stop-color="#1f1510"/>
+          <stop offset="100%" stop-color="#3a2a1e"/>
+        </linearGradient>
+        <!-- Shadow -->
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.3"/>
+        </filter>
+        <!-- Wood grain pattern -->
+        <pattern id="woodGrain" patternUnits="userSpaceOnUse" width="100" height="8" patternTransform="rotate(0)">
+          <rect width="100" height="8" fill="transparent"/>
+          <line x1="0" y1="1" x2="100" y2="1" stroke="#4d3522" stroke-width="0.5" opacity="0.3"/>
+          <line x1="0" y1="5" x2="100" y2="5" stroke="#8a5f40" stroke-width="0.3" opacity="0.25"/>
+          <line x1="0" y1="7" x2="100" y2="7" stroke="#4d3522" stroke-width="0.3" opacity="0.2"/>
+        </pattern>
+        <!-- Fabric weave pattern -->
+        <pattern id="fabricWeave" patternUnits="userSpaceOnUse" width="4" height="4">
+          <rect width="4" height="4" fill="transparent"/>
+          <line x1="0" y1="0" x2="4" y2="0" stroke="#cfc5af" stroke-width="0.3" opacity="0.4"/>
+          <line x1="0" y1="2" x2="4" y2="2" stroke="#cfc5af" stroke-width="0.3" opacity="0.4"/>
+          <line x1="0" y1="0" x2="0" y2="4" stroke="#d8ceb8" stroke-width="0.3" opacity="0.3"/>
+          <line x1="2" y1="0" x2="2" y2="4" stroke="#d8ceb8" stroke-width="0.3" opacity="0.3"/>
+        </pattern>
+        <!-- Cast iron texture -->
+        <pattern id="ironTexture" patternUnits="userSpaceOnUse" width="8" height="8">
+          <rect width="8" height="8" fill="transparent"/>
+          <circle cx="2" cy="2" r="0.5" fill="#1a1c1f" opacity="0.4"/>
+          <circle cx="6" cy="5" r="0.4" fill="#3a3e45" opacity="0.3"/>
+          <circle cx="4" cy="7" r="0.3" fill="#1a1c1f" opacity="0.3"/>
+        </pattern>
+        <!-- Clip for needle area / fabric region -->
+        <clipPath id="fabricClip">
+          <rect x="120" y="230" width="320" height="36"/>
+        </clipPath>
+      </defs>
+
+      <!-- Background shadow under machine -->
+      <ellipse cx="450" cy="610" rx="320" ry="18" fill="#000" opacity="0.3"/>
+
+      <!-- ===== CAST IRON BASE / CABINET ===== -->
+      <g id="baseFrame">
+        <!-- Left leg -->
+        <path d="M160 254 L140 600 L180 600 L192 254 Z" fill="url(#ironGrad)"/>
+        <path d="M160 254 L176 254 L170 600 L180 600 L192 254 L160 254" fill="url(#ironTexture)" opacity="0.5"/>
+        <!-- Right leg -->
+        <path d="M740 254 L720 600 L760 600 L772 254 Z" fill="url(#ironGrad)"/>
+        <path d="M740 254 L756 254 L750 600 L760 600 L772 254 L740 254" fill="url(#ironTexture)" opacity="0.5"/>
+        <!-- Bottom cross bar -->
+        <rect x="140" y="590" width="620" height="16" rx="3" fill="url(#ironGrad)"/>
+        <!-- Middle cross bar (decorative) -->
+        <rect x="170" y="420" width="560" height="10" rx="2" fill="url(#ironGrad)"/>
+        <!-- Cast iron scrollwork left -->
+        <path d="M180 320 Q200 310 210 330 Q200 350 180 345" fill="none" stroke="#3a3e45" stroke-width="3" stroke-linecap="round"/>
+        <path d="M180 370 Q200 360 210 380 Q200 400 180 395" fill="none" stroke="#3a3e45" stroke-width="3" stroke-linecap="round"/>
+        <!-- Cast iron scrollwork right -->
+        <path d="M720 320 Q700 310 690 330 Q700 350 720 345" fill="none" stroke="#3a3e45" stroke-width="3" stroke-linecap="round"/>
+        <path d="M720 370 Q700 360 690 380 Q700 400 720 395" fill="none" stroke="#3a3e45" stroke-width="3" stroke-linecap="round"/>
+        <!-- Bolt heads -->
+        <circle cx="172" cy="270" r="4" fill="#3a3e45" stroke="#141619" stroke-width="1"/>
+        <circle cx="748" cy="270" r="4" fill="#3a3e45" stroke="#141619" stroke-width="1"/>
+        <circle cx="155" cy="595" r="3.5" fill="#3a3e45" stroke="#141619" stroke-width="1"/>
+        <circle cx="745" cy="595" r="3.5" fill="#3a3e45" stroke="#141619" stroke-width="1"/>
+      </g>
+
+      <!-- ===== LOWER CRANK WHEEL ===== -->
+      <g id="lowerWheelWrap">
+        <g id="lowerWheel" transform="translate(390, 420)">
+          <!-- Wheel body -->
+          <circle r="55" fill="url(#ironRound)" stroke="#141619" stroke-width="2"/>
+          <!-- Inner ring -->
+          <circle r="42" fill="none" stroke="#3a3e45" stroke-width="2"/>
+          <!-- Spokes -->
+          <line x1="0" y1="-42" x2="0" y2="42" stroke="#2e3238" stroke-width="3"/>
+          <line x1="-42" y1="0" x2="42" y2="0" stroke="#2e3238" stroke-width="3"/>
+          <line x1="-30" y1="-30" x2="30" y2="30" stroke="#2e3238" stroke-width="2" opacity="0.5"/>
+          <line x1="-30" y1="30" x2="30" y2="-30" stroke="#2e3238" stroke-width="2" opacity="0.5"/>
+          <!-- Center hub -->
+          <circle r="10" fill="#1a1c1f" stroke="#3a3e45" stroke-width="1.5"/>
+          <circle r="4" fill="#0d0f11"/>
+          <!-- Crank pin -->
+          <g id="lowerCrankPin">
+            <circle r="6" fill="url(#brassRound)" stroke="#6a5220" stroke-width="1"/>
+            <circle r="2.5" fill="#6a5220"/>
+          </g>
+          <!-- Belt groove -->
+          <circle r="52" fill="none" stroke="#1a1c1f" stroke-width="4"/>
+          <circle r="52" fill="none" stroke="#0d0f11" stroke-width="1.5"/>
+        </g>
+      </g>
+
+      <!-- ===== BELT (behind upper wheel visual) ===== -->
+      <g id="beltGroup" opacity="0.9">
+        <!-- Belt path - drawn dynamically -->
+        <path id="beltPath" d="" fill="none" stroke="url(#beltGrad)" stroke-width="5" stroke-linecap="round"/>
+        <path id="beltPath2" d="" fill="none" stroke="#4a3828" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+      </g>
+
+      <!-- ===== WOODEN TABLE TOP ===== -->
+      <g id="tableTop">
+        <!-- Table surface -->
+        <rect x="110" y="228" width="680" height="28" rx="2" fill="url(#woodGrad)"/>
+        <rect x="110" y="228" width="680" height="28" fill="url(#woodGrain)" opacity="0.6"/>
+        <!-- Table front edge -->
+        <rect x="110" y="250" width="680" height="12" rx="1" fill="#4d3522"/>
+        <!-- Side aprons -->
+        <rect x="110" y="254" width="14" height="30" fill="#3d2818"/>
+        <rect x="776" y="254" width="14" height="30" fill="#3d2818"/>
+        <!-- Needle hole in table -->
+        <ellipse cx="220" cy="242" rx="8" ry="4" fill="#1a1c1f"/>
+        <!-- Throat plate -->
+        <rect x="208" y="237" width="24" height="10" rx="1" fill="#2e3238" stroke="#141619" stroke-width="0.8"/>
+        <line x1="220" y1="237" x2="220" y2="247" stroke="#1a1c1f" stroke-width="1"/>
+        <!-- Table edge highlight -->
+        <rect x="110" y="228" width="680" height="2" fill="#8a5f40" opacity="0.5"/>
+      </g>
+
+      <!-- ===== FABRIC ON TABLE ===== -->
+      <g id="fabricGroup" clip-path="url(#fabricClip)">
+        <!-- Fabric piece -->
+        <rect id="fabricPiece" x="120" y="232" width="320" height="32" fill="url(#fabricGrad)"/>
+        <rect x="120" y="232" width="320" height="32" fill="url(#fabricWeave)" opacity="0.7"/>
+        <!-- Stitches container (inside clip, y relative to fabric top) -->
+        <g id="stitches"></g>
+        <!-- Fabric edge shadow -->
+        <rect x="120" y="232" width="2" height="32" fill="#000" opacity="0.15"/>
+        <rect x="438" y="232" width="2" height="32" fill="#000" opacity="0.1"/>
+      </g>
+
+      <!-- ===== UPPER FLYWHEEL / HANDWHEEL ===== -->
+      <g id="flywheelWrap">
+        <g id="flywheel" transform="translate(680, 160)">
+          <!-- Outer rim -->
+          <circle r="72" fill="url(#ironRound)" stroke="#141619" stroke-width="2"/>
+          <!-- Rim thickness -->
+          <circle r="72" fill="none" stroke="#3a3e45" stroke-width="6" opacity="0.4"/>
+          <!-- Inner edge -->
+          <circle r="60" fill="none" stroke="#2e3238" stroke-width="2"/>
+          <!-- Spokes -->
+          <g id="spokes">
+            <line x1="0" y1="-60" x2="0" y2="60" stroke="#292d33" stroke-width="4"/>
+            <line x1="-60" y1="0" x2="60" y2="0" stroke="#292d33" stroke-width="4"/>
+            <line x1="-42" y1="-42" x2="42" y2="42" stroke="#292d33" stroke-width="3" opacity="0.7"/>
+            <line x1="-42" y1="42" x2="42" y2="-42" stroke="#292d33" stroke-width="3" opacity="0.7"/>
+          </g>
+          <!-- Center hub with brass -->
+          <circle r="18" fill="#1a1c1f" stroke="#3a3e45" stroke-width="2"/>
+          <circle r="12" fill="url(#brassRound)" stroke="#6a5220" stroke-width="1"/>
+          <circle r="5" fill="#6a5220"/>
+          <!-- Belt groove -->
+          <circle r="68" fill="none" stroke="#0d0f11" stroke-width="3"/>
+          <circle r="68" fill="none" stroke="#1a1c1f" stroke-width="1"/>
+          <!-- Balance mark -->
+          <circle cx="0" cy="-50" r="3" fill="#b08a3e" opacity="0.8"/>
+        </g>
+      </g>
+
+      <!-- ===== SEWING MACHINE HEAD ===== -->
+      <g id="machineHead" filter="url(#softShadow)">
+        <!-- Main body base on table -->
+        <path d="M420 228 L620 228 L610 175 Q600 155 580 150 L480 145 Q440 140 430 160 L420 228 Z"
+              fill="url(#ironGrad)"/>
+        <path d="M420 228 L620 228 L610 175 Q600 155 580 150 L480 145 Q440 140 430 160 L420 228 Z"
+              fill="url(#ironTexture)" opacity="0.4"/>
+
+        <!-- Arm extending left -->
+        <path d="M430 160 Q360 150 280 160 Q240 165 225 180 L220 200 Q230 195 270 192 Q350 188 410 195 L420 228 L428 165 Z"
+              fill="url(#ironGrad)"/>
+        <path d="M430 160 Q360 150 280 160 Q240 165 225 180 L220 200 Q230 195 270 192 Q350 188 410 195 L420 228 L428 165 Z"
+              fill="url(#ironTexture)" opacity="0.35"/>
+
+        <!-- Needle bar housing -->
+        <rect x="212" y="175" width="18" height="55" rx="2" fill="#1e2126" stroke="#141619" stroke-width="1"/>
+        <rect x="212" y="175" width="18" height="55" rx="2" fill="url(#ironTexture)" opacity="0.5"/>
+
+        <!-- Needle bar (moves up/down) -->
+        <g id="needleBar">
+          <rect x="217" y="185" width="8" height="30" rx="1" fill="#2e3238" stroke="#141619" stroke-width="0.5"/>
+          <!-- Needle clamp -->
+          <rect x="214" y="212" width="14" height="8" rx="1" fill="#1a1c1f"/>
+          <circle cx="221" cy="216" r="2" fill="#b08a3e"/>
+          <!-- Needle -->
+          <line id="needle" x1="221" y1="220" x2="221" y2="248" stroke="#d0d4d9" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Needle eye -->
+          <ellipse cx="221" cy="244" rx="1.5" ry="2.5" fill="none" stroke="#888" stroke-width="0.5"/>
+        </g>
+
+        <!-- Presser foot -->
+        <g id="presserFoot">
+          <line x1="230" y1="205" x2="235" y2="225" stroke="#2e3238" stroke-width="2"/>
+          <path d="M228 225 L242 225 L240 232 L230 232 Z" fill="#2e3238" stroke="#141619" stroke-width="0.8"/>
+        </g>
+
+        <!-- Thread spool on top -->
+        <g id="spool" transform="translate(360, 130)">
+          <!-- Spool pin -->
+          <rect x="-1" y="-5" width="2" height="12" fill="#2e3238"/>
+          <!-- Spool body -->
+          <ellipse cx="0" cy="0" rx="12" ry="4" fill="url(#brassRound)" stroke="#6a5220" stroke-width="0.8"/>
+          <rect x="-12" y="-4" width="24" height="8" fill="url(#brassGrad)"/>
+          <ellipse cx="0" cy="4" rx="12" ry="4" fill="#8a6c2c" stroke="#6a5220" stroke-width="0.8"/>
+          <!-- Thread on spool -->
+          <ellipse cx="0" cy="-1" rx="9" ry="2.5" fill="#c63d2f" opacity="0.9"/>
+          <path d="M-9 -1 Q0 -4 9 -1" fill="none" stroke="#e0523f" stroke-width="0.5" opacity="0.6"/>
+          <ellipse cx="0" cy="-0.5" rx="8" ry="2" fill="#c63d2f" opacity="0.7"/>
+          <ellipse cx="0" cy="0" rx="7" ry="1.5" fill="#c63d2f" opacity="0.5"/>
+          <!-- Center hole -->
+          <ellipse cx="0" cy="-0.5" rx="2" ry="0.7" fill="#3d2818"/>
+        </g>
+
+        <!-- Thread path (from spool to needle) -->
+        <path id="threadPath"
+              d="M360 133 Q350 145 340 155 Q320 170 290 175 Q260 180 240 185 Q228 190 225 200"
+              fill="none" stroke="url(#threadGrad)" stroke-width="1.2" stroke-linecap="round"/>
+        <!-- Thread tension disc -->
+        <circle cx="295" cy="172" r="4" fill="#b08a3e" stroke="#6a5220" stroke-width="0.8"/>
+        <circle cx="295" cy="172" r="1.5" fill="#6a5220"/>
+
+        <!-- Brass nameplate -->
+        <g transform="translate(490, 190)">
+          <rect x="0" y="0" width="70" height="20" rx="1" fill="url(#brassGrad)" stroke="#6a5220" stroke-width="0.8"/>
+          <line x1="2" y1="2" x2="68" y2="2" stroke="#d4a86b" stroke-width="0.5" opacity="0.6"/>
+          <text x="35" y="14" text-anchor="middle" font-size="9" font-weight="700" fill="#5a4218" letter-spacing="1.5" style="font-family: serif;">FLYING</text>
+        </g>
+
+        <!-- Decorative bolts on head -->
+        <circle cx="500" cy="168" r="3" fill="#3a3e45" stroke="#141619" stroke-width="0.5"/>
+        <circle cx="440" cy="210" r="3" fill="#3a3e45" stroke="#141619" stroke-width="0.5"/>
+        <circle cx="590" cy="180" r="3" fill="#3a3e45" stroke="#141619" stroke-width="0.5"/>
+      </g>
+
+      <!-- ===== PEDAL ===== -->
+      <g id="pedalGroup">
+        <!-- Hinge bracket on right leg -->
+        <rect x="545" y="525" width="30" height="12" rx="2" fill="url(#ironGrad)"/>
+        <circle cx="560" cy="531" r="4.5" fill="#1a1c1f" stroke="#3a3e45" stroke-width="1"/>
+
+        <!-- Pedal (wooden treadle) -->
+        <g id="pedal">
+          <!-- The pedal rotates around hinge point (560, 531) -->
+          <g id="pedalRotator" transform="rotate(13.8)">
+            <!-- Pedal body - wood -->
+            <rect x="-320" y="-8" width="310" height="16" rx="3" fill="url(#woodGrad)" stroke="#3d2818" stroke-width="1"/>
+            <rect x="-320" y="-8" width="310" height="16" rx="3" fill="url(#woodGrain)" opacity="0.6"/>
+            <!-- Top surface highlight -->
+            <rect x="-318" y="-7" width="306" height="2" fill="#8a5f40" opacity="0.5"/>
+            <!-- Front end cap -->
+            <path d="M-320 -8 L-326 -6 L-326 6 L-320 8 Z" fill="#4d3522"/>
+            <!-- Metal end plate -->
+            <rect x="-22" y="-9" width="14" height="18" rx="1" fill="#2e3238" stroke="#141619" stroke-width="0.8"/>
+            <!-- Connection point for connecting rod -->
+            <circle id="pedalConnection" cx="-200" cy="0" r="5" fill="#1a1c1f" stroke="#3a3e45" stroke-width="1.2"/>
+            <circle cx="-200" cy="0" r="2" fill="#b08a3e"/>
+            <!-- Decorative ridges on pedal -->
+            <line x1="-300" y1="-5" x2="-50" y2="-5" stroke="#4d3522" stroke-width="0.5" opacity="0.6"/>
+            <line x1="-300" y1="3" x2="-50" y2="3" stroke="#4d3522" stroke-width="0.5" opacity="0.6"/>
+            <!-- Non-slip texture dots -->
+            <g opacity="0.4">
+              <circle cx="-290" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-270" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-250" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-230" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-210" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-180" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-150" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-120" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-80" cy="-3" r="0.8" fill="#3d2818"/>
+              <circle cx="-50" cy="-3" r="0.8" fill="#3d2818"/>
+            </g>
+          </g>
+        </g>
+
+        <!-- Pedal shadow -->
+        <ellipse cx="400" cy="580" rx="100" ry="6" fill="#000" opacity="0.25"/>
+      </g>
+
+      <!-- ===== CONNECTING ROD (PITMAN ARM) ===== -->
+      <g id="connectingRod">
+        <!-- Rod body -->
+        <line id="rodLine" x1="0" y1="0" x2="0" y2="0" stroke="#2e3238" stroke-width="7" stroke-linecap="round"/>
+        <line id="rodHighlight" x1="0" y1="0" x2="0" y2="0" stroke="#4a4e55" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        <!-- Top eye (at crank pin) -->
+        <circle id="rodTopEye" cx="0" cy="0" r="7" fill="#23262b" stroke="#3a3e45" stroke-width="1.2"/>
+        <!-- Bottom eye (at pedal) -->
+        <circle id="rodBottomEye" cx="0" cy="0" r="6" fill="#23262b" stroke="#3a3e45" stroke-width="1.2"/>
+      </g>
+
+      <!-- ===== FEED DOG (under fabric, subtle) ===== -->
+      <g id="feedDog" opacity="0.5">
+        <rect x="215" y="247" width="12" height="3" rx="1" fill="#2e3238"/>
+      </g>
+    </svg>
+
+    <div class="sewing-indicator" id="sewIndicator">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== CONFIGURATION =====
+  const CFG = {
+    // Geometry (crank-slider / treadle mechanism)
+    crankCenterX: 390,   // crank wheel center X
+    crankCenterY: 420,   // crank wheel center Y
+    crankRadius: 50,     // crank throw (larger = more pedal swing)
+    pedalHingeX: 560,    // pedal hinge pivot (right side)
+    pedalHingeY: 531,
+    pedalConnDist: 200,  // distance from hinge to connection point on pedal
+    connectingRodLen: 210, // pitman arm length
+    restPedalAngle: 0.24, // radians (~13.8°) - idle tilt at crank top (θ=0)
+    pedalMinAngle: 0.20,  // minimum (highest) ~11.5° (slight lift above rest)
+    pedalMaxAngle: 0.88,  // maximum (lowest) ~50° (bottom of stroke)
+
+    // Flywheel
+    flywheelCenterX: 680,
+    flywheelCenterY: 160,
+    flywheelRadius: 68, // belt radius
+
+    // Physics
+    inertia: 0.8,       // moment of inertia - higher = heavier feel
+    friction: 0.40,     // damping coefficient (per-second exponential decay)
+    staticFriction: 0.7, // extra friction at very low speed (crawl stop)
+    pushGain: 90,       // energy input gain from pedal press
+    pedalSpring: 10,    // pedal return spring strength (per second)
+    squishFactor: 0.25, // visual deformation amount when pressing (elastic feel)
+    sewingThreshold: 4.5, // rad/s - threshold for steady sewing
+    maxVelocity: 18,    // max flywheel speed cap (prevents runaway)
+    feedPerStitch: 5,   // pixels of fabric feed per stitch
+
+    // Stitching
+    needleTravel: 28,   // how far needle moves
+    needleTopY: 185,    // top position of needle bar
+    fabricY: 242,       // fabric surface Y
+    feedPerStitch: 7,   // pixels of fabric feed per stitch
+    maxStitches: 60,    // max visible stitches
+  };
+
+  // ===== STATE =====
+  const state = {
+    flywheelAngle: 0,       // radians, 0 = crank at top
+    flywheelVelocity: 0,    // rad/s, positive = clockwise
+    pedalAngle: CFG.restPedalAngle,
+    pedalTargetAngle: CFG.restPedalAngle,
+    needleY: CFG.needleTopY,
+    stitchCount: 0,
+    halfTurns: 0,       // cumulative floor(flywheelAngle / π) — for stitch detection
+    fabricOffset: 0,
+    pressStartY: 0,     // cursor Y when press started
+    isPressing: false,
+    isHoveringPedal: false,
+    cursorX: window.innerWidth / 2,
+    cursorY: window.innerHeight / 2,
+    lastTime: 0,
+    running: true,
+    visible: true,
+    reducedMotion: false,
+    sewing: false,
+    shakeUntil: 0,
+  };
+
+  // ===== DOM REFERENCES =====
+  const $ = id => document.getElementById(id);
+  const els = {
+    stage: $('stage'),
+    cursor: $('cursor'),
+    wrapper: $('wrapper'),
+    machine: $('machine'),
+    pedalRotator: $('pedalRotator'),
+    flywheel: $('flywheel'),
+    lowerWheel: $('lowerWheel'),
+    lowerCrankPin: $('lowerCrankPin'),
+    needleBar: $('needleBar'),
+    needle: $('needle'),
+    threadPath: $('threadPath'),
+    beltPath: $('beltPath'),
+    beltPath2: $('beltPath2'),
+    rodLine: $('rodLine'),
+    rodHighlight: $('rodHighlight'),
+    rodTopEye: $('rodTopEye'),
+    rodBottomEye: $('rodBottomEye'),
+    stitches: $('stitches'),
+    stitchNum: $('stitchNum'),
+    sewIndicator: $('sewIndicator'),
+    pedalGroup: $('pedalGroup'),
+    fabricPiece: $('fabricPiece'),
+    feedDog: $('feedDog'),
+    baseFrame: $('baseFrame'),
+    tableTop: $('tableTop'),
+    machineHead: $('machineHead'),
+  };
+
+  // ===== UTILITY =====
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // Solve pedal angle given flywheel (crank) angle
+  // Crank at angle θ: pin at (cx + r*sinθ, cy - r*cosθ) [θ=0 at top, +clockwise]
+  // Pedal hinge at (hx, hy), connection point at distance PD along pedal at angle φ
+  // φ=0 is horizontal left from hinge, +clockwise
+  // Connection point: (hx - PD*cosφ, hy + PD*sinφ)
+  // Distance from connection to crank pin = CL (connecting rod length)
+  function solvePedalAngle(theta) {
+    const cx = CFG.crankCenterX;
+    const cy = CFG.crankCenterY;
+    const r = CFG.crankRadius;
+    const hx = CFG.pedalHingeX;
+    const hy = CFG.pedalHingeY;
+    const pd = CFG.pedalConnDist;
+    const cl = CFG.connectingRodLen;
+
+    // Crank pin position
+    const px = cx + r * Math.sin(theta);
+    const py = cy - r * Math.cos(theta);
+
+    // Two-circle intersection
+    const dx = hx - px;
+    const dy = hy - py;
+
+    // Equation: A*cosφ + B*sinφ + C = 0
+    const A = -2 * dx * pd;
+    const B = 2 * dy * pd;
+    const C = dx * dx + dy * dy + pd * pd - cl * cl;
+
+    const R = Math.sqrt(A * A + B * B);
+    if (R < 0.001) return CFG.restPedalAngle;
+
+    const cosVal = -C / R;
+    if (cosVal > 1) return CFG.restPedalAngle;
+    if (cosVal < -1) return CFG.pedalMaxAngle;
+
+    const delta = Math.atan2(B, A);
+    const acosVal = Math.acos(cosVal);
+
+    // Two solutions: delta + acosVal (sol1, upper/steep), delta - acosVal (sol2, lower/gentle)
+    // We always want sol2: the pedal configuration where the connection point is
+    // below the line from hinge to crank center (pedal swings below, realistic treadle)
+    const sol2 = delta - acosVal;
+
+    // Normalize to [-PI, PI]
+    let phi = sol2;
+    while (phi > Math.PI) phi -= Math.PI * 2;
+    while (phi < -Math.PI) phi += Math.PI * 2;
+
+    // Safety clamp to physically reasonable range
+    return clamp(phi, CFG.pedalMinAngle - 0.1, CFG.pedalMaxAngle + 0.1);
+  }
+
+  // Compute leverage factor (mechanical advantage) at current crank angle
+  // Max in mid-stroke, zero at dead centers (top/bottom)
+  function getLeverage(theta) {
+    // leverage is proportional to sin(theta) on the downstroke
+    // but we want smooth transitions, not hard zero at dead centers
+    const s = Math.sin(theta);
+    // Add a small floor so there's always some drive near dead centers
+    return Math.max(0, s) * 0.9 + 0.1 * Math.max(0, s);
+  }
+
+  // ===== SVG COORDINATE MAPPING =====
+  function getSvgPoint(clientX, clientY) {
+    const svg = els.machine;
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const x = (clientX - rect.left) / rect.width * vb.width;
+    const y = (clientY - rect.top) / rect.height * vb.height;
+    return { x, y };
+  }
+
+  function getClientFromSvg(svgX, svgY) {
+    const svg = els.machine;
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const x = rect.left + (svgX / vb.width) * rect.width;
+    const y = rect.top + (svgY / vb.height) * rect.height;
+    return { x, y };
+  }
+
+  // ===== CURSOR HANDLING =====
+  function updateCursor() {
+    if (state.reducedMotion) return;
+    els.cursor.style.left = state.cursorX + 'px';
+    els.cursor.style.top = state.cursorY + 'px';
+  }
+
+  function setCursorPressing(pressing) {
+    if (pressing) {
+      els.cursor.classList.add('pressing');
+    } else {
+      els.cursor.classList.remove('pressing');
+    }
+  }
+
+  // ===== PEDAL HIT TEST =====
+  function isOverPedal(svgX, svgY) {
+    // Pedal is a rotated rectangle. Approximate with bounding area check.
+    // Pedal hinge at (560, 531), extends left 320px, width ~16px, rotated by pedalAngle
+    // Simplified: check if point is within a generous area around the pedal
+    const angle = state.pedalAngle;
+    const hingeX = CFG.pedalHingeX;
+    const hingeY = CFG.pedalHingeY;
+
+    // Transform point to pedal's local coordinate system
+    const dx = svgX - hingeX;
+    const dy = svgY - hingeY;
+    // Rotate by -angle
+    const localX = dx * Math.cos(-angle) - dy * Math.sin(-angle);
+    const localY = dx * Math.sin(-angle) + dy * Math.cos(-angle);
+
+    // Pedal extends from x = -320 to x = -10 (left of hinge), y = -8 to y = 8
+    // Add generous hit area
+    return localX > -340 && localX < 10 && localY > -18 && localY < 18;
+  }
+
+  // Map cursor Y position to target pedal angle
+  // Pressing DOWN (increasing SVG Y) → pedal angle increases
+  function cursorYtoPedalAngle(svgY) {
+    const hingeY = CFG.pedalHingeY;
+    // Use the pedal connection point as reference for feel
+    const frontLen = 280; // approximate interaction point along pedal
+
+    const minFrontY = hingeY + frontLen * Math.sin(CFG.pedalMinAngle);
+    const maxFrontY = hingeY + frontLen * Math.sin(CFG.pedalMaxAngle);
+
+    // Grab zone: 30px above min, 60px below max
+    const grabTop = minFrontY - 30;
+    const grabBottom = maxFrontY + 60;
+    const normalized = clamp((svgY - grabTop) / (grabBottom - grabTop), 0, 1);
+
+    return lerp(CFG.pedalMinAngle, CFG.pedalMaxAngle, normalized);
+  }
+
+  // ===== STITCHES =====
+  // Stitches are placed at needle position (x=220) and the group translates
+  // to simulate fabric feeding to the left.
+  const NEEDLE_X = 220;
+
+  function addStitch() {
+    // Remove oldest if over limit
+    if (state.stitchCount >= CFG.maxStitches) {
+      const first = els.stitches.firstChild;
+      if (first) els.stitches.removeChild(first);
+    }
+    const stitch = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    // Stitch is created at needle position relative to the fabric group
+    // Fabric group starts at x=120, y=232; needle is at svg x=220, so local x = 100
+    // We add fabricOffset so stitches stay fixed as the group translates
+    const xInGroup = NEEDLE_X - 120 + state.fabricOffset;
+    stitch.setAttribute('x', xInGroup.toFixed(1));
+    stitch.setAttribute('y', '12'); // vertical center of fabric (32px tall, y=232+12=244)
+    stitch.setAttribute('width', '2.5');
+    stitch.setAttribute('height', '2');
+    stitch.setAttribute('rx', '0.5');
+    stitch.setAttribute('fill', '#c63d2f');
+    stitch.setAttribute('opacity', '0.88');
+    els.stitches.appendChild(stitch);
+    state.stitchCount++;
+    els.stitchNum.textContent = state.stitchCount;
+  }
+
+  // ===== BELT PATH =====
+  function updateBeltPath() {
+    // Open belt drive: lower wheel drives upper flywheel, both rotate same direction
+    // Outer tangents connect the two pulleys
+    const cx1 = CFG.crankCenterX;
+    const cy1 = CFG.crankCenterY;
+    const r1 = 52; // lower wheel belt groove radius
+    const cx2 = CFG.flywheelCenterX;
+    const cy2 = CFG.flywheelCenterY;
+    const r2 = CFG.flywheelRadius;
+
+    const dx = cx2 - cx1;
+    const dy = cy2 - cy1;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const baseAngle = Math.atan2(dy, dx);
+
+    // Outer tangent angle offset from line connecting centers
+    // For open belt: both outer sides, offset = ±(π/2 - α) where sin(α)=(r2-r1)/dist
+    // Equivalently: tangent lines are perpendicular to radii to tangent points
+    // radii to outer tangent points are parallel and point in same direction
+    const radiusDiff = r2 - r1;
+    const alpha = Math.asin(clamp(radiusDiff / dist, -1, 1));
+    // Angle of radius to upper tangent point (relative to line of centers)
+    const outerOffset = Math.PI / 2 - alpha;
+
+    // Upper tangent (both radii point outward/upward)
+    const ang1_top = baseAngle - outerOffset;
+    const ang2_top = baseAngle - outerOffset;
+    const pt_top1 = { x: cx1 + r1 * Math.cos(ang1_top), y: cy1 + r1 * Math.sin(ang1_top) };
+    const pt_top2 = { x: cx2 + r2 * Math.cos(ang2_top), y: cy2 + r2 * Math.sin(ang2_top) };
+
+    // Lower tangent (both radii point outward/downward)
+    const ang1_bot = baseAngle + outerOffset;
+    const ang2_bot = baseAngle + outerOffset;
+    const pt_bot1 = { x: cx1 + r1 * Math.cos(ang1_bot), y: cy1 + r1 * Math.sin(ang1_bot) };
+    const pt_bot2 = { x: cx2 + r2 * Math.cos(ang2_bot), y: cy2 + r2 * Math.sin(ang2_bot) };
+
+    // SVG arc parameters
+    // Flywheel: arc from top tangent to bottom tangent, going clockwise (sweep=1)
+    // The arc covers >180° on the right side
+    let arcAngle2 = ang2_bot - ang2_top;
+    if (arcAngle2 < 0) arcAngle2 += Math.PI * 2;
+    const largeArc2 = arcAngle2 > Math.PI ? 1 : 0;
+
+    // Lower wheel: arc from bottom tangent back to top tangent, clockwise
+    let arcAngle1 = ang1_top - ang1_bot;
+    if (arcAngle1 < 0) arcAngle1 += Math.PI * 2;
+    const largeArc1 = arcAngle1 > Math.PI ? 1 : 0;
+
+    // Belt slack: when stopped, slack side sags
+    // The "slack" side is the return side (bottom span since flywheel drives)
+    const isStopped = state.flywheelVelocity < 0.5;
+    const slackAmount = isStopped ? (1 - state.flywheelVelocity / 0.5) * 5 : 0;
+
+    // Midpoint of each span for sag control
+    const topMid = { x: (pt_top1.x + pt_top2.x) / 2, y: (pt_top1.y + pt_top2.y) / 2 };
+    const botMid = { x: (pt_bot1.x + pt_bot2.x) / 2, y: (pt_bot1.y + pt_bot2.y) / 2 };
+
+    // Sag direction: perpendicular to belt span, outward (toward gravity for bottom)
+    // Bottom span sags down (more slack when stopped), top span has slight tension rise
+    const botSag = { x: botMid.x, y: botMid.y + slackAmount };
+    const topSag = { x: topMid.x, y: topMid.y - slackAmount * 0.3 };
+
+    // Build path: start at top of lower wheel → top of flywheel → bottom of flywheel → bottom of lower wheel → close
+    const path = [
+      `M ${pt_top1.x.toFixed(1)} ${pt_top1.y.toFixed(1)}`,
+      `Q ${topSag.x.toFixed(1)} ${topSag.y.toFixed(1)} ${pt_top2.x.toFixed(1)} ${pt_top2.y.toFixed(1)}`,
+      `A ${r2} ${r2} 0 ${largeArc2} 1 ${pt_bot2.x.toFixed(1)} ${pt_bot2.y.toFixed(1)}`,
+      `Q ${botSag.x.toFixed(1)} ${botSag.y.toFixed(1)} ${pt_bot1.x.toFixed(1)} ${pt_bot1.y.toFixed(1)}`,
+      `A ${r1} ${r1} 0 ${largeArc1} 1 ${pt_top1.x.toFixed(1)} ${pt_top1.y.toFixed(1)}`,
+    ].join(' ');
+
+    els.beltPath.setAttribute('d', path);
+    els.beltPath2.setAttribute('d', path);
+
+    // Belt texture: animated dashes when moving to show belt travel
+    if (state.flywheelVelocity > 0.1) {
+      const dashOffset = -(state.flywheelAngle * r2) % 14;
+      els.beltPath.setAttribute('stroke-dasharray', '8 6');
+      els.beltPath.setAttribute('stroke-dashoffset', dashOffset.toFixed(1));
+    } else {
+      els.beltPath.setAttribute('stroke-dasharray', 'none');
+    }
+  }
+
+  // ===== CONNECTING ROD =====
+  function updateConnectingRod(crankPinX, crankPinY, pedalConnX, pedalConnY) {
+    els.rodLine.setAttribute('x1', crankPinX.toFixed(1));
+    els.rodLine.setAttribute('y1', crankPinY.toFixed(1));
+    els.rodLine.setAttribute('x2', pedalConnX.toFixed(1));
+    els.rodLine.setAttribute('y2', pedalConnY.toFixed(1));
+
+    els.rodHighlight.setAttribute('x1', crankPinX.toFixed(1));
+    els.rodHighlight.setAttribute('y1', crankPinY.toFixed(1));
+    els.rodHighlight.setAttribute('x2', pedalConnX.toFixed(1));
+    els.rodHighlight.setAttribute('y2', pedalConnY.toFixed(1));
+
+    els.rodTopEye.setAttribute('cx', crankPinX.toFixed(1));
+    els.rodTopEye.setAttribute('cy', crankPinY.toFixed(1));
+    els.rodBottomEye.setAttribute('cx', pedalConnX.toFixed(1));
+    els.rodBottomEye.setAttribute('cy', pedalConnY.toFixed(1));
+  }
+
+  // ===== RENDER =====
+  function render() {
+    const theta = state.flywheelAngle;
+
+    // --- Flywheel (upper) ---
+    const deg = theta * 180 / Math.PI;
+    els.flywheel.setAttribute('transform', `translate(680, 160) rotate(${deg.toFixed(2)})`);
+
+    // --- Lower crank wheel (same speed for simplicity, visual sync) ---
+    els.lowerWheel.setAttribute('transform', `translate(450, 420) rotate(${deg.toFixed(2)})`);
+
+    // Crank pin position (in SVG coords, not rotated with wheel group)
+    const crankPinX = CFG.crankCenterX + CFG.crankRadius * Math.sin(theta);
+    const crankPinY = CFG.crankCenterY - CFG.crankRadius * Math.cos(theta);
+
+    // --- Pedal ---
+    const pedalDeg = state.pedalAngle * 180 / Math.PI;
+    els.pedalRotator.setAttribute('transform', `rotate(${pedalDeg.toFixed(2)})`);
+
+    // Pedal connection point position
+    const pedalConnX = CFG.pedalHingeX - CFG.pedalConnDist * Math.cos(state.pedalAngle);
+    const pedalConnY = CFG.pedalHingeY + CFG.pedalConnDist * Math.sin(state.pedalAngle);
+
+    // --- Connecting rod ---
+    updateConnectingRod(crankPinX, crankPinY, pedalConnX, pedalConnY);
+
+    // --- Needle bar (crank-slider from flywheel) ---
+    // Needle moves up and down with crank
+    // At θ=0 (top), needle at top; at θ=π (bottom), needle at bottom
+    const needleOffset = CFG.needleTravel * (1 - Math.cos(theta)) / 2;
+    const needleY = CFG.needleTopY + needleOffset;
+    state.needleY = needleY;
+
+    els.needleBar.setAttribute('transform', `translate(0, ${needleOffset.toFixed(2)})`);
+
+    // Update thread path to follow needle
+    if (theta > 0) {
+      // Thread sags slightly depending on needle position
+      const sag = 3 + needleOffset * 0.15;
+      const threadY = 200 + needleOffset * 0.5;
+      els.threadPath.setAttribute('d',
+        `M360 133 Q350 145 340 155 Q320 170 290 172 Q260 178 240 ${(185 + needleOffset * 0.3).toFixed(1)} Q228 195 225 ${(200 + needleOffset * 0.6).toFixed(1)}`
+      );
+    }
+
+    // --- Belt ---
+    updateBeltPath();
+
+    // --- Fabric feed visualization ---
+    // Stitches group translates left as fabric feeds
+    // We use modulo to keep transform value stable
+    const offsetMod = state.fabricOffset % 300;
+    els.stitches.setAttribute('transform', `translate(${(-offsetMod).toFixed(2)}, 0)`);
+
+    // Clean up stitches that have moved off the left edge
+    const stitchChildren = els.stitches.children;
+    while (stitchChildren.length > 0) {
+      const first = stitchChildren[0];
+      const sx = parseFloat(first.getAttribute('x'));
+      // If stitch x position minus current offset < -20 (off left edge of clip)
+      if (sx - offsetMod < -20) {
+        els.stitches.removeChild(first);
+      } else {
+        break;
+      }
+    }
+
+    // --- Sewing indicator ---
+    const isSewing = state.flywheelVelocity > CFG.sewingThreshold;
+    if (isSewing !== state.sewing) {
+      state.sewing = isSewing;
+      if (isSewing) {
+        els.sewIndicator.classList.add('sewing');
+      } else {
+        els.sewIndicator.classList.remove('sewing');
+      }
+    }
+
+    // --- Machine vibration at high speed ---
+    if (state.flywheelVelocity > CFG.sewingThreshold) {
+      const vibMag = Math.min(2, (state.flywheelVelocity - CFG.sewingThreshold) * 0.3);
+      const vibX = Math.sin(theta * 8) * vibMag;
+      const vibY = Math.cos(theta * 6) * vibMag * 0.5;
+      els.machineHead.setAttribute('transform', `translate(${vibX.toFixed(2)}, ${vibY.toFixed(2)})`);
+      els.flywheel.setAttribute('transform', `translate(680, 160) rotate(${deg.toFixed(2)}) translate(${vibX.toFixed(2)}, ${vibY.toFixed(2)})`);
+    } else {
+      els.machineHead.setAttribute('transform', '');
+      // Reset vibration but keep rotation
+      els.flywheel.setAttribute('transform', `translate(680, 160) rotate(${deg.toFixed(2)})`);
+    }
+
+    // --- Feed dog ---
+    const feedOffset = (Math.sin(theta * 2 + Math.PI) + 1) / 2; // 0 to 1
+    const feedX = feedOffset * 2 - 1;
+    const feedY = Math.sin(theta + Math.PI / 2) > 0 ? 1 : 0; // up when needle is up
+    els.feedDog.setAttribute('transform', `translate(${feedX.toFixed(1)}, ${-feedY * 1.5})`);
+  }
+
+  // ===== PHYSICS UPDATE =====
+  function updatePhysics(dt) {
+    // Clamp dt for stability (e.g. after tab switch)
+    dt = Math.min(dt, 0.05);
+
+    const theta = state.flywheelAngle;
+    const thetaNormalized = theta % (Math.PI * 2);
+
+    // Compute crank-dictated pedal angle (where pedal WOULD be if perfectly coupled)
+    const crankPedalAngle = solvePedalAngle(theta);
+
+    // Leverage curve: the mechanical advantage of the crank-slider.
+    // Peak near mid-downstroke (θ ≈ π/2), minimum at dead centers (0 and π).
+    // We use sin(θ) as the core curve, but with a soft floor so dead centers
+    // don't feel completely locked — user can still nudge through.
+    const sinTheta = Math.sin(thetaNormalized);
+    const leverage = Math.max(0, sinTheta);
+    // Shape: rounded peak, 10% floor at dead centers
+    const leverageSoft = 0.10 + 0.90 * leverage;
+
+    // ===== PEDAL INPUT & TORQUE =====
+    if (state.isPressing) {
+      // How much is the user "pushing past" the crank position?
+      // Positive = pushing down harder than crank currently requires
+      const pushAmount = Math.max(0, state.pedalTargetAngle - crankPedalAngle);
+
+      if (pushAmount > 0.002) {
+        // Torque = push amount × gain × leverage
+        // More push + better leverage = more acceleration
+        const torque = pushAmount * CFG.pushGain * leverageSoft;
+        const alpha = torque / CFG.inertia;
+        state.flywheelVelocity += alpha * dt;
+      }
+
+      // Visual pedal position: crank position + squish (elastic deformation feel)
+      const targetVisual = crankPedalAngle + pushAmount * CFG.squishFactor;
+      state.pedalAngle = lerp(state.pedalAngle, targetVisual, 0.35);
+    } else {
+      // Not pressing: pedal returns toward rest position / follows crank
+      if (state.flywheelVelocity < 0.2) {
+        // Near stop: spring back to rest
+        const springForce = (CFG.restPedalAngle - state.pedalAngle) * CFG.pedalSpring;
+        state.pedalAngle += springForce * dt;
+        // Pre-contact hover: tiny lift
+        if (state.isHoveringPedal) {
+          state.pedalAngle = lerp(state.pedalAngle, CFG.restPedalAngle - 0.025, 0.08);
+        }
+      } else {
+        // Flywheel spinning: pedal follows crank but with slight lag (compliance feel)
+        state.pedalAngle = lerp(state.pedalAngle, crankPedalAngle, 0.5);
+      }
+    }
+
+    // ===== FRICTION / DAMPING =====
+    // Exponential decay: v *= e^(-k·dt), approximated as v *= (1 - k·dt) for small dt
+    let friction = CFG.friction;
+    // Static friction kick at low speeds (makes stop feel natural, not floaty)
+    if (state.flywheelVelocity < 1.5) {
+      friction += CFG.staticFriction * (1.5 - state.flywheelVelocity) / 1.5;
+    }
+    state.flywheelVelocity *= Math.max(0, 1 - friction * dt);
+
+    // Cap maximum velocity
+    if (state.flywheelVelocity > CFG.maxVelocity) {
+      state.flywheelVelocity = CFG.maxVelocity;
+    }
+
+    // ===== INTEGRATE FLYWHEEL =====
+    state.flywheelAngle += state.flywheelVelocity * dt;
+
+    // ===== STITCH DETECTION =====
+    // Track cumulative half-turns. Each time the count increases by 1, we crossed
+    // either top (even→odd crossing = π, 3π, 5π...) or bottom (odd→even = 2π, 4π...).
+    // Wait — actually floor(theta/π):
+    //   theta=0 → 0 (top, going down)
+    //   theta=π → 1 (bottom, going up)
+    //   theta=2π → 2 (top, going down)
+    // We want one stitch per revolution, at bottom-dead-center (theta=π, 3π, ...)
+    // That happens when halfTurns goes from even to odd (0→1, 2→3, etc.)
+    const newHalfTurns = Math.floor(state.flywheelAngle / Math.PI);
+    if (newHalfTurns !== state.halfTurns) {
+      const increment = newHalfTurns - state.halfTurns;
+      state.halfTurns = newHalfTurns;
+
+      // Stitch triggers when we pass through an odd-numbered half-turn boundary
+      // (i.e., crossing π, 3π, 5π... = needle at bottom)
+      // Only if flywheel is actually spinning fast enough
+      if (state.flywheelVelocity > 0.3) {
+        // Check each half-turn we crossed
+        for (let i = 0; i < increment; i++) {
+          const crossedHalfTurn = newHalfTurns - increment + 1 + i;
+          if (crossedHalfTurn % 2 === 1) {
+            // crossed bottom-dead-center
+            addStitch();
+            state.fabricOffset += CFG.feedPerStitch;
+          }
+        }
+      }
+    }
+  }
+
+  // ===== RAF LOOP =====
+  let rafId = null;
+
+  function tick(now) {
+    if (!state.running || !state.visible) {
+      rafId = null;
+      return;
+    }
+
+    const dt = state.lastTime ? (now - state.lastTime) / 1000 : 0.016;
+    state.lastTime = now;
+
+    if (!state.reducedMotion) {
+      updatePhysics(dt);
+      render();
+    }
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function startLoop() {
+    if (!rafId && state.visible && state.running) {
+      state.lastTime = 0;
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+
+  function stopLoop() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // ===== EVENT HANDLERS =====
+  function handlePointerMove(e) {
+    state.cursorX = e.clientX;
+    state.cursorY = e.clientY;
+    updateCursor();
+
+    // Check hover over pedal
+    const svgPt = getSvgPoint(e.clientX, e.clientY);
+    const hovering = isOverPedal(svgPt.x, svgPt.y);
+    if (hovering !== state.isHoveringPedal) {
+      state.isHoveringPedal = hovering;
+      // Pre-contact hint: cursor change
+      if (hovering && !state.reducedMotion) {
+        // subtle scale up
+        els.cursor.style.width = '38px';
+        els.cursor.style.height = '38px';
+      } else if (!state.isPressing) {
+        els.cursor.style.width = '32px';
+        els.cursor.style.height = '32px';
+      }
+    }
+
+    // Update target if pressing
+    if (state.isPressing) {
+      state.pedalTargetAngle = cursorYtoPedalAngle(svgPt.y);
+    }
+  }
+
+  function handlePointerDown(e) {
+    if (e.button !== 0) return;
+    const svgPt = getSvgPoint(e.clientX, e.clientY);
+
+    if (isOverPedal(svgPt.x, svgPt.y) || state.isHoveringPedal) {
+      state.isPressing = true;
+      state.pedalTargetAngle = cursorYtoPedalAngle(svgPt.y);
+      setCursorPressing(true);
+
+      // Contact feedback: slight frame shake
+      if (state.flywheelVelocity < 0.5) {
+        els.wrapper.classList.add('shake');
+        setTimeout(() => els.wrapper.classList.remove('shake'), 80);
+      }
+    }
+  }
+
+  function handlePointerUp(e) {
+    if (state.isPressing) {
+      state.isPressing = false;
+      setCursorPressing(false);
+    }
+  }
+
+  function handleVisibilityChange() {
+    state.visible = !document.hidden;
+    if (state.visible) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
+  }
+
+  function handleResize() {
+    // Recompute nothing needed - SVG handles scaling
+  }
+
+  // ===== INIT =====
+  function init() {
+    // Check reduced motion
+    state.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Initial render
+    render();
+
+    // Cursor position
+    updateCursor();
+
+    // Bind events
+    els.stage.addEventListener('pointermove', handlePointerMove);
+    els.stage.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup on unload
+    window.addEventListener('beforeunload', () => {
+      stopLoop();
+      state.running = false;
+    });
+
+    // Start loop
+    startLoop();
+
+    // Upgrade announcement
+    try {
+      function announceUpgrade() {
+        window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+      }
+      announceUpgrade();
+      if (document.readyState !== 'complete') {
+        window.addEventListener('load', announceUpgrade, { once: true });
+      }
+    } catch (e) { /* ignore cross-origin errors */ }
+  }
+
+  // Start
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
