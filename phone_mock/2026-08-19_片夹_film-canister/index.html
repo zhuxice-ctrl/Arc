@@ -1,0 +1,3186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<meta name="app-form-factor" content="原生 App">
+<title>片夹 · 胶片摄影在拍胶卷管理</title>
+<style>
+/* ============================================================
+   片夹 · 设计系统 Design Tokens
+   ============================================================ */
+:root {
+  /* 材质色：相机机身语言 */
+  --body-black: #1A1A18;           /* 机身深黑 */
+  --body-leather: #262520;         /* 荔枝纹皮革深褐 */
+  --body-grain: #302E28;           /* 皮革纹理高光 */
+  --metal-silver: #C9C6BE;         /* 金属银 */
+  --metal-silver-dark: #8A877F;    /* 金属暗部 */
+  --metal-chrome: #E8E5DC;         /* 亮铬 */
+  --lens-orange: #FF6B1A;          /* 镜头刻度橙 */
+  --lens-orange-dim: #D45A14;      /* 暗橙 */
+  --cream: #F3EAD8;                /* 奶白刻度字 */
+  --cream-dim: #C9BFAC;            /* 暗奶白 */
+  --paper: #EDE5D3;                /* 底片袋纸色 */
+  --paper-dark: #D6CCA8;           /* 深纸色 */
+
+  /* 功能色 */
+  --success: #4A7C3E;              /* 暗叶绿 */
+  --warn: #D45A14;                 /* 橙红 */
+  --danger: #B23A2A;               /* 暗砖红 */
+
+  /* 计数器 */
+  --counter-bg: #121110;
+  --counter-window: #0A0908;
+  --counter-digit: #FF8C3D;
+
+  /* 快门帘 */
+  --shutter-black: #0D0C0B;
+
+  /* 字体：等宽数字 + 中文无衬线 */
+  --font-mono: 'SF Mono', 'Menlo', 'Consolas', 'Roboto Mono', monospace;
+  --font-ui: -apple-system, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+
+  /* 间距 */
+  --s-2: 4px; --s-1: 8px; --s0: 12px; --s1: 16px;
+  --s2: 24px; --s3: 32px; --s4: 48px; --s5: 64px;
+
+  /* 圆角 */
+  --r-sm: 4px; --r-md: 8px; --r-lg: 14px; --r-xl: 20px;
+
+  /* 动效语言：机械阻尼 */
+  --ease-snap: cubic-bezier(.25, 1.6, .4, 1);      /* 机械回弹 */
+  --ease-advance: cubic-bezier(.4, 0, .2, 1);      /* 过片 */
+  --ease-rebound: cubic-bezier(.17, .67, .35, 1.4);/* 阻尼回弹 */
+  --dur-fast: 120ms;
+  --dur-med: 240ms;
+  --dur-slow: 420ms;
+  --dur-rebound: 520ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   重置 & 基础
+   ============================================================ */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: var(--font-ui);
+  background: #0D0C0B;
+  color: var(--cream);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+button { border: none; background: none; font-family: inherit; color: inherit; cursor: pointer; }
+input, textarea { font-family: inherit; }
+
+/* ============================================================
+   舞台 & 手机框
+   ============================================================ */
+.stage {
+  width: 100%; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(circle at 50% 40%, #2A2824 0%, #121110 60%, #080807 100%);
+  position: relative;
+}
+.stage::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 80% 50% at 50% 30%, rgba(255,107,26,0.04), transparent 70%);
+  pointer-events: none;
+}
+.phone-wrap {
+  position: relative;
+  width: 390px; height: 844px;
+  border-radius: 46px;
+  padding: 10px;
+  background: linear-gradient(145deg, #3A3733 0%, #1A1917 50%, #0A0908 100%);
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.05) inset,
+    0 2px 0 rgba(255,255,255,0.08) inset;
+}
+.phone-screen {
+  position: relative;
+  width: 100%; height: 100%;
+  border-radius: 36px;
+  overflow: hidden;
+  background: var(--body-black);
+}
+.phone-notch {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 110px; height: 28px;
+  background: #000; border-radius: 20px;
+  z-index: 200;
+}
+.status-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px 0 28px;
+  font-size: 15px; font-weight: 600;
+  color: var(--cream);
+  z-index: 150;
+  pointer-events: none;
+  font-family: var(--font-ui);
+}
+.status-bar .right { display: flex; gap: 5px; align-items: center; }
+.status-bar .signal { display: inline-block; width: 17px; height: 11px; }
+.status-bar .battery {
+  width: 24px; height: 11px; border: 1px solid var(--cream);
+  border-radius: 2px; position: relative; opacity: 0.8;
+}
+.status-bar .battery::after {
+  content: ''; position: absolute; right: -3px; top: 3px;
+  width: 2px; height: 5px; background: var(--cream); border-radius: 0 1px 1px 0; opacity: 0.5;
+}
+.status-bar .battery-fill {
+  position: absolute; left: 1px; top: 1px; bottom: 1px;
+  width: 75%; background: var(--cream); border-radius: 1px;
+}
+
+/* ============================================================
+   App 容器 & 页面栈
+   ============================================================ */
+.app {
+  position: absolute; inset: 0;
+  background: var(--body-black);
+}
+.page {
+  position: absolute; inset: 0;
+  padding-top: 44px;
+  padding-bottom: 20px;
+  background: var(--body-black);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+.page.active { display: flex; }
+
+/* 页面推入推出动效 */
+.page.push-in {
+  animation: pagePushIn var(--dur-slow) var(--ease-advance) forwards;
+  display: flex;
+  z-index: 10;
+}
+.page.push-out {
+  animation: pagePushOut var(--dur-slow) var(--ease-advance) forwards;
+  display: flex;
+  z-index: 5;
+}
+.page.pop-in {
+  animation: pagePopIn var(--dur-slow) var(--ease-advance) forwards;
+  display: flex;
+  z-index: 5;
+}
+.page.pop-out {
+  animation: pagePopOut var(--dur-slow) var(--ease-advance) forwards;
+  display: flex;
+  z-index: 10;
+}
+@keyframes pagePushIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes pagePushOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(-20%); }
+}
+@keyframes pagePopIn {
+  from { transform: translateX(-20%); }
+  to { transform: translateX(0); }
+}
+@keyframes pagePopOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+/* ============================================================
+   导航栏
+   ============================================================ */
+.nav-bar {
+  height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--s1);
+  position: relative;
+  flex-shrink: 0;
+  z-index: 50;
+}
+.nav-title {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 16px; font-weight: 600; color: var(--cream);
+  letter-spacing: 0.5px;
+}
+.nav-back {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--cream);
+  border-radius: 50%;
+  transition: background var(--dur-fast);
+}
+.nav-back:active { background: rgba(255,255,255,0.1); }
+.nav-back svg { width: 20px; height: 20px; }
+.nav-action {
+  font-size: 14px; color: var(--lens-orange);
+  padding: 6px 10px; border-radius: var(--r-md);
+  font-weight: 500;
+}
+.nav-action:active { background: rgba(255,107,26,0.15); }
+
+/* ============================================================
+   首页：相机背
+   ============================================================ */
+.home-body {
+  flex: 1;
+  display: flex; flex-direction: column;
+  padding: var(--s1) var(--s2);
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0, transparent 2px,
+      rgba(255,255,255,0.008) 2px, rgba(255,255,255,0.008) 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 3px
+    ),
+    linear-gradient(180deg, var(--body-leather) 0%, var(--body-black) 100%);
+}
+
+/* 顶部操作栏 */
+.home-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--s2);
+}
+.home-top .left, .home-top .right { display: flex; gap: var(--s1); align-items: center; }
+.icon-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--cream);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: all var(--dur-fast);
+}
+.icon-btn:active {
+  transform: scale(0.94);
+  background: rgba(255,107,26,0.15);
+  color: var(--lens-orange);
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.rewind-btn {
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  background: rgba(255,255,255,0.04);
+  color: var(--cream-dim);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; gap: 6px;
+  letter-spacing: 0.5px;
+}
+.rewind-btn:active { background: rgba(255,255,255,0.08); }
+.rewind-btn svg { width: 14px; height: 14px; }
+
+/* 胶片暗盒 */
+.film-canister-wrap {
+  position: relative;
+  margin: var(--s1) 0 var(--s3);
+  display: flex; justify-content: center;
+  height: 180px;
+}
+.film-canister {
+  width: 220px; height: 180px;
+  position: relative;
+  perspective: 800px;
+}
+.canister-body {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 200px; height: 140px;
+  background: linear-gradient(180deg, var(--metal-chrome) 0%, var(--metal-silver) 30%, var(--metal-silver-dark) 70%, #5A574F 100%);
+  border-radius: 8px;
+  box-shadow:
+    0 20px 40px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    inset 0 -2px 4px rgba(0,0,0,0.3);
+}
+.canister-body::before {
+  content: '';
+  position: absolute; top: 20px; left: 10px; right: 10px; height: 1px;
+  background: rgba(0,0,0,0.2);
+}
+.canister-label {
+  position: absolute; top: 32px; left: 15px; right: 15px; bottom: 20px;
+  background: var(--paper);
+  border-radius: 2px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+.canister-label .film-name {
+  font-size: 13px; font-weight: 700;
+  color: #2A2520;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+.canister-label .film-iso {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #5A5248;
+  font-weight: 600;
+}
+.canister-label .film-type {
+  font-size: 10px;
+  color: #8A7F6E;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.canister-top {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 60px; height: 24px;
+  background: linear-gradient(180deg, #3A3733 0%, var(--metal-silver-dark) 100%);
+  border-radius: 3px 3px 0 0;
+  z-index: 2;
+}
+.canister-spool {
+  position: absolute; top: 3px; left: 50%; transform: translateX(-50%);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--metal-chrome) 0%, var(--metal-silver-dark) 70%);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.canister-spool::after {
+  content: '';
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 8px; height: 8px;
+  background: var(--counter-bg);
+  border-radius: 50%;
+}
+
+/* 机械计数窗 */
+.counter-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  margin-bottom: var(--s3);
+}
+.counter-label {
+  font-size: 11px; color: var(--cream-dim);
+  text-transform: uppercase; letter-spacing: 2px;
+  margin-bottom: var(--s1);
+  opacity: 0.7;
+}
+.counter-window {
+  position: relative;
+  width: 140px; height: 80px;
+  background: var(--counter-bg);
+  border-radius: var(--r-md);
+  border: 2px solid var(--metal-silver-dark);
+  box-shadow:
+    inset 0 4px 12px rgba(0,0,0,0.8),
+    0 2px 4px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.counter-window::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
+  z-index: 3;
+}
+.counter-digits {
+  display: flex;
+  position: relative;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 48px;
+  color: var(--counter-digit);
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px rgba(255,140,61,0.3);
+}
+.counter-digit-col {
+  position: relative;
+  height: 56px;
+  overflow: hidden;
+  width: 30px;
+  display: flex; align-items: center; justify-content: center;
+}
+.counter-digit-strip {
+  position: absolute;
+  top: 0;
+  display: flex; flex-direction: column;
+  transition: transform var(--dur-slow) var(--ease-snap);
+  line-height: 56px;
+}
+.counter-digit-strip span {
+  height: 56px;
+  display: flex; align-items: center; justify-content: center;
+}
+.counter-divider {
+  color: var(--counter-digit);
+  opacity: 0.6;
+  font-size: 40px;
+  line-height: 56px;
+  padding: 0 2px;
+}
+.counter-total {
+  color: var(--metal-silver-dark);
+  text-shadow: none;
+}
+
+/* 张数刻度尺 */
+.film-gauge {
+  width: 100%;
+  margin-bottom: auto;
+  padding: 0 var(--s1);
+}
+.gauge-bar {
+  position: relative;
+  height: 24px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.gauge-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--lens-orange-dim), var(--lens-orange));
+  border-radius: 12px;
+  transition: width var(--dur-med) var(--ease-advance);
+  box-shadow: 0 0 12px rgba(255,107,26,0.4);
+}
+.gauge-ticks {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-between;
+  padding: 0 2px;
+}
+.gauge-ticks span {
+  width: 1px; height: 6px;
+  background: rgba(255,255,255,0.15);
+  align-self: center;
+}
+.gauge-labels {
+  display: flex; justify-content: space-between;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.5;
+}
+
+/* 过片扳手区域 */
+.advance-zone {
+  padding: var(--s2) var(--s1) var(--s1);
+  position: relative;
+}
+.advance-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--cream-dim);
+  margin-bottom: var(--s1);
+  opacity: 0.5;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.advance-lever-wrap {
+  position: relative;
+  height: 100px;
+  display: flex; align-items: center; justify-content: center;
+}
+.advance-base {
+  position: absolute;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--metal-chrome) 0%, var(--metal-silver) 40%, var(--metal-silver-dark) 100%);
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    inset 0 -2px 4px rgba(0,0,0,0.2);
+  border: 3px solid var(--metal-silver-dark);
+}
+.advance-base::after {
+  content: '';
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--body-leather) 0%, var(--body-black) 100%);
+  border: 2px solid var(--metal-silver-dark);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+}
+.advance-lever {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 10px; height: 70px;
+  transform-origin: 50% 0;
+  transform: translate(-50%, 0) rotate(-30deg);
+  transition: transform var(--dur-rebound) var(--ease-rebound);
+  z-index: 5;
+  pointer-events: none;
+}
+.advance-lever.advancing {
+  transform: translate(-50%, 0) rotate(30deg);
+  transition: transform 200ms linear;
+}
+.advance-lever-arm {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 6px; height: 52px;
+  background: linear-gradient(90deg, var(--metal-chrome) 0%, var(--metal-silver) 50%, var(--metal-silver-dark) 100%);
+  border-radius: 3px;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+.advance-lever-knob {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--lens-orange) 0%, var(--lens-orange-dim) 70%, #A04410 100%);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+  border: 2px solid var(--metal-silver);
+}
+.advance-touch-area {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 200px; height: 160px;
+  transform: translate(-50%, -20%);
+  cursor: grab;
+  z-index: 10;
+  touch-action: none;
+}
+.advance-touch-area:active { cursor: grabbing; }
+
+/* 快门帘（过片动效叠加） */
+.shutter-curtain {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.shutter-top, .shutter-bottom {
+  background: var(--shutter-black);
+  flex: 0;
+  transition: flex var(--dur-fast) ease-out;
+}
+.shutter-curtain.triggered .shutter-top { flex: 1; transition: flex 80ms ease-in; }
+.shutter-curtain.triggered .shutter-bottom { flex: 1; transition: flex 80ms ease-in; }
+.shutter-curtain.opening .shutter-top { flex: 0; transition: flex 120ms ease-out; }
+.shutter-curtain.opening .shutter-bottom { flex: 0; transition: flex 120ms ease-out; }
+.shutter-middle {
+  height: 0;
+  background: var(--lens-orange);
+  transition: height var(--dur-fast) ease-out;
+}
+.shutter-curtain.triggered .shutter-middle { height: 4px; box-shadow: 0 0 20px var(--lens-orange); }
+
+/* ============================================================
+   参数速记半屏卡
+   ============================================================ */
+.param-sheet-mask {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-med);
+}
+.param-sheet-mask.show { opacity: 1; pointer-events: auto; }
+
+.param-sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: var(--body-leather);
+  border-radius: 20px 20px 0 0;
+  z-index: 210;
+  transform: translateY(100%);
+  transition: transform var(--dur-slow) var(--ease-advance);
+  padding: var(--s1) var(--s2) var(--s3);
+  max-height: 70%;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+}
+.param-sheet.show { transform: translateY(0); }
+.param-sheet-handle {
+  width: 36px; height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  margin: 0 auto var(--s1);
+}
+.param-sheet-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--s2);
+}
+.param-sheet-title {
+  font-size: 15px; font-weight: 600;
+  color: var(--cream);
+  display: flex; align-items: center; gap: 8px;
+}
+.param-sheet-title .frame-num {
+  font-family: var(--font-mono);
+  color: var(--lens-orange);
+  font-size: 18px;
+  font-weight: 700;
+}
+.param-sheet-close {
+  font-size: 13px; color: var(--cream-dim);
+  padding: 6px 10px;
+}
+
+/* 拨轮组 */
+.dial-group {
+  display: flex; gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+.dial-col {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+}
+.dial-label {
+  font-size: 11px;
+  color: var(--cream-dim);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+}
+.dial {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  background: var(--counter-bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--metal-silver-dark);
+  overflow: hidden;
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.6);
+}
+.dial::before, .dial::after {
+  content: '';
+  position: absolute; left: 0; right: 0;
+  height: 40px;
+  pointer-events: none;
+  z-index: 2;
+}
+.dial::before {
+  top: 0;
+  background: linear-gradient(180deg, var(--counter-bg) 0%, transparent 100%);
+}
+.dial::after {
+  bottom: 0;
+  background: linear-gradient(0deg, var(--counter-bg) 0%, transparent 100%);
+}
+.dial-marker {
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 1px;
+  transform: translateY(-50%);
+  background: var(--lens-orange);
+  z-index: 3;
+  pointer-events: none;
+}
+.dial-marker::before, .dial-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 6px; height: 6px;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--lens-orange);
+}
+.dial-marker::before { left: 8px; }
+.dial-marker::after { right: 8px; }
+.dial-wheel {
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--counter-digit);
+  line-height: 40px;
+  transition: transform 60ms linear;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.dial-wheel:active { cursor: grabbing; }
+.dial-wheel span {
+  height: 40px;
+  opacity: 0.3;
+  transition: opacity var(--dur-fast);
+}
+.dial-wheel span.active {
+  opacity: 1;
+  text-shadow: 0 0 10px rgba(255,140,61,0.5);
+  font-size: 28px;
+}
+
+/* 备注输入 */
+.note-input-wrap {
+  margin-bottom: var(--s2);
+}
+.note-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-md);
+  color: var(--cream);
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+}
+.note-input::placeholder { color: var(--cream-dim); opacity: 0.4; }
+.note-input:focus {
+  border-color: var(--lens-orange);
+  box-shadow: 0 0 0 2px rgba(255,107,26,0.15);
+}
+
+/* 保存按钮 */
+.save-btn {
+  width: 100%;
+  height: 50px;
+  background: linear-gradient(180deg, var(--lens-orange) 0%, var(--lens-orange-dim) 100%);
+  color: #fff;
+  border-radius: var(--r-lg);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  box-shadow:
+    0 4px 12px rgba(255,107,26,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: transform var(--dur-fast);
+}
+.save-btn:active { transform: scale(0.98); }
+
+/* ============================================================
+   空状态
+   ============================================================ */
+.empty-state {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: var(--s4) var(--s3);
+  text-align: center;
+}
+.empty-illustration {
+  width: 120px; height: 120px;
+  margin-bottom: var(--s2);
+  opacity: 0.3;
+}
+.empty-title {
+  font-size: 18px; font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 8px;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--cream-dim);
+  line-height: 1.6;
+  margin-bottom: var(--s3);
+  opacity: 0.7;
+}
+.primary-btn {
+  padding: 14px 32px;
+  background: linear-gradient(180deg, var(--lens-orange) 0%, var(--lens-orange-dim) 100%);
+  color: #fff;
+  border-radius: var(--r-lg);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 12px rgba(255,107,26,0.3);
+  transition: transform var(--dur-fast);
+}
+.primary-btn:active { transform: scale(0.96); }
+.secondary-btn {
+  padding: 12px 24px;
+  background: rgba(255,255,255,0.06);
+  color: var(--cream);
+  border-radius: var(--r-lg);
+  font-size: 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ============================================================
+   装卷页
+   ============================================================ */
+.load-film-page {
+  background: var(--body-black);
+}
+.film-grid {
+  padding: var(--s1) var(--s2);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s1);
+  overflow-y: auto;
+  flex: 1;
+  padding-bottom: var(--s3);
+}
+.film-card {
+  background: var(--body-leather);
+  border-radius: var(--r-lg);
+  padding: var(--s1);
+  border: 2px solid transparent;
+  transition: all var(--dur-fast);
+  position: relative;
+}
+.film-card.selected {
+  border-color: var(--lens-orange);
+  box-shadow: 0 0 0 3px rgba(255,107,26,0.15);
+}
+.film-card-img {
+  width: 100%;
+  aspect-ratio: 1;
+  background: linear-gradient(180deg, var(--metal-chrome) 0%, var(--metal-silver-dark) 100%);
+  border-radius: var(--r-md);
+  margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
+  display: flex; align-items: flex-end;
+}
+.film-card-img .film-label-card {
+  width: 100%;
+  padding: 10px 8px;
+  background: var(--paper);
+  transform: translateY(0);
+}
+.film-card-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2A2520;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+.film-card-iso {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #8A7F6E;
+  font-weight: 600;
+}
+.film-card-info {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.film-card-type {
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.film-card .check-mark {
+  position: absolute; top: 8px; right: 8px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--lens-orange);
+  display: none;
+  align-items: center; justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.film-card.selected .check-mark { display: flex; }
+
+/* ISO 设定 */
+.iso-setting {
+  padding: var(--s1) var(--s2);
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.iso-setting-label {
+  font-size: 13px;
+  color: var(--cream);
+}
+.iso-setting-value {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--lens-orange);
+}
+
+.load-bottom-bar {
+  padding: var(--s1) var(--s2) calc(var(--s2) + 20px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: var(--body-leather);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   卷库页
+   ============================================================ */
+.library-page {
+  background: var(--body-black);
+}
+.library-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s1) var(--s2) var(--s3);
+}
+.library-section-title {
+  font-size: 12px;
+  color: var(--cream-dim);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin: var(--s2) 0 var(--s1);
+  opacity: 0.6;
+}
+.library-section-title:first-child { margin-top: 0; }
+.film-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--body-leather);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s1);
+  border: 1px solid rgba(255,255,255,0.04);
+  transition: transform var(--dur-fast);
+}
+.film-row:active { transform: scale(0.98); }
+.film-row-thumb {
+  width: 48px; height: 48px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, var(--metal-silver) 0%, var(--metal-silver-dark) 100%);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  display: flex; align-items: flex-end;
+}
+.film-row-thumb .thumb-label {
+  width: 100%;
+  padding: 4px;
+  background: var(--paper);
+  font-size: 8px;
+  font-weight: 700;
+  color: #2A2520;
+  text-align: center;
+  line-height: 1.1;
+}
+.film-row-info {
+  flex: 1;
+  min-width: 0;
+}
+.film-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.film-row-meta {
+  font-size: 11px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  font-family: var(--font-mono);
+}
+.film-row-status {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.status-shooting {
+  background: rgba(255,107,26,0.15);
+  color: var(--lens-orange);
+}
+.status-developing {
+  background: rgba(74,124,62,0.15);
+  color: #6FA85F;
+}
+.status-archived {
+  background: rgba(201,198,190,0.1);
+  color: var(--cream-dim);
+}
+
+/* ============================================================
+   回卷页
+   ============================================================ */
+.rewind-page {
+  background: var(--body-black);
+  justify-content: center;
+  align-items: center;
+  padding: var(--s4) var(--s3);
+  text-align: center;
+}
+.rewind-spool {
+  width: 200px; height: 200px;
+  margin: 0 auto var(--s3);
+  position: relative;
+}
+.spool-circle {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 8px solid var(--metal-silver-dark);
+  box-shadow:
+    inset 0 2px 6px rgba(0,0,0,0.3),
+    0 4px 12px rgba(0,0,0,0.3);
+  background: radial-gradient(circle, var(--body-black) 30%, var(--body-leather) 100%);
+}
+.spool-film {
+  position: absolute; inset: 15px;
+  border-radius: 50%;
+  border: 6px solid var(--paper);
+  opacity: 0.3;
+  transition: all var(--dur-med);
+}
+.spool-film.f1 { inset: 15px; border-color: var(--paper); }
+.spool-film.f2 { inset: 28px; border-color: var(--paper-dark); }
+.spool-film.f3 { inset: 41px; border-color: var(--cream-dim); }
+.spool-film.f4 { inset: 54px; border-color: var(--metal-silver-dark); }
+.spool-inner {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--metal-chrome), var(--metal-silver-dark));
+  border: 3px solid var(--metal-silver);
+}
+.spool-rotating {
+  position: absolute; inset: 0;
+  animation: spoolSpin 2s linear infinite;
+  animation-play-state: paused;
+}
+.spool-rotating.spinning { animation-play-state: running; }
+@keyframes spoolSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spool-handle {
+  position: absolute; top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 12px; height: 24px;
+  background: var(--lens-orange);
+  border-radius: 3px;
+  border: 1px solid var(--lens-orange-dim);
+}
+
+.rewind-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 8px;
+}
+.rewind-desc {
+  font-size: 13px;
+  color: var(--cream-dim);
+  opacity: 0.7;
+  line-height: 1.6;
+  margin-bottom: var(--s3);
+}
+.rewind-progress {
+  width: 100%;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  margin-bottom: var(--s2);
+  overflow: hidden;
+}
+.rewind-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--lens-orange-dim), var(--lens-orange));
+  transition: width 100ms linear;
+  border-radius: 2px;
+}
+.rewind-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--lens-orange);
+  margin-bottom: var(--s3);
+}
+
+/* ============================================================
+   冲扫进度页
+   ============================================================ */
+.develop-page {
+  padding-top: 44px;
+}
+.develop-header {
+  padding: var(--s2) var(--s2) var(--s1);
+  text-align: center;
+}
+.develop-film-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 4px;
+}
+.develop-film-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+}
+
+.develop-timeline {
+  padding: var(--s2);
+  flex: 1;
+  overflow-y: auto;
+}
+.timeline-item {
+  display: flex;
+  gap: var(--s1);
+  padding-bottom: var(--s2);
+  position: relative;
+}
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot-col {
+  width: 24px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.timeline-dot {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--metal-silver-dark);
+  background: var(--body-black);
+  flex-shrink: 0;
+  z-index: 2;
+}
+.timeline-item.done .timeline-dot {
+  background: var(--success);
+  border-color: var(--success);
+}
+.timeline-item.active .timeline-dot {
+  background: var(--lens-orange);
+  border-color: var(--lens-orange);
+  box-shadow: 0 0 12px rgba(255,107,26,0.5);
+}
+.timeline-line {
+  width: 2px;
+  flex: 1;
+  background: var(--metal-silver-dark);
+  opacity: 0.3;
+  margin-top: 4px;
+}
+.timeline-item.done .timeline-line {
+  background: var(--success);
+  opacity: 0.5;
+}
+.timeline-content {
+  flex: 1;
+  padding-top: -2px;
+}
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 4px;
+}
+.timeline-item:not(.done):not(.active) .timeline-title { opacity: 0.4; }
+.timeline-desc {
+  font-size: 12px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  line-height: 1.5;
+}
+
+.pickup-code-card {
+  margin: var(--s1) var(--s2) var(--s2);
+  padding: var(--s2);
+  background: var(--body-leather);
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.pickup-label {
+  font-size: 12px;
+  color: var(--cream-dim);
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+.pickup-code {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--lens-orange);
+  letter-spacing: 4px;
+}
+
+/* ============================================================
+   底片归档页
+   ============================================================ */
+.archive-page {
+  background: var(--body-black);
+}
+.archive-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s1);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  align-content: start;
+}
+.archive-cell {
+  aspect-ratio: 1;
+  background: var(--body-leather);
+  position: relative;
+  overflow: hidden;
+}
+.archive-cell-inner {
+  position: absolute; inset: 6px;
+  background: var(--paper);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: #2A2520;
+}
+.archive-cell-frame {
+  position: absolute; top: 4px; left: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #8A7F6E;
+}
+
+/* 单张回看模态 */
+.frame-detail-mask {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-med);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s3);
+}
+.frame-detail-mask.show { opacity: 1; pointer-events: auto; }
+.frame-detail-card {
+  width: 100%;
+  background: var(--body-leather);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transform: scale(0.9);
+  transition: transform var(--dur-med) var(--ease-snap);
+}
+.frame-detail-mask.show .frame-detail-card { transform: scale(1); }
+.frame-detail-photo {
+  width: 100%;
+  aspect-ratio: 3/2;
+  background: var(--paper);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 48px;
+  font-weight: 700;
+  color: #8A7F6E;
+  letter-spacing: 8px;
+  position: relative;
+}
+.frame-detail-photo::before {
+  content: '';
+  position: absolute; inset: 20px;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+.frame-detail-info {
+  padding: var(--s2);
+}
+.frame-detail-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--lens-orange);
+  margin-bottom: 8px;
+}
+.frame-detail-params {
+  display: flex; gap: var(--s3);
+  margin-bottom: var(--s1);
+}
+.frame-detail-param {
+  display: flex; flex-direction: column;
+}
+.frame-detail-param-label {
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+.frame-detail-param-value {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cream);
+}
+.frame-detail-note {
+  font-size: 13px;
+  color: var(--cream-dim);
+  opacity: 0.7;
+  line-height: 1.5;
+  padding-top: var(--s1);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ============================================================
+   设计规范页
+   ============================================================ */
+.specs-page {
+  background: var(--body-black);
+}
+.specs-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s2) var(--s2) var(--s4);
+}
+.spec-section {
+  margin-bottom: var(--s3);
+}
+.spec-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lens-orange);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: var(--s1);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.spec-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s1);
+}
+.spec-swatch {
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--body-leather);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.spec-swatch-color {
+  height: 56px;
+}
+.spec-swatch-info {
+  padding: 8px;
+}
+.spec-swatch-name {
+  font-size: 11px;
+  color: var(--cream);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.spec-swatch-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+}
+.spec-typography-item {
+  padding: var(--s1);
+  background: var(--body-leather);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s1);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.spec-type-sample {
+  color: var(--cream);
+  margin-bottom: 6px;
+}
+.spec-type-label {
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  font-family: var(--font-mono);
+}
+.spec-components-list {
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
+.spec-component-item {
+  padding: 10px 12px;
+  background: var(--body-leather);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--cream);
+  border: 1px solid rgba(255,255,255,0.04);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.spec-component-item .tag {
+  font-size: 10px;
+  color: var(--lens-orange);
+  font-family: var(--font-mono);
+}
+.spec-motion-list {
+  display: flex; flex-direction: column; gap: var(--s1);
+}
+.spec-motion-item {
+  padding: var(--s1);
+  background: var(--body-leather);
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.spec-motion-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 4px;
+}
+.spec-motion-desc {
+  font-size: 11px;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   接口文档页
+   ============================================================ */
+.api-page {
+  background: var(--body-black);
+}
+.api-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s2) var(--s2) var(--s4);
+}
+.api-endpoint {
+  margin-bottom: var(--s2);
+  background: var(--body-leather);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.api-endpoint-header {
+  padding: var(--s1);
+  display: flex; align-items: center; gap: var(--s1);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.api-method {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.api-method.get { background: rgba(74,124,62,0.2); color: #6FA85F; }
+.api-method.post { background: rgba(255,107,26,0.2); color: var(--lens-orange); }
+.api-method.put { background: rgba(201,198,190,0.15); color: var(--cream-dim); }
+.api-method.delete { background: rgba(178,58,42,0.2); color: #D97A6A; }
+.api-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cream);
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+.api-endpoint-body {
+  padding: var(--s1);
+}
+.api-desc {
+  font-size: 12px;
+  color: var(--cream-dim);
+  opacity: 0.7;
+  line-height: 1.5;
+  margin-bottom: var(--s1);
+}
+.api-code-block {
+  background: var(--counter-bg);
+  border-radius: var(--r-sm);
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #E8D5B7;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.api-code-label {
+  font-size: 10px;
+  color: var(--cream-dim);
+  opacity: 0.5;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   相机顶栏（首页特别）
+   ============================================================ */
+.home-top-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 var(--s1);
+  height: 44px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
+}
+.home-brand {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--cream);
+  font-family: var(--font-mono);
+}
+.home-brand span { color: var(--lens-orange); }
+
+/* ============================================================
+   滚动条美化
+   ============================================================ */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.toast {
+  position: absolute;
+  top: 60px; left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: rgba(0,0,0,0.85);
+  color: var(--cream);
+  padding: 10px 18px;
+  border-radius: var(--r-lg);
+  font-size: 13px;
+  z-index: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--dur-med);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone-wrap">
+    <div class="phone-screen" id="screen">
+      <div class="phone-notch"></div>
+      <div class="status-bar">
+        <span id="statusTime">9:41</span>
+        <span class="right">
+          <svg class="signal" viewBox="0 0 17 11" fill="currentColor">
+            <rect x="0" y="7" width="3" height="4" rx="1"/>
+            <rect x="5" y="5" width="3" height="6" rx="1"/>
+            <rect x="10" y="2" width="3" height="9" rx="1"/>
+          </svg>
+          <span class="battery"><span class="battery-fill"></span></span>
+        </span>
+      </div>
+
+      <div class="app" id="app">
+        <!-- 快门帘覆盖层 -->
+        <div class="shutter-curtain" id="shutterCurtain">
+          <div class="shutter-top"></div>
+          <div class="shutter-middle"></div>
+          <div class="shutter-bottom"></div>
+        </div>
+
+        <!-- 首页 / 相机背 -->
+        <div class="page active" id="page-home" data-screen-label="01">
+          <div class="home-body">
+            <div class="home-top">
+              <div class="left">
+                <button class="icon-btn" onclick="navigate('library')" title="卷库">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="home-brand">片<span>夹</span></div>
+              <div class="right">
+                <button class="icon-btn" onclick="navigate('specs')" title="设计规范">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+                <button class="icon-btn" onclick="navigate('api')" title="接口文档">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6"/>
+                    <polyline points="8 6 2 12 8 18"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div id="homeEmpty" class="empty-state" style="display:none;">
+              <svg class="empty-illustration" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="25" y="30" width="70" height="60" rx="4"/>
+                <rect x="35" y="40" width="50" height="40" rx="2" fill="currentColor" opacity="0.1"/>
+                <circle cx="60" cy="25" r="8"/>
+                <path d="M25 50 L20 50 L20 75 L25 75"/>
+                <text x="60" y="65" text-anchor="middle" font-size="10" font-family="monospace" fill="currentColor" stroke="none" opacity="0.5">EMPTY</text>
+              </svg>
+              <div class="empty-title">相机里还没有胶卷</div>
+              <div class="empty-desc">装入一卷新胶卷，<br>开始你的胶片记录</div>
+              <button class="primary-btn" onclick="navigate('loadfilm')">装入胶卷</button>
+            </div>
+
+            <div id="homeContent">
+              <div class="film-canister-wrap">
+                <div class="film-canister">
+                  <div class="canister-top">
+                    <div class="canister-spool"></div>
+                  </div>
+                  <div class="canister-body">
+                    <div class="canister-label">
+                      <div class="film-name" id="homeFilmName">Kodak Portra 400</div>
+                      <div class="film-iso" id="homeFilmIso">ISO 400 · 36 EXP</div>
+                      <div class="film-type" id="homeFilmType">Color Negative</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="counter-wrap">
+                <div class="counter-label">FRAME COUNTER</div>
+                <div class="counter-window">
+                  <div class="counter-digits" id="counterDigits">
+                    <!-- digits injected by JS -->
+                  </div>
+                </div>
+              </div>
+
+              <div class="film-gauge">
+                <div class="gauge-bar">
+                  <div class="gauge-fill" id="gaugeFill"></div>
+                  <div class="gauge-ticks">
+                    <span></span><span></span><span></span><span></span><span></span>
+                    <span></span><span></span><span></span><span></span><span></span>
+                    <span></span><span></span>
+                  </div>
+                </div>
+                <div class="gauge-labels">
+                  <span>0</span><span>12</span><span>24</span><span>36</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="advance-zone" id="advanceZone" style="display:none;">
+              <div class="advance-hint">扳动过片 · 记一张</div>
+              <div class="advance-lever-wrap">
+                <div class="advance-base"></div>
+                <div class="advance-lever" id="advanceLever">
+                  <div class="advance-lever-arm"></div>
+                  <div class="advance-lever-knob"></div>
+                </div>
+                <div class="advance-touch-area" id="advanceTouch"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px;">
+                <button class="rewind-btn" onclick="checkRewind()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                  </svg>
+                  回卷封卷
+                </button>
+                <button class="rewind-btn" onclick="showShootHint()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  快门
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 装卷页 -->
+        <div class="page" id="page-loadfilm" data-screen-label="02">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">装入胶卷</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div style="padding: 0 var(--s2) var(--s1); font-size:12px; color: var(--cream-dim); opacity:0.6; line-height:1.5;">
+            选择一款胶片装入相机。不同胶片有不同的感光度与色彩表现。
+          </div>
+          <div class="film-grid" id="filmGrid"></div>
+          <div class="iso-setting">
+            <span class="iso-setting-label">ISO 设定</span>
+            <span class="iso-setting-value" id="isoValue">ISO 400</span>
+          </div>
+          <div class="load-bottom-bar">
+            <button class="primary-btn" style="width:100%;" onclick="confirmLoadFilm()">装入相机</button>
+          </div>
+        </div>
+
+        <!-- 卷库页 -->
+        <div class="page" id="page-library" data-screen-label="03">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">卷库</div>
+            <button class="nav-action" onclick="navigate('loadfilm')">新装</button>
+          </div>
+          <div class="library-list" id="libraryList"></div>
+        </div>
+
+        <!-- 回卷页 -->
+        <div class="page" id="page-rewind" data-screen-label="04">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">回卷封卷</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div class="rewind-page" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: var(--s4) var(--s3);">
+            <div class="rewind-spool">
+              <div class="spool-circle">
+                <div class="spool-film f1" id="filmRing1"></div>
+                <div class="spool-film f2" id="filmRing2"></div>
+                <div class="spool-film f3" id="filmRing3"></div>
+                <div class="spool-film f4" id="filmRing4"></div>
+              </div>
+              <div class="spool-rotating" id="spoolRotating">
+                <div class="spool-handle"></div>
+              </div>
+              <div class="spool-inner"></div>
+            </div>
+            <div class="rewind-title" id="rewindTitle">正在回卷</div>
+            <div class="rewind-desc" id="rewindDesc">胶卷正在回收到暗盒中，<br>请勿打开相机后盖。</div>
+            <div class="rewind-progress" id="rewindProgressBar" style="width:100%;">
+              <div class="rewind-progress-fill" id="rewindProgressFill"></div>
+            </div>
+            <div class="rewind-status" id="rewindStatusText">0 / 36 张</div>
+            <button class="primary-btn" id="rewindDoneBtn" style="display:none; margin-top: var(--s2);" onclick="finishRewind()">
+              进入冲扫
+            </button>
+          </div>
+        </div>
+
+        <!-- 冲扫进度页 -->
+        <div class="page" id="page-develop" data-screen-label="05">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">冲扫进度</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div class="develop-header">
+            <div class="develop-film-name" id="developFilmName">Kodak Portra 400</div>
+            <div class="develop-film-meta" id="developFilmMeta">36张 · 2026.08.15 装卷</div>
+          </div>
+          <div class="pickup-code-card" id="pickupCodeCard" style="display:none;">
+            <div class="pickup-label">取件码</div>
+            <div class="pickup-code" id="pickupCode">—</div>
+          </div>
+          <div class="develop-timeline" id="developTimeline"></div>
+          <div style="padding: var(--s1) var(--s2) var(--s3); flex-shrink:0;">
+            <button class="primary-btn" style="width:100%; display:none;" id="developCompleteBtn" onclick="completeDevelop()">
+              标记完成 · 归档底片
+            </button>
+          </div>
+        </div>
+
+        <!-- 底片归档页 -->
+        <div class="page" id="page-archive" data-screen-label="06">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title" id="archiveTitle">底片归档</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div class="archive-grid" id="archiveGrid"></div>
+        </div>
+
+        <!-- 设计规范页 -->
+        <div class="page" id="page-specs" data-screen-label="07">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">设计规范</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div class="specs-content">
+            <div class="spec-section">
+              <div class="spec-section-title">形态</div>
+              <div style="font-size:13px; color: var(--cream); padding: 10px 12px; background: var(--body-leather); border-radius: var(--r-md); border: 1px solid rgba(255,107,26,0.2);">
+                <strong style="color: var(--lens-orange);">原生 App</strong> · iOS / Android 原生体验
+              </div>
+            </div>
+            <div class="spec-section">
+              <div class="spec-section-title">色彩系统</div>
+              <div class="spec-swatches">
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#1A1A18;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">机身深黑</div>
+                    <div class="spec-swatch-value">#1A1A18</div>
+                  </div>
+                </div>
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#262520;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">荔枝皮革</div>
+                    <div class="spec-swatch-value">#262520</div>
+                  </div>
+                </div>
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#C9C6BE;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">金属银</div>
+                    <div class="spec-swatch-value">#C9C6BE</div>
+                  </div>
+                </div>
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#FF6B1A;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">镜头刻度橙</div>
+                    <div class="spec-swatch-value">#FF6B1A</div>
+                  </div>
+                </div>
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#F3EAD8;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">奶白刻度字</div>
+                    <div class="spec-swatch-value">#F3EAD8</div>
+                  </div>
+                </div>
+                <div class="spec-swatch">
+                  <div class="spec-swatch-color" style="background:#EDE5D3;"></div>
+                  <div class="spec-swatch-info">
+                    <div class="spec-swatch-name">底片袋纸色</div>
+                    <div class="spec-swatch-value">#EDE5D3</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="spec-section">
+              <div class="spec-section-title">字体排印</div>
+              <div class="spec-typography-item">
+                <div class="spec-type-sample" style="font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--lens-orange);">01 / 36</div>
+                <div class="spec-type-label">等宽数字 · 计数器 / 拨轮 · 48px Bold</div>
+              </div>
+              <div class="spec-typography-item">
+                <div class="spec-type-sample" style="font-size: 18px; font-weight: 600;">胶卷型号标题</div>
+                <div class="spec-type-label">标题 · PingFang SC · 18px Semibold</div>
+              </div>
+              <div class="spec-typography-item">
+                <div class="spec-type-sample" style="font-size: 14px; font-weight: 500;">正文主体文字</div>
+                <div class="spec-type-label">正文 · PingFang SC · 14px Medium</div>
+              </div>
+              <div class="spec-typography-item">
+                <div class="spec-type-sample" style="font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.5;">FRAME COUNTER</div>
+                <div class="spec-type-label">刻度标签 · UPPERCASE · 11px · +200 字距</div>
+              </div>
+            </div>
+            <div class="spec-section">
+              <div class="spec-section-title">动效系统</div>
+              <div class="spec-motion-list">
+                <div class="spec-motion-item">
+                  <div class="spec-motion-name">机械回弹</div>
+                  <div class="spec-motion-desc">cubic-bezier(.17, .67, .35, 1.4) · 520ms · 用于过片扳手回弹、按钮反馈</div>
+                </div>
+                <div class="spec-motion-item">
+                  <div class="spec-motion-name">滚字计数</div>
+                  <div class="spec-motion-desc">cubic-bezier(.25, 1.6, .4, 1) · 420ms · 机械计数器翻页</div>
+                </div>
+                <div class="spec-motion-item">
+                  <div class="spec-motion-name">快门帘开合</div>
+                  <div class="spec-motion-desc">纵向两片帘幕 · 先合后开 · 总时长 200ms</div>
+                </div>
+                <div class="spec-motion-item">
+                  <div class="spec-motion-name">页面栈推入</div>
+                  <div class="spec-motion-desc">cubic-bezier(.4, 0, .2, 1) · 420ms · 新页从右滑入，旧页左移20%</div>
+                </div>
+              </div>
+            </div>
+            <div class="spec-section">
+              <div class="spec-section-title">组件清单</div>
+              <div class="spec-components-list">
+                <div class="spec-component-item"><span>机械计数器</span><span class="tag">Counter</span></div>
+                <div class="spec-component-item"><span>过片扳手</span><span class="tag">Lever</span></div>
+                <div class="spec-component-item"><span>光圈拨轮</span><span class="tag">Dial</span></div>
+                <div class="spec-component-item"><span>快门拨轮</span><span class="tag">Dial</span></div>
+                <div class="spec-component-item"><span>胶片暗盒</span><span class="tag">Canister</span></div>
+                <div class="spec-component-item"><span>张数刻度尺</span><span class="tag">Gauge</span></div>
+                <div class="spec-component-item"><span>快门帘</span><span class="tag">Curtain</span></div>
+                <div class="spec-component-item"><span>半屏速记卡</span><span class="tag">Sheet</span></div>
+                <div class="spec-component-item"><span>胶卷行</span><span class="tag">Row</span></div>
+                <div class="spec-component-item"><span>冲扫时间线</span><span class="tag">Timeline</span></div>
+              </div>
+            </div>
+            <div class="spec-section">
+              <div class="spec-section-title">间距尺度</div>
+              <div style="display:flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:4px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">4</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:8px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">8</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:12px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">12</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:16px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">16</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:24px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">24</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:32px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">32</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                  <div style="width:48px; height:40px; background: var(--lens-orange); border-radius:2px;"></div>
+                  <span style="font-size:10px; font-family:var(--font-mono); color: var(--cream-dim); opacity:0.6;">48</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 接口文档页 -->
+        <div class="page" id="page-api" data-screen-label="08">
+          <div class="nav-bar">
+            <button class="nav-back" onclick="goBack()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <div class="nav-title">接口文档</div>
+            <div style="width:36px;"></div>
+          </div>
+          <div class="api-content">
+            <div style="font-size: 12px; color: var(--cream-dim); opacity: 0.6; line-height: 1.6; margin-bottom: var(--s2); padding: var(--s1); background: var(--body-leather); border-radius: var(--r-md); border: 1px solid rgba(255,255,255,0.04);">
+              说明：本 App 数据存储于 localStorage，接口仅作数据契约文档。所有请求均为本地模拟。
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/film/list</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">获取所有胶卷列表，按状态分组（在拍 / 待冲扫 / 已归档）。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": [
+    {
+      "id": "film_001",
+      "name": "Kodak Portra 400",
+      "iso": 400,
+      "total": 36,
+      "shot": 14,
+      "status": "shooting",
+      "type": "color",
+      "loadedAt": "2026-08-15T09:30:00Z",
+      "frames": [
+        {
+          "num": 1,
+          "aperture": "f2.8",
+          "shutter": "1/250",
+          "note": "巷口的猫",
+          "timestamp": "2026-08-15T10:15:00Z"
+        }
+      ]
+    }
+  ]
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/film/:id</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">获取单卷胶卷详情，包含所有张次记录。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "id": "film_001",
+    "name": "Kodak Portra 400",
+    "iso": 400,
+    "total": 36,
+    "shot": 14,
+    "status": "shooting",
+    "type": "color",
+    "loadedAt": "2026-08-15T09:30:00Z",
+    "frames": [...]
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method post">POST</span>
+                <span class="api-path">/api/film/load</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">装入新胶卷（创建一卷新的在拍胶卷）。</div>
+                <div class="api-code-label">Request</div>
+                <div class="api-code-block">{
+  "name": "Kodak Portra 400",
+  "iso": 400,
+  "total": 36,
+  "type": "color"
+}</div>
+                <div class="api-code-label" style="margin-top: 8px;">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "id": "film_002",
+    "name": "Kodak Portra 400",
+    "iso": 400,
+    "total": 36,
+    "shot": 0,
+    "status": "shooting",
+    "loadedAt": "2026-08-19T14:00:00Z",
+    "frames": []
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method post">POST</span>
+                <span class="api-path">/api/film/:id/frame</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">记录一张拍摄参数（过片后调用）。</div>
+                <div class="api-code-label">Request</div>
+                <div class="api-code-block">{
+  "num": 15,
+  "aperture": "f4.0",
+  "shutter": "1/125",
+  "note": "午后的咖啡馆"
+}</div>
+                <div class="api-code-label" style="margin-top: 8px;">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "num": 15,
+    "aperture": "f4.0",
+    "shutter": "1/125",
+    "note": "午后的咖啡馆",
+    "timestamp": "2026-08-19T15:30:00Z"
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method post">POST</span>
+                <span class="api-path">/api/film/:id/rewind</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">回卷封卷，状态从 shooting 转为 developing（待冲扫）。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "id": "film_001",
+    "status": "developing",
+    "developStatus": "pending",
+    "pickupCode": null,
+    "rewoundAt": "2026-08-20T11:00:00Z"
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/film/:id/develop</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">获取冲扫进度。三态：pending（待寄出）/ processing（冲洗中）/ done（已完成）。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "filmId": "film_001",
+    "status": "processing",
+    "stages": [
+      { "key": "sent", "label": "已寄出", "done": true, "time": "08-18 10:00" },
+      { "key": "received", "label": "工作室签收", "done": true, "time": "08-19 14:30" },
+      { "key": "developing", "label": "冲洗中", "done": false, "active": true },
+      { "key": "scanning", "label": "扫描归档", "done": false },
+      { "key": "done", "label": "可取件", "done": false }
+    ],
+    "pickupCode": "PJ-7824",
+    "estimatedAt": "2026-08-22"
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method put">PUT</span>
+                <span class="api-path">/api/film/:id/develop/complete</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">标记冲扫完成，胶卷状态转为 archived（已归档）。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "data": {
+    "id": "film_001",
+    "status": "archived",
+    "archivedAt": "2026-08-22T16:00:00Z"
+  }
+}</div>
+              </div>
+            </div>
+
+            <div class="api-endpoint">
+              <div class="api-endpoint-header">
+                <span class="api-method delete">DELETE</span>
+                <span class="api-path">/api/film/:id</span>
+              </div>
+              <div class="api-endpoint-body">
+                <div class="api-desc">删除一卷胶卷及其所有张次记录。</div>
+                <div class="api-code-label">Response</div>
+                <div class="api-code-block">{
+  "code": 0,
+  "message": "删除成功"
+}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 参数速记半屏卡 -->
+        <div class="param-sheet-mask" id="paramSheetMask" onclick="hideParamSheet(event)">
+          <div class="param-sheet" id="paramSheet" onclick="event.stopPropagation()">
+            <div class="param-sheet-handle"></div>
+            <div class="param-sheet-header">
+              <div class="param-sheet-title">
+                第 <span class="frame-num" id="paramFrameNum">01</span> 张 · 参数速记
+              </div>
+              <button class="param-sheet-close" onclick="hideParamSheet()">跳过</button>
+            </div>
+            <div class="dial-group">
+              <div class="dial-col">
+                <div class="dial-label">光圈</div>
+                <div class="dial">
+                  <div class="dial-marker"></div>
+                  <div class="dial-wheel" id="apertureDial"></div>
+                </div>
+              </div>
+              <div class="dial-col">
+                <div class="dial-label">快门</div>
+                <div class="dial">
+                  <div class="dial-marker"></div>
+                  <div class="dial-wheel" id="shutterDial"></div>
+                </div>
+              </div>
+            </div>
+            <div class="note-input-wrap">
+              <textarea class="note-input" id="noteInput" rows="2" placeholder="记录这一刻的想法（选填）"></textarea>
+            </div>
+            <button class="save-btn" onclick="saveFrameParam()">保存记录</button>
+          </div>
+        </div>
+
+        <!-- 单张回看 -->
+        <div class="frame-detail-mask" id="frameDetailMask" onclick="hideFrameDetail(event)">
+          <div class="frame-detail-card" onclick="event.stopPropagation()">
+            <div class="frame-detail-photo" id="frameDetailPhoto">
+              <span id="frameDetailNumText">01</span>
+            </div>
+            <div class="frame-detail-info">
+              <div class="frame-detail-num" id="frameDetailNum">第 01 张</div>
+              <div class="frame-detail-params">
+                <div class="frame-detail-param">
+                  <div class="frame-detail-param-label">光圈</div>
+                  <div class="frame-detail-param-value" id="frameDetailAperture">f4.0</div>
+                </div>
+                <div class="frame-detail-param">
+                  <div class="frame-detail-param-label">快门</div>
+                  <div class="frame-detail-param-value" id="frameDetailShutter">1/125</div>
+                </div>
+                <div class="frame-detail-param">
+                  <div class="frame-detail-param-label">ISO</div>
+                  <div class="frame-detail-param-value" id="frameDetailIso">400</div>
+                </div>
+              </div>
+              <div class="frame-detail-note" id="frameDetailNote">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast">已保存</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   片夹 · App 逻辑（Vanilla JS, single file）
+   ============================================================ */
+
+// ---------- 数据 & 持久化 ----------
+const STORAGE_KEY = 'pianjia_film_app_v2';
+
+const FILM_CATALOG = [
+  { name: 'Kodak Portra 400', iso: 400, type: 'color', label: '彩色负片', color: '#C9A66B' },
+  { name: 'Kodak Ektar 100', iso: 100, type: 'color', label: '彩色负片', color: '#8B5E3C' },
+  { name: 'Kodak Gold 200', iso: 200, type: 'color', label: '彩色负片', color: '#D4A84B' },
+  { name: 'Ilford HP5 Plus 400', iso: 400, type: 'bw', label: '黑白负片', color: '#5A574F' },
+  { name: 'Fujifilm C200', iso: 200, type: 'color', label: '彩色负片', color: '#4A7C59' },
+  { name: 'Lomography Color 800', iso: 800, type: 'color', label: '彩色负片', color: '#8B3A62' },
+];
+
+const APERTURE_VALUES = ['f1.4','f2.0','f2.8','f4.0','f5.6','f8.0','f11','f16','f22'];
+const SHUTTER_VALUES = ['1/8','1/15','1/30','1/60','1/125','1/250','1/500','1/1000','1/2000'];
+
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { films: [], currentId: null };
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function genId() { return 'film_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ---------- 导航 ----------
+const pageStack = ['home'];
+let currentPage = 'home';
+let navAnimating = false;
+
+function navigate(target, opts = {}) {
+  if (navAnimating || target === currentPage) return;
+  navAnimating = true;
+
+  const currentEl = document.getElementById('page-' + currentPage);
+  const targetEl = document.getElementById('page-' + target);
+  if (!targetEl) { navAnimating = false; return; }
+
+  // 准备目标页
+  targetEl.classList.add('push-in');
+  currentEl.classList.add('push-out');
+  targetEl.style.display = 'flex';
+
+  // 初始化目标页内容
+  initPage(target);
+
+  setTimeout(() => {
+    currentEl.classList.remove('push-out', 'active');
+    targetEl.classList.remove('push-in');
+    targetEl.classList.add('active');
+    currentEl.style.display = '';
+    pageStack.push(target);
+    currentPage = target;
+    navAnimating = false;
+  }, 420);
+}
+
+function goBack() {
+  if (navAnimating || pageStack.length <= 1) return;
+  navAnimating = true;
+
+  const prev = pageStack[pageStack.length - 2];
+  const currentEl = document.getElementById('page-' + currentPage);
+  const prevEl = document.getElementById('page-' + prev);
+
+  prevEl.classList.add('pop-in');
+  currentEl.classList.add('pop-out');
+  prevEl.style.display = 'flex';
+
+  setTimeout(() => {
+    currentEl.classList.remove('pop-out', 'active');
+    prevEl.classList.remove('pop-in');
+    prevEl.classList.add('active');
+    currentEl.style.display = '';
+    pageStack.pop();
+    currentPage = prev;
+    navAnimating = false;
+  }, 420);
+}
+
+// ---------- 页面初始化 ----------
+function initPage(page) {
+  switch(page) {
+    case 'home': renderHome(); break;
+    case 'loadfilm': renderLoadFilm(); break;
+    case 'library': renderLibrary(); break;
+    case 'rewind': renderRewind(); break;
+    case 'develop': renderDevelop(); break;
+    case 'archive': renderArchive(); break;
+  }
+}
+
+// ---------- 首页 ----------
+function renderHome() {
+  const film = getCurrentFilm();
+  const emptyEl = document.getElementById('homeEmpty');
+  const contentEl = document.getElementById('homeContent');
+  const zoneEl = document.getElementById('advanceZone');
+
+  if (!film) {
+    emptyEl.style.display = 'flex';
+    contentEl.style.display = 'none';
+    zoneEl.style.display = 'none';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  contentEl.style.display = 'block';
+  zoneEl.style.display = 'block';
+
+  document.getElementById('homeFilmName').textContent = film.name;
+  document.getElementById('homeFilmIso').textContent = 'ISO ' + film.iso + ' · ' + film.total + ' EXP';
+  document.getElementById('homeFilmType').textContent = film.type === 'bw' ? 'Black & White' : 'Color Negative';
+
+  renderCounter(film.shot, film.total);
+
+  const pct = (film.shot / film.total) * 100;
+  document.getElementById('gaugeFill').style.width = pct + '%';
+}
+
+function renderCounter(shot, total) {
+  const digitsEl = document.getElementById('counterDigits');
+  const shotStr = String(shot).padStart(2, '0');
+  const totalStr = String(total).padStart(2, '0');
+
+  // 构建 DOM：两位已拍 + 分隔符 + 两位总数
+  if (!digitsEl.children.length) {
+    digitsEl.innerHTML = `
+      <div class="counter-digit-col" data-pos="0">
+        <div class="counter-digit-strip" id="digit-0"></div>
+      </div>
+      <div class="counter-digit-col" data-pos="1">
+        <div class="counter-digit-strip" id="digit-1"></div>
+      </div>
+      <div class="counter-divider">/</div>
+      <div class="counter-digit-col" data-pos="2">
+        <div class="counter-digit-strip counter-total" id="digit-2"></div>
+      </div>
+      <div class="counter-digit-col" data-pos="3">
+        <div class="counter-digit-strip counter-total" id="digit-3"></div>
+      </div>
+    `;
+  }
+
+  // 填充每位数字列的 0-9 序列
+  [0,1,2,3].forEach(i => {
+    const strip = document.getElementById('digit-' + i);
+    if (!strip.children.length) {
+      let html = '';
+      for (let d = 0; d <= 9; d++) html += '<span>' + d + '</span>';
+      strip.innerHTML = html;
+    }
+  });
+
+  // 设置每列位置
+  const digits = [shotStr[0], shotStr[1], totalStr[0], totalStr[1]];
+  digits.forEach((d, i) => {
+    const strip = document.getElementById('digit-' + i);
+    const idx = parseInt(d);
+    strip.style.transform = 'translateY(' + (-idx * 56) + 'px)';
+  });
+}
+
+function getCurrentFilm() {
+  if (!state.currentId) return null;
+  return state.films.find(f => f.id === state.currentId) || null;
+}
+
+// ---------- 过片交互 ----------
+let advanceActive = false;
+let advanceAngle = -30;
+let advanceTriggered = false;
+let rafId = null;
+let lastFrameTime = 0;
+
+function initAdvanceInteraction() {
+  const touchArea = document.getElementById('advanceTouch');
+  const lever = document.getElementById('advanceLever');
+  if (!touchArea || !lever) return;
+
+  let startX = 0, startY = 0;
+  let isDragging = false;
+  let currentAngle = -30;
+  let velocity = 0;
+  let lastMoveX = 0;
+  let lastMoveTime = 0;
+
+  function handleStart(e) {
+    if (isAdvanceLocked()) return;
+    isDragging = true;
+    advanceTriggered = false;
+    const pt = getPoint(e);
+    startX = pt.x;
+    lastMoveX = pt.x;
+    lastMoveTime = performance.now();
+    lever.style.transition = 'none';
+  }
+
+  function handleMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    const pt = getPoint(e);
+    const dx = pt.x - startX;
+    const dy = pt.y - startX; // not used but kept
+    // 映射到角度：从 -30° 到 +30°
+    const maxDrag = 80;
+    const progress = Math.max(0, Math.min(1, dx / maxDrag));
+    currentAngle = -30 + progress * 60;
+    lever.style.transform = 'translate(-50%, 0) rotate(' + currentAngle + 'deg)';
+
+    const now = performance.now();
+    const dt = Math.max(1, now - lastMoveTime);
+    velocity = (pt.x - lastMoveX) / dt;
+    lastMoveX = pt.x;
+    lastMoveTime = now;
+
+    if (progress >= 1 && !advanceTriggered) {
+      advanceTriggered = true;
+      triggerAdvance();
+    }
+  }
+
+  function handleEnd(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    lever.style.transition = '';
+    lever.style.transform = 'translate(-50%, 0) rotate(-30deg)';
+    // 如果触发过，等回弹结束后打开参数卡
+    if (advanceTriggered) {
+      setTimeout(() => {
+        showParamSheet();
+      }, 520);
+    }
+  }
+
+  function getPoint(e) {
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  touchArea.addEventListener('mousedown', handleStart);
+  window.addEventListener('mousemove', handleMove);
+  window.addEventListener('mouseup', handleEnd);
+  touchArea.addEventListener('touchstart', handleStart, { passive: false });
+  touchArea.addEventListener('touchmove', handleMove, { passive: false });
+  touchArea.addEventListener('touchend', handleEnd);
+  touchArea.addEventListener('touchcancel', handleEnd);
+
+  // 点击也触发
+  touchArea.addEventListener('click', function(e) {
+    if (isAdvanceLocked()) return;
+    // 区分点击和拖动
+    if (Math.abs(velocity) > 0.3) return;
+    lever.style.transition = 'transform 200ms linear';
+    lever.style.transform = 'translate(-50%, 0) rotate(30deg)';
+    triggerAdvance();
+    setTimeout(() => {
+      lever.style.transition = '';
+      lever.style.transform = 'translate(-50%, 0) rotate(-30deg)';
+      setTimeout(showParamSheet, 520);
+    }, 220);
+  });
+}
+
+let _advanceLocked = false;
+function isAdvanceLocked() {
+  const film = getCurrentFilm();
+  if (!film || film.shot >= film.total) return true;
+  return _advanceLocked;
+}
+function lockAdvance() { _advanceLocked = true; }
+function unlockAdvance() { _advanceLocked = false; }
+
+function triggerAdvance() {
+  const film = getCurrentFilm();
+  if (!film) return;
+
+  // 快门帘动效
+  const curtain = document.getElementById('shutterCurtain');
+  curtain.classList.add('triggered');
+  setTimeout(() => {
+    curtain.classList.remove('triggered');
+    curtain.classList.add('opening');
+    setTimeout(() => {
+      curtain.classList.remove('opening');
+    }, 120);
+  }, 80);
+
+  // 递增计数
+  film.shot = Math.min(film.total, film.shot + 1);
+  saveState();
+
+  // 更新计数器
+  renderCounter(film.shot, film.total);
+  const pct = (film.shot / film.total) * 100;
+  document.getElementById('gaugeFill').style.width = pct + '%';
+
+  // 检查是否拍满
+  if (film.shot >= film.total) {
+    // 延迟后自动进入回卷
+    setTimeout(() => {
+      showToast('本卷已拍完，正在回卷...');
+      setTimeout(() => {
+        navigate('rewind');
+      }, 1500);
+    }, 800);
+  } else {
+    // 未拍满：过片后弹出参数速记卡，记录本张光圈/快门/备注
+    showParamSheet();
+  }
+}
+
+function showShootHint() {
+  showToast('按下快门后扳动过片扳手');
+}
+
+// ---------- 参数速记卡 ----------
+let currentFrameNum = 0;
+let apertureIndex = 3; // f4.0
+let shutterIndex = 4; // 1/125
+
+function showParamSheet() {
+  const film = getCurrentFilm();
+  if (!film) return;
+  currentFrameNum = film.shot;
+  document.getElementById('paramFrameNum').textContent = String(currentFrameNum).padStart(2, '0');
+  document.getElementById('noteInput').value = '';
+
+  // 初始化拨轮
+  initDials();
+
+  document.getElementById('paramSheetMask').classList.add('show');
+}
+
+function hideParamSheet(e) {
+  if (e && e.target !== e.currentTarget && e.target.id !== 'paramSheetMask') return;
+  document.getElementById('paramSheetMask').classList.remove('show');
+}
+
+function initDials() {
+  buildDial('apertureDial', APERTURE_VALUES, apertureIndex, (idx) => {
+    apertureIndex = idx;
+  });
+  buildDial('shutterDial', SHUTTER_VALUES, shutterIndex, (idx) => {
+    shutterIndex = idx;
+  });
+}
+
+function buildDial(id, values, initialIdx, onChange) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  // 构建轮子：前后加缓冲，中间是值
+  const PAD = 3;
+  let html = '';
+  for (let i = 0; i < PAD; i++) html += '<span>&nbsp;</span>';
+  values.forEach(v => { html += '<span>' + v + '</span>'; });
+  for (let i = 0; i < PAD; i++) html += '<span>&nbsp;</span>';
+  el.innerHTML = html;
+
+  const ITEM_H = 40;
+  let currentIdx = initialIdx;
+  let dialStartY = 0;
+  let dialStartIdx = 0;
+  let dialDragging = false;
+
+  function setIndex(idx, animate) {
+    currentIdx = Math.max(0, Math.min(values.length - 1, idx));
+    const offset = PAD * ITEM_H + currentIdx * ITEM_H;
+    if (animate) {
+      el.style.transition = 'transform 150ms cubic-bezier(.25, 1.6, .4, 1)';
+    } else {
+      el.style.transition = 'none';
+    }
+    el.style.transform = 'translateY(calc(-50% + ' + (offset - PAD * ITEM_H) + 'px))';
+    // 更新 active 类
+    Array.from(el.children).forEach(function(c, i) {
+      if (i >= PAD && i < PAD + values.length) {
+        c.classList.toggle('active', i - PAD === currentIdx);
+      }
+    });
+    onChange(currentIdx);
+  }
+
+  setIndex(currentIdx, false);
+
+  function handleStart(e) {
+    dialDragging = true;
+    dialStartY = e.touches ? e.touches[0].clientY : e.clientY;
+    dialStartIdx = currentIdx;
+    el.style.transition = 'none';
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function handleMove(e) {
+    if (!dialDragging) return;
+    var y = e.touches ? e.touches[0].clientY : e.clientY;
+    var dy = dialStartY - y;
+    var deltaIdx = Math.round(dy / ITEM_H);
+    var newIdx = Math.max(0, Math.min(values.length - 1, dialStartIdx + deltaIdx));
+    if (newIdx !== currentIdx) {
+      setIndex(newIdx, false);
+    }
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function handleEnd() {
+    if (!dialDragging) return;
+    dialDragging = false;
+    setIndex(currentIdx, true);
+  }
+
+  // 直接操作 DOM — 高频事件
+  el.addEventListener('mousedown', handleStart);
+  el.addEventListener('touchstart', handleStart, { passive: false });
+  // 全局 move/up 用命名函数，避免每次 init 重复绑定
+  if (!window._dialMoveHandler) {
+    window._dialMoveHandler = function(ev) { handleMove(ev); };
+    window._dialUpHandler = function() { handleEnd(); };
+    window.addEventListener('mousemove', window._dialMoveHandler);
+    window.addEventListener('mouseup', window._dialUpHandler);
+    window.addEventListener('touchmove', window._dialMoveHandler, { passive: false });
+    window.addEventListener('touchend', window._dialUpHandler);
+    window.addEventListener('touchcancel', window._dialUpHandler);
+  }
+}
+
+function saveFrameParam() {
+  const film = getCurrentFilm();
+  if (!film) return;
+
+  const aperture = APERTURE_VALUES[apertureIndex];
+  const shutter = SHUTTER_VALUES[shutterIndex];
+  const note = document.getElementById('noteInput').value.trim();
+
+  // 找到对应的帧（可能已存在）
+  let frame = film.frames.find(f => f.num === currentFrameNum);
+  if (!frame) {
+    frame = { num: currentFrameNum, aperture, shutter, note, timestamp: new Date().toISOString() };
+    film.frames.push(frame);
+  } else {
+    frame.aperture = aperture;
+    frame.shutter = shutter;
+    frame.note = note;
+  }
+
+  saveState();
+  hideParamSheet();
+  showToast('已保存第 ' + String(currentFrameNum).padStart(2,'0') + ' 张');
+}
+
+// ---------- 装卷页 ----------
+let selectedFilmIdx = 0;
+
+function renderLoadFilm() {
+  const grid = document.getElementById('filmGrid');
+  grid.innerHTML = '';
+  FILM_CATALOG.forEach((film, i) => {
+    const card = document.createElement('div');
+    card.className = 'film-card' + (i === selectedFilmIdx ? ' selected' : '');
+    card.onclick = () => selectFilm(i);
+    card.innerHTML = `
+      <div class="check-mark">✓</div>
+      <div class="film-card-img">
+        <div class="film-label-card">
+          <div class="film-card-name">${film.name}</div>
+          <div class="film-card-iso">ISO ${film.iso}</div>
+        </div>
+      </div>
+      <div class="film-card-info">
+        <div class="film-card-type">${film.label}</div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+  updateIsoDisplay();
+}
+
+function selectFilm(idx) {
+  selectedFilmIdx = idx;
+  renderLoadFilm();
+}
+
+function updateIsoDisplay() {
+  document.getElementById('isoValue').textContent = 'ISO ' + FILM_CATALOG[selectedFilmIdx].iso;
+}
+
+function confirmLoadFilm() {
+  const filmInfo = FILM_CATALOG[selectedFilmIdx];
+  const newFilm = {
+    id: genId(),
+    name: filmInfo.name,
+    iso: filmInfo.iso,
+    total: 36,
+    shot: 0,
+    status: 'shooting',
+    type: filmInfo.type,
+    loadedAt: new Date().toISOString(),
+    frames: [],
+    developStatus: null,
+    pickupCode: null,
+  };
+
+  // 如果有正在拍的卷，不替换，直接加进列表但不设为当前
+  // 按设计：装卷就是装到相机里，所以设为当前
+  state.films.unshift(newFilm);
+  state.currentId = newFilm.id;
+  saveState();
+
+  showToast('已装入 ' + filmInfo.name);
+  goBack();
+  setTimeout(() => renderHome(), 450);
+}
+
+// ---------- 卷库页 ----------
+function renderLibrary() {
+  const list = document.getElementById('libraryList');
+  const shooting = state.films.filter(f => f.status === 'shooting');
+  const developing = state.films.filter(f => f.status === 'developing');
+  const archived = state.films.filter(f => f.status === 'archived');
+
+  let html = '';
+
+  if (shooting.length) {
+    html += '<div class="library-section-title">在拍</div>';
+    shooting.forEach(f => html += filmRowHtml(f));
+  }
+  if (developing.length) {
+    html += '<div class="library-section-title">待冲扫</div>';
+    developing.forEach(f => html += filmRowHtml(f));
+  }
+  if (archived.length) {
+    html += '<div class="library-section-title">已归档</div>';
+    archived.forEach(f => html += filmRowHtml(f));
+  }
+
+  if (!state.films.length) {
+    html = '<div class="empty-state" style="padding: 60px 20px;"><div class="empty-title" style="font-size:15px;">还没有胶卷</div><div class="empty-desc" style="font-size:12px;">装入你的第一卷胶卷开始记录</div></div>';
+  }
+
+  list.innerHTML = html;
+}
+
+function filmRowHtml(f) {
+  const statusClass = { shooting: 'status-shooting', developing: 'status-developing', archived: 'status-archived' }[f.status];
+  const statusText = { shooting: '在拍', developing: '待冲扫', archived: '已归档' }[f.status];
+  const date = new Date(f.loadedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '.');
+  return `
+    <div class="film-row" onclick="openFilmDetail('${f.id}')">
+      <div class="film-row-thumb">
+        <div class="thumb-label">${f.name.split(' ').slice(-2).join(' ').substring(0,8)}</div>
+      </div>
+      <div class="film-row-info">
+        <div class="film-row-name">${f.name}</div>
+        <div class="film-row-meta">${f.shot}/${f.total} 张 · ISO ${f.iso} · ${date}</div>
+      </div>
+      <div class="film-row-status ${statusClass}">${statusText}</div>
+    </div>
+  `;
+}
+
+let _viewingFilmId = null;
+
+function openFilmDetail(id) {
+  const film = state.films.find(f => f.id === id);
+  if (!film) return;
+  _viewingFilmId = id;
+
+  if (film.status === 'shooting') {
+    // 设为当前并返回首页
+    state.currentId = id;
+    saveState();
+    goBack();
+    setTimeout(() => renderHome(), 450);
+  } else if (film.status === 'developing') {
+    navigate('develop');
+  } else if (film.status === 'archived') {
+    navigate('archive');
+  }
+}
+
+// ---------- 回卷页 ----------
+let rewindRaf = null;
+
+function renderRewind() {
+  const film = getCurrentFilm();
+  if (!film) { goBack(); return; }
+
+  document.getElementById('rewindTitle').textContent = '正在回卷';
+  document.getElementById('rewindDesc').innerHTML = '胶卷正在回收到暗盒中，<br>请勿打开相机后盖。';
+  document.getElementById('rewindProgressFill').style.width = '0%';
+  document.getElementById('rewindStatusText').textContent = film.shot + ' / ' + film.total + ' 张';
+  document.getElementById('rewindDoneBtn').style.display = 'none';
+
+  const spool = document.getElementById('spoolRotating');
+  spool.classList.add('spinning');
+
+  // 回卷动画
+  let progress = 0;
+  const total = film.shot;
+  const startTime = performance.now();
+  const duration = 3000;
+
+  function step(now) {
+    progress = Math.min(1, (now - startTime) / duration);
+    const count = Math.round(progress * total);
+    document.getElementById('rewindProgressFill').style.width = (progress * 100) + '%';
+    document.getElementById('rewindStatusText').textContent = count + ' / ' + total + ' 张';
+
+    // 胶片环动画
+    const ringOpacity = 1 - progress * 0.8;
+    ['filmRing1','filmRing2','filmRing3','filmRing4'].forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el) el.style.opacity = Math.max(0.1, ringOpacity - i * 0.15);
+    });
+
+    if (progress < 1) {
+      rewindRaf = requestAnimationFrame(step);
+    } else {
+      // 完成
+      spool.classList.remove('spinning');
+      document.getElementById('rewindTitle').textContent = '回卷完成';
+      document.getElementById('rewindDesc').innerHTML = '胶卷已安全回收到暗盒，<br>可以送去冲扫了。';
+      document.getElementById('rewindDoneBtn').style.display = 'block';
+
+      // 更新状态
+      film.status = 'developing';
+      film.developStatus = 'pending';
+      film.rewoundAt = new Date().toISOString();
+      state.currentId = null;
+      saveState();
+    }
+  }
+
+  cancelAnimationFrame(rewindRaf);
+  rewindRaf = requestAnimationFrame(step);
+}
+
+function finishRewind() {
+  goBack();
+  setTimeout(() => {
+    navigate('develop');
+  }, 450);
+}
+
+function checkRewind() {
+  const film = getCurrentFilm();
+  if (!film) return;
+  if (film.shot < 1) {
+    showToast('还没有拍摄任何张次');
+    return;
+  }
+  navigate('rewind');
+}
+
+// ---------- 冲扫进度页 ----------
+const DEVELOP_STAGES = [
+  { key: 'sent', label: '已寄出', desc: '胶卷已寄往冲扫工作室' },
+  { key: 'received', label: '工作室签收', desc: '工作室已收到胶卷并登记' },
+  { key: 'developing', label: '冲洗中', desc: '正在进行胶片冲洗与定影' },
+  { key: 'scanning', label: '扫描归档', desc: '底片扫描为数字文件' },
+  { key: 'done', label: '可取件', desc: '冲扫完成，底片已归档' },
+];
+
+function renderDevelop() {
+  const filmId = _viewingFilmId || state.films.find(f => f.status === 'developing')?.id;
+  const film = state.films.find(f => f.id === filmId);
+  if (!film) { goBack(); return; }
+  _viewingFilmId = filmId;
+
+  document.getElementById('developFilmName').textContent = film.name;
+  const date = new Date(film.loadedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '.');
+  document.getElementById('developFilmMeta').textContent = film.shot + '张 · ' + date + ' 装卷';
+
+  // 生成冲扫状态（基于时间模拟推进）
+  const elapsed = Date.now() - new Date(film.rewoundAt || film.loadedAt).getTime();
+  const dayMs = 24 * 3600 * 1000;
+  let activeIdx = 0;
+  if (elapsed > dayMs * 0.5) activeIdx = 1;
+  if (elapsed > dayMs * 1) activeIdx = 2;
+  if (elapsed > dayMs * 2) activeIdx = 3;
+  if (elapsed > dayMs * 3) activeIdx = 4;
+
+  // 如果是第一次进，生成取件码
+  if (!film.pickupCode) {
+    film.pickupCode = 'PJ-' + Math.floor(1000 + Math.random() * 9000);
+    saveState();
+  }
+
+  const pickupCard = document.getElementById('pickupCodeCard');
+  if (activeIdx >= 2) {
+    pickupCard.style.display = 'block';
+    document.getElementById('pickupCode').textContent = film.pickupCode;
+  } else {
+    pickupCard.style.display = 'none';
+  }
+
+  const timeline = document.getElementById('developTimeline');
+  let html = '';
+  DEVELOP_STAGES.forEach((s, i) => {
+    const isDone = i < activeIdx;
+    const isActive = i === activeIdx;
+    const cls = isDone ? 'done' : (isActive ? 'active' : '');
+    html += `
+      <div class="timeline-item ${cls}">
+        <div class="timeline-dot-col">
+          <div class="timeline-dot"></div>
+          <div class="timeline-line"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">${s.label}</div>
+          <div class="timeline-desc">${s.desc}</div>
+        </div>
+      </div>
+    `;
+  });
+  timeline.innerHTML = html;
+
+  // 完成按钮
+  const btn = document.getElementById('developCompleteBtn');
+  if (activeIdx >= 4) {
+    btn.style.display = 'block';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function completeDevelop() {
+  const film = state.films.find(f => f.id === _viewingFilmId);
+  if (!film) return;
+  film.status = 'archived';
+  film.archivedAt = new Date().toISOString();
+  saveState();
+  showToast('已归档到底片袋');
+  goBack();
+  setTimeout(() => {
+    navigate('archive');
+  }, 450);
+}
+
+// ---------- 底片归档页 ----------
+function renderArchive() {
+  const filmId = _viewingFilmId || state.films.find(f => f.status === 'archived')?.id;
+  const film = state.films.find(f => f.id === filmId);
+  if (!film) { goBack(); return; }
+  _viewingFilmId = filmId;
+
+  document.getElementById('archiveTitle').textContent = film.name.substring(0, 12);
+
+  const grid = document.getElementById('archiveGrid');
+  let html = '';
+  for (let i = 1; i <= film.shot; i++) {
+    const frame = film.frames.find(f => f.num === i);
+    html += `
+      <div class="archive-cell" onclick="showFrameDetail(${i})">
+        <span class="archive-cell-frame">${String(i).padStart(2,'0')}</span>
+        <div class="archive-cell-inner">${frame ? '✓' : '·'}</div>
+      </div>
+    `;
+  }
+  // 空位
+  for (let i = film.shot + 1; i <= Math.min(film.total, 36); i++) {
+    html += `
+      <div class="archive-cell" style="opacity: 0.3;">
+        <span class="archive-cell-frame">${String(i).padStart(2,'0')}</span>
+        <div class="archive-cell-inner" style="opacity: 0.3;">—</div>
+      </div>
+    `;
+  }
+  grid.innerHTML = html;
+}
+
+function showFrameDetail(num) {
+  const film = state.films.find(f => f.id === _viewingFilmId);
+  if (!film) return;
+  const frame = film.frames.find(f => f.num === num);
+  if (!frame) return;
+
+  document.getElementById('frameDetailNumText').textContent = String(num).padStart(2,'0');
+  document.getElementById('frameDetailNum').textContent = '第 ' + String(num).padStart(2,'0') + ' 张';
+  document.getElementById('frameDetailAperture').textContent = frame.aperture || '—';
+  document.getElementById('frameDetailShutter').textContent = frame.shutter || '—';
+  document.getElementById('frameDetailIso').textContent = film.iso;
+  document.getElementById('frameDetailNote').textContent = frame.note || '无备注';
+
+  document.getElementById('frameDetailMask').classList.add('show');
+}
+
+function hideFrameDetail(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('frameDetailMask').classList.remove('show');
+}
+
+// ---------- Toast ----------
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ---------- 可见性暂停 ----------
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    // 页面隐藏时取消所有 RAF
+    if (rewindRaf) { cancelAnimationFrame(rewindRaf); rewindRaf = null; }
+  } else {
+    // 恢复时如果在回卷页，重新开始（简化处理）
+    if (currentPage === 'rewind') {
+      // 直接跳到完成状态，避免重复动画
+    }
+  }
+});
+
+// ---------- 初始化 ----------
+function init() {
+  // 时间
+  const now = new Date();
+  document.getElementById('statusTime').textContent =
+    now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+
+  // 如果没有数据，初始化一个示例在拍卷
+  if (state.films.length === 0) {
+    const demoFilm = {
+      id: genId(),
+      name: 'Kodak Portra 400',
+      iso: 400,
+      total: 36,
+      shot: 14,
+      status: 'shooting',
+      type: 'color',
+      loadedAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+      frames: [
+        { num: 1, aperture: 'f2.8', shutter: '1/250', note: '巷口的橘猫，下午三点的阳光', timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() },
+        { num: 2, aperture: 'f4.0', shutter: '1/125', note: '老城区的杂货店', timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000 + 3600000).toISOString() },
+        { num: 3, aperture: 'f5.6', shutter: '1/60', note: '', timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString() },
+        { num: 4, aperture: 'f2.0', shutter: '1/500', note: '公园里奔跑的孩子', timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000 + 7200000).toISOString() },
+        { num: 5, aperture: 'f8.0', shutter: '1/30', note: '江边的日落', timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000 + 14400000).toISOString() },
+        { num: 6, aperture: 'f2.8', shutter: '1/250', note: '', timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString() },
+        { num: 7, aperture: 'f4.0', shutter: '1/125', note: '咖啡馆的窗', timestamp: new Date(Date.now() - 24 * 3600 * 1000 + 3600000).toISOString() },
+        { num: 8, aperture: 'f5.6', shutter: '1/60', note: '', timestamp: new Date(Date.now() - 24 * 3600 * 1000 + 7200000).toISOString() },
+        { num: 9, aperture: 'f11', shutter: '1/15', note: '慢门拍雨', timestamp: new Date(Date.now() - 20 * 3600 * 1000).toISOString() },
+        { num: 10, aperture: 'f2.0', shutter: '1/1000', note: '阳光下的剪影', timestamp: new Date(Date.now() - 16 * 3600 * 1000).toISOString() },
+        { num: 11, aperture: 'f2.8', shutter: '1/250', note: '', timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString() },
+        { num: 12, aperture: 'f4.0', shutter: '1/125', note: '朋友的肖像', timestamp: new Date(Date.now() - 8 * 3600 * 1000).toISOString() },
+        { num: 13, aperture: 'f5.6', shutter: '1/60', note: '街角的花', timestamp: new Date(Date.now() - 4 * 3600 * 1000).toISOString() },
+        { num: 14, aperture: 'f8.0', shutter: '1/250', note: '天桥上的车流', timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString() },
+      ],
+      developStatus: null,
+      pickupCode: null,
+    };
+    state.films.push(demoFilm);
+    state.currentId = demoFilm.id;
+
+    // 再加一卷待冲扫的示例
+    const devFilm = {
+      id: genId(),
+      name: 'Ilford HP5 Plus 400',
+      iso: 400,
+      total: 36,
+      shot: 36,
+      status: 'developing',
+      type: 'bw',
+      loadedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+      rewoundAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+      frames: [],
+      developStatus: 'processing',
+      pickupCode: 'PJ-7824',
+    };
+    state.films.push(devFilm);
+
+    // 再加一卷已归档的
+    const arcFilm = {
+      id: genId(),
+      name: 'Fujifilm C200',
+      iso: 200,
+      total: 36,
+      shot: 24,
+      status: 'archived',
+      type: 'color',
+      loadedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+      rewoundAt: new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString(),
+      archivedAt: new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString(),
+      frames: [
+        { num: 1, aperture: 'f5.6', shutter: '1/250', note: '春日樱花' },
+        { num: 2, aperture: 'f4.0', shutter: '1/125', note: '公园长椅' },
+        { num: 3, aperture: 'f8.0', shutter: '1/60', note: '老书店' },
+        { num: 4, aperture: 'f2.8', shutter: '1/500', note: '' },
+        { num: 5, aperture: 'f11', shutter: '1/30', note: '雨中街道' },
+        { num: 6, aperture: 'f4.0', shutter: '1/250', note: '猫咪打盹' },
+        { num: 7, aperture: 'f5.6', shutter: '1/125', note: '咖啡馆' },
+        { num: 8, aperture: 'f2.8', shutter: '1/1000', note: '飞鸟' },
+      ],
+      developStatus: 'done',
+      pickupCode: 'PJ-3156',
+    };
+    state.films.push(arcFilm);
+
+    saveState();
+  }
+
+  renderHome();
+  initAdvanceInteraction();
+}
+
+// 页面加载完成
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
