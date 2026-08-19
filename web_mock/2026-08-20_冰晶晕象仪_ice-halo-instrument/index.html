@@ -1,0 +1,2547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>冰晶晕象仪 · Ice Halo Apparatus</title>
+<style>
+/* ============================================================
+   冰晶晕象仪 · 单文件 vanilla · 无构建依赖
+   色板：
+   --sky-1    #EEF2F3  天穹底（雾白）
+   --sky-2    #C7D9DE  天穹边（冰青）
+   --chamber  #1E2E35  冰晶舱底（深黛青）
+   --chamber-2 #27404A 冰晶舱亮边
+   --sun      #E8B34B  太阳暖金
+   --ink      #263238  正文墨
+   --ink-soft #5A6B73  次文墨
+   --vermilion #B4452C 朱红·强调
+   --ice-line #A9C4CC 冰晶棱线
+   --ice-face rgba(255,255,255,.35) 冰晶面
+   --paper    #F4F1E8  纸底·注释卡
+   ============================================================ */
+
+:root {
+  --sky-1: #EEF2F3;
+  --sky-2: #C7D9DE;
+  --chamber: #1E2E35;
+  --chamber-2: #27404A;
+  --sun: #E8B34B;
+  --sun-glow: rgba(232,179,75,.55);
+  --ink: #263238;
+  --ink-soft: #5A6B73;
+  --vermilion: #B4452C;
+  --ice-line: #A9C4CC;
+  --ice-face: rgba(255,255,255,.35);
+  --paper: #F4F1E8;
+  --paper-2: #E7E1D0;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  --sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sky-1);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: none; /* 自定义光标 */
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== 自定义光标：六棱冰晶形 ===== */
+.cursor {
+  position: fixed;
+  top: 0; left: 0;
+  width: 28px; height: 28px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%) rotate(0deg);
+  will-change: transform;
+  mix-blend-mode: difference;
+  transition: width .18s ease, height .18s ease;
+}
+.cursor svg { width: 100%; height: 100%; display: block; }
+.cursor.hover { width: 40px; height: 40px; }
+.cursor.click { width: 20px; height: 20px; }
+
+@media (pointer: coarse) {
+  html, body { cursor: auto; }
+  .cursor { display: none; }
+}
+
+/* ===== 整体布局 ===== */
+.apparatus {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 60% 40%;
+  overflow: hidden;
+}
+
+/* ===== 天穹视窗 ===== */
+.sky-dome {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 50% 95%, var(--sky-2) 0%, var(--sky-1) 55%, var(--sky-1) 100%);
+  overflow: hidden;
+}
+.sky-dome::before {
+  /* 极地平流层薄雾纹 */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.6), transparent 60%),
+    radial-gradient(1px 1px at 65% 20%, rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(1px 1px at 80% 60%, rgba(255,255,255,.35), transparent 60%),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(255,255,255,.5), transparent 60%);
+  opacity: .6;
+  pointer-events: none;
+}
+
+#skyCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 仪器铭牌 */
+.nameplate {
+  position: absolute;
+  top: 20px; left: 24px;
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  pointer-events: none;
+  user-select: none;
+}
+.nameplate h1 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  color: var(--ink);
+}
+.nameplate .sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .15em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+.nameplate .ver {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  padding-top: 2px;
+}
+
+/* 天穹角刻度标签 */
+.altitude-label {
+  position: absolute;
+  right: 28px;
+  top: 24px;
+  z-index: 3;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  user-select: none;
+}
+.altitude-label .val {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1;
+  transition: color .3s ease;
+}
+.altitude-label .val.anim { color: var(--vermilion); }
+
+/* 观测地注记 */
+.observe-note {
+  position: absolute;
+  bottom: 14px; left: 24px;
+  z-index: 3;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: .06em;
+  pointer-events: none;
+  user-select: none;
+}
+.observe-note b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ===== 侧栏：图例 ===== */
+.legend-panel {
+  position: absolute;
+  top: 72px;
+  right: 18px;
+  z-index: 5;
+  width: 180px;
+  background: rgba(244,241,232,.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(38,50,56,.12);
+  border-radius: 4px;
+  padding: 12px 12px 10px;
+  user-select: none;
+}
+.legend-panel h3 {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--ink);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(38,50,56,.15);
+}
+.legend-list { display: flex; flex-direction: column; gap: 4px; }
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .2s ease;
+  position: relative;
+}
+.legend-item:hover { background: rgba(180,69,44,.08); }
+.legend-item.active {
+  background: rgba(180,69,44,.14);
+}
+.legend-item.active .li-name { color: var(--vermilion); }
+.li-swatch {
+  width: 26px; height: 16px;
+  border: 1px solid rgba(38,50,56,.2);
+  border-radius: 2px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: rgba(200,217,222,.3);
+}
+.li-name {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink);
+  letter-spacing: .02em;
+}
+.li-tag {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+/* 图例→天穹连线 SVG */
+#linkSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ===== 冰晶舱 ===== */
+.chamber {
+  position: relative;
+  background: var(--chamber);
+  overflow: hidden;
+}
+.chamber::before {
+  /* 顶部冷光呼吸边 */
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #7AB8C9, transparent);
+  box-shadow: 0 0 14px 2px rgba(122,184,201,.35);
+  animation: breathEdge 4s ease-in-out infinite;
+}
+@keyframes breathEdge {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chamber::before { animation: none; opacity: .8; }
+}
+
+.chamber-label {
+  position: absolute;
+  top: 12px; left: 24px;
+  z-index: 3;
+  color: rgba(169,196,204,.75);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  user-select: none;
+  pointer-events: none;
+}
+.chamber-label b {
+  color: #CFE0E6;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: .2em;
+  margin-right: 10px;
+}
+
+#crystalCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+
+/* ===== 控件区 ===== */
+.controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 28px;
+  align-items: flex-end;
+  padding: 14px 20px;
+  background: rgba(30,46,53,.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(169,196,204,.2);
+  border-radius: 4px;
+  color: #CFE0E6;
+  user-select: none;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+.ctrl-label {
+  font-family: var(--serif);
+  font-size: 12px;
+  letter-spacing: .14em;
+  color: #9DB8C1;
+}
+
+/* 晶形切换 */
+.crystal-switch {
+  display: flex;
+  gap: 2px;
+  background: rgba(0,0,0,.25);
+  padding: 2px;
+  border-radius: 3px;
+}
+.crystal-btn {
+  flex: 1;
+  padding: 6px 4px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: #9DB8C1;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all .25s ease;
+  letter-spacing: .08em;
+}
+.crystal-btn:hover { color: #E6F1F4; }
+.crystal-btn.active {
+  background: var(--vermilion);
+  color: #FFF;
+}
+
+/* 滑杆 */
+.slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slider-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: #E6F1F4;
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: rgba(169,196,204,.25);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #E6F1F4;
+  border: 2px solid var(--vermilion);
+  cursor: pointer;
+  transition: transform .15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #E6F1F4;
+  border: 2px solid var(--vermilion);
+  cursor: pointer;
+}
+
+/* ===== 注释卡 ===== */
+.note-card {
+  position: absolute;
+  left: 24px;
+  bottom: 80px;
+  z-index: 7;
+  width: 340px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid rgba(38,50,56,.15);
+  border-radius: 3px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.18);
+  padding: 16px 18px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.65;
+  transform: translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease, transform .35s ease;
+}
+.note-card.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.note-card h4 {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--vermilion);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(180,69,44,.25);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.note-card h4 .tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  letter-spacing: .1em;
+  font-weight: 400;
+}
+.note-card p { margin-bottom: 6px; }
+.note-card .cause { color: var(--ink); }
+.note-card .cond {
+  color: var(--ink-soft);
+  font-size: 12px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(38,50,56,.15);
+}
+.note-card .cond b { color: var(--ink); font-weight: 600; }
+
+/* ===== 光路特写弹窗 ===== */
+.light-path-modal {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(.92);
+  z-index: 20;
+  width: 520px;
+  max-width: 90vw;
+  background: var(--paper);
+  border: 1px solid rgba(38,50,56,.18);
+  border-radius: 4px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  padding: 18px 22px 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease, transform .3s ease;
+}
+.light-path-modal.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+.lpm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(38,50,56,.15);
+}
+.lpm-header h4 {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--vermilion);
+}
+.lpm-close {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+  letter-spacing: .08em;
+}
+.lpm-close:hover { color: var(--vermilion); }
+.lpm-canvas-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--chamber);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+#lpmCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+}
+.lpm-caption {
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.65;
+}
+.lpm-caption b { color: var(--vermilion); font-weight: 600; }
+.lpm-caption .mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(30,46,53,.35);
+  z-index: 19;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+.modal-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ===== Footer ===== */
+.footer {
+  position: absolute;
+  bottom: 6px;
+  right: 14px;
+  z-index: 3;
+  font-size: 10px;
+  color: rgba(157,184,193,.55);
+  font-family: var(--mono);
+  letter-spacing: .06em;
+  pointer-events: none;
+  user-select: none;
+}
+.footer a { color: inherit; pointer-events: auto; }
+
+/* ===== 响应式 ===== */
+@media (max-width: 1024px) {
+  .legend-panel { width: 160px; right: 12px; top: 64px; }
+  .controls { gap: 20px; padding: 12px 16px; }
+  .control-group { min-width: 120px; }
+  .note-card { width: 300px; bottom: 72px; }
+}
+
+@media (max-width: 768px) {
+  .apparatus { grid-template-rows: 55% 45%; }
+  .nameplate h1 { font-size: 18px; }
+  .nameplate .sub { font-size: 10px; }
+  .legend-panel {
+    width: auto;
+    position: relative;
+    top: auto; right: auto;
+    margin: 10px 12px;
+  }
+  .legend-list { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .legend-item { padding: 4px 6px; }
+  .li-name { font-size: 11px; }
+  .li-tag { display: none; }
+  .sky-dome { padding-top: 0; }
+  .controls {
+    gap: 14px;
+    padding: 10px 12px;
+    bottom: 12px;
+    width: calc(100% - 24px);
+    justify-content: space-between;
+  }
+  .control-group { min-width: 0; flex: 1; }
+  .ctrl-label { font-size: 11px; letter-spacing: .1em; }
+  .note-card {
+    left: 12px;
+    width: calc(100% - 24px);
+    bottom: auto;
+    top: 70px;
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 480px) {
+  .apparatus { grid-template-rows: 50% 50%; }
+  .nameplate { top: 12px; left: 14px; }
+  .nameplate h1 { font-size: 15px; letter-spacing: .12em; }
+  .nameplate .sub { display: none; }
+  .altitude-label { right: 14px; top: 14px; }
+  .altitude-label .val { font-size: 18px; }
+  .observe-note { display: none; }
+  .controls {
+    gap: 8px;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+  }
+  .control-group { min-width: 0; }
+  .ctrl-label { font-size: 10px; }
+  .crystal-btn { font-size: 11px; padding: 5px 3px; }
+  .chamber-label { top: 8px; left: 14px; font-size: 10px; }
+  .chamber-label b { font-size: 12px; }
+  .note-card { max-width: 280px; top: 56px; }
+  .light-path-modal { width: 92vw; padding: 14px 16px; }
+}
+</style>
+</head>
+<body>
+  <div class="apparatus">
+    <!-- ===== 天穹视窗 ===== -->
+    <section class="sky-dome" aria-label="天穹视窗">
+      <canvas id="skyCanvas"></canvas>
+      <svg id="linkSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+
+      <div class="nameplate">
+        <h1>冰晶晕象仪</h1>
+        <span class="sub">ICE HALO APPARATUS</span>
+        <span class="ver">V1.0</span>
+      </div>
+
+      <div class="altitude-label">
+        <span>太阳高度</span>
+        <span class="val" id="sunAltVal">30°</span>
+        <span>SOLAR ELEVATION</span>
+      </div>
+
+      <div class="observe-note">
+        观测地·<b>内蒙古根河 / 新疆阿勒泰</b> · 冬季钻石尘天气可观测组合晕象
+      </div>
+
+      <!-- 图例面板 -->
+      <div class="legend-panel">
+        <h3>晕象图例</h3>
+        <div class="legend-list" id="legendList"></div>
+      </div>
+    </section>
+
+    <!-- ===== 冰晶舱 ===== -->
+    <section class="chamber" aria-label="冰晶舱">
+      <canvas id="crystalCanvas"></canvas>
+
+      <div class="chamber-label">
+        <b>冰晶舱</b>
+        CRYSTAL CHAMBER · <span id="crystalCount">0</span> 枚
+      </div>
+
+      <!-- 控件 -->
+      <div class="controls">
+        <div class="control-group">
+          <span class="ctrl-label">晶形</span>
+          <div class="crystal-switch" id="crystalSwitch">
+            <button class="crystal-btn active" data-crystal="plate">片晶</button>
+            <button class="crystal-btn" data-crystal="column">柱晶</button>
+            <button class="crystal-btn" data-crystal="scroll">卷晶</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <span class="ctrl-label">取向度</span>
+          <div class="slider-wrap">
+            <input type="range" id="orientSlider" min="0" max="100" value="0" />
+            <span class="slider-val" id="orientVal">0%</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <span class="ctrl-label">太阳高度</span>
+          <div class="slider-wrap">
+            <input type="range" id="sunSlider" min="0" max="60" value="30" />
+            <span class="slider-val" id="sunVal">30°</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 注释卡 -->
+  <div class="note-card" id="noteCard">
+    <h4><span id="noteTitle">22°晕</span><span class="tag" id="noteTag">HALO 22°</span></h4>
+    <p class="cause" id="noteCause">六棱冰晶 60° 折射面的最小偏向角约 21.8°，阳光经数以百万计冰晶折射叠加，形成角半径约 22° 的彩色光环。</p>
+    <p class="cond" id="noteCond"><b>观测条件：</b>高纬冬季 · 高空卷层云 · 片晶纷乱取向</p>
+  </div>
+
+  <!-- 光路特写弹窗 -->
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <div class="light-path-modal" id="lightPathModal">
+    <div class="lpm-header">
+      <h4 id="lpmTitle">单晶光路 · 22°晕</h4>
+      <button class="lpm-close" id="lpmClose">关闭 ✕</button>
+    </div>
+    <div class="lpm-canvas-wrap">
+      <canvas id="lpmCanvas"></canvas>
+    </div>
+    <div class="lpm-caption" id="lpmCaption">
+      白光以接近<b>最小偏向角 21.8°</b>入射六棱冰晶的 60° 棱面，经两次折射后色散为内红外紫的光谱。
+      <div class="mono">入射角 ≈ 51°　偏向角 ≈ 21.8°　折射率 n<sub>ice</sub> ≈ 1.31</div>
+    </div>
+  </div>
+
+  <!-- 自定义光标 -->
+  <div class="cursor" id="cursor" aria-hidden="true">
+    <svg viewBox="-16 -16 32 32" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke="#fff" stroke-width="1.2" stroke-linejoin="round">
+        <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6"/>
+        <line x1="0" y1="-12" x2="0" y2="12"/>
+        <line x1="-10.4" y1="-6" x2="10.4" y2="6"/>
+        <line x1="-10.4" y1="6" x2="10.4" y2="-6"/>
+        <circle cx="0" cy="0" r="2.5" fill="#fff" stroke="none"/>
+      </g>
+    </svg>
+  </div>
+
+  <div class="footer">
+    字体：Noto Serif SC / Noto Sans SC / JetBrains Mono · 角距为近似几何投影 · 非专业观测数据
+  </div>
+
+<script>
+/* ============================================================
+   冰晶晕象仪 · 主逻辑
+   纯 vanilla · 零依赖 · 单文件
+   ============================================================ */
+(function () {
+  "use strict";
+
+  // ===== 状态 =====
+  var state = {
+    crystalType: "plate",    // plate | column | scroll
+    orientation: 0,          // 0-1
+    sunAlt: 30,              // degrees, 0-60
+    activeLegend: null,      // halo id or null
+    reducedMotion: false,
+    visible: true,
+  };
+
+  // ===== 工具 =====
+  var DEG = Math.PI / 180;
+  var clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
+  var lerp = function (a, b, t) { return a + (b - a) * t; };
+  var ease = function (t) { return t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; };
+
+  // ===== 晕象数据 =====
+  var HALOS = [
+    {
+      id: "h22", name: "22°晕", tag: "HALO 22°",
+      cause: "六棱冰晶 60° 折射面的最小偏向角约 21.8°，阳光经数以百万计冰晶折射叠加，形成角半径约 22° 的彩色光环。光环内缘呈淡红色，外缘呈淡紫色。",
+      cond: "高纬冬季 · 高空卷层云 · 片晶/柱晶纷乱取向",
+      pathType: "ring22",
+      lpm: {
+        title: "单晶光路 · 22°晕",
+        caption: '白光以接近<b>最小偏向角 21.8°</b>入射六棱冰晶的 60° 棱面，经两次折射后色散为内红外紫的光谱。<div class="mono">入射角 ≈ 51°　偏向角 ≈ 21.8°　折射率 n<sub>ice</sub> ≈ 1.31</div>',
+        kind: "prism60"
+      }
+    },
+    {
+      id: "parhelia", name: "幻日", tag: "PARHELIA",
+      cause: "水平定向的片状冰晶，阳光从冰晶侧面入射、另一侧面出射，在太阳同高度 ±22° 处形成两个明亮光斑，古称「假日」或「两日争辉」。低日时贴近 22° 晕，高日时外移。",
+      cond: "寒冷清晨 · 片晶水平定向 · 钻石尘或卷层云",
+      pathType: "parhelia",
+      lpm: {
+        title: "单晶光路 · 幻日",
+        caption: '阳光水平入射<b>水平取向的片晶</b>侧面（60° 棱镜作用），经两次折射后在太阳同高度偏折约 22°，形成明亮幻日光斑及彩色尾迹。<div class="mono">偏向角 21.8°　方位偏移 ±22°　晶轴竖直</div>',
+        kind: "plateSide"
+      }
+    },
+    {
+      id: "h46", name: "46°晕", tag: "HALO 46°",
+      cause: "六棱冰晶的 90° 棱面（柱面与端面正交）产生的大晕环，最小偏向角约 45.7°。因光路匹配概率低，46° 晕通常远暗于 22° 晕，常呈断续弧形。",
+      cond: "高纬冬季 · 柱晶纷乱取向 · 极寒天气",
+      pathType: "ring46",
+      lpm: {
+        title: "单晶光路 · 46°晕",
+        caption: '阳光经冰晶<b>90° 棱面</b>（柱面入射、端面出射）两次折射，最小偏向角约 45.7°，形成角半径 46° 的暗淡大环。<div class="mono">偏向角 ≈ 45.7°　n<sub>ice</sub> ≈ 1.31　光路匹配概率低</div>',
+        kind: "prism90"
+      }
+    },
+    {
+      id: "cza", name: "环天顶弧", tag: "CZA",
+      cause: "片状冰晶顶面入射、侧面出射形成的弧线，位于天顶方向约 46° 处，色彩排列为上紫下红，被称为「倒挂彩虹」。仅当太阳高度低于 32° 时可见。",
+      cond: "太阳高度 < 32° · 片晶水平定向 · 卷层云",
+      pathType: "cza",
+      lpm: {
+        title: "单晶光路 · 环天顶弧",
+        caption: '阳光从<b>片晶顶面</b>垂直入射，经侧面 90° 棱面折射出射，向下偏折约 46°，在天顶附近形成色彩鲜艳的弧。<div class="mono">太阳高度 < 32° 可见　最小偏向角 ≈ 46°</div>',
+        kind: "czaPrism"
+      }
+    },
+    {
+      id: "uta", name: "上切弧", tag: "UPPER TANGENT",
+      cause: "柱晶主轴水平定向时，阳光经柱面 60° 棱折射，在 22° 晕上方切点处形成向上弯曲的切弧。其形态随太阳高度显著变化：低日时呈 V 形，高日时向外张开。",
+      cond: "柱晶水平定向 · 卷层云 · 低太阳高度更显著",
+      pathType: "upperTangent",
+      lpm: {
+        title: "单晶光路 · 上切弧",
+        caption: '阳光经<b>水平定向柱晶</b>的柱面 60° 棱折射，在 22° 晕上切点处汇聚形成上切弧，弧的弯曲随太阳高度而变化。<div class="mono">柱晶主轴水平　偏向角 ≈ 22°</div>',
+        kind: "columnPrism"
+      }
+    },
+    {
+      id: "lta", name: "下切弧", tag: "LOWER TANGENT",
+      cause: "与上切弧对称，柱晶水平定向形成的 22° 晕下方切线弧。太阳高度低时通常隐没于地平线以下，太阳较高时可与上切弧共同环抱 22° 晕。",
+      cond: "柱晶水平定向 · 太阳高度较高 · 卷层云",
+      pathType: "lowerTangent",
+      lpm: {
+        title: "单晶光路 · 下切弧",
+        caption: '柱晶水平定向时，在 22° 晕<b>下切点</b>处汇聚形成的切弧，与上切弧上下对称。低日时隐于地平线下。<div class="mono">柱晶主轴水平　太阳较高时较完整</div>',
+        kind: "columnPrism"
+      }
+    },
+    {
+      id: "phr", name: "幻日环", tag: "PARHELIC CIRCLE",
+      cause: "冰晶内外表面的反射光线叠加形成的、与太阳同高度的白色水平光环。经多次内反射的光线在环上形成幻日等亮斑节点。",
+      cond: "片晶/柱晶皆可 · 定向较好 · 卷层云宽广时",
+      pathType: "parhelicCircle",
+      lpm: {
+        title: "单晶光路 · 幻日环",
+        caption: '阳光经冰晶垂直棱面的<b>内外表面反射</b>后，保持与太阳相同的高度角出射，叠加成环绕天穹的白色水平光环。<div class="mono">反射主导　高度角不变　白色无光</div>',
+        kind: "reflection"
+      }
+    },
+    {
+      id: "subsun", name: "下日", tag: "SUBSUN",
+      cause: "片状冰晶顶面像镜面一样反射阳光，在太阳正下方的地平线以下位置形成的明亮光斑。观测者需位于云层之上（如飞机上）方可见到。",
+      cond: "片晶水平定向 · 观测者位于云层之上",
+      pathType: "subsun",
+      lpm: {
+        title: "单晶光路 · 下日",
+        caption: '阳光被水平取向片晶的<b>顶面镜面反射</b>，在太阳正下方形成明亮的下日光斑。需从云层上方观测。<div class="mono">镜面反射　片晶水平　空中观测可见</div>',
+        kind: "plateReflect"
+      }
+    }
+  ];
+
+  // ===== 天穹投影数学 =====
+  // 单位球坐标：z轴向天顶，x轴向右，y轴向里（屏幕后）
+  // 太阳方位=左（-x），高度=alt（0在地平，90在天顶）
+  function sunVector(altDeg) {
+    var a = altDeg * DEG;
+    // 太阳在左侧：x负方向，与水平(x-z平面)夹角 = alt
+    // 水平面上的投影长度 = cos(alt)
+    // z 分量 = sin(alt)
+    return { x: -Math.cos(a), y: 0, z: Math.sin(a) };
+  }
+
+  // 单位向量 → 天穹屏幕坐标
+  // 天穹：半圆，直边在下（地平线），顶点在上（天顶）
+  // 宽=W，高=H，中心在 (W/2, H) 即地平线中点
+  // 半径 R = H（天顶到地平线中点的距离 = H）
+  // 投影：方位角 → x偏移，天顶角 → 到天顶的距离（线性等距）
+  // 方位角：以南方为0? 简化：以屏幕中线为0方位，左右±90°
+  // 天顶角 z = 90° - alt
+  function projectSky(v, W, H) {
+    // v 是单位向量，z=向上, x=右, y=前（向观察者）
+    // 简化方位投影：在水平面（x-y）上的方位角
+    var horizLen = Math.sqrt(v.x * v.x + v.y * v.y);
+    if (horizLen < 1e-6) {
+      // 天顶
+      return { x: W / 2, y: 0, valid: v.z > 0 };
+    }
+    // 天顶角（与天顶的夹角）
+    var zenithAngle = Math.acos(clamp(v.z, -1, 1)); // 0 at zenith, 90 at horizon
+    // 方位角（从-y方向，顺时针为正，即向右为正）
+    var az = Math.atan2(v.x, -v.y); // 向右为正
+    // 投影到半圆上
+    var R = H; // 天顶到地平线的半径
+    var r = (zenithAngle / (Math.PI / 2)) * R; // 0 at zenith, R at horizon
+    var cx = W / 2;
+    var cy = 0; // 天顶位置
+    // 方位角 0 = 正前方(屏幕顶部中心？不对...)
+    // 让 az 映射到左右：正前方=屏幕中线，右=右，左=左
+    // 半圆：地平线在底部，天顶在顶部
+    // 我们让方位角沿地平线弧分布：左=-90°，前=0°，右=+90°
+    // 则 x = cx + r * sin(az), y = r * cos(az) ... 不对
+    // 简化：把方位角映射到 x 轴，天顶角映射到 y 轴
+    // 但要保持半圆形状——让投影是半圆意味着地平线是弧线
+    // 让我们用极坐标：center = (W/2, H)，angle from bottom center
+    // 这是"鱼眼向上看"的半球投影——更直觉
+    // 重新定义：中心点在 (W/2, H) 即底部中点
+    // 向上 90° 到天顶 = (W/2, 0)
+    // 地平线 = 底部弧线
+    // 方位：0=前(正上方)，右=向右旋转
+    var centerX = W / 2;
+    var centerY = H;
+    var radius = H;
+    // 天顶角映射到径向距离
+    var radial = (zenithAngle / (Math.PI / 2)) * radius;
+    // 方位角：v 的水平方向。以 "前" (v.y > 0, v.x = 0) 为 0 方位 = 正上方
+    // 右 (v.x > 0) = 顺时针
+    var azimuth = Math.atan2(v.x, v.y); // 0 = 前(y+)，正 = 右
+    // 屏幕角度：从正上方(天顶方向)，右为正
+    var screenAngle = -azimuth; // 顺时针 = 正屏幕角度？
+    var sx = centerX + radial * Math.sin(screenAngle);
+    var sy = centerY - radial * Math.cos(screenAngle);
+    return { x: sx, y: sy, valid: v.z >= -0.001 };
+  }
+
+  // Rodrigues 旋转：向量 v 绕轴 k 旋转 θ
+  function rotate(v, k, theta) {
+    var c = Math.cos(theta), s = Math.sin(theta);
+    var dot = v.x*k.x + v.y*k.y + v.z*k.z;
+    return {
+      x: v.x*c + (k.y*v.z - k.z*v.y)*s + k.x*dot*(1-c),
+      y: v.y*c + (k.z*v.x - k.x*v.z)*s + k.y*dot*(1-c),
+      z: v.z*c + (k.x*v.y - k.y*v.x)*s + k.z*dot*(1-c)
+    };
+  }
+
+  // 归一化
+  function norm(v) {
+    var l = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    if (l < 1e-9) return { x: 0, y: 0, z: 0 };
+    return { x: v.x/l, y: v.y/l, z: v.z/l };
+  }
+
+  // 生成 22°/46° 晕圆环上的点集
+  function haloRingPoints(sunV, angleDeg, numPts) {
+    numPts = numPts || 120;
+    var pts = [];
+    var ang = angleDeg * DEG;
+    // 找一个垂直于 sunV 的向量
+    var perp;
+    if (Math.abs(sunV.x) < .9) {
+      perp = norm({ x: sunV.z, y: 0, z: -sunV.x });
+    } else {
+      perp = norm({ x: 0, y: sunV.z, z: -sunV.y });
+    }
+    // 将 perp 旋转向太阳方向 ang 角
+    // 先把 perp 朝 sunV 方向倾斜 angleDeg
+    // 用 Rodrigues：绕 (perp × sunV) 轴旋转 perp 到角度 (90 - angleDeg)?
+    // 更直接：从 sunV 出发的圆锥，半角 = angleDeg
+    // 取一个起始点：将 sunV 绕 perp 轴旋转 angleDeg
+    var axis = perp;
+    var start = rotate(sunV, axis, ang);
+    // 然后绕 sunV 轴旋转一圈
+    for (var i = 0; i < numPts; i++) {
+      var t = i / (numPts - 1) * Math.PI * 2;
+      var p = rotate(start, sunV, t);
+      pts.push(p);
+    }
+    return pts;
+  }
+
+  // ===== 天穹 Canvas =====
+  var skyCanvas = document.getElementById("skyCanvas");
+  var skyCtx = skyCanvas.getContext("2d");
+  var skyW = 0, skyH = 0;
+
+  function resizeSky() {
+    var rect = skyCanvas.parentElement.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    skyW = rect.width;
+    skyH = rect.height;
+    skyCanvas.width = skyW * dpr;
+    skyCanvas.height = skyH * dpr;
+    skyCanvas.style.width = skyW + "px";
+    skyCanvas.style.height = skyH + "px";
+    skyCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // 绘制刻度（方位+高度角）
+  function drawSkyGrid(ctx, W, H) {
+    var cx = W / 2, cy = H;
+    var R = H;
+
+    // 地平线（半圆底弧）
+    ctx.save();
+    ctx.strokeStyle = "rgba(38,50,56,.12)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, Math.PI, 0);
+    ctx.stroke();
+
+    // 高度角刻度：30°, 60°
+    var alts = [30, 60];
+    for (var i = 0; i < alts.length; i++) {
+      var alt = alts[i];
+      var zen = 90 - alt;
+      var r = (zen / 90) * R;
+      ctx.strokeStyle = "rgba(38,50,56,.07)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, Math.PI, 0);
+      ctx.stroke();
+
+      // 标签
+      ctx.fillStyle = "rgba(38,50,56,.3)";
+      ctx.font = '10px ui-monospace, "JetBrains Mono", monospace';
+      ctx.textAlign = "left";
+      ctx.fillText(alt + "°", cx + r + 4, cy + 3);
+    }
+
+    // 方位刻度：左-90, 前0, 右+90 （每30°）
+    var azs = [-90, -60, -30, 0, 30, 60, 90];
+    ctx.fillStyle = "rgba(38,50,56,.28)";
+    ctx.font = '10px ui-monospace, "JetBrains Mono", monospace';
+    for (var j = 0; j < azs.length; j++) {
+      var az = azs[j];
+      var azRad = az * DEG;
+      // 在地平线上的位置
+      var px = cx + R * Math.sin(azRad);
+      var py = cy - R * Math.cos(azRad);
+      ctx.fillText(az + "°", px - 10, py - 4);
+    }
+
+    // 天顶标记
+    ctx.fillStyle = "rgba(38,50,56,.4)";
+    ctx.font = '10px ui-monospace, "JetBrains Mono", monospace';
+    ctx.textAlign = "center";
+    ctx.fillText("天顶 ZENITH", cx, 14);
+
+    // 天顶十字
+    ctx.strokeStyle = "rgba(38,50,56,.1)";
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, 0); ctx.lineTo(cx + 6, 0);
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, 10);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // 绘制带内红外紫的晕环
+  function drawHaloRing(ctx, pts, W, H, intensity, angleDeg, isHighlight) {
+    if (intensity <= 0.001) return;
+    // 分多条线：红、橙、黄、绿、蓝、紫
+    var colors = [
+      { c: "rgba(180, 69, 44, AAA)", offset: 0.0 },   // 红（内缘）
+      { c: "rgba(215, 120, 50, AAA)", offset: 0.4 },
+      { c: "rgba(232, 179, 75, AAA)", offset: 0.8 },
+      { c: "rgba(100, 160, 130, AAA)", offset: 1.2 },
+      { c: "rgba(80, 130, 170, AAA)", offset: 1.6 },
+      { c: "rgba(140, 110, 180, AAA)", offset: 2.0 },   // 紫（外缘）
+    ];
+    // 偏移量（像素近似——越靠外越紫）
+    // 环的宽度取决于角半径，这里用像素近似
+    var spread = 6 + angleDeg * 0.05; // 像素宽度
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (var ci = colors.length - 1; ci >= 0; ci--) {
+      var col = colors[ci];
+      var alpha = 0.18 * intensity * (1 - ci * 0.1);
+      if (isHighlight) alpha *= 1.6;
+      alpha = Math.min(alpha, 1);
+      var colStr = col.c.replace("AAA", alpha.toFixed(3));
+      ctx.strokeStyle = colStr;
+      ctx.lineWidth = spread / colors.length + 1.5;
+
+      ctx.beginPath();
+      var started = false;
+      // 偏移：向外（增加径向距离）
+      var shiftSign = 1; // 向外
+      var shiftPx = col.offset * spread * 0.5;
+
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        var pr = projectSky(p, W, H);
+        if (!pr.valid) { started = false; continue; }
+        // 简单向外偏移（沿从中心向外的方向）
+        var cx = W / 2, cy = H;
+        var dx = pr.x - cx, dy = pr.y - cy;
+        var d = Math.sqrt(dx*dx + dy*dy) || 1;
+        var ox = dx / d * shiftPx;
+        var oy = dy / d * shiftPx;
+
+        if (!started) {
+          ctx.moveTo(pr.x + ox, pr.y + oy);
+          started = true;
+        } else {
+          ctx.lineTo(pr.x + ox, pr.y + oy);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 绘制幻日（两侧亮斑）
+  function drawParhelia(ctx, sunV, intensity, sunAlt, isHighlight) {
+    if (intensity <= 0.001) return;
+    // 幻日：太阳同高度 ±22° 左右
+    // 用 22° 晕环与太阳高度面的交点
+    var ring = haloRingPoints(sunV, 22, 360);
+    // 找 z 分量最接近 sunV.z 的两个点（左右两侧）
+    var targetZ = sunV.z;
+    var leftBest = null, rightBest = null;
+    var leftDiff = 999, rightDiff = 999;
+    for (var i = 0; i < ring.length; i++) {
+      var p = ring[i];
+      var diff = Math.abs(p.z - targetZ);
+      if (p.x > sunV.x * 0.99 && diff < rightDiff) {
+        rightDiff = diff; rightBest = p;
+      }
+      if (p.x < sunV.x * 0.99 && diff < leftDiff) {
+        leftDiff = diff; leftBest = p;
+      }
+    }
+
+    var spots = [rightBest, leftBest];
+    ctx.save();
+    for (var s = 0; s < spots.length; s++) {
+      var sp = spots[s];
+      if (!sp) continue;
+      var pr = projectSky(sp, skyW, skyH);
+      if (!pr.valid) continue;
+
+      var baseR = 16 * intensity;
+      if (isHighlight) baseR *= 1.5;
+
+      // 外光晕
+      var grad = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, baseR * 2.5);
+      grad.addColorStop(0, "rgba(232, 179, 75, " + (0.9 * intensity) + ")");
+      grad.addColorStop(0.4, "rgba(232, 179, 75, " + (0.4 * intensity) + ")");
+      grad.addColorStop(1, "rgba(232, 179, 75, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, baseR * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 核心亮斑
+      var core = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, baseR);
+      core.addColorStop(0, "rgba(255, 245, 210, " + intensity + ")");
+      core.addColorStop(0.5, "rgba(232, 179, 75, " + (0.8 * intensity) + ")");
+      core.addColorStop(1, "rgba(232, 179, 75, 0)");
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, baseR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 彩色尾迹（水平向外）
+      var tailLen = 40 * intensity;
+      var dirX = pr.x > skyW/2 ? 1 : -1;
+      var tailGrad = ctx.createLinearGradient(pr.x, pr.y, pr.x + dirX * tailLen, pr.y);
+      tailGrad.addColorStop(0, "rgba(180, 69, 44, " + (0.5 * intensity) + ")");
+      tailGrad.addColorStop(0.5, "rgba(232, 179, 75, " + (0.3 * intensity) + ")");
+      tailGrad.addColorStop(1, "rgba(140, 110, 180, 0)");
+      ctx.fillStyle = tailGrad;
+      ctx.beginPath();
+      ctx.ellipse(pr.x + dirX * tailLen * 0.5, pr.y, tailLen * 0.5, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 绘制环天顶弧
+  function drawCZA(ctx, sunAlt, intensity, isHighlight) {
+    if (intensity <= 0.001) return;
+    if (sunAlt >= 32) return; // 高于32°不可见
+    // 天顶下方约 46° 的弧（上弯）
+    // 在天穹投影中：天顶在 (W/2, 0)
+    // 环天顶弧是天顶下方约 46° 的一段弧（上弯，开口向下朝向太阳）
+    var cx = skyW / 2;
+    var R = skyH;
+    var zenR = (46 / 90) * R; // 到天顶的距离
+
+    ctx.save();
+    var spread = 7;
+    var colors = [
+      // 上紫下红（倒挂彩虹）
+      { c: "rgba(140, 110, 180, AAA)", off: 0.0 },  // 紫（上边/外边）
+      { c: "rgba(80, 130, 170, AAA)", off: 0.4 },
+      { c: "rgba(100, 160, 130, AAA)", off: 0.8 },
+      { c: "rgba(232, 179, 75, AAA)", off: 1.2 },
+      { c: "rgba(215, 120, 50, AAA)", off: 1.6 },
+      { c: "rgba(180, 69, 44, AAA)", off: 2.0 },   // 红（下边/内缘）
+    ];
+    ctx.lineCap = "round";
+
+    for (var ci = 0; ci < colors.length; ci++) {
+      var col = colors[ci];
+      var alpha = 0.25 * intensity * (1 - Math.abs(ci - 2.5) * 0.15);
+      if (isHighlight) alpha *= 1.5;
+      var colStr = col.c.replace("AAA", alpha.toFixed(3));
+      ctx.strokeStyle = colStr;
+      ctx.lineWidth = spread / 6 + 2;
+
+      var r = zenR + (col.off - 1) * spread * 0.4;
+      // 只画一段弧（开口朝下，约 ±60° 的范围）
+      ctx.beginPath();
+      ctx.arc(cx, 0, r, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 绘制上/下切弧
+  function drawTangentArc(ctx, sunV, intensity, isUpper, isHighlight) {
+    if (intensity <= 0.001) return;
+    // 近似：在 22° 晕上切点处，向上/下弯曲的弧
+    var ring = haloRingPoints(sunV, 22, 180);
+    // 找最顶端/最底端点
+    var targetIdx = 0;
+    var extremeZ = isUpper ? -999 : 999;
+    for (var i = 0; i < ring.length; i++) {
+      if (isUpper && ring[i].z > extremeZ) { extremeZ = ring[i].z; targetIdx = i; }
+      if (!isUpper && ring[i].z < extremeZ) { extremeZ = ring[i].z; targetIdx = i; }
+    }
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    var spread = 5;
+    var colors = [
+      { c: "rgba(180, 69, 44, AAA)", off: 0 },
+      { c: "rgba(232, 179, 75, AAA)", off: 0.8 },
+      { c: "rgba(140, 110, 180, AAA)", off: 1.6 },
+    ];
+
+    for (var ci = 0; ci < colors.length; ci++) {
+      var col = colors[ci];
+      var alpha = 0.22 * intensity;
+      if (isHighlight) alpha *= 1.5;
+      var colStr = col.c.replace("AAA", alpha.toFixed(3));
+      ctx.strokeStyle = colStr;
+      ctx.lineWidth = 3;
+
+      ctx.beginPath();
+      var started = false;
+      var range = 25;
+      for (var k = -range; k <= range; k++) {
+        var idx = (targetIdx + k + ring.length) % ring.length;
+        var p = ring[idx];
+        var pr = projectSky(p, skyW, skyH);
+        if (!pr.valid) { started = false; continue; }
+
+        // 切弧弯曲：上下方向的偏移
+        // 远离切点的位置沿 22° 晕方向，并向太阳方向（上切弧向上弯）
+        var bend = (1 - Math.abs(k) / range) * (isUpper ? 8 : -8);
+        var ox = 0;
+        var oy = bend * (1 + col.off * 0.3);
+
+        if (!started) { ctx.moveTo(pr.x + ox, pr.y + oy); started = true; }
+        else ctx.lineTo(pr.x + ox, pr.y + oy);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 幻日环（白色水平光环）
+  function drawParhelicCircle(ctx, sunV, intensity, isHighlight) {
+    if (intensity <= 0.001) return;
+    // 与太阳同高度的水平环
+    var sunAlt = Math.asin(sunV.z) / DEG;
+    // 高度角 = sunAlt，方位从 -90 到 +90
+    var cx = skyW / 2, cy = skyH;
+    var R = skyH;
+    var zen = 90 - sunAlt;
+    var r = (zen / 90) * R;
+
+    ctx.save();
+    var alpha = 0.12 * intensity;
+    if (isHighlight) alpha *= 1.8;
+    ctx.strokeStyle = "rgba(255, 250, 230, " + alpha + ")";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, Math.PI, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 下日光斑
+  function drawSubsun(ctx, sunV, intensity, isHighlight) {
+    if (intensity <= 0.001) return;
+    // 太阳正下方的反射光斑（通常在地平线以下，这里在底部弧上显示）
+    var sunAlt = Math.asin(sunV.z) / DEG;
+    // 在地平线下方对称位置
+    var pr = projectSky(sunV, skyW, skyH);
+    var subY = skyH + (skyH - pr.y) * 0.7; // 地平线下方
+    // 限制在可视区域下部
+    subY = Math.min(subY, skyH + 20);
+    var subX = pr.x;
+
+    ctx.save();
+    var baseR = 12 * intensity;
+    if (isHighlight) baseR *= 1.4;
+    var grad = ctx.createRadialGradient(subX, subY, 0, subX, subY, baseR * 2);
+    grad.addColorStop(0, "rgba(255, 245, 210, " + (0.7 * intensity) + ")");
+    grad.addColorStop(1, "rgba(232, 179, 75, 0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(subX, subY, baseR * 2, baseR * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 绘制太阳
+  function drawSun(ctx, sunV, t) {
+    var pr = projectSky(sunV, skyW, skyH);
+    if (!pr.valid) return;
+
+    ctx.save();
+    // 外光晕
+    var pulse = 1 + Math.sin(t * 0.8) * 0.06;
+    var outerR = 38 * pulse;
+    var glow = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, outerR);
+    glow.addColorStop(0, "rgba(232, 179, 75, 0.85)");
+    glow.addColorStop(0.4, "rgba(232, 179, 75, 0.35)");
+    glow.addColorStop(1, "rgba(232, 179, 75, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(pr.x, pr.y, outerR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 核心
+    var core = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, 14);
+    core.addColorStop(0, "#FFF5D4");
+    core.addColorStop(0.6, "#F0C96B");
+    core.addColorStop(1, "#E8B34B");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(pr.x, pr.y, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 十字光芒
+    ctx.strokeStyle = "rgba(255, 245, 210, .4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pr.x - 22, pr.y); ctx.lineTo(pr.x + 22, pr.y);
+    ctx.moveTo(pr.x, pr.y - 22); ctx.lineTo(pr.x, pr.y + 22);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // 天穹主绘制
+  var h22Pts = null, h46Pts = null;
+  var lastSunAlt = -1;
+
+  function drawSky(t) {
+    var ctx = skyCtx;
+    var W = skyW, H = skyH;
+    ctx.clearRect(0, 0, W, H);
+
+    var sunV = sunVector(state.sunAlt);
+
+    // 天穹半圆底（填色）— 用 CSS 背景即可，canvas 只画内容
+    // 刻度
+    drawSkyGrid(ctx, W, H);
+
+    // 晕象合成权重
+    var w = computeHaloWeights();
+
+    // 更新环点集（太阳高度变化时重新计算）
+    if (Math.abs(state.sunAlt - lastSunAlt) > 0.01) {
+      h22Pts = haloRingPoints(sunV, 22, 180);
+      h46Pts = haloRingPoints(sunV, 46, 180);
+      lastSunAlt = state.sunAlt;
+    }
+
+    var hl = state.activeLegend;
+
+    // 从外层到内层绘制
+    if (h46Pts) drawHaloRing(ctx, h46Pts, W, H, w.h46, 46, hl === "h46");
+    drawCZA(ctx, state.sunAlt, w.cza, hl === "cza");
+    drawParhelicCircle(ctx, sunV, w.phr, hl === "phr");
+    if (h22Pts) drawHaloRing(ctx, h22Pts, W, H, w.h22, 22, hl === "h22");
+    drawTangentArc(ctx, sunV, w.uta, true, hl === "uta");
+    drawTangentArc(ctx, sunV, w.lta, false, hl === "lta");
+    drawParhelia(ctx, sunV, w.parhelia, state.sunAlt, hl === "parhelia");
+    drawSubsun(ctx, sunV, w.subsun, hl === "subsun");
+
+    // 太阳
+    drawSun(ctx, sunV, t);
+
+    // 地平线雾霭
+    ctx.save();
+    var mist = ctx.createLinearGradient(0, H - 20, 0, H);
+    mist.addColorStop(0, "rgba(199, 217, 222, 0)");
+    mist.addColorStop(1, "rgba(199, 217, 222, .5)");
+    ctx.fillStyle = mist;
+    ctx.beginPath();
+    ctx.arc(W/2, H, H, Math.PI, 0);
+    ctx.lineTo(W/2, H);
+    ctx.closePath();
+    ctx.globalAlpha = .4;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ===== 晕象权重计算（状态机） =====
+  function computeHaloWeights() {
+    var o = state.orientation; // 0 纷乱 → 1 定向
+    var w = {
+      h22: 0, parhelia: 0, h46: 0,
+      uta: 0, lta: 0, cza: 0,
+      phr: 0, subsun: 0
+    };
+
+    if (state.crystalType === "plate") {
+      // 片晶：纷乱→22°晕；定向→幻日（签名时刻：晕环几乎消散，收拢为幻日）
+      w.h22 = 1 - o * 0.85;           // 定向时 22° 晕大幅减弱（满档约 0.15）
+      w.parhelia = 0.7 + o * 0.5;      // 幻日随定向增强，满档 1.2 倍亮度
+      w.phr = o * 0.5;                 // 幻日环
+      w.subsun = o * 0.6;              // 下日
+    } else if (state.crystalType === "column") {
+      // 柱晶：纷乱→46°晕 + 22°晕暗淡；定向→上下切弧
+      w.h22 = (1 - o) * 0.5 + o * 0.3; // 始终有，略减弱
+      w.h46 = (1 - o) * 0.6;           // 纷乱时 46°晕
+      w.uta = o;                       // 上切弧
+      w.lta = o * 0.7;                 // 下切弧稍弱
+      w.phr = o * 0.3;
+    } else if (state.crystalType === "scroll") {
+      // 卷晶：环天顶弧为主
+      w.cza = 0.9;                     // 卷晶主导环天顶弧（太阳<32°才渲染）
+      w.h22 = 0.3;                     // 少量 22°晕
+      w.parhelia = 0.2;                // 少量幻日
+      w.phr = 0.4;
+    }
+
+    return w;
+  }
+
+  // ===== 冰晶舱 =====
+  var crystalCanvas = document.getElementById("crystalCanvas");
+  var crystalCtx = crystalCanvas.getContext("2d");
+  var cw = 0, ch = 0;
+  var crystals = [];
+  var diamondDust = []; // 钻石尘微粒
+
+  function resizeChamber() {
+    var rect = crystalCanvas.parentElement.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cw = rect.width;
+    ch = rect.height;
+    crystalCanvas.width = cw * dpr;
+    crystalCanvas.height = ch * dpr;
+    crystalCanvas.style.width = cw + "px";
+    crystalCanvas.style.height = ch + "px";
+    crystalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    initCrystals();
+  }
+
+  function initCrystals() {
+    crystals = [];
+    var area = cw * ch;
+    var count = Math.floor(area / 4000); // 密度
+    count = Math.max(140, Math.min(count, 400));
+    document.getElementById("crystalCount").textContent = count;
+
+    for (var i = 0; i < count; i++) {
+      var size = 4 + Math.random() * 10;
+      crystals.push({
+        x: Math.random() * cw,
+        y: Math.random() * ch,
+        size: size,
+        rot: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 1.8, // 纷乱时自转角速度
+        spinDir: Math.random() < .5 ? 1 : -1,
+        targetRot: 0,   // 定向时的目标角度
+        drift: Math.random() * Math.PI * 2, // 漂浮相位
+        driftSpeed: 0.3 + Math.random() * 0.7,
+        hue: Math.random() < .3 ? Math.random() : undefined  // 少数带虹彩色
+      });
+    }
+
+    // 钻石尘微粒
+    diamondDust = [];
+    var dustCount = Math.floor(area / 4000);
+    dustCount = Math.max(40, Math.min(dustCount, 150));
+    for (var j = 0; j < dustCount; j++) {
+      diamondDust.push({
+        x: Math.random() * cw,
+        y: Math.random() * ch,
+        speed: 8 + Math.random() * 20,
+        size: 0.8 + Math.random() * 1.5,
+        alpha: 0.2 + Math.random() * 0.5
+      });
+    }
+  }
+
+  // 绘制单个六棱冰晶
+  function drawCrystal(ctx, c, t) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+
+    var s = c.size;
+    var type = state.crystalType;
+
+    if (type === "plate") {
+      // 片晶：扁薄六边，正面观
+      drawHexPlate(ctx, s, c, t);
+    } else if (type === "column") {
+      // 柱晶：拉长的六棱柱
+      drawHexColumn(ctx, s, c, t);
+    } else {
+      // 卷晶：更复杂的卷状晶（简化为带冠柱晶）
+      drawScrollCrystal(ctx, s, c, t);
+    }
+
+    ctx.restore();
+  }
+
+  function drawHexPlate(ctx, s, c, t) {
+    // 六边形（片晶：薄，上下底面大）
+    var points = hexPoints(s);
+    // 面
+    ctx.fillStyle = "rgba(220, 235, 240, .22)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .7)";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (var i = 0; i < 6; i++) {
+      var p = points[i];
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 内六边形（厚度暗示）
+    var inner = hexPoints(s * 0.65);
+    ctx.strokeStyle = "rgba(169, 196, 204, .4)";
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    for (var j = 0; j < 6; j++) {
+      if (j === 0) ctx.moveTo(inner[j].x, inner[j].y);
+      else ctx.lineTo(inner[j].x, inner[j].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // 棱面干涉虹彩（定向度高时闪烁）
+    if (state.orientation > 0.3 && c.hue !== undefined) {
+      var flicker = 0.5 + 0.5 * Math.sin(t * 3 + c.drift * 2);
+      var intensity = state.orientation * flicker * 0.8;
+      if (intensity > 0.1) {
+        // 在某一条棱上画虹彩高光
+        var edgeIdx = Math.floor((t * 0.5 + c.drift) % 6);
+        var p1 = points[edgeIdx];
+        var p2 = points[(edgeIdx + 1) % 6];
+        var grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+        grad.addColorStop(0, "rgba(232, 179, 75, " + (intensity * 0.6) + ")");
+        grad.addColorStop(0.5, "rgba(140, 110, 180, " + intensity + ")");
+        grad.addColorStop(1, "rgba(100, 160, 130, " + (intensity * 0.4) + ")");
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawHexColumn(ctx, s, c, t) {
+    // 柱晶：侧视拉长的矩形 + 两端六边形（简化为长椭圆两端）
+    var w = s * 0.6;
+    var h = s * 1.4;
+    // 主体
+    ctx.fillStyle = "rgba(220, 235, 240, .2)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .65)";
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-w, -h);
+    ctx.lineTo(w, -h);
+    ctx.lineTo(w, h);
+    ctx.lineTo(-w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 上下端（六边形端面简化为小弧）
+    ctx.beginPath();
+    ctx.arc(0, -h, w, 0, Math.PI, true);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, h, w, 0, Math.PI, false);
+    ctx.stroke();
+
+    // 中棱线
+    ctx.strokeStyle = "rgba(169, 196, 204, .3)";
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.5, -h); ctx.lineTo(-w * 0.5, h);
+    ctx.moveTo(w * 0.5, -h); ctx.lineTo(w * 0.5, h);
+    ctx.stroke();
+
+    // 虹彩棱
+    if (state.orientation > 0.3 && c.hue !== undefined) {
+      var flicker = 0.5 + 0.5 * Math.sin(t * 2.5 + c.drift * 3);
+      var intensity = state.orientation * flicker * 0.7;
+      if (intensity > 0.1) {
+        ctx.strokeStyle = "rgba(232, 179, 75, " + (intensity * 0.5) + ")";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(w, -h); ctx.lineTo(w, h);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawScrollCrystal(ctx, s, c, t) {
+    // 卷晶：中央片晶+两端柱状（复杂形状简化）
+    var cs = s * 0.8;
+    drawHexPlate(ctx, cs, c, t);
+    // 两端小柱
+    ctx.fillStyle = "rgba(220, 235, 240, .18)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .5)";
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(0, -cs * 0.8, cs * 0.35, cs * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, cs * 0.8, cs * 0.35, cs * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  function hexPoints(s) {
+    var pts = [];
+    for (var i = 0; i < 6; i++) {
+      var a = i * Math.PI / 3;
+      pts.push({ x: s * Math.cos(a), y: s * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  function drawDiamondDust(ctx, dt) {
+    ctx.save();
+    for (var i = 0; i < diamondDust.length; i++) {
+      var d = diamondDust[i];
+      d.y += d.speed * dt;
+      d.x += Math.sin(d.y * 0.02 + i) * 0.3;
+
+      if (d.y > ch + 2) {
+        d.y = -2;
+        d.x = Math.random() * cw;
+      }
+      if (d.x < -2) d.x = cw + 2;
+      if (d.x > cw + 2) d.x = -2;
+
+      ctx.fillStyle = "rgba(220, 235, 240, " + d.alpha + ")";
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function updateCrystals(dt, t) {
+    var orient = state.orientation;
+    var type = state.crystalType;
+
+    for (var i = 0; i < crystals.length; i++) {
+      var c = crystals[i];
+
+      // 漂浮
+      c.drift += c.driftSpeed * dt * 0.5;
+      c.x += Math.sin(c.drift) * dt * 3;
+      c.y += Math.cos(c.drift * 0.7) * dt * 2;
+
+      // 边界回绕
+      if (c.x < -20) c.x = cw + 20;
+      if (c.x > cw + 20) c.x = -20;
+      if (c.y < -20) c.y = ch + 20;
+      if (c.y > ch + 20) c.y = -20;
+
+      // 旋转：纷乱时自转，定向时对齐
+      // 目标角度根据晶形
+      var target = 0;
+      if (type === "plate") target = 0;          // 片晶：水平（0°）
+      else if (type === "column") target = Math.PI / 2; // 柱晶：竖直
+      else target = 0;                           // 卷晶：复杂
+
+      // 用 orient 控制：0 = 完全自转，1 = 完全定向
+      if (orient < 0.98) {
+        // 自转分量（纷乱）
+        c.rot += c.spin * c.spinDir * dt * (1 - orient * 0.95);
+      }
+      if (orient > 0.02) {
+        // 趋向目标角度
+        var diff = target - c.rot;
+        // 规范化到 [-π, π]
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        c.rot += diff * orient * dt * 3;
+      }
+    }
+  }
+
+  function drawChamber(dt, t) {
+    var ctx = crystalCtx;
+    ctx.clearRect(0, 0, cw, ch);
+
+    // 钻石尘
+    drawDiamondDust(ctx, dt);
+
+    // 冰晶
+    updateCrystals(dt, t);
+    for (var i = 0; i < crystals.length; i++) {
+      drawCrystal(ctx, crystals[i], t);
+    }
+
+    // 舱内冷光（四角暗角）
+    var grad = ctx.createRadialGradient(cw/2, ch/2, Math.min(cw, ch) * 0.3, cw/2, ch/2, Math.max(cw, ch) * 0.75);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,.35)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+
+  // ===== 图例渲染 =====
+  function renderLegend() {
+    var list = document.getElementById("legendList");
+    list.innerHTML = "";
+    HALOS.forEach(function (h) {
+      var item = document.createElement("div");
+      item.className = "legend-item" + (state.activeLegend === h.id ? " active" : "");
+      item.dataset.id = h.id;
+      item.setAttribute("tabindex", "0");
+
+      var swatch = document.createElement("div");
+      swatch.className = "li-swatch";
+      // 用 SVG 图标
+      swatch.innerHTML = legendSwatch(h.id);
+
+      var name = document.createElement("span");
+      name.className = "li-name";
+      name.textContent = h.name;
+
+      var tag = document.createElement("span");
+      tag.className = "li-tag";
+      tag.textContent = h.tag;
+
+      item.appendChild(swatch);
+      item.appendChild(name);
+      item.appendChild(tag);
+
+      item.addEventListener("click", function () {
+        toggleLegend(h.id);
+      });
+      item.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleLegend(h.id);
+        }
+      });
+      list.appendChild(item);
+    });
+  }
+
+  function legendSwatch(id) {
+    // 简化的图标 SVG
+    var s = '<svg viewBox="0 0 26 16" width="26" height="16" xmlns="http://www.w3.org/2000/svg">';
+    s += '<circle cx="4" cy="8" r="1.5" fill="#E8B34B"/>'; // 小太阳
+    switch (id) {
+      case "h22":
+        s += '<circle cx="13" cy="8" r="6" fill="none" stroke="#B4452C" stroke-width=".9"/>';
+        break;
+      case "parhelia":
+        s += '<circle cx="13" cy="8" r="6" fill="none" stroke="rgba(180,69,44,.3)" stroke-width=".6"/>';
+        s += '<circle cx="8" cy="8" r="1.8" fill="#E8B34B" opacity=".85"/>';
+        s += '<circle cx="18" cy="8" r="1.8" fill="#E8B34B" opacity=".85"/>';
+        break;
+      case "h46":
+        s += '<circle cx="13" cy="8" r="7" fill="none" stroke="#8C6EB4" stroke-width=".7" stroke-dasharray="1.5 1"/>';
+        break;
+      case "cza":
+        s += '<path d="M6 2 Q13 0 20 2" fill="none" stroke="#8C6EB4" stroke-width=".9"/>';
+        break;
+      case "uta":
+        s += '<circle cx="13" cy="8" r="6" fill="none" stroke="rgba(180,69,44,.3)" stroke-width=".6"/>';
+        s += '<path d="M10 3 Q13 1 16 3" fill="none" stroke="#B4452C" stroke-width=".9"/>';
+        break;
+      case "lta":
+        s += '<circle cx="13" cy="8" r="6" fill="none" stroke="rgba(180,69,44,.3)" stroke-width=".6"/>';
+        s += '<path d="M10 13 Q13 15 16 13" fill="none" stroke="#B4452C" stroke-width=".9"/>';
+        break;
+      case "phr":
+        s += '<line x1="1" y1="8" x2="25" y2="8" stroke="rgba(255,240,200,.7)" stroke-width=".8" stroke-dasharray="1.5 1"/>';
+        break;
+      case "subsun":
+        s += '<ellipse cx="13" cy="12" rx="3" ry="1.2" fill="rgba(232,179,75,.6)"/>';
+        break;
+    }
+    s += '</svg>';
+    return s;
+  }
+
+  function toggleLegend(id) {
+    if (state.activeLegend === id) {
+      state.activeLegend = null;
+      hideNoteCard();
+      hideLightPathModal();
+    } else {
+      state.activeLegend = id;
+      showNoteCard(id);
+      showLightPathModal(id);
+    }
+    // 更新图例高亮
+    var items = document.querySelectorAll(".legend-item");
+    items.forEach(function (el) {
+      el.classList.toggle("active", el.dataset.id === state.activeLegend);
+    });
+  }
+
+  // ===== 注释卡 =====
+  function showNoteCard(id) {
+    var halo = HALOS.find(function (h) { return h.id === id; });
+    if (!halo) return;
+    var card = document.getElementById("noteCard");
+    document.getElementById("noteTitle").textContent = halo.name;
+    document.getElementById("noteTag").textContent = halo.tag;
+    document.getElementById("noteCause").textContent = halo.cause;
+    document.getElementById("noteCond").innerHTML = "<b>观测条件：</b>" + halo.cond;
+    card.classList.add("show");
+  }
+  function hideNoteCard() {
+    document.getElementById("noteCard").classList.remove("show");
+  }
+
+  // ===== 光路特写 =====
+  var lpmCanvas = document.getElementById("lpmCanvas");
+  var lpmCtx = lpmCanvas.getContext("2d");
+  var lpmW = 0, lpmH = 0;
+  var lpmAnim = { t: 0, active: false };
+
+  function resizeLPM() {
+    var rect = lpmCanvas.parentElement.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    lpmW = rect.width;
+    lpmH = rect.height;
+    lpmCanvas.width = lpmW * dpr;
+    lpmCanvas.height = lpmH * dpr;
+    lpmCanvas.style.width = lpmW + "px";
+    lpmCanvas.style.height = lpmH + "px";
+    lpmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function showLightPathModal(id) {
+    var halo = HALOS.find(function (h) { return h.id === id; });
+    if (!halo) return;
+    document.getElementById("lpmTitle").textContent = halo.lpm.title;
+    document.getElementById("lpmCaption").innerHTML = halo.lpm.caption;
+    document.getElementById("lightPathModal").classList.add("show");
+    document.getElementById("modalBackdrop").classList.add("show");
+    lpmAnim.active = true;
+    lpmAnim.kind = halo.lpm.kind;
+    lpmAnim.t = 0;
+    setTimeout(resizeLPM, 50);
+  }
+  function hideLightPathModal() {
+    document.getElementById("lightPathModal").classList.remove("show");
+    document.getElementById("modalBackdrop").classList.remove("show");
+    lpmAnim.active = false;
+  }
+
+  // 绘制光路特写
+  function drawLightPath(dt) {
+    if (!lpmAnim.active) return;
+    lpmAnim.t += dt;
+
+    var ctx = lpmCtx;
+    var W = lpmW, H = lpmH;
+    ctx.clearRect(0, 0, W, H);
+
+    var kind = lpmAnim.kind;
+    var cx = W / 2, cy = H / 2;
+    var t = lpmAnim.t;
+
+    // 冰晶位置和大小取决于 kind
+    var crystalSize = Math.min(W, H) * 0.2;
+
+    if (kind === "prism60" || kind === "columnPrism") {
+      drawPrism60Path(ctx, cx, cy, crystalSize, t);
+    } else if (kind === "plateSide") {
+      drawPlateSidePath(ctx, cx, cy, crystalSize, t);
+    } else if (kind === "prism90") {
+      drawPrism90Path(ctx, cx, cy, crystalSize, t);
+    } else if (kind === "czaPrism") {
+      drawCzaPath(ctx, cx, cy, crystalSize, t);
+    } else if (kind === "reflection" || kind === "plateReflect") {
+      drawReflectionPath(ctx, cx, cy, crystalSize, t, kind === "plateReflect");
+    }
+  }
+
+  function drawPrism60Path(ctx, cx, cy, s, t) {
+    // 60°棱镜（六边形的一角）
+    // 入射白光 → 折射 → 色散出射
+    var apexAngle = 60 * DEG;
+    var h = s * 1.2;
+
+    // 棱镜三角形：顶点在上
+    var top = { x: cx, y: cy - h * 0.5 };
+    var bl = { x: cx - h * Math.sin(apexAngle/2), y: cy + h * 0.4 };
+    var br = { x: cx + h * Math.sin(apexAngle/2), y: cy + h * 0.4 };
+
+    // 棱镜体
+    ctx.fillStyle = "rgba(220, 235, 240, .2)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.lineTo(bl.x, bl.y);
+    ctx.lineTo(br.x, br.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 入射光（从左下方来）
+    var inStart = { x: cx - s * 1.8, y: cy + s * 0.2 };
+    var inEnd = { x: cx - s * 0.3, y: cy - s * 0.1 };
+
+    // 动画进度：0-1 光走完
+    var phase = (t * 0.8) % 2.5;
+    var prog = phase < 1.5 ? phase / 1.5 : 1;
+
+    // 入射白光
+    var inProg = Math.min(prog / 0.4, 1);
+    if (inProg > 0) {
+      var ipx = inStart.x + (inEnd.x - inStart.x) * inProg;
+      var ipy = inStart.y + (inEnd.y - inStart.y) * inProg;
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+
+      // 发光
+      ctx.strokeStyle = "rgba(232, 179, 75, .4)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+    }
+
+    // 出射光（色散：内红外紫，向上偏折约 22°）
+    if (prog > 0.4) {
+      var outProg = (prog - 0.4) / 0.6;
+      var colors = [
+        { c: "#B4452C", dy: 0 },     // 红
+        { c: "#E8B34B", dy: 4 },
+        { c: "#64A082", dy: 8 },
+        { c: "#5082AA", dy: 12 },
+        { c: "#8C6EB4", dy: 16 }     // 紫
+      ];
+      // 出射点（棱镜右棱）
+      var exitP = { x: cx + s * 0.18, y: cy - s * 0.05 };
+      // 出射方向（向右上约 22°）
+      var outLen = s * 1.3 * outProg;
+      var outAngle = -25 * DEG;
+
+      ctx.lineCap = "round";
+      for (var i = 0; i < colors.length; i++) {
+        var col = colors[i];
+        var ang = outAngle - col.dy * 0.012;
+        var ex = exitP.x + Math.cos(ang) * outLen;
+        var ey = exitP.y + Math.sin(ang) * outLen - col.dy * 0.3;
+        ctx.strokeStyle = col.c;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(exitP.x, exitP.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // 内部光路
+      ctx.strokeStyle = "rgba(255, 245, 210, .8)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(inEnd.x, inEnd.y);
+      ctx.lineTo(exitP.x, exitP.y);
+      ctx.stroke();
+    }
+
+    // 角度标注
+    ctx.fillStyle = "rgba(207, 224, 230, .8)";
+    ctx.font = '11px ui-monospace, "JetBrains Mono", monospace';
+    ctx.fillText("最小偏向角 ≈ 21.8°", cx - 40, cy + s * 0.9);
+    ctx.fillText("60° 棱面", cx - 22, top.y - 8);
+  }
+
+  function drawPlateSidePath(ctx, cx, cy, s, t) {
+    // 片晶俯视（六边形），光从左入射、右出射
+    var pts = hexPoints(s);
+    ctx.fillStyle = "rgba(220, 235, 240, .2)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (var i = 0; i < 6; i++) {
+      var p = pts[i];
+      if (i === 0) ctx.moveTo(cx + p.x, cy + p.y);
+      else ctx.lineTo(cx + p.x, cy + p.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    var phase = (t * 0.8) % 2.5;
+    var prog = phase < 1.5 ? phase / 1.5 : 1;
+
+    // 入射
+    var inStart = { x: cx - s * 2, y: cy + s * 0.3 };
+    var inEnd = { x: cx - s * 0.75, y: cy + s * 0.1 };
+    var inProg = Math.min(prog / 0.35, 1);
+    if (inProg > 0) {
+      var ipx = inStart.x + (inEnd.x - inStart.x) * inProg;
+      var ipy = inStart.y + (inEnd.y - inStart.y) * inProg;
+      ctx.strokeStyle = "rgba(232, 179, 75, .4)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+    }
+
+    // 内部
+    var exitP = { x: cx + s * 0.75, y: cy + s * 0.1 };
+    if (prog > 0.35) {
+      var midProg = Math.min((prog - 0.35) / 0.25, 1);
+      var mx = inEnd.x + (exitP.x - inEnd.x) * midProg;
+      var my = inEnd.y + (exitP.y - inEnd.y) * midProg;
+      ctx.strokeStyle = "rgba(255, 245, 210, .8)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(inEnd.x, inEnd.y);
+      ctx.lineTo(mx, my);
+      ctx.stroke();
+    }
+
+    // 出射色散
+    if (prog > 0.6) {
+      var outProg = (prog - 0.6) / 0.4;
+      var colors = [
+        { c: "#B4452C", off: 0 },
+        { c: "#E8B34B", off: 3 },
+        { c: "#64A082", off: 6 },
+        { c: "#5082AA", off: 9 },
+        { c: "#8C6EB4", off: 12 }
+      ];
+      var outLen = s * 1.2 * outProg;
+      for (var i = 0; i < colors.length; i++) {
+        var col = colors[i];
+        ctx.strokeStyle = col.c;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(exitP.x, exitP.y + col.off * 0.4);
+        ctx.lineTo(exitP.x + outLen, exitP.y + col.off * 0.4 + outLen * 0.12);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = "rgba(207, 224, 230, .8)";
+    ctx.font = '11px ui-monospace, "JetBrains Mono", monospace';
+    ctx.fillText("片晶水平定向 · 偏向角 ≈ 22°", cx - 70, cy + s * 0.8);
+  }
+
+  function drawPrism90Path(ctx, cx, cy, s, t) {
+    // 90°棱镜（矩形一角）
+    var w = s * 0.8, h = s * 1.0;
+    ctx.fillStyle = "rgba(220, 235, 240, .2)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(cx - w, cy - h, w * 2, h * 2);
+    ctx.strokeRect(cx - w, cy - h, w * 2, h * 2);
+
+    var phase = (t * 0.7) % 2.8;
+    var prog = phase < 2 ? phase / 2 : 1;
+
+    // 入射：从顶部垂直入射
+    var inStart = { x: cx - s * 0.3, y: cy - s * 1.5 };
+    var inEnd = { x: cx - s * 0.3, y: cy - h };
+    var inProg = Math.min(prog / 0.35, 1);
+    if (inProg > 0) {
+      var ipy = inStart.y + (inEnd.y - inStart.y) * inProg;
+      ctx.strokeStyle = "rgba(232, 179, 75, .4)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(inStart.x, ipy);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(inStart.x, ipy);
+      ctx.stroke();
+    }
+
+    // 内部：向下然后从右侧出射
+    var exitP = { x: cx + w, y: cy + s * 0.2 };
+    if (prog > 0.35) {
+      var midProg = Math.min((prog - 0.35) / 0.3, 1);
+      // 内部路径：先向下，再转折向右
+      var corner = { x: cx - s * 0.3, y: cy + s * 0.2 };
+      var totalLen = (corner.y - inEnd.y) + (exitP.x - corner.x);
+      var currentLen = totalLen * midProg;
+      ctx.strokeStyle = "rgba(255, 245, 210, .8)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(inEnd.x, inEnd.y);
+      if (currentLen <= corner.y - inEnd.y) {
+        ctx.lineTo(inEnd.x, inEnd.y + currentLen);
+      } else {
+        ctx.lineTo(corner.x, corner.y);
+        var rem = currentLen - (corner.y - inEnd.y);
+        ctx.lineTo(corner.x + rem, corner.y);
+      }
+      ctx.stroke();
+    }
+
+    // 出射色散
+    if (prog > 0.65) {
+      var outProg = (prog - 0.65) / 0.35;
+      var colors = [
+        { c: "#B4452C", off: 0 },
+        { c: "#E8B34B", off: 4 },
+        { c: "#64A082", off: 8 },
+        { c: "#5082AA", off: 12 },
+        { c: "#8C6EB4", off: 16 }
+      ];
+      var outLen = s * outProg;
+      for (var i = 0; i < colors.length; i++) {
+        var col = colors[i];
+        ctx.strokeStyle = col.c;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(exitP.x, exitP.y + col.off * 0.5);
+        ctx.lineTo(exitP.x + outLen, exitP.y + col.off * 0.5 + outLen * 0.25);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = "rgba(207, 224, 230, .8)";
+    ctx.font = '11px ui-monospace, "JetBrains Mono", monospace';
+    ctx.fillText("90° 棱面 · 偏向角 ≈ 46°", cx - 60, cy + s * 1.1);
+  }
+
+  function drawCzaPath(ctx, cx, cy, s, t) {
+    // 环天顶弧：顶面入射，侧面出射
+    // 画一个六边形（俯视），光从顶部入射，从侧面出射向下偏
+    var pts = hexPoints(s * 0.9);
+    ctx.fillStyle = "rgba(220, 235, 240, .2)";
+    ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (var i = 0; i < 6; i++) {
+      var p = pts[i];
+      if (i === 0) ctx.moveTo(cx + p.x, cy + p.y);
+      else ctx.lineTo(cx + p.x, cy + p.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 顶面入射标记（画一个圆表示顶面）
+    ctx.strokeStyle = "rgba(169, 196, 204, .4)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    var phase = (t * 0.8) % 2.5;
+    var prog = phase < 1.6 ? phase / 1.6 : 1;
+
+    // 入射：从顶部垂直向下
+    var inStart = { x: cx, y: cy - s * 1.6 };
+    var inEnd = { x: cx, y: cy - s * 0.4 };
+    var inProg = Math.min(prog / 0.35, 1);
+    if (inProg > 0) {
+      var ipy = inStart.y + (inEnd.y - inStart.y) * inProg;
+      ctx.strokeStyle = "rgba(232, 179, 75, .4)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(inStart.x, ipy);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(inStart.x, ipy);
+      ctx.stroke();
+    }
+
+    // 出射：从右侧面偏折向下（约 46°）
+    var exitP = { x: cx + s * 0.78, y: cy - s * 0.1 };
+    if (prog > 0.35) {
+      var outProg = (prog - 0.35) / 0.65;
+      var colors = [
+        { c: "#8C6EB4", off: -2 },  // 紫在上
+        { c: "#5082AA", off: 1 },
+        { c: "#64A082", off: 4 },
+        { c: "#E8B34B", off: 7 },
+        { c: "#B4452C", off: 10 }    // 红在下（倒挂彩虹）
+      ];
+      var outLen = s * 1.1 * outProg;
+      var outAngle = 60 * DEG; // 向下偏
+      for (var i = 0; i < colors.length; i++) {
+        var col = colors[i];
+        var ang = outAngle + col.off * 0.015;
+        var ex = exitP.x + Math.cos(ang) * outLen;
+        var ey = exitP.y + Math.sin(ang) * outLen + col.off * 0.3;
+        ctx.strokeStyle = col.c;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(exitP.x, exitP.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = "rgba(207, 224, 230, .8)";
+    ctx.font = '11px ui-monospace, "JetBrains Mono", monospace';
+    ctx.fillText("顶面入射 · 侧面出射 · 倒挂彩虹", cx - 80, cy + s * 0.9);
+  }
+
+  function drawReflectionPath(ctx, cx, cy, s, t, isPlate) {
+    if (isPlate) {
+      // 片晶顶面反射
+      ctx.fillStyle = "rgba(220, 235, 240, .2)";
+      ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+      ctx.lineWidth = 1.5;
+      var pts = hexPoints(s);
+      ctx.beginPath();
+      for (var i = 0; i < 6; i++) {
+        if (i === 0) ctx.moveTo(cx + pts[i].x, cy + pts[i].y);
+        else ctx.lineTo(cx + pts[i].x, cy + pts[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 反射面（顶面）
+      ctx.strokeStyle = "rgba(232, 179, 75, .5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.9, cy);
+      ctx.lineTo(cx + s * 0.9, cy);
+      ctx.stroke();
+    } else {
+      // 柱晶垂直棱面反射
+      ctx.fillStyle = "rgba(220, 235, 240, .2)";
+      ctx.strokeStyle = "rgba(169, 196, 204, .8)";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(cx - s * 0.5, cy - s, s, s * 2);
+      ctx.strokeRect(cx - s * 0.5, cy - s, s, s * 2);
+    }
+
+    var phase = (t * 0.9) % 2.2;
+    var prog = phase < 1.4 ? phase / 1.4 : 1;
+
+    // 入射光
+    var inStart = { x: cx - s * 1.5, y: cy - s * 0.8 };
+    var hitP = { x: cx - s * 0.3, y: cy };
+    var inProg = Math.min(prog / 0.5, 1);
+    if (inProg > 0) {
+      var ipx = inStart.x + (hitP.x - inStart.x) * inProg;
+      var ipy = inStart.y + (hitP.y - inStart.y) * inProg;
+      ctx.strokeStyle = "rgba(232, 179, 75, .4)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(inStart.x, inStart.y);
+      ctx.lineTo(ipx, ipy);
+      ctx.stroke();
+    }
+
+    // 反射光（白色，无 dispersion）
+    if (prog > 0.5) {
+      var outProg = (prog - 0.5) / 0.5;
+      var outEnd = { x: cx + s * 1.2, y: cy - s * 0.8 };
+      var opx = hitP.x + (outEnd.x - hitP.x) * outProg;
+      var opy = hitP.y + (outEnd.y - hitP.y) * outProg;
+      ctx.strokeStyle = "rgba(255, 250, 230, .5)";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(hitP.x, hitP.y);
+      ctx.lineTo(opx, opy);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF5D4";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(hitP.x, hitP.y);
+      ctx.lineTo(opx, opy);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(207, 224, 230, .8)";
+    ctx.font = '11px ui-monospace, "JetBrains Mono", monospace';
+    ctx.fillText(isPlate ? "镜面反射 · 白色无光" : "棱面反射 · 高度角不变", cx - 60, cy + s * 1.1);
+  }
+
+  // ===== 控件交互 =====
+  function setupControls() {
+    // 晶形切换
+    var btns = document.querySelectorAll(".crystal-btn");
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var type = btn.dataset.crystal;
+        if (state.crystalType === type) return;
+        state.crystalType = type;
+        btns.forEach(function (b) { b.classList.toggle("active", b === btn); });
+        // 重置冰晶旋转
+        crystals.forEach(function (c) {
+          c.targetRot = type === "column" ? Math.PI / 2 : 0;
+        });
+      });
+    });
+
+    // 取向拨杆
+    var orientSlider = document.getElementById("orientSlider");
+    var orientVal = document.getElementById("orientVal");
+    var orientTimer = null;
+    orientSlider.addEventListener("input", function () {
+      state.orientation = parseInt(orientSlider.value, 10) / 100;
+      orientVal.textContent = orientSlider.value + "%";
+      // 数值动效
+      orientVal.style.color = "#E8B34B";
+      clearTimeout(orientTimer);
+      orientTimer = setTimeout(function () {
+        orientVal.style.color = "";
+      }, 300);
+    });
+
+    // 太阳高度
+    var sunSlider = document.getElementById("sunSlider");
+    var sunVal = document.getElementById("sunVal");
+    var sunAltVal = document.getElementById("sunAltVal");
+    var sunTimer = null;
+    sunSlider.addEventListener("input", function () {
+      state.sunAlt = parseInt(sunSlider.value, 10);
+      sunVal.textContent = state.sunAlt + "°";
+      sunAltVal.textContent = state.sunAlt + "°";
+      sunAltVal.classList.add("anim");
+      clearTimeout(sunTimer);
+      sunTimer = setTimeout(function () {
+        sunAltVal.classList.remove("anim");
+      }, 500);
+    });
+
+    // 弹窗关闭
+    document.getElementById("lpmClose").addEventListener("click", function () {
+      if (state.activeLegend) toggleLegend(state.activeLegend);
+    });
+    document.getElementById("modalBackdrop").addEventListener("click", function () {
+      if (state.activeLegend) toggleLegend(state.activeLegend);
+    });
+
+    // 键盘：Esc 关闭
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && state.activeLegend) {
+        toggleLegend(state.activeLegend);
+      }
+    });
+  }
+
+  // ===== 自定义光标 =====
+  function setupCursor() {
+    var cursor = document.getElementById("cursor");
+    // 初始位置：屏幕中央
+    var cx = window.innerWidth / 2;
+    var cy = window.innerHeight / 2;
+    cursor.style.transform = "translate(" + cx + "px, " + cy + "px) translate(-50%, -50%) rotate(0deg)";
+
+    var rot = 0;
+    var targetX = cx, targetY = cy;
+    var currentX = cx, currentY = cy;
+
+    function onMove(e) {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    }
+
+    // 高频事件直接操作 DOM（requestAnimationFrame 中更新）
+    document.addEventListener("mousemove", onMove, { passive: true });
+
+    // hover 状态
+    var hoverSelectors = "button, input, .legend-item, .lpm-close";
+    document.addEventListener("mouseover", function (e) {
+      if (e.target.closest(hoverSelectors)) {
+        cursor.classList.add("hover");
+      }
+    });
+    document.addEventListener("mouseout", function (e) {
+      if (e.target.closest(hoverSelectors)) {
+        cursor.classList.remove("hover");
+      }
+    });
+    document.addEventListener("mousedown", function () {
+      cursor.classList.add("click");
+    });
+    document.addEventListener("mouseup", function () {
+      cursor.classList.remove("click");
+    });
+
+    // 更新函数（在 RAF 中调用）
+    window.__cursorUpdate = function (dt) {
+      // 平滑跟随
+      currentX += (targetX - currentX) * Math.min(dt * 18, 1);
+      currentY += (targetY - currentY) * Math.min(dt * 18, 1);
+      rot += dt * 20; // 缓慢自转
+      cursor.style.transform = "translate(" + currentX + "px, " + currentY + "px) translate(-50%, -50%) rotate(" + rot + "deg)";
+    };
+  }
+
+  // ===== 主循环 =====
+  var lastTime = 0;
+  var rafId = null;
+
+  function loop(time) {
+    if (!state.visible) { rafId = null; return; }
+    var now = time / 1000;
+    var dt = lastTime ? Math.min(now - lastTime, 0.05) : 0.016;
+    lastTime = now;
+
+    if (!state.reducedMotion) {
+      drawSky(now);
+      drawChamber(dt, now);
+      drawLightPath(dt);
+      if (window.__cursorUpdate) window.__cursorUpdate(dt);
+    } else {
+      // reduced motion：静态绘制一次
+      drawSky(0);
+      drawChamber(0, 0);
+      // 不持续更新
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // 可见性：暂停 RAF
+  document.addEventListener("visibilitychange", function () {
+    state.visible = !document.hidden;
+    if (state.visible && !rafId) {
+      lastTime = 0;
+      rafId = requestAnimationFrame(loop);
+    }
+  });
+
+  // 页面卸载：取消
+  window.addEventListener("beforeunload", function () {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ===== 响应式 resize（防抖） =====
+  var resizeTimer = null;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      resizeSky();
+      resizeChamber();
+      resizeLPM();
+      lastSunAlt = -1; // 触发重算
+    }, 100);
+  }
+  window.addEventListener("resize", onResize);
+
+  // ===== 初始化 =====
+  function init() {
+    // reduced motion
+    state.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    resizeSky();
+    resizeChamber();
+    setupControls();
+    renderLegend();
+    setupCursor();
+
+    // 启动动画
+    rafId = requestAnimationFrame(loop);
+
+    // 宣告可升级
+    function announceUpgrade() {
+      try {
+        window.parent.postMessage({ type: "miaoda:upgrade:available", kind: "interactive-prototype" }, "*");
+      } catch (e) { /* 忽略 */ }
+    }
+    announceUpgrade();
+    if (document.readyState !== "complete") {
+      window.addEventListener("load", announceUpgrade, { once: true });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
