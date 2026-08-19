@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>杆秤·称重</title>
+<style>
+  :root {
+    --brass: #C9A227;
+    --brass-light: #E0B83A;
+    --brass-dark: #A5821A;
+    --wood: #5C3A1E;
+    --wood-light: #7A4F29;
+    --wood-dark: #3E2714;
+    --vermilion: #8B2C1E;
+    --vermilion-light: #B83A28;
+    --ink: #1A1410;
+    --ink-2: #231C16;
+    --rice: #F2EAD3;
+    --rice-dim: #C9BFA3;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--ink);
+    color: var(--rice);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Serif SC", "Songti SC", serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Ambient background — subtle wood grain texture */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(201, 162, 39, 0.08), transparent 60%),
+      radial-gradient(ellipse at 20% 80%, rgba(92, 58, 30, 0.3), transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(92, 58, 30, 0.2), transparent 50%),
+      var(--ink);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Custom cursor */
+  #custom-cursor {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 32px;
+    height: 32px;
+    margin-left: -16px;
+    margin-top: -16px;
+    pointer-events: none;
+    z-index: 9999;
+    transition: transform 0.12s ease-out;
+    transform: scale(1);
+  }
+  #custom-cursor .cursor-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--brass);
+    border-radius: 50%;
+    transition: all 0.15s ease-out;
+    box-shadow: 0 0 12px rgba(201, 162, 39, 0.4);
+  }
+  #custom-cursor .cursor-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    margin-top: -2px;
+    background: var(--brass);
+    border-radius: 50%;
+    transition: all 0.15s ease-out;
+  }
+  #custom-cursor.hover-weight {
+    transform: scale(1.3);
+  }
+  #custom-cursor.hover-weight .cursor-ring {
+    border-color: var(--vermilion-light);
+    border-width: 2.5px;
+  }
+  #custom-cursor.hover-weight .cursor-dot {
+    background: var(--vermilion-light);
+    width: 2px;
+    height: 2px;
+  }
+  #custom-cursor.dragging {
+    transform: scale(0.85);
+  }
+  #custom-cursor.dragging .cursor-ring {
+    border-color: var(--vermilion-light);
+    background: rgba(139, 44, 30, 0.15);
+  }
+  #custom-cursor.hover-item {
+    transform: scale(1.1);
+  }
+  #custom-cursor.hover-item .cursor-ring {
+    border-color: var(--brass-light);
+  }
+
+  /* Cursor trail */
+  .cursor-trail {
+    position: fixed;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brass);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Ripple */
+  .ripple {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--brass);
+    pointer-events: none;
+    z-index: 9997;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.8;
+    animation: ripple-expand 0.6s ease-out forwards;
+  }
+  @keyframes ripple-expand {
+    to {
+      transform: translate(-50%, -50%) scale(6);
+      opacity: 0;
+    }
+  }
+
+  /* Main layout */
+  .stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  .title-area {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 2;
+  }
+  .title-area h1 {
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: 8px;
+    color: var(--brass);
+    text-indent: 8px;
+    font-family: "Songti SC", "Noto Serif SC", "STSong", serif;
+  }
+  .title-area .subtitle {
+    margin-top: 8px;
+    font-size: 14px;
+    color: var(--rice-dim);
+    letter-spacing: 2px;
+  }
+
+  /* Scale container */
+  .scale-wrap {
+    position: relative;
+    width: 880px;
+    height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #scale-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Beam wood style */
+  .beam-wood {
+    fill: url(#beamGradient);
+    stroke: var(--wood-dark);
+    stroke-width: 1;
+  }
+
+  /* Scale marks */
+  .scale-mark {
+    stroke: var(--vermilion);
+    stroke-width: 1;
+  }
+  .scale-mark.major {
+    stroke-width: 1.5;
+  }
+  .scale-mark.balance-hi {
+    stroke: var(--vermilion-light);
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 4px var(--vermilion-light));
+  }
+
+  .scale-num {
+    fill: var(--vermilion);
+    font-size: 9px;
+    font-family: "Songti SC", serif;
+    text-anchor: middle;
+  }
+
+  /* Counterweight (秤砣) */
+  .counterweight {
+    cursor: grab;
+    cursor: -webkit-grab;
+  }
+  .counterweight.dragging {
+    cursor: grabbing;
+    cursor: -webkit-grabbing;
+  }
+  .counterweight-body {
+    fill: url(#weightGradient);
+    stroke: var(--brass-dark);
+    stroke-width: 1;
+  }
+  .counterweight-hook {
+    fill: none;
+    stroke: var(--brass);
+    stroke-width: 1.5;
+  }
+  .counterweight-glow {
+    opacity: 0;
+    filter: url(#softGlow);
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .counterweight.hover .counterweight-glow {
+    opacity: 0.6;
+  }
+
+  /* Fulcrum stand (提纽底座) */
+  .stand-post {
+    fill: url(#standGradient);
+    stroke: var(--wood-dark);
+    stroke-width: 1;
+  }
+  .stand-base {
+    fill: var(--wood-dark);
+  }
+
+  /* Item hook & rope */
+  .item-rope {
+    stroke: var(--wood-light);
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .item-hook {
+    fill: none;
+    stroke: var(--brass);
+    stroke-width: 2;
+  }
+
+  /* Balance star (定盘星) */
+  .balance-star {
+    fill: var(--vermilion);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .balance-star.active {
+    opacity: 1;
+    animation: star-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes star-pulse {
+    0%, 100% { opacity: 0.8; r: 3; }
+    50% { opacity: 1; r: 4.5; }
+  }
+
+  /* Item panel */
+  .item-panel {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    z-index: 3;
+  }
+  .item-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 16px;
+    background: rgba(92, 58, 30, 0.3);
+    border: 1px solid rgba(201, 162, 39, 0.25);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 84px;
+  }
+  .item-chip:hover {
+    background: rgba(201, 162, 39, 0.12);
+    border-color: rgba(201, 162, 39, 0.5);
+    transform: translateY(-2px);
+  }
+  .item-chip.active {
+    background: rgba(201, 162, 39, 0.18);
+    border-color: var(--brass);
+    box-shadow: 0 0 16px rgba(201, 162, 39, 0.3);
+  }
+  .item-icon {
+    font-size: 24px;
+    line-height: 1;
+  }
+  .item-name {
+    font-size: 12px;
+    color: var(--rice);
+    letter-spacing: 1px;
+  }
+  .item-weight {
+    font-size: 11px;
+    color: var(--rice-dim);
+  }
+
+  /* Reading display */
+  .reading-display {
+    position: absolute;
+    top: 50%;
+    right: 40px;
+    transform: translateY(-50%);
+    text-align: right;
+    z-index: 3;
+  }
+  .reading-label {
+    font-size: 12px;
+    color: var(--rice-dim);
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+  .reading-value {
+    font-size: 48px;
+    font-weight: 300;
+    color: var(--brass);
+    font-family: "Songti SC", "Noto Serif SC", serif;
+    line-height: 1;
+    transition: color 0.3s ease;
+    font-variant-numeric: tabular-nums;
+  }
+  .reading-value.balanced {
+    color: var(--vermilion-light);
+    text-shadow: 0 0 20px rgba(184, 58, 40, 0.5);
+  }
+  .reading-unit {
+    font-size: 16px;
+    color: var(--rice-dim);
+    margin-top: 4px;
+    letter-spacing: 2px;
+  }
+  .balance-status {
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--rice-dim);
+    letter-spacing: 2px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .balance-status.show {
+    opacity: 1;
+  }
+  .balance-status.accurate {
+    color: var(--vermilion-light);
+  }
+
+  /* Status hint */
+  .hint-text {
+    position: absolute;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: var(--rice-dim);
+    letter-spacing: 3px;
+    z-index: 2;
+    opacity: 0.7;
+  }
+
+  /* Item hanging animation */
+  @keyframes item-sway {
+    0%, 100% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #custom-cursor { display: none; }
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="custom-cursor" aria-hidden="true">
+  <div class="cursor-ring"></div>
+  <div class="cursor-dot"></div>
+</div>
+
+<div class="stage">
+  <div class="title-area">
+    <h1>杆秤 · 称重</h1>
+    <div class="subtitle">拖动秤砣 · 找到平衡点</div>
+  </div>
+
+  <div class="scale-wrap" id="scaleWrap">
+    <svg id="scale-svg" viewBox="-20 -100 920 420" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Beam wood gradient -->
+        <linearGradient id="beamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7A4F29" />
+          <stop offset="30%" stop-color="#5C3A1E" />
+          <stop offset="70%" stop-color="#4A2E18" />
+          <stop offset="100%" stop-color="#3E2714" />
+        </linearGradient>
+
+        <!-- Counterweight brass gradient -->
+        <radialGradient id="weightGradient" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stop-color="#F0D060" />
+          <stop offset="25%" stop-color="#D9B43C" />
+          <stop offset="60%" stop-color="#C9A227" />
+          <stop offset="100%" stop-color="#8B6F15" />
+        </radialGradient>
+
+        <!-- Stand gradient -->
+        <linearGradient id="standGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#4A2E18" />
+          <stop offset="50%" stop-color="#6B4423" />
+          <stop offset="100%" stop-color="#3E2714" />
+        </linearGradient>
+
+        <!-- Soft glow filter -->
+        <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <!-- Item fill gradients -->
+        <radialGradient id="itemRiceGrad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#D4A65A" />
+          <stop offset="100%" stop-color="#8B5E2A" />
+        </radialGradient>
+        <radialGradient id="itemWoodGrad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#8B6F3A" />
+          <stop offset="100%" stop-color="#4A3018" />
+        </radialGradient>
+        <radialGradient id="itemFishGrad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#6B8E9A" />
+          <stop offset="100%" stop-color="#3A5A6B" />
+        </radialGradient>
+        <radialGradient id="itemMeatGrad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#A84838" />
+          <stop offset="100%" stop-color="#6B2818" />
+        </radialGradient>
+      </defs>
+
+      <!-- Stand base (固定底座) -->
+      <g id="standGroup">
+        <!-- Base platform -->
+        <rect class="stand-base" x="360" y="230" width="160" height="20" rx="3" />
+        <rect class="stand-base" x="340" y="245" width="200" height="12" rx="2" opacity="0.7" />
+        <!-- Vertical post -->
+        <rect class="stand-post" x="425" y="80" width="30" height="160" rx="2" />
+        <!-- Fulcrum pin (提纽) -->
+        <circle cx="440" cy="80" r="6" fill="#C9A227" stroke="#A5821A" stroke-width="1" />
+      </g>
+
+      <!-- Beam group — rotates around fulcrum (440, 80) -->
+      <g id="beamGroup" style="transform-origin: 440px 80px;">
+        <!-- Main beam (秤杆) -->
+        <rect class="beam-wood" x="80" y="74" width="680" height="12" rx="6" />
+        <!-- Brass top inlay (铜包边) -->
+        <rect x="80" y="74" width="680" height="3" rx="1.5" fill="#C9A227" opacity="0.6" />
+        <!-- Brass end caps -->
+        <ellipse cx="80" cy="80" rx="4" ry="7" fill="#C9A227" stroke="#A5821A" stroke-width="0.5" />
+        <ellipse cx="760" cy="80" rx="4" ry="7" fill="#C9A227" stroke="#A5821A" stroke-width="0.5" />
+
+        <!-- Scale marks group (秤星刻度) -->
+        <g id="scaleMarksGroup">
+          <!-- Filled dynamically via JS -->
+        </g>
+
+        <!-- Balance star indicator (定盘星) at fulcrum area -->
+        <circle class="balance-star" id="balanceStar" cx="440" cy="80" r="3" />
+
+        <!-- Item hanging point (物端挂点) — left side -->
+        <g id="itemHangPoint" transform="translate(120, 86)">
+          <!-- String down from beam -->
+          <line class="item-rope" x1="0" y1="0" x2="0" y2="20" />
+          <!-- Hook -->
+          <path class="item-hook" d="M -4 20 Q -6 28 0 32 Q 6 36 6 30" fill="none" />
+        </g>
+
+        <!-- Item group (swings from item hang point) -->
+        <g id="itemGroup" transform="translate(120, 118)" style="transform-origin: 0px 0px;">
+          <!-- Item rendered dynamically -->
+        </g>
+
+        <!-- Counterweight (秤砣) — hangs from beam -->
+        <g id="counterweight" class="counterweight" transform="translate(440, 86)">
+          <!-- String -->
+          <line class="item-rope" x1="0" y1="0" x2="0" y2="14" />
+          <!-- Weight glow -->
+          <ellipse class="counterweight-glow" cx="0" cy="38" rx="28" ry="22" fill="#C9A227" opacity="0.3" />
+          <!-- Hook top -->
+          <path class="counterweight-hook" d="M -3 14 Q 0 18 3 14" fill="none" />
+          <!-- Weight body — traditional bell shape -->
+          <path class="counterweight-body"
+            d="M -14 20
+               L -16 24
+               Q -18 36 -15 46
+               Q -12 54 0 56
+               Q 12 54 15 46
+               Q 18 36 16 24
+               L 14 20
+               Z" />
+          <!-- Top rim -->
+          <ellipse cx="0" cy="20" rx="14" ry="3" fill="#E0B83A" stroke="#A5821A" stroke-width="0.5" />
+          <!-- Bottom rim -->
+          <ellipse cx="0" cy="56" rx="12" ry="2.5" fill="#8B6F15" opacity="0.8" />
+          <!-- Brass band in middle -->
+          <path d="M -16 34 Q 0 38 16 34" fill="none" stroke="#E0B83A" stroke-width="1.5" opacity="0.7" />
+          <!-- Highlight -->
+          <ellipse cx="-5" cy="30" rx="3" ry="8" fill="#F0D060" opacity="0.3" />
+          <!-- Weight label (1斤) -->
+          <text x="0" y="42" text-anchor="middle" font-size="7" fill="#5C3A1E" font-family="serif" font-weight="bold">壹斤</text>
+        </g>
+      </g>
+    </svg>
+
+    <!-- Reading display -->
+    <div class="reading-display">
+      <div class="reading-label">当前读数</div>
+      <div class="reading-value" id="readingValue">0.0</div>
+      <div class="reading-unit">斤</div>
+      <div class="balance-status" id="balanceStatus">已称准 ✓</div>
+    </div>
+  </div>
+
+  <div class="hint-text" id="hintText">按住秤砣左右拖动，找到平衡点</div>
+
+  <div class="item-panel" id="itemPanel">
+    <div class="item-chip active" data-item="rice">
+      <div class="item-icon">🌾</div>
+      <div class="item-name">一袋米</div>
+      <div class="item-weight">3.2 斤</div>
+    </div>
+    <div class="item-chip" data-item="wood">
+      <div class="item-icon">🪵</div>
+      <div class="item-name">一捆柴</div>
+      <div class="item-weight">8.5 斤</div>
+    </div>
+    <div class="item-chip" data-item="fish">
+      <div class="item-icon">🐟</div>
+      <div class="item-name">一篓鱼</div>
+      <div class="item-weight">1.8 斤</div>
+    </div>
+    <div class="item-chip" data-item="meat">
+      <div class="item-icon">🥩</div>
+      <div class="item-name">一块腊肉</div>
+      <div class="item-weight">2.6 斤</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============== Configuration ==============
+  var CONFIG = {
+    // Geometry
+    fulcrumX: 440,          // fulcrum x in SVG coords
+    fulcrumY: 80,           // fulcrum y in SVG coords
+    itemHangX: 120,         // item hang point x
+    beamLeft: 80,           // beam left edge x
+    beamRight: 760,         // beam right edge x
+    // Physics
+    weightMass: 1.0,        // counterweight mass (斤)
+    itemArm: 320,           // item side arm length (fulcrum - itemHang) = 440-120
+    maxAngle: 18,           // max beam tilt in degrees
+    springK: 0.08,          // balance attraction spring strength
+    damping: 0.86,          // velocity damping per frame (0.86 ~ slightly underdamped)
+    snapZone: 0.25,         // snap zone threshold in 斤 (±0.25斤范围触发吸附)
+    // Drag
+    dragSensitivity: 1.0,   // px per pixel (1:1)
+    // Animation
+    itemSwaySpeed: 0.002,   // idle sway speed
+    markBreathSpeed: 0.003, // mark breathing speed
+  };
+
+  // Items data
+  var ITEMS = {
+    rice: { name: '一袋米', weight: 3.2, color: 'itemRiceGrad' },
+    wood: { name: '一捆柴', weight: 8.5, color: 'itemWoodGrad' },
+    fish: { name: '一篓鱼', weight: 1.8, color: 'itemFishGrad' },
+    meat: { name: '一块腊肉', weight: 2.6, color: 'itemMeatGrad' },
+  };
+
+  // ============== State ==============
+  var state = {
+    itemKey: 'rice',
+    itemWeight: ITEMS.rice.weight,
+    // Weight position in SVG x-coords
+    weightX: 500,           // initial position
+    weightMin: 130,         // min x (can't go past item hang point)
+    weightMax: 740,         // max x (near right end)
+    // Physics
+    angle: 0,               // current beam angle in degrees
+    angleVel: 0,            // angular velocity
+    targetAngle: 0,         // target angle based on torque
+    // Drag
+    isDragging: false,
+    dragStartX: 0,
+    dragStartWeightX: 0,
+    // Balance
+    isBalanced: false,
+    balanceAccuracy: 0,     // 0..1 how close to balance
+    // Time
+    time: 0,
+    lastTs: 0,
+    // Reduced motion
+    reducedMotion: false,
+    // Visibility
+    running: true,
+  };
+
+  // ============== DOM refs ==============
+  var cursorEl = document.getElementById('custom-cursor');
+  var beamGroup = document.getElementById('beamGroup');
+  var counterweight = document.getElementById('counterweight');
+  var weightGroup = counterweight;
+  var scaleMarksGroup = document.getElementById('scaleMarksGroup');
+  var balanceStar = document.getElementById('balanceStar');
+  var readingValue = document.getElementById('readingValue');
+  var balanceStatus = document.getElementById('balanceStatus');
+  var itemGroup = document.getElementById('itemGroup');
+  var itemPanel = document.getElementById('itemPanel');
+  var scaleWrap = document.getElementById('scaleWrap');
+  var svgEl = document.getElementById('scale-svg');
+  var hintText = document.getElementById('hintText');
+
+  // Cursor position
+  var cursorX = window.innerWidth / 2;
+  var cursorY = window.innerHeight / 2;
+  var cursorTrailIndex = 0;
+  var trailDots = [];
+
+  // ============== Reduced motion check ==============
+  var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  state.reducedMotion = mq.matches;
+  if (mq.addEventListener) {
+    mq.addEventListener('change', function(e) {
+      state.reducedMotion = e.matches;
+      if (state.reducedMotion) cursorEl.style.display = 'none';
+      else cursorEl.style.display = 'block';
+    });
+  }
+
+  if (state.reducedMotion) {
+    cursorEl.style.display = 'none';
+  }
+
+  // ============== Custom cursor ==============
+  function initCursorTrails() {
+    for (var i = 0; i < 5; i++) {
+      var d = document.createElement('div');
+      d.className = 'cursor-trail';
+      document.body.appendChild(d);
+      trailDots.push({ el: d, x: cursorX, y: cursorY, opacity: 0 });
+    }
+  }
+  initCursorTrails();
+
+  function updateCursorTrail(x, y) {
+    if (state.reducedMotion) return;
+    // Move the oldest dot to current position with fade
+    var dot = trailDots[cursorTrailIndex % trailDots.length];
+    dot.x = x;
+    dot.y = y;
+    dot.opacity = 0.4;
+    dot.el.style.left = x + 'px';
+    dot.el.style.top = y + 'px';
+    dot.el.style.opacity = '0.4';
+    cursorTrailIndex++;
+
+    // Fade all dots
+    for (var i = 0; i < trailDots.length; i++) {
+      var td = trailDots[i];
+      td.opacity *= 0.88;
+      if (td.opacity < 0.01) td.opacity = 0;
+      td.el.style.opacity = td.opacity.toFixed(2);
+    }
+  }
+
+  function moveCursor(x, y) {
+    cursorX = x;
+    cursorY = y;
+    if (state.reducedMotion) return;
+    cursorEl.style.left = x + 'px';
+    cursorEl.style.top = y + 'px';
+  }
+
+  function setCursorState(stateName) {
+    if (state.reducedMotion) return;
+    cursorEl.classList.remove('hover-weight', 'dragging', 'hover-item');
+    if (stateName) cursorEl.classList.add(stateName);
+  }
+
+  // Hide native cursor on interactive areas
+  document.body.style.cursor = state.reducedMotion ? 'auto' : 'none';
+
+  // ============== Scale marks generation ==============
+  function genScaleMarks() {
+    // Marks from 0.2斤 to 10斤, every 0.2斤
+    // 0斤 at fulcrum (440), 1斤 at 440 + 320 = 760? No — need to map weight to x.
+    // weight (斤) = distanceFromFulcrum / itemArm * weightMass? Wait:
+    // torque balance: itemWeight * itemArm = weightMass * weightDist
+    // weightDist = itemWeight * itemArm / weightMass = itemWeight * 320 / 1 = itemWeight * 320
+    // But that means 1斤 = 320px which is too much (beam only goes to 760, 760-440=320 → max 1斤)
+    // We need more range. Let's use a shorter item arm.
+    //
+    // Actually let's recalc. Let's make weightDist = itemWeight * scaleFactor
+    // We want max weight ~10斤, beam right side = 760-440 = 320px
+    // 10斤 → 320px → scaleFactor = 32 px/斤
+    // So weightDist_px = itemWeight * 32
+    // And item side arm: torque balance → itemWeight * itemArm = weightMass * weightDist
+    // itemArm = weightMass * 32 = 32px? That's too short visually.
+    //
+    // Alternative: use virtual physics. The beam tilts based on a virtual torque
+    // that maps nicely to the visual scale. The physics feel matters more than exact numbers.
+    //
+    // Let's set: 1斤 = 40 pixels on the weight side
+    // Then balance position for item weight W is: fulcrumX + W * 40
+    // Max weight = (740 - 440) / 40 = 7.5? No, 760-440 = 320, 320/40 = 8.
+    // Our heaviest item is 8.5斤 → 8.5 * 40 = 340px → 440+340 = 780, slightly past beam end.
+    // Let's use 38 px/斤: 8.5 * 38 = 323 → 440+323 = 763. Close enough.
+    // Actually let's use 38 px/斤 so 8.5斤 ≈ 323px → 763px. Just within beam.
+    // weightMin at 130 → left of fulcrum: 440-130 = 310 px → negative reading.
+    // We'll clamp reading display.
+
+    var pxPerJin = 38;
+    CONFIG.pxPerJin = pxPerJin;
+
+    // Balance position for item weight: fulcrumX + itemWeight * pxPerJin
+    // Reading at weightX: (weightX - fulcrumX) / pxPerJin
+
+    var marksHTML = '';
+    for (var jin = 1; jin <= 8; jin++) {
+      var x = CONFIG.fulcrumX + jin * pxPerJin;
+      // Major mark
+      marksHTML += '<line class="scale-mark major" x1="' + x + '" y1="70" x2="' + x + '" y2="88" />';
+      // Number
+      marksHTML += '<text class="scale-num" x="' + x + '" y="66">' + jin + '</text>';
+      // Minor marks (0.2 increments)
+      for (var m = 1; m < 5; m++) {
+        var mx = x + m * (pxPerJin / 5);
+        var height = (m === 2 || m === 4) ? 12 : 8;
+        var y1 = 76 + (16 - height) / 2;
+        var y2 = y1 + height;
+        marksHTML += '<line class="scale-mark minor" data-jin="' + (jin + m * 0.2).toFixed(1) + '" x1="' + mx.toFixed(1) + '" y1="' + y1 + '" x2="' + mx.toFixed(1) + '" y2="' + y2 + '" />';
+      }
+    }
+    // 0 mark (at fulcrum, below beam to not overlap with stand)
+    marksHTML += '<line class="scale-mark major" x1="' + CONFIG.fulcrumX + '" y1="92" x2="' + CONFIG.fulcrumX + '" y2="99" />';
+    marksHTML += '<text class="scale-num" x="' + CONFIG.fulcrumX + '" y="108" style="font-size:8px;">0</text>';
+
+    scaleMarksGroup.innerHTML = marksHTML;
+  }
+  genScaleMarks();
+
+  // ============== Item rendering ==============
+  function renderItem(key) {
+    var item = ITEMS[key];
+    var w = item.weight;
+    var html = '';
+
+    // Scale item size based on weight
+    var scale = 0.6 + (w / 8.5) * 0.6; // 0.6 ~ 1.2
+    var sc = ' scale(' + scale + ')';
+
+    if (key === 'rice') {
+      // Bag of rice — sack shape
+      html =
+        '<g style="transform-origin: 0px -10px;' + sc + '">' +
+          // rope knot
+          '<path d="M -5 -10 Q 0 -6 5 -10" fill="none" stroke="#5C3A1E" stroke-width="1.5" />' +
+          // sack body
+          '<path d="M -14 -5 Q -16 10 -14 30 Q -12 42 0 44 Q 12 42 14 30 Q 16 10 14 -5 Z" fill="url(#itemRiceGrad)" stroke="#6B4423" stroke-width="1" />' +
+          // top fold
+          '<path d="M -14 -5 Q 0 -2 14 -5 L 12 2 Q 0 5 -12 2 Z" fill="#A0763A" stroke="#6B4423" stroke-width="0.5" />' +
+          // tie string
+          '<line x1="-10" y1="-3" x2="10" y2="-3" stroke="#5C3A1E" stroke-width="1" />' +
+          // grain texture lines
+          '<line x1="-8" y1="10" x2="-2" y2="10" stroke="#6B4423" stroke-width="0.5" opacity="0.5" />' +
+          '<line x1="2" y1="18" x2="9" y2="18" stroke="#6B4423" stroke-width="0.5" opacity="0.5" />' +
+          '<line x1="-6" y1="26" x2="5" y2="26" stroke="#6B4423" stroke-width="0.5" opacity="0.5" />' +
+          // label
+          '<rect x="-8" y="14" width="16" height="10" fill="#F2EAD3" opacity="0.7" />' +
+          '<text x="0" y="21" text-anchor="middle" font-size="6" fill="#5C3A1E" font-family="serif">米</text>' +
+        '</g>';
+    } else if (key === 'wood') {
+      // Bundle of firewood
+      html =
+        '<g style="transform-origin: 0px -10px;' + sc + '">' +
+          // rope
+          '<path d="M -3 -10 Q 0 -7 3 -10" fill="none" stroke="#5C3A1E" stroke-width="1.5" />' +
+          // logs — various
+          '<ellipse cx="-10" cy="0" rx="5" ry="20" fill="url(#itemWoodGrad)" stroke="#3E2714" stroke-width="0.8" transform="rotate(-8 -10 0)" />' +
+          '<ellipse cx="0" cy="-2" rx="5" ry="22" fill="url(#itemWoodGrad)" stroke="#3E2714" stroke-width="0.8" />' +
+          '<ellipse cx="10" cy="0" rx="5" ry="20" fill="url(#itemWoodGrad)" stroke="#3E2714" stroke-width="0.8" transform="rotate(6 10 0)" />' +
+          '<ellipse cx="-4" cy="2" rx="4" ry="18" fill="#7A5A35" stroke="#3E2714" stroke-width="0.5" transform="rotate(-3 -4 2)" />' +
+          '<ellipse cx="5" cy="1" rx="4" ry="19" fill="#6B4F2D" stroke="#3E2714" stroke-width="0.5" transform="rotate(4 5 1)" />' +
+          // top cut ends
+          '<circle cx="-10" cy="-18" r="5" fill="#8B6F3A" stroke="#3E2714" stroke-width="0.5" transform="rotate(-8 -10 -18)" />' +
+          '<circle cx="0" cy="-20" r="5" fill="#8B6F3A" stroke="#3E2714" stroke-width="0.5" />' +
+          '<circle cx="10" cy="-18" r="5" fill="#8B6F3A" stroke="#3E2714" stroke-width="0.5" transform="rotate(6 10 -18)" />' +
+          // rope bands
+          '<path d="M -18 -5 Q 0 -8 18 -5" fill="none" stroke="#5C3A1E" stroke-width="2" />' +
+          '<path d="M -17 10 Q 0 7 17 10" fill="none" stroke="#5C3A1E" stroke-width="2" />' +
+        '</g>';
+    } else if (key === 'fish') {
+      // Basket of fish — woven basket with fish tail sticking out
+      html =
+        '<g style="transform-origin: 0px -10px;' + sc + '">' +
+          // handle
+          '<path d="M -8 -10 Q 0 -18 8 -10" fill="none" stroke="#5C3A1E" stroke-width="1.5" />' +
+          // basket body (woven)
+          '<path d="M -16 -5 L -12 30 Q 0 36 12 30 L 16 -5 Z" fill="#6B4F2D" stroke="#3E2714" stroke-width="1" />' +
+          // weave lines
+          '<line x1="-14" y1="3" x2="14" y2="3" stroke="#3E2714" stroke-width="0.5" />' +
+          '<line x1="-13" y1="12" x2="13" y2="12" stroke="#3E2714" stroke-width="0.5" />' +
+          '<line x1="-11" y1="21" x2="11" y2="21" stroke="#3E2714" stroke-width="0.5" />' +
+          '<line x1="-5" y1="-5" x2="-7" y2="30" stroke="#3E2714" stroke-width="0.5" />' +
+          '<line x1="5" y1="-5" x2="7" y2="30" stroke="#3E2714" stroke-width="0.5" />' +
+          '<line x1="0" y1="-5" x2="0" y2="32" stroke="#3E2714" stroke-width="0.5" />' +
+          // fish tail sticking out
+          '<path d="M -2 -5 Q -8 -15 -12 -10 Q -6 -8 -4 -5 Z" fill="url(#itemFishGrad)" stroke="#2A3A45" stroke-width="0.8" />' +
+          '<path d="M 2 -5 Q 6 -12 10 -8 Q 5 -6 3 -5 Z" fill="url(#itemFishGrad)" stroke="#2A3A45" stroke-width="0.8" />' +
+          // scales hint
+          '<path d="M 0 -6 Q -3 -10 -1 -14" fill="none" stroke="#2A3A45" stroke-width="0.5" opacity="0.6" />' +
+        '</g>';
+    } else if (key === 'meat') {
+      // Cured meat (腊肉) — slab of meat
+      html =
+        '<g style="transform-origin: 0px -10px;' + sc + '">' +
+          // hanging string
+          '<path d="M -4 -10 Q 0 -6 4 -10" fill="none" stroke="#5C3A1E" stroke-width="1.5" />' +
+          // meat body (irregular slab)
+          '<path d="M -12 -5 Q -15 10 -13 25 Q -10 38 0 40 Q 12 38 14 25 Q 16 8 13 -5 Q 8 -8 0 -7 Q -8 -8 -12 -5 Z" ' +
+            'fill="url(#itemMeatGrad)" stroke="#4A180A" stroke-width="1" />' +
+          // fat marbling
+          '<path d="M -8 5 Q -2 8 4 5 Q 8 10 6 18 Q 0 15 -5 18 Q -9 14 -8 5 Z" fill="#D4B89A" opacity="0.5" />' +
+          '<path d="M -4 22 Q 2 20 6 24 Q 4 30 -1 28 Q -6 26 -4 22 Z" fill="#E8D4B8" opacity="0.4" />' +
+          // top darker area (skin)
+          '<path d="M -12 -5 Q -13 2 -10 5 Q -4 2 0 3 Q 6 1 12 5 Q 15 2 13 -5 Q 8 -8 0 -7 Q -8 -8 -12 -5 Z" ' +
+            'fill="#5C2010" opacity="0.6" />' +
+          // string hole
+          '<circle cx="0" cy="-4" r="2" fill="#3A1008" />' +
+          // sheen
+          '<ellipse cx="-5" cy="12" rx="2" ry="6" fill="#D46858" opacity="0.3" />' +
+        '</g>';
+    }
+
+    itemGroup.innerHTML = html;
+  }
+  renderItem(state.itemKey);
+
+  // ============== Physics ==============
+  // Torque-based angle calculation
+  // Reading in 斤 = (weightX - fulcrumX) / pxPerJin
+  // Target angle based on torque difference:
+  // Left torque = itemWeight * itemArm
+  // Right torque = weightReading * weightMass (but weightMass is 1, so just reading)
+  // Actually we map visually: the weight position represents torque.
+  //
+  // Simple model: angle proportional to (balancePos - weightX)
+  // When weight is LEFT of balance → left side heavier → beam tilts left (negative angle)
+  // When weight is RIGHT of balance → right side heavier → beam tilts right (positive angle)
+
+  function getBalanceX() {
+    // Position where weight should be for balance
+    return CONFIG.fulcrumX + state.itemWeight * CONFIG.pxPerJin;
+  }
+
+  function getWeightReading() {
+    // Current reading based on weight position
+    var reading = (state.weightX - CONFIG.fulcrumX) / CONFIG.pxPerJin;
+    return Math.max(0, reading);
+  }
+
+  function updateTargetAngle() {
+    var balX = getBalanceX();
+    var diff = state.weightX - balX; // positive = right heavy, beam tilts right (positive angle)
+    // Max angle reached at diff = max tilt distance (e.g., 80px)
+    var tiltDist = 80; // px of displacement for max angle
+    var ratio = diff / tiltDist;
+    // Use smooth nonlinear mapping (tanh-like)
+    var normalized = ratio * 0.8;
+    // smooth clamp
+    if (normalized > 1) normalized = 1;
+    if (normalized < -1) normalized = -1;
+    // ease it slightly
+    var eased = normalized < 0 ? -Math.sqrt(-normalized) : Math.sqrt(normalized);
+    state.targetAngle = eased * CONFIG.maxAngle;
+  }
+
+  function physicsStep(dt) {
+    if (state.reducedMotion) {
+      state.angle = state.targetAngle;
+      return;
+    }
+
+    // Spring-damper toward target angle
+    var springForce = (state.targetAngle - state.angle) * CONFIG.springK;
+    state.angleVel += springForce;
+    state.angleVel *= CONFIG.damping;
+    state.angle += state.angleVel;
+
+    // Balance detection
+    var balX = getBalanceX();
+    var distFromBal = Math.abs(state.weightX - balX);
+    var snapDist = CONFIG.snapZone * CONFIG.pxPerJin;
+    state.balanceAccuracy = Math.max(0, 1 - distFromBal / (snapDist * 2));
+
+    // Snap to balance when close and not dragging
+    if (!state.isDragging && distFromBal < snapDist) {
+      // Stronger attraction near balance
+      var snapForce = (balX - state.weightX) * 0.12;
+      state.weightX += snapForce;
+      // Also adjust angle toward 0 more strongly when near balance with weight settling
+      if (Math.abs(state.angleVel) < 0.05 && distFromBal < snapDist * 0.3) {
+        state.angle *= 0.9;
+        state.angleVel *= 0.85;
+      }
+    }
+
+    // Check if balanced (for UI feedback)
+    var wasBalanced = state.isBalanced;
+    state.isBalanced = distFromBal < snapDist * 0.3 && Math.abs(state.angle) < 1.5;
+
+    if (state.isBalanced && !wasBalanced && !state.isDragging) {
+      // Trigger "ding" visual: balance star flash
+      triggerBalanceFlash();
+    }
+  }
+
+  var balanceFlashTime = 0;
+  function triggerBalanceFlash() {
+    balanceFlashTime = state.time;
+  }
+
+  // ============== Render ==============
+  function render() {
+    // Beam rotation
+    beamGroup.style.transform = 'rotate(' + state.angle.toFixed(2) + 'deg)';
+    beamGroup.style.transformOrigin = CONFIG.fulcrumX + 'px ' + CONFIG.fulcrumY + 'px';
+
+    // Weight position
+    weightGroup.setAttribute('transform', 'translate(' + state.weightX.toFixed(1) + ', 86)');
+
+    // Reading display
+    var reading = getWeightReading();
+    readingValue.textContent = reading.toFixed(1);
+
+    // Balance star
+    if (state.isBalanced) {
+      balanceStar.classList.add('active');
+      balanceStatus.classList.add('show', 'accurate');
+      balanceStatus.textContent = '已称准 ✓';
+      readingValue.classList.add('balanced');
+    } else {
+      balanceStar.classList.remove('active');
+      readingValue.classList.remove('balanced');
+      // Show direction hint
+      var balX = getBalanceX();
+      if (state.weightX < balX - CONFIG.snapZone * CONFIG.pxPerJin) {
+        balanceStatus.classList.add('show');
+        balanceStatus.classList.remove('accurate');
+        balanceStatus.textContent = '秤砣偏左 →';
+      } else if (state.weightX > balX + CONFIG.snapZone * CONFIG.pxPerJin) {
+        balanceStatus.classList.add('show');
+        balanceStatus.classList.remove('accurate');
+        balanceStatus.textContent = '← 秤砣偏右';
+      } else {
+        balanceStatus.classList.remove('show');
+      }
+    }
+
+    // Item sway (idle animation, subtle)
+    if (!state.reducedMotion) {
+      var swayAngle = Math.sin(state.time * 0.0015) * 1.5;
+      // Sway more when beam is moving
+      swayAngle += state.angleVel * 2;
+      itemGroup.style.transform = 'translate(120px, 118px) rotate(' + swayAngle.toFixed(2) + 'deg)';
+    }
+
+    // Mark breathing (subtle opacity pulse on major marks)
+    if (!state.reducedMotion) {
+      var breath = 0.7 + Math.sin(state.time * CONFIG.markBreathSpeed) * 0.3;
+      // Only apply to a subset for subtlety — done via CSS class toggling is heavy
+      // Instead, we just keep it simple with the balance star pulse
+    }
+
+    // Balance flash effect (expanding ring at balance position)
+    if (balanceFlashTime > 0 && state.time - balanceFlashTime < 600) {
+      var t = (state.time - balanceFlashTime) / 600;
+      var balXpx = getBalanceX();
+      // Already handled by balance star CSS animation
+    }
+  }
+
+  // ============== Drag handling ==============
+  function svgXFromClientX(clientX) {
+    // Convert client X to SVG coordinate X
+    var rect = svgEl.getBoundingClientRect();
+    var vb = svgEl.viewBox.baseVal;
+    var scale = rect.width / vb.width;
+    return (clientX - rect.left) / scale + vb.x;
+  }
+
+  function onWeightDown(e) {
+    e.preventDefault();
+    state.isDragging = true;
+    weightGroup.classList.add('dragging');
+    counterweight.classList.add('dragging');
+    setCursorState('dragging');
+    hintText.style.opacity = '0';
+
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    state.dragStartX = clientX;
+    state.dragStartWeightX = state.weightX;
+
+    // Give weight a small "grab" kick
+    state.angleVel += state.angle > 0 ? -0.3 : 0.3;
+
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend', onDragEnd);
+  }
+
+  function onDragMove(e) {
+    if (!state.isDragging) return;
+    e.preventDefault();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var svgX = svgXFromClientX(clientX);
+
+    // Map drag delta to weight position (horizontal only)
+    // But since beam is rotated, we need to map screen X to beam-local X
+    // Simple approach: just use horizontal delta in screen space, convert to SVG x
+    var deltaSvgX = svgX - svgXFromClientX(state.dragStartX);
+
+    // Actually simpler: track mouse x in SVG coords, set weight x directly
+    // But weight moves along the beam which is rotated. The user drags horizontally.
+    // Best feel: weight x = mouse SVG x, clamped to range. This gives direct horizontal control.
+    var newX = svgX;
+
+    // Clamp
+    newX = Math.max(state.weightMin, Math.min(state.weightMax, newX));
+    state.weightX = newX;
+
+    state.dragStartX = clientX; // update for next frame
+  }
+
+  function onDragEnd(e) {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+    weightGroup.classList.remove('dragging');
+    counterweight.classList.remove('dragging');
+    setCursorState(null);
+
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend', onDragEnd);
+  }
+
+  counterweight.addEventListener('mousedown', onWeightDown);
+  counterweight.addEventListener('touchstart', onWeightDown, { passive: false });
+
+  // Hover state for weight
+  counterweight.addEventListener('mouseenter', function() {
+    counterweight.classList.add('hover');
+    if (!state.isDragging) setCursorState('hover-weight');
+  });
+  counterweight.addEventListener('mouseleave', function() {
+    counterweight.classList.remove('hover');
+    if (!state.isDragging) setCursorState(null);
+  });
+
+  // ============== Item switching ==============
+  itemPanel.addEventListener('click', function(e) {
+    var chip = e.target.closest('.item-chip');
+    if (!chip) return;
+    var key = chip.dataset.item;
+    if (!key || key === state.itemKey) return;
+
+    // Update active
+    var chips = itemPanel.querySelectorAll('.item-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].classList.remove('active');
+    }
+    chip.classList.add('active');
+
+    // Change item with transition
+    state.itemKey = key;
+    state.itemWeight = ITEMS[key].weight;
+
+    // Item swap animation: old item swings out, new swings in
+    itemGroup.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    itemGroup.style.opacity = '0';
+    itemGroup.style.transform = 'translate(120px, 140px) rotate(15deg)';
+
+    setTimeout(function() {
+      renderItem(key);
+      itemGroup.style.transition = 'none';
+      itemGroup.style.opacity = '0';
+      itemGroup.style.transform = 'translate(120px, 96px) rotate(-15deg)';
+      // Force reflow
+      void itemGroup.offsetWidth;
+      itemGroup.style.transition = 'opacity 0.4s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      itemGroup.style.opacity = '1';
+      itemGroup.style.transform = 'translate(120px, 118px) rotate(0deg)';
+      setTimeout(function() {
+        itemGroup.style.transition = '';
+      }, 500);
+    }, 250);
+
+    // Small beam kick to acknowledge
+    state.angleVel += state.angle > 0 ? -0.5 : 0.5;
+  });
+
+  // ============== Ripple on click ==============
+  document.addEventListener('mousedown', function(e) {
+    if (state.reducedMotion) return;
+    var ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    ripple.style.left = e.clientX + 'px';
+    ripple.style.top = e.clientY + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(function() {
+      ripple.remove();
+    }, 600);
+  });
+
+  // ============== Global mouse tracking for custom cursor ==============
+  document.addEventListener('mousemove', function(e) {
+    moveCursor(e.clientX, e.clientY);
+    updateCursorTrail(e.clientX, e.clientY);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (e.touches[0]) {
+      moveCursor(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: true });
+
+  // ============== Visibility pause ==============
+  document.addEventListener('visibilitychange', function() {
+    state.running = !document.hidden;
+    if (state.running) {
+      state.lastTs = 0; // reset dt
+      requestAnimationFrame(loop);
+    }
+  });
+
+  // ============== Main loop ==============
+  var rafId = null;
+
+  function loop(ts) {
+    if (!state.running) return;
+
+    if (!state.lastTs) state.lastTs = ts;
+    var dt = ts - state.lastTs;
+    state.lastTs = ts;
+    state.time += dt;
+
+    // Clamp dt to avoid huge jumps
+    if (dt > 50) dt = 50;
+
+    // Update physics
+    updateTargetAngle();
+    physicsStep(dt);
+
+    // Render
+    render();
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // Initialize
+  // Set initial weight position slightly off-balance for inviting interaction
+  state.weightX = CONFIG.fulcrumX + 100; // ~2.6斤 reading, rice is 3.2斤 balance
+  updateTargetAngle();
+  state.angle = state.targetAngle;
+
+  rafId = requestAnimationFrame(loop);
+
+  // ============== Upgrade announcement ==============
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) { /* cross-origin or no parent, ignore */ }
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // ============== Cleanup on unload ==============
+  window.addEventListener('beforeunload', function() {
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ============== Hint fade after first interaction ==============
+  var hinted = false;
+  function hideHintOnce() {
+    if (hinted) return;
+    hinted = true;
+    hintText.style.transition = 'opacity 1s ease';
+    hintText.style.opacity = '0';
+  }
+  counterweight.addEventListener('mousedown', hideHintOnce);
+  counterweight.addEventListener('touchstart', hideHintOnce);
+
+})();
+</script>
+
+</body>
+</html>
