@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="creative-medium" content="interactive-prototype">
+  <title>OTP 验证码输入器</title>
+  <style>
+    /* ============================================================
+       OTP 验证码输入器组件
+       纯 vanilla 单文件 / 零依赖 / CSS 变量主题化 / 位数可配
+       ============================================================ */
+
+    /* ---------- 主题变量（开发者修改以下变量即可适配主题） ---------- */
+    .otp {
+      --otp-primary: #1f8a70;          /* 主色 / 聚焦描边 / 成功辅助 */
+      --otp-bg: #fafaf7;               /* 输入格背景 */
+      --otp-bg-disabled: #f0efe9;      /* 禁用态背景 */
+      --otp-border: #d9d7ce;           /* 默认描边 */
+      --otp-border-hover: #b8b5a8;     /* hover 描边 */
+      --otp-focus: #1f8a70;            /* 聚焦描边色 */
+      --otp-focus-ring: rgba(31,138,112,.18); /* 聚焦光晕 */
+      --otp-error: #d64b3c;            /* 错误色 */
+      --otp-error-bg: #fdf1ef;         /* 错误背景 */
+      --otp-success: #2e8b5a;          /* 成功色 */
+      --otp-success-bg: #eef6f1;       /* 成功背景 */
+      --otp-text: #2b2a26;             /* 输入数字文本色 */
+      --otp-text-muted: #787569;       /* 次级文案色 */
+      --otp-radius: 10px;              /* 圆角 */
+      --otp-gap: 10px;                 /* 格子间距 */
+      --otp-font-size: 22px;           /* 数字字号 */
+      --otp-font-weight: 600;          /* 数字字重 */
+      --otp-cell-w: 52px;              /* 单格宽度 */
+      --otp-cell-h: 58px;              /* 单格高度 */
+      --otp-anim-duration: 240ms;      /* 过渡动效时长 */
+      --otp-shake-duration: 420ms;     /* 错误抖动时长 */
+    }
+
+    /* ---------- 组件容器 ---------- */
+    .otp {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+      color: var(--otp-text);
+    }
+
+    .otp[aria-disabled="true"] {
+      pointer-events: none;
+      opacity: .55;
+    }
+
+    /* ---------- 输入格组 ---------- */
+    .otp__cells {
+      display: flex;
+      gap: var(--otp-gap);
+      justify-content: flex-start;
+      position: relative;
+    }
+
+    .otp__cell {
+      width: var(--otp-cell-w);
+      height: var(--otp-cell-h);
+      box-sizing: border-box;
+      border: 1.5px solid var(--otp-border);
+      border-radius: var(--otp-radius);
+      background: var(--otp-bg);
+      color: var(--otp-text);
+      font-size: var(--otp-font-size);
+      font-weight: var(--otp-font-weight);
+      text-align: center;
+      line-height: 1;
+      padding: 0;
+      margin: 0;
+      outline: none;
+      caret-color: transparent;
+      transition:
+        border-color var(--otp-anim-duration) ease,
+        background-color var(--otp-anim-duration) ease,
+        box-shadow var(--otp-anim-duration) ease,
+        color var(--otp-anim-duration) ease,
+        transform var(--otp-anim-duration) ease;
+      -webkit-appearance: none;
+      appearance: none;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .otp__cell::-webkit-outer-spin-button,
+    .otp__cell::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .otp__cell { -moz-appearance: textfield; }
+
+    /* hover 态 */
+    .otp__cell:hover:not(:disabled) {
+      border-color: var(--otp-border-hover);
+    }
+
+    /* 聚焦态 */
+    .otp__cell:focus {
+      border-color: var(--otp-focus);
+      box-shadow: 0 0 0 3px var(--otp-focus-ring);
+      background: #fff;
+    }
+
+    /* 已填态（非聚焦但有值） */
+    .otp__cell.is-filled:not(:focus) {
+      border-color: var(--otp-border-hover);
+    }
+
+    /* 校验中态 */
+    .otp.is-verifying .otp__cell {
+      border-color: var(--otp-focus);
+      background: #f2f8f6;
+      color: var(--otp-focus);
+    }
+
+    /* 错误态 */
+    .otp.is-error .otp__cell {
+      border-color: var(--otp-error);
+      background: var(--otp-error-bg);
+      color: var(--otp-error);
+    }
+    .otp.is-error .otp__cells {
+      animation: otp-shake var(--otp-shake-duration) cubic-bezier(.36,.07,.19,.97);
+    }
+
+    /* 成功态 */
+    .otp.is-success .otp__cell {
+      border-color: var(--otp-success);
+      background: var(--otp-success-bg);
+      color: var(--otp-success);
+    }
+
+    /* 禁用态 */
+    .otp__cell:disabled {
+      background: var(--otp-bg-disabled);
+      color: var(--otp-text-muted);
+      cursor: not-allowed;
+    }
+
+    /* ---------- 状态文案 ---------- */
+    .otp__status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 20px;
+      font-size: 14px;
+      color: var(--otp-text-muted);
+      line-height: 1.4;
+    }
+    .otp__status.is-error { color: var(--otp-error); }
+    .otp__status.is-success { color: var(--otp-success); }
+    .otp__status.is-verifying { color: var(--otp-focus); }
+
+    .otp__status-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    /* Loading 圆点 */
+    .otp__spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: otp-spin 700ms linear infinite;
+    }
+
+    /* ---------- 操作区（重发按钮 + 成功对勾） ---------- */
+    .otp__actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .otp__resend {
+      border: none;
+      background: none;
+      padding: 0;
+      font: inherit;
+      font-size: 14px;
+      color: var(--otp-primary);
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      transition: opacity var(--otp-anim-duration) ease;
+    }
+    .otp__resend:hover { opacity: .8; }
+    .otp__resend:disabled {
+      color: var(--otp-text-muted);
+      cursor: not-allowed;
+      text-decoration: none;
+    }
+
+    .otp__success-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--otp-success);
+      font-weight: 500;
+    }
+    .otp__success-badge svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ---------- 抖动动画 ---------- */
+    @keyframes otp-shake {
+      0%, 100% { transform: translateX(0); }
+      15%      { transform: translateX(-6px); }
+      30%      { transform: translateX(5px); }
+      45%      { transform: translateX(-4px); }
+      60%      { transform: translateX(3px); }
+      75%      { transform: translateX(-2px); }
+      90%      { transform: translateX(1px); }
+    }
+
+    /* ---------- 旋转动画 ---------- */
+    @keyframes otp-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ---------- 减弱动效偏好 ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      .otp__cell,
+      .otp__resend { transition: none; }
+      .otp.is-error .otp__cells { animation: none; }
+      .otp__spinner { animation: none; }
+    }
+
+    /* ============================================================
+       展示页样式（可删除，不影响组件）
+       ============================================================ */
+    :root {
+      --page-bg: #f7f6f1;
+      --page-card: #ffffff;
+      --page-border: #e7e5dc;
+      --page-text: #2b2a26;
+      --page-muted: #787569;
+      --page-accent: #1f8a70;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--page-bg);
+      color: var(--page-text);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 64px 24px 80px;
+    }
+
+    .page__header {
+      margin-bottom: 36px;
+    }
+
+    .page__title {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .page__subtitle {
+      margin: 0;
+      font-size: 14px;
+      color: var(--page-muted);
+    }
+
+    .demo-card {
+      background: var(--page-card);
+      border: 1px solid var(--page-border);
+      border-radius: 14px;
+      padding: 32px 28px;
+      margin-bottom: 24px;
+    }
+
+    .demo-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--page-border);
+    }
+
+    .demo-btn {
+      border: 1px solid var(--page-border);
+      background: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--page-text);
+      cursor: pointer;
+      transition: border-color .2s ease, background-color .2s ease;
+    }
+    .demo-btn:hover {
+      border-color: var(--page-accent);
+      color: var(--page-accent);
+    }
+    .demo-btn.is-active {
+      background: var(--page-accent);
+      border-color: var(--page-accent);
+      color: #fff;
+    }
+
+    .demo-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--page-muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .demo-toggle input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--page-accent);
+      cursor: pointer;
+    }
+
+    .tips {
+      background: var(--page-card);
+      border: 1px solid var(--page-border);
+      border-radius: 14px;
+      padding: 20px 24px;
+      font-size: 13px;
+      color: var(--page-muted);
+      line-height: 1.8;
+    }
+    .tips strong {
+      color: var(--page-text);
+      font-weight: 600;
+    }
+    .tips code {
+      background: #f0efe9;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      color: var(--page-text);
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- 页面标题 -->
+  <header class="page__header">
+    <h1 class="page__title">OTP 验证码输入器</h1>
+    <p class="page__subtitle">生产级可复用组件，纯 vanilla 实现，零依赖。</p>
+  </header>
+
+  <!-- 组件展示卡 -->
+  <section class="demo-card" aria-label="OTP 验证码输入器演示">
+    <!-- ============================================================
+         OTP 组件本体（从这里开始复制）
+         ============================================================ -->
+    <div class="otp" id="otpDemo" role="group" aria-label="验证码输入">
+      <div class="otp__cells" role="presentation"></div>
+      <div class="otp__status" aria-live="polite"></div>
+      <div class="otp__actions">
+        <button type="button" class="otp__resend">获取验证码</button>
+        <span class="otp__success-badge" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          验证成功
+        </span>
+      </div>
+    </div>
+    <!-- ============================================================
+         OTP 组件本体（到这里结束）
+         ============================================================ -->
+
+    <!-- 演示控制 -->
+    <div class="demo-controls">
+      <label class="demo-toggle">
+        <input type="checkbox" id="toggleDisabled">
+        禁用组件
+      </label>
+      <button type="button" class="demo-btn" id="btnReset">重置</button>
+      <button type="button" class="demo-btn" id="btnFill">模拟输入 123456</button>
+    </div>
+  </section>
+
+  <!-- 用法提示 -->
+  <section class="tips" aria-label="用法提示">
+    <div><strong>键盘操作：</strong>数字键输入，<code>Backspace</code> 回退，<code>←</code><code>→</code> 移动光标，<code>Tab</code> 切换焦点，<code>Enter</code> 提交校验。</div>
+    <div><strong>粘贴支持：</strong>在任意格粘贴整段验证码（如 <code>123456</code>），自动分发填充并触发校验。</div>
+    <div><strong>演示正确码：</strong><code>123456</code>（6 位填满后自动校验）。</div>
+    <div><strong>重发机制：</strong>点击「获取验证码」后进入 60 秒倒计时，结束后恢复为「重新获取」。</div>
+  </section>
+
+</div>
+
+<script>
+  /* ============================================================
+     OTP 验证码输入器组件 JS
+     纯 vanilla / 位数可配 / 7 种状态 / 完整键盘支持 / 可访问性
+     ============================================================ */
+
+  (function (global) {
+    'use strict';
+
+    /**
+     * OTP 输入组件
+     * @param {HTMLElement|string} el - 容器元素或选择器
+     * @param {Object} options
+     * @param {number} options.length - 位数，默认 6
+     * @param {string} options.correctCode - 演示用正确验证码
+     * @param {number} options.countdown - 重发倒计时秒数，默认 60
+     * @param {Function} options.onComplete - 填满时回调(code)
+     * @param {Function} options.onSuccess - 校验成功回调
+     * @param {Function} options.onError - 校验失败回调
+     */
+    function OTPInput(el, options) {
+      if (typeof el === 'string') {
+        el = document.querySelector(el);
+      }
+      if (!el) throw new Error('OTPInput: 容器元素不存在');
+
+      this.root = el;
+      this.options = Object.assign({
+        length: 6,
+        correctCode: '123456',
+        countdown: 60,
+        onComplete: null,
+        onSuccess: null,
+        onError: null
+      }, options || {});
+
+      this.state = 'empty';        // empty | focusing | filled | verifying | error | success
+      this.disabled = false;
+      this.cells = [];
+      this.countdownTimer = null;
+      this.countdownRemaining = 0;
+      this.verifyTimer = null;
+      this.errorResetTimer = null;
+
+      this._build();
+      this._bindEvents();
+      this._bindVisibility();
+    }
+
+    // ---------- 构建 DOM ----------
+    OTPInput.prototype._build = function () {
+      var self = this;
+      var cellsWrap = this.root.querySelector('.otp__cells');
+      var statusEl = this.root.querySelector('.otp__status');
+      var resendBtn = this.root.querySelector('.otp__resend');
+      var successBadge = this.root.querySelector('.otp__success-badge');
+
+      cellsWrap.innerHTML = '';
+      this.cells = [];
+
+      for (var i = 0; i < this.options.length; i++) {
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.inputMode = 'numeric';
+        input.pattern = '[0-9]*';
+        input.maxLength = 1;
+        input.autocomplete = 'one-time-code';
+        input.className = 'otp__cell';
+        input.setAttribute('aria-label', '第 ' + (i + 1) + ' 位验证码');
+        input.setAttribute('data-index', i);
+        // 仅第一个格子有 tabIndex，其他通过方向键/自动跳转聚焦
+        input.tabIndex = i === 0 ? 0 : -1;
+        cellsWrap.appendChild(input);
+        this.cells.push(input);
+      }
+
+      this.statusEl = statusEl;
+      this.resendBtn = resendBtn;
+      this.successBadge = successBadge;
+      this.cellsWrap = cellsWrap;
+    };
+
+    // ---------- 事件绑定 ----------
+    OTPInput.prototype._bindEvents = function () {
+      var self = this;
+
+      for (var i = 0; i < this.cells.length; i++) {
+        (function (index) {
+          var cell = self.cells[index];
+
+          // 输入事件
+          cell.addEventListener('input', function (e) {
+            self._handleInput(index, e);
+          });
+
+          // 按键事件（退格 / 方向键 / Tab / Enter）
+          cell.addEventListener('keydown', function (e) {
+            self._handleKeydown(index, e);
+          });
+
+          // 粘贴事件
+          cell.addEventListener('paste', function (e) {
+            self._handlePaste(index, e);
+          });
+
+          // 聚焦事件
+          cell.addEventListener('focus', function () {
+            self._handleFocus(index);
+          });
+
+          // 失焦事件
+          cell.addEventListener('blur', function () {
+            self._handleBlur(index);
+          });
+        })(i);
+      }
+
+      // 重发按钮
+      if (this.resendBtn) {
+        this.resendBtn.addEventListener('click', function () {
+          self.startCountdown();
+        });
+      }
+    };
+
+    // ---------- 页面可见性处理 ----------
+    OTPInput.prototype._bindVisibility = function () {
+      var self = this;
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          self._pauseCountdown();
+        } else {
+          self._resumeCountdown();
+        }
+      });
+    };
+
+    // ---------- 输入处理 ----------
+    OTPInput.prototype._handleInput = function (index, e) {
+      if (this.disabled || this.state === 'verifying' || this.state === 'success') return;
+
+      var cell = this.cells[index];
+      var value = cell.value;
+
+      // 过滤非数字
+      var digits = value.replace(/\D/g, '');
+
+      if (digits.length > 1) {
+        // 如果输入了多位（罕见情况，如输入法），按粘贴逻辑处理
+        this._fillFromIndex(index, digits);
+      } else {
+        cell.value = digits;
+        this._updateFilledClass(index);
+        if (digits) {
+          this._moveTo(index + 1);
+        }
+      }
+
+      this._updateState();
+
+      // 全部填满后自动校验
+      if (this._isFilled()) {
+        this._debouncedVerify();
+      }
+    };
+
+    // ---------- 按键处理 ----------
+    OTPInput.prototype._handleKeydown = function (index, e) {
+      if (this.disabled) return;
+
+      var key = e.key;
+
+      // 退格键
+      if (key === 'Backspace') {
+        e.preventDefault();
+        if (this.cells[index].value) {
+          // 当前格有值 → 清空当前格
+          this.cells[index].value = '';
+          this._updateFilledClass(index);
+          this._updateState();
+        } else if (index > 0) {
+          // 当前格为空 → 跳上一格并清空
+          this._moveTo(index - 1);
+          this.cells[index - 1].value = '';
+          this._updateFilledClass(index - 1);
+          this._updateState();
+        }
+        return;
+      }
+
+      // 方向键左
+      if (key === 'ArrowLeft') {
+        e.preventDefault();
+        if (index > 0) this._moveTo(index - 1);
+        return;
+      }
+
+      // 方向键右
+      if (key === 'ArrowRight') {
+        e.preventDefault();
+        if (index < this.cells.length - 1) this._moveTo(index + 1);
+        return;
+      }
+
+      // Home 键
+      if (key === 'Home') {
+        e.preventDefault();
+        this._moveTo(0);
+        return;
+      }
+
+      // End 键
+      if (key === 'End') {
+        e.preventDefault();
+        this._moveTo(this._findLastFilled() || 0);
+        return;
+      }
+
+      // Enter 键 → 手动提交
+      if (key === 'Enter') {
+        e.preventDefault();
+        if (this._isFilled()) {
+          this._debouncedVerify();
+        }
+        return;
+      }
+
+      // Tab 键走浏览器默认（我们通过 tabIndex 控制只有第 1 格可 Tab 进入）
+      // 但我们需要让 Tab 离开最后一格时行为正常，这里不拦截
+
+      // 阻止非数字单字符输入（除了控制键）
+      if (key.length === 1 && !/\d/.test(key)) {
+        // 允许的控制键类已在上文处理；其他单字符非数字直接阻止
+        e.preventDefault();
+      }
+    };
+
+    // ---------- 粘贴处理 ----------
+    OTPInput.prototype._handlePaste = function (index, e) {
+      e.preventDefault();
+      if (this.disabled || this.state === 'verifying' || this.state === 'success') return;
+
+      var text = '';
+      if (e.clipboardData && e.clipboardData.getData) {
+        text = e.clipboardData.getData('text/plain');
+      } else if (window.clipboardData && window.clipboardData.getData) {
+        text = window.clipboardData.getData('Text');
+      }
+
+      if (!text) return;
+
+      var digits = text.replace(/\D/g, '');
+      if (!digits) return;
+
+      this._fillFromIndex(index, digits);
+      this._updateState();
+
+      if (this._isFilled()) {
+        this._debouncedVerify();
+      }
+    };
+
+    // ---------- 从指定位置开始填充 ----------
+    OTPInput.prototype._fillFromIndex = function (startIndex, digits) {
+      var fillCount = Math.min(digits.length, this.cells.length - startIndex);
+      for (var i = 0; i < fillCount; i++) {
+        this.cells[startIndex + i].value = digits.charAt(i);
+        this._updateFilledClass(startIndex + i);
+      }
+      // 焦点跳到最后一个被填的格子的下一格（或最后一格）
+      var targetIndex = Math.min(startIndex + fillCount, this.cells.length - 1);
+      this._moveTo(targetIndex);
+    };
+
+    // ---------- 聚焦 / 失焦 ----------
+    OTPInput.prototype._handleFocus = function (index) {
+      if (this.disabled) return;
+      // 选中当前格内容便于直接输入覆盖
+      try {
+        this.cells[index].select();
+      } catch (_) {}
+      this._updateState();
+    };
+
+    OTPInput.prototype._handleBlur = function (index) {
+      this._updateState();
+    };
+
+    // ---------- 状态判断 ----------
+    OTPInput.prototype._isFilled = function () {
+      for (var i = 0; i < this.cells.length; i++) {
+        if (!this.cells[i].value) return false;
+      }
+      return true;
+    };
+
+    OTPInput.prototype._getValue = function () {
+      var code = '';
+      for (var i = 0; i < this.cells.length; i++) {
+        code += this.cells[i].value;
+      }
+      return code;
+    };
+
+    OTPInput.prototype._findLastFilled = function () {
+      for (var i = this.cells.length - 1; i >= 0; i--) {
+        if (this.cells[i].value) return i;
+      }
+      return -1;
+    };
+
+    OTPInput.prototype._updateFilledClass = function (index) {
+      if (this.cells[index].value) {
+        this.cells[index].classList.add('is-filled');
+      } else {
+        this.cells[index].classList.remove('is-filled');
+      }
+    };
+
+    // ---------- 状态同步到 DOM ----------
+    OTPInput.prototype._updateState = function () {
+      // 终态优先
+      if (this.state === 'verifying' || this.state === 'success' || this.state === 'error') return;
+
+      var focused = document.activeElement;
+      var hasFocus = this.cells.indexOf(focused) !== -1;
+
+      if (this._isFilled()) {
+        this._setState('filled');
+      } else if (hasFocus) {
+        this._setState('focusing');
+      } else {
+        this._setState('empty');
+      }
+    };
+
+    OTPInput.prototype._setState = function (state) {
+      this.state = state;
+      this.root.classList.remove('is-verifying', 'is-error', 'is-success');
+      if (state === 'verifying') this.root.classList.add('is-verifying');
+      if (state === 'error') this.root.classList.add('is-error');
+      if (state === 'success') this.root.classList.add('is-success');
+    };
+
+    // ---------- 校验 ----------
+    OTPInput.prototype._debouncedVerify = function () {
+      var self = this;
+      // 防止快速重复触发
+      if (this.verifyTimer) return;
+
+      this.verifyTimer = setTimeout(function () {
+        self._verify();
+      }, 150);
+    };
+
+    OTPInput.prototype._verify = function () {
+      var self = this;
+      var code = this._getValue();
+
+      this._setState('verifying');
+      this._setStatus('verifying', '<span class="otp__status-icon"><span class="otp__spinner"></span></span>验证中…');
+
+      // 禁用所有输入
+      this._setCellsDisabled(true);
+
+      // 模拟异步校验
+      setTimeout(function () {
+        self.verifyTimer = null;
+        if (code === self.options.correctCode) {
+          self._showSuccess();
+        } else {
+          self._showError();
+        }
+      }, 900);
+    };
+
+    OTPInput.prototype._showSuccess = function () {
+      this._setState('success');
+      this._setStatus('success', '验证成功');
+      if (this.successBadge) this.successBadge.hidden = false;
+      if (this.resendBtn) this.resendBtn.hidden = true;
+
+      if (typeof this.options.onSuccess === 'function') {
+        this.options.onSuccess(this._getValue());
+      }
+    };
+
+    OTPInput.prototype._showError = function () {
+      var self = this;
+      this._setState('error');
+      this._setStatus('error', '验证码错误，请重新输入');
+
+      // 清空所有格
+      for (var i = 0; i < this.cells.length; i++) {
+        this.cells[i].value = '';
+        this.cells[i].classList.remove('is-filled');
+      }
+
+      // 禁用输入直到抖动结束
+      this._setCellsDisabled(true);
+
+      // 抖动动画结束后恢复
+      if (this.errorResetTimer) clearTimeout(this.errorResetTimer);
+
+      // 读取实际动画时长（尊重 reduced-motion）
+      var shakeDuration = 420;
+      var computed = getComputedStyle(this.cellsWrap);
+      // 简单 fallback，不做复杂解析
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        shakeDuration = 0;
+      }
+
+      this.errorResetTimer = setTimeout(function () {
+        self._setCellsDisabled(false);
+        self._setState('empty');
+        self._setStatus('default', '');
+        self._moveTo(0);
+      }, shakeDuration + 100);
+
+      if (typeof this.options.onError === 'function') {
+        this.options.onError(this._getValue());
+      }
+    };
+
+    // ---------- 状态文案 ----------
+    OTPInput.prototype._setStatus = function (type, html) {
+      if (!this.statusEl) return;
+      this.statusEl.classList.remove('is-error', 'is-success', 'is-verifying');
+      if (type === 'error') this.statusEl.classList.add('is-error');
+      if (type === 'success') this.statusEl.classList.add('is-success');
+      if (type === 'verifying') this.statusEl.classList.add('is-verifying');
+      this.statusEl.innerHTML = html;
+    };
+
+    // ---------- 焦点移动 ----------
+    OTPInput.prototype._moveTo = function (index) {
+      if (index < 0) index = 0;
+      if (index >= this.cells.length) index = this.cells.length - 1;
+      var cell = this.cells[index];
+      cell.focus();
+      try { cell.select(); } catch (_) {}
+    };
+
+    // ---------- 单元格禁用控制 ----------
+    OTPInput.prototype._setCellsDisabled = function (disabled) {
+      for (var i = 0; i < this.cells.length; i++) {
+        this.cells[i].disabled = disabled;
+      }
+    };
+
+    // ---------- 倒计时 ----------
+    OTPInput.prototype.startCountdown = function () {
+      var self = this;
+      if (this.countdownTimer) return;
+      if (!this.resendBtn) return;
+
+      this.countdownRemaining = this.options.countdown;
+      this._updateCountdownLabel();
+      this.resendBtn.disabled = true;
+
+      this.countdownTimer = setInterval(function () {
+        self.countdownRemaining--;
+        if (self.countdownRemaining <= 0) {
+          self.stopCountdown();
+          self.resendBtn.textContent = '重新获取';
+          self.resendBtn.disabled = false;
+        } else {
+          self._updateCountdownLabel();
+        }
+      }, 1000);
+    };
+
+    OTPInput.prototype._updateCountdownLabel = function () {
+      if (!this.resendBtn) return;
+      this.resendBtn.textContent = this.countdownRemaining + ' 秒后重发';
+    };
+
+    OTPInput.prototype.stopCountdown = function () {
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+      }
+    };
+
+    OTPInput.prototype._pauseCountdown = function () {
+      // 页面隐藏时暂停定时器
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+        this._countdownPaused = true;
+      }
+    };
+
+    OTPInput.prototype._resumeCountdown = function () {
+      var self = this;
+      if (this._countdownPaused && this.countdownRemaining > 0) {
+        this._countdownPaused = false;
+        this.countdownTimer = setInterval(function () {
+          self.countdownRemaining--;
+          if (self.countdownRemaining <= 0) {
+            self.stopCountdown();
+            if (self.resendBtn) {
+              self.resendBtn.textContent = '重新获取';
+              self.resendBtn.disabled = false;
+            }
+          } else {
+            self._updateCountdownLabel();
+          }
+        }, 1000);
+      }
+    };
+
+    // ---------- 对外 API ----------
+    OTPInput.prototype.setDisabled = function (disabled) {
+      this.disabled = disabled;
+      this.root.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      this._setCellsDisabled(disabled);
+      if (this.resendBtn) this.resendBtn.disabled = disabled;
+    };
+
+    OTPInput.prototype.clear = function () {
+      for (var i = 0; i < this.cells.length; i++) {
+        this.cells[i].value = '';
+        this.cells[i].classList.remove('is-filled');
+      }
+      this._setState('empty');
+      this._setStatus('default', '');
+      if (this.successBadge) this.successBadge.hidden = true;
+      if (this.resendBtn) this.resendBtn.hidden = false;
+      this._setCellsDisabled(false);
+      this._moveTo(0);
+    };
+
+    OTPInput.prototype.getValue = function () {
+      return this._getValue();
+    };
+
+    OTPInput.prototype.setValue = function (code) {
+      var digits = (code || '').replace(/\D/g, '').slice(0, this.options.length);
+      this._fillFromIndex(0, digits);
+      this._updateState();
+      // 填满后自动触发校验（与手动输入/粘贴行为一致）
+      if (this._isFilled()) {
+        this._debouncedVerify();
+      }
+    };
+
+    OTPInput.prototype.destroy = function () {
+      this.stopCountdown();
+      if (this.verifyTimer) clearTimeout(this.verifyTimer);
+      if (this.errorResetTimer) clearTimeout(this.errorResetTimer);
+      this.cells = [];
+    };
+
+    // 暴露到全局
+    global.OTPInput = OTPInput;
+
+  })(window);
+
+  /* ============================================================
+     展示页脚本（可删除，不影响组件）
+     ============================================================ */
+  document.addEventListener('DOMContentLoaded', function () {
+    var otp = new OTPInput('#otpDemo', {
+      length: 6,
+      correctCode: '123456',
+      countdown: 60,
+      onSuccess: function (code) {
+        console.log('校验成功:', code);
+      },
+      onError: function () {
+        console.log('校验失败');
+      }
+    });
+
+    // 禁用切换
+    var toggleDisabled = document.getElementById('toggleDisabled');
+    toggleDisabled.addEventListener('change', function () {
+      otp.setDisabled(toggleDisabled.checked);
+    });
+
+    // 重置按钮
+    var btnReset = document.getElementById('btnReset');
+    btnReset.addEventListener('click', function () {
+      otp.clear();
+      toggleDisabled.checked = false;
+    });
+
+    // 模拟填充按钮
+    var btnFill = document.getElementById('btnFill');
+    btnFill.addEventListener('click', function () {
+      otp.clear();
+      // 用微延迟确保 clear 后再填
+      setTimeout(function () {
+        otp.setValue('123456');
+      }, 50);
+    });
+  });
+</script>
+
+</body>
+</html>
