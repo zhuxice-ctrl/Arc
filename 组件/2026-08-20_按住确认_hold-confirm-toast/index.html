@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>HoldConfirm × Toast · V3 组件</title>
+<style>
+/* ============================================================
+   HoldConfirm Button + Toast Queue  —  V3 组件
+   前缀：--hcc-*  (hold-confirm component)
+   ============================================================ */
+
+/* ---------- 主题变量 ---------- */
+:root {
+  /* 色板 */
+  --hcc-color-bg:        #F5F2EB;  /* 石灰白 底色 */
+  --hcc-color-ink:       #26221F;  /* 深炭墨 文字/按压 */
+  --hcc-color-lava:      #E4572E;  /* 熔岩橙 危险/进行态 */
+  --hcc-color-moss:      #8A8F85;  /* 苔灰 辅助/禁用 */
+  --hcc-color-pine:      #3E7C59;  /* 松绿 成功态 */
+  --hcc-color-error:     #C23B22;  /* 错误 红 */
+  --hcc-color-info:      #4A6FA5;  /* 信息 蓝 */
+  --hcc-color-surface:   #FFFFFF;  /* 容器面 */
+
+  /* 圆角 */
+  --hcc-radius-sm:  4px;
+  --hcc-radius-md:  8px;
+  --hcc-radius-lg:  12px;
+  --hcc-radius-pill: 999px;
+
+  /* 时长 */
+  --hcc-duration-hold:     1200ms;   /* 按住阈值 */
+  --hcc-duration-decay:    300ms;    /* 松手衰减 */
+  --hcc-duration-snap:     250ms;    /* 咬合回弹 */
+  --hcc-duration-success:  1200ms;   /* 成功态停留 */
+  --hcc-duration-toast-in: 200ms;    /* Toast 滑入 */
+  --hcc-duration-toast-out:180ms;    /* Toast 滑出 */
+  --hcc-duration-toast:    4000ms;   /* Toast 默认停留 */
+
+  /* 曲线 */
+  --hcc-ease-damping: cubic-bezier(0.22, 1, 0.36, 1);      /* 阻尼 先快后慢 */
+  --hcc-ease-snap:    cubic-bezier(0.34, 1.56, 0.64, 1);   /* 咬合 弹性 */
+  --hcc-ease-toast:   cubic-bezier(0.22, 1, 0.36, 1);      /* Toast 滑入 */
+
+  /* 尺寸 */
+  --hcc-btn-height:    48px;
+  --hcc-btn-padding-x: 24px;
+  --hcc-ring-width:    3px;          /* 进度环宽度 */
+
+  /* 字号 */
+  --hcc-font-sm: 13px;
+  --hcc-font-md: 14px;
+  --hcc-font-lg: 16px;
+
+  /* 焦点环 */
+  --hcc-focus-ring: 2px solid var(--hcc-color-ink);
+  --hcc-focus-offset: 3px;
+
+  /* 阴影 */
+  --hcc-shadow-sm: 0 1px 2px rgba(38, 34, 31, 0.08);
+  --hcc-shadow-md: 0 4px 12px rgba(38, 34, 31, 0.12);
+  --hcc-shadow-lg: 0 8px 24px rgba(38, 34, 31, 0.16);
+}
+
+/* ---------- 减少动效降级 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hcc-ease-damping: linear;
+    --hcc-ease-snap:    linear;
+    --hcc-ease-toast:   linear;
+  }
+}
+
+/* ============================================================
+   HoldConfirm Button
+   ============================================================ */
+.hcc-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--hcc-btn-height);
+  padding: 0 var(--hcc-btn-padding-x);
+  border: none;
+  border-radius: var(--hcc-radius-pill);
+  background: var(--hcc-color-ink);
+  color: var(--hcc-color-bg);
+  font-size: var(--hcc-font-md);
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  overflow: hidden;
+  transition: background-color 200ms ease,
+              color 200ms ease,
+              transform 200ms ease,
+              opacity 200ms ease;
+  outline: none;
+}
+
+.hcc-btn:focus-visible {
+  box-shadow: 0 0 0 var(--hcc-focus-offset) var(--hcc-color-bg),
+              0 0 0 calc(var(--hcc-focus-offset) + 2px) var(--hcc-color-ink);
+}
+
+/* rest */
+.hcc-btn[data-state="rest"] {
+  background: var(--hcc-color-ink);
+  color: var(--hcc-color-bg);
+}
+.hcc-btn[data-state="rest"]:hover {
+  background: #3a342f;
+}
+
+/* pressing — 熔岩橙 */
+.hcc-btn[data-state="pressing"] {
+  background: var(--hcc-color-lava);
+  color: #fff;
+  transform: scale(0.98);
+  transition: background-color 120ms ease,
+              transform 120ms ease;
+}
+
+/* cancelled — 松手衰减 */
+.hcc-btn[data-state="cancelled"] {
+  background: var(--hcc-color-ink);
+  color: var(--hcc-color-bg);
+}
+
+/* success — 松绿 成功态 */
+.hcc-btn[data-state="success"] {
+  background: var(--hcc-color-pine);
+  color: #fff;
+  transform: scale(1);
+}
+
+/* disabled */
+.hcc-btn[data-state="disabled"],
+.hcc-btn[aria-disabled="true"] {
+  background: var(--hcc-color-moss);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* loading — 异步执行中 */
+.hcc-btn[data-state="loading"] {
+  background: var(--hcc-color-ink);
+  color: var(--hcc-color-bg);
+  cursor: progress;
+}
+
+/* 进度环 SVG — 覆盖按钮边缘 */
+.hcc-btn-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.hcc-btn-ring rect {
+  fill: none;
+  stroke: var(--hcc-color-lava);
+  stroke-width: var(--hcc-ring-width);
+  stroke-linecap: round;
+  stroke-dasharray: var(--hcc-ring-perimeter, 400);
+  stroke-dashoffset: var(--hcc-ring-perimeter, 400);
+  transform-origin: center;
+}
+
+/* 进度填充动画由内联 style 控制 stroke-dashoffset */
+.hcc-btn[data-state="pressing"] .hcc-btn-ring rect {
+  transition: stroke-dashoffset var(--hcc-duration-hold) var(--hcc-ease-damping);
+}
+
+.hcc-btn[data-state="cancelled"] .hcc-btn-ring rect {
+  transition: stroke-dashoffset var(--hcc-duration-decay) linear;
+  stroke-dashoffset: var(--hcc-ring-perimeter, 400) !important;
+}
+
+.hcc-btn[data-state="success"] .hcc-btn-ring rect {
+  stroke: #fff;
+  stroke-dashoffset: 0;
+  transition: stroke 150ms ease, stroke-dashoffset 0ms;
+}
+
+/* 咬合瞬间 — 微缩放回弹 */
+.hcc-btn.is-snap {
+  animation: hccSnap var(--hcc-duration-snap) var(--hcc-ease-snap);
+}
+@keyframes hccSnap {
+  0%   { transform: scale(0.96); }
+  60%  { transform: scale(1.04); }
+  100% { transform: scale(1.00); }
+}
+
+/* loading 自旋指示 */
+.hcc-btn[data-state="loading"]::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: hccSpin 600ms linear infinite;
+  margin-left: 2px;
+}
+@keyframes hccSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* 成功图标 */
+.hcc-btn-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 次要按钮变体 */
+.hcc-btn--ghost {
+  background: transparent;
+  color: var(--hcc-color-ink);
+  border: 1.5px solid var(--hcc-color-ink);
+}
+.hcc-btn--ghost[data-state="rest"]:hover {
+  background: rgba(38, 34, 31, 0.06);
+}
+.hcc-btn--ghost[data-state="pressing"] {
+  background: transparent;
+  color: var(--hcc-color-lava);
+  border-color: var(--hcc-color-lava);
+}
+.hcc-btn--ghost .hcc-btn-ring rect {
+  stroke: var(--hcc-color-lava);
+}
+
+/* ============================================================
+   Toast Queue
+   ============================================================ */
+.hcc-toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  width: calc(100% - 48px);
+  pointer-events: none;
+}
+
+.hcc-toast {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--hcc-color-surface);
+  border-radius: var(--hcc-radius-md);
+  box-shadow: var(--hcc-shadow-lg);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(100%);
+  animation: hccToastIn var(--hcc-duration-toast-in) var(--hcc-ease-toast) forwards;
+  border-left: 3px solid var(--hcc-color-ink);
+  font-size: var(--hcc-font-md);
+  line-height: 1.5;
+}
+
+.hcc-toast.is-leaving {
+  animation: hccToastOut var(--hcc-duration-toast-out) ease-in forwards;
+}
+
+@keyframes hccToastIn {
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes hccToastOut {
+  to { opacity: 0; transform: translateX(100%); }
+}
+
+.hcc-toast[data-type="success"] { border-left-color: var(--hcc-color-pine); }
+.hcc-toast[data-type="error"]   { border-left-color: var(--hcc-color-error); }
+.hcc-toast[data-type="info"]    { border-left-color: var(--hcc-color-info); }
+.hcc-toast[data-type="loading"] { border-left-color: var(--hcc-color-moss); }
+
+.hcc-toast-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.hcc-toast[data-type="success"] .hcc-toast-icon { color: var(--hcc-color-pine); }
+.hcc-toast[data-type="error"]   .hcc-toast-icon { color: var(--hcc-color-error); }
+.hcc-toast[data-type="info"]    .hcc-toast-icon { color: var(--hcc-color-info); }
+.hcc-toast[data-type="loading"] .hcc-toast-icon { color: var(--hcc-color-moss); }
+
+.hcc-toast-body {
+  flex: 1;
+  min-width: 0;
+}
+.hcc-toast-title {
+  font-weight: 600;
+  color: var(--hcc-color-ink);
+  margin-bottom: 2px;
+}
+.hcc-toast-desc {
+  color: var(--hcc-color-moss);
+  font-size: var(--hcc-font-sm);
+}
+
+.hcc-toast-action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--hcc-radius-sm);
+  background: transparent;
+  color: var(--hcc-color-info);
+  font-size: var(--hcc-font-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.hcc-toast-action:hover {
+  background: rgba(74, 111, 165, 0.08);
+}
+.hcc-toast-action:focus-visible {
+  outline: var(--hcc-focus-ring);
+  outline-offset: 1px;
+}
+
+.hcc-toast-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--hcc-color-moss);
+  cursor: pointer;
+  border-radius: var(--hcc-radius-sm);
+  font-size: 16px;
+  line-height: 1;
+}
+.hcc-toast-close:hover {
+  color: var(--hcc-color-ink);
+  background: rgba(38, 34, 31, 0.06);
+}
+
+/* loading 类型的自旋图标 */
+.hcc-toast[data-type="loading"] .hcc-toast-icon svg {
+  animation: hccSpin 800ms linear infinite;
+}
+
+/* progress bar */
+.hcc-toast-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.2;
+  border-bottom-left-radius: var(--hcc-radius-md);
+  transition: width linear;
+}
+
+/* ============================================================
+   页面样式（展示用，可独立抽取时删除）
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--hcc-color-bg);
+  color: var(--hcc-color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+               "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px 32px 120px;
+}
+
+.page-header {
+  margin-bottom: 56px;
+}
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0 0 8px;
+}
+.page-subtitle {
+  font-size: 15px;
+  color: var(--hcc-color-moss);
+  margin: 0;
+}
+.page-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--hcc-radius-pill);
+  background: rgba(228, 87, 46, 0.12);
+  color: var(--hcc-color-lava);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
+}
+
+.section {
+  margin-bottom: 56px;
+}
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::before {
+  content: "";
+  width: 3px;
+  height: 16px;
+  background: var(--hcc-color-lava);
+  border-radius: 2px;
+}
+.section-desc {
+  font-size: 14px;
+  color: var(--hcc-color-moss);
+  margin: -10px 0 20px;
+}
+
+/* 演示卡片 */
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.demo-card {
+  background: var(--hcc-color-surface);
+  border-radius: var(--hcc-radius-lg);
+  padding: 24px;
+  box-shadow: var(--hcc-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid rgba(38, 34, 31, 0.06);
+}
+.demo-card-label {
+  font-size: 13px;
+  color: var(--hcc-color-moss);
+  margin: 0;
+}
+.demo-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+.demo-card-desc {
+  font-size: 13px;
+  color: var(--hcc-color-moss);
+  margin: 0;
+  flex: 1;
+}
+.demo-card-footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* 状态展示行 */
+.state-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.state-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--hcc-radius-pill);
+  background: rgba(38, 34, 31, 0.06);
+  font-size: 12px;
+  color: var(--hcc-color-ink);
+}
+.state-tag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hcc-color-moss);
+}
+.state-tag.is-active::before { background: var(--hcc-color-lava); }
+.state-tag.is-success::before { background: var(--hcc-color-pine); }
+.state-tag.is-disabled::before { opacity: 0.4; }
+
+/* 文档区 */
+.docs {
+  background: var(--hcc-color-surface);
+  border-radius: var(--hcc-radius-lg);
+  padding: 32px;
+  box-shadow: var(--hcc-shadow-sm);
+  border: 1px solid rgba(38, 34, 31, 0.06);
+}
+.doc-block {
+  margin-bottom: 32px;
+}
+.doc-block:last-child { margin-bottom: 0; }
+.doc-block h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.doc-block p {
+  font-size: 13px;
+  color: var(--hcc-color-moss);
+  margin: 0 0 8px;
+  line-height: 1.7;
+}
+.doc-block code {
+  display: inline-block;
+  padding: 2px 6px;
+  background: rgba(38, 34, 31, 0.06);
+  border-radius: 4px;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  color: var(--hcc-color-ink);
+}
+.doc-block pre {
+  margin: 8px 0;
+  padding: 14px 16px;
+  background: var(--hcc-color-bg);
+  border-radius: var(--hcc-radius-md);
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  color: var(--hcc-color-ink);
+}
+
+.var-list {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px 16px;
+  font-size: 12px;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+}
+.var-list .var-name { color: var(--hcc-color-lava); }
+.var-list .var-desc { color: var(--hcc-color-moss); font-family: inherit; }
+.var-list .var-val  { color: var(--hcc-color-pine); }
+
+/* 页脚 */
+.page-footer {
+  margin-top: 80px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(38, 34, 31, 0.1);
+  font-size: 12px;
+  color: var(--hcc-color-moss);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 提示小条 */
+.hint-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(62, 124, 89, 0.08);
+  color: var(--hcc-color-pine);
+  border-radius: var(--hcc-radius-md);
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+.hint-bar kbd {
+  padding: 2px 6px;
+  background: var(--hcc-color-surface);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  border: 1px solid rgba(62, 124, 89, 0.2);
+}
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .page { padding: 40px 20px 80px; }
+  .page-title { font-size: 26px; }
+  .demo-grid { grid-template-columns: 1fr; }
+  .docs { padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="page-header">
+    <span class="page-badge">V3 · COMPONENT</span>
+    <h1 class="page-title">按住确认 × Toast 组件对</h1>
+    <p class="page-subtitle">危险操作不再靠二次弹窗打断 —— 让按钮本身要求持续施压</p>
+  </header>
+
+  <div class="hint-bar">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    试试：<kbd>Tab</kbd> 聚焦 → 按住 <kbd>Space</kbd> 或 <kbd>Enter</kbd> 触发 → 中途 <kbd>Esc</kbd> 取消
+  </div>
+
+  <!-- ============================================
+       演示一：真实场景
+       ============================================ -->
+  <section class="section">
+    <h2 class="section-title">场景演示</h2>
+    <p class="section-desc">四种典型危险操作场景，感受「按住一秒 = 确认的分量」</p>
+
+    <div class="demo-grid">
+      <!-- 场景 1：删除项目 -->
+      <div class="demo-card">
+        <p class="demo-card-label">场景 01</p>
+        <h3 class="demo-card-title">删除项目</h3>
+        <p class="demo-card-desc">项目删除后不可恢复，相关数据、成员与部署记录将一并清除。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn" id="btn-delete-project" data-label="按住删除">
+            <svg class="hcc-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            <span class="hcc-btn-label">按住删除</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 场景 2：清空回收站 -->
+      <div class="demo-card">
+        <p class="demo-card-label">场景 02</p>
+        <h3 class="demo-card-title">清空回收站</h3>
+        <p class="demo-card-desc">回收站中 128 个文件将被永久删除，释放 2.4 GB 存储空间。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn hcc-btn--ghost" id="btn-empty-trash" data-label="按住清空">
+            <svg class="hcc-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            <span class="hcc-btn-label">按住清空</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 场景 3：发布上线 -->
+      <div class="demo-card">
+        <p class="demo-card-label">场景 03</p>
+        <h3 class="demo-card-title">发布上线</h3>
+        <p class="demo-card-desc">将当前生产环境部署到全量用户，预计影响 12 万在线用户。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn" id="btn-deploy" data-label="按住发布">
+            <svg class="hcc-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            <span class="hcc-btn-label">按住发布</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 场景 4：禁用账号 -->
+      <div class="demo-card">
+        <p class="demo-card-label">场景 04</p>
+        <h3 class="demo-card-title">禁用账号</h3>
+        <p class="demo-card-desc">禁用后该成员将立即失去所有系统访问权限，且无法自行恢复。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn" id="btn-disable" data-label="按住禁用" data-disabled-after="false">
+            <svg class="hcc-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="true" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/></svg>
+            <span class="hcc-btn-label">按住禁用</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       演示二：状态机
+       ============================================ -->
+  <section class="section">
+    <h2 class="section-title">状态机演示</h2>
+    <p class="section-desc">HoldConfirm 按钮完整 8 态：rest / hover / focus / pressing / success / cancelled / disabled / loading</p>
+
+    <div class="demo-grid">
+      <div class="demo-card">
+        <h3 class="demo-card-title">手动切换状态</h3>
+        <p class="demo-card-desc">通过下方按钮切换按钮状态，观察各状态视觉表现。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn" id="btn-state-demo" data-label="按住确认">
+            <span class="hcc-btn-label">按住确认</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+        <div class="state-row">
+          <span class="state-tag is-active" data-state-tag="rest">rest</span>
+          <span class="state-tag" data-state-tag="pressing">pressing</span>
+          <span class="state-tag is-success" data-state-tag="success">success</span>
+          <span class="state-tag" data-state-tag="cancelled">cancelled</span>
+          <span class="state-tag is-disabled" data-state-tag="disabled">disabled</span>
+          <span class="state-tag" data-state-tag="loading">loading</span>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <h3 class="demo-card-title">禁用态</h3>
+        <p class="demo-card-desc">按钮处于不可用状态时，所有交互均不响应。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn" id="btn-disabled-demo" disabled aria-disabled="true" data-label="已禁用">
+            <span class="hcc-btn-label">已禁用</span>
+            <svg class="hcc-btn-ring" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="97" height="45" rx="22.5" ry="22.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <h3 class="demo-card-title">Toast 队列</h3>
+        <p class="demo-card-desc">多条通知自动排队，悬停暂停倒计时，支持撤销操作。</p>
+        <div class="demo-card-footer">
+          <button class="hcc-btn hcc-btn--ghost" id="btn-toast-success" data-label="成功通知" data-only-click="true">
+            <span class="hcc-btn-label">成功通知</span>
+          </button>
+          <button class="hcc-btn hcc-btn--ghost" id="btn-toast-error" data-label="错误通知" data-only-click="true">
+            <span class="hcc-btn-label">错误通知</span>
+          </button>
+          <button class="hcc-btn hcc-btn--ghost" id="btn-toast-undo" data-label="撤销示例" data-only-click="true">
+            <span class="hcc-btn-label">撤销示例</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       用法文档
+       ============================================ -->
+  <section class="section">
+    <h2 class="section-title">用法文档</h2>
+
+    <div class="docs">
+      <div class="doc-block">
+        <h3>1. 引入方式</h3>
+        <p>复制组件 CSS 与 JS 到项目中，或直接从单文件抽取。零依赖，纯 vanilla。</p>
+<pre>// CSS 变量块 + .hcc-* 样式
+// JS 暴露全局对象：window.HoldConfirm
+// 或按需使用：createHoldConfirm(el, options) / toast.show(options)</pre>
+      </div>
+
+      <div class="doc-block">
+        <h3>2. createHoldConfirm 配置</h3>
+<pre>createHoldConfirm(element, {
+  duration:   1200,     // 按住触发时长 (ms)
+  onConfirm:  fn,       // 达到阈值时触发
+  onCancel:   fn,       // 中途松手时触发
+  onStart:    fn,       // 开始按下时触发
+  disabled:   false,    // 是否禁用
+  staySuccess: 1200,    // 成功态停留时长 (ms)
+  labelHold:  '按住确认', // 按住态文案
+  labelRest:  '按住确认', // 常态文案
+  labelDone:  '已确认'   // 成功态文案
+})</pre>
+        <p>返回实例方法：<code>.start()</code> <code>.cancel()</code> <code>.success()</code> <code>.setDisabled(bool)</code> <code>.destroy()</code></p>
+      </div>
+
+      <div class="doc-block">
+        <h3>3. toast.show 配置</h3>
+<pre>toast.show({
+  type: 'success',      // success | error | info | loading
+  title: '操作成功',
+  description: '',      // 可选副文案
+  duration: 4000,       // 停留时长 (ms)，0 = 不自动关闭
+  action: {             // 可选操作按钮
+    label: '撤销',
+    onClick: fn
+  },
+  closable: true        // 显示关闭按钮
+})</pre>
+        <p>返回实例方法：<code>.close()</code></p>
+      </div>
+
+      <div class="doc-block">
+        <h3>4. CSS 变量清单</h3>
+        <p>修改以下变量即可换主题，默认改 <code>--hcc-color-lava</code> / <code>--hcc-color-ink</code> / <code>--hcc-color-pine</code> 三处即可。</p>
+        <div class="var-list">
+          <span class="var-name">--hcc-color-bg</span>
+          <span class="var-desc">底色 / 背景</span>
+          <span class="var-val">#F5F2EB</span>
+
+          <span class="var-name">--hcc-color-ink</span>
+          <span class="var-desc">深炭墨 / 主色</span>
+          <span class="var-val">#26221F</span>
+
+          <span class="var-name">--hcc-color-lava</span>
+          <span class="var-desc">熔岩橙 / 进行态</span>
+          <span class="var-val">#E4572E</span>
+
+          <span class="var-name">--hcc-color-moss</span>
+          <span class="var-desc">苔灰 / 辅助色</span>
+          <span class="var-val">#8A8F85</span>
+
+          <span class="var-name">--hcc-color-pine</span>
+          <span class="var-desc">松绿 / 成功态</span>
+          <span class="var-val">#3E7C59</span>
+
+          <span class="var-name">--hcc-color-error</span>
+          <span class="var-desc">错误红</span>
+          <span class="var-val">#C23B22</span>
+
+          <span class="var-name">--hcc-color-info</span>
+          <span class="var-desc">信息蓝</span>
+          <span class="var-val">#4A6FA5</span>
+
+          <span class="var-name">--hcc-duration-hold</span>
+          <span class="var-desc">按住阈值时长</span>
+          <span class="var-val">1200ms</span>
+
+          <span class="var-name">--hcc-duration-decay</span>
+          <span class="var-desc">松手衰减时长</span>
+          <span class="var-val">300ms</span>
+
+          <span class="var-name">--hcc-duration-snap</span>
+          <span class="var-desc">咬合回弹时长</span>
+          <span class="var-val">250ms</span>
+
+          <span class="var-name">--hcc-radius-pill</span>
+          <span class="var-desc">按钮圆角</span>
+          <span class="var-val">999px</span>
+
+          <span class="var-name">--hcc-ring-width</span>
+          <span class="var-desc">进度环宽度</span>
+          <span class="var-val">3px</span>
+        </div>
+      </div>
+
+      <div class="doc-block">
+        <h3>5. 无障碍</h3>
+        <p>
+          键盘可达：<code>Tab</code> 聚焦、<code>Space</code>/<code>Enter</code> 按住触发、<code>Esc</code> 取消。
+          ARIA：<code>aria-disabled</code>、<code>aria-live=polite</code>（Toast 容器）、<code>role=status</code>。
+          支持 <code>prefers-reduced-motion</code>：进度改线性、取消弹性，功能不变。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>HoldConfirm × Toast · V3 生产级组件</span>
+    <span>纯 vanilla · 零依赖 · 可抽取</span>
+  </footer>
+</div>
+
+<!-- Toast 容器 -->
+<div class="hcc-toast-container" id="hcc-toast-container" role="region" aria-live="polite" aria-label="通知"></div>
+
+<script>
+/* ============================================================
+   HoldConfirm Button + Toast Queue  —  V3 组件 (Vanilla JS)
+   暴露到 window.HoldConfirm = { createHoldConfirm, toast }
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ---------- 工具函数 ---------- */
+  function getCssVar(el, name) {
+    return getComputedStyle(el).getPropertyValue(name).trim();
+  }
+
+  /* 从 CSS 变量读取时长 (支持 ms / s) */
+  function readDuration(el, varName, fallback) {
+    var val = getCssVar(el, varName);
+    if (!val) return fallback;
+    if (val.indexOf('ms') > -1) return parseFloat(val);
+    if (val.indexOf('s') > -1) return parseFloat(val) * 1000;
+    return parseFloat(val) || fallback;
+  }
+
+  /* 页面可见性变化时暂停/恢复定时器 */
+  var pausedAt = null;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      pausedAt = Date.now();
+    } else if (pausedAt) {
+      var delta = Date.now() - pausedAt;
+      pausedAt = null;
+      // 通知所有活跃的 hold 实例和 toast 调整定时器
+      if (typeof HoldConfirm._adjustAll === 'function') {
+        HoldConfirm._adjustAll(delta);
+      }
+    }
+  });
+
+  /* ============================================================
+     HoldConfirm Button
+     ============================================================ */
+  var instances = [];
+
+  function createHoldConfirm(el, options) {
+    options = options || {};
+
+    var state = 'rest';      // rest / pressing / success / cancelled / disabled / loading
+    var pressStartTime = 0;
+    var pressRAF = null;
+    var progress = 0;        // 0-1
+    var holdDuration = options.duration || readDuration(el, '--hcc-duration-hold', 1200);
+    var staySuccess = options.staySuccess != null ? options.staySuccess : readDuration(el, '--hcc-duration-success', 1200);
+    var decayDuration = options.decayDuration || readDuration(el, '--hcc-duration-decay', 300);
+    var snapDuration = options.snapDuration || readDuration(el, '--hcc-duration-snap', 250);
+    var isDisabled = options.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
+
+    var labelEl = el.querySelector('.hcc-btn-label');
+    var ringEl = el.querySelector('.hcc-btn-ring rect');
+    var labelRest = options.labelRest || (labelEl ? labelEl.textContent : '按住确认');
+    var labelHold = options.labelHold || labelRest;
+    var labelDone = options.labelDone || '已确认';
+
+    /* 计算进度环周长 */
+    function updateRingPerimeter() {
+      if (!ringEl) return;
+      // 按钮视口尺寸
+      var w = el.offsetWidth;
+      var h = el.offsetHeight;
+      var r = Math.min(h / 2, w / 2); // 圆角半径 = 高度一半（pill）
+      // 圆角矩形周长 ≈ 2*(w+h) - 8*r + 2*PI*r = 2*(w+h) - 8r + 2πr
+      // 对于 pill (r = h/2): 2w + (π-2)h ≈ 2w + 1.1416h
+      var perimeter = 2 * w + 2 * (Math.PI - 2) * r;
+      ringEl.style.setProperty('--hcc-ring-perimeter', perimeter.toFixed(2));
+      // 初始 stroke-dashoffset = 全周长 (空)
+      if (state === 'rest' || state === 'disabled') {
+        ringEl.style.strokeDashoffset = perimeter.toFixed(2);
+      }
+    }
+
+    function setState(newState) {
+      state = newState;
+      el.setAttribute('data-state', newState);
+    }
+
+    function setLabel(text) {
+      if (labelEl) labelEl.textContent = text;
+    }
+
+    /* 开始按下 */
+    function startPress(e) {
+      if (isDisabled || state === 'loading' || state === 'success') return;
+      // 防止 text 选中
+      if (e && e.preventDefault && e.type !== 'keydown') {
+        // 不阻止默认，避免影响 focus
+      }
+      setState('pressing');
+      setLabel(labelHold);
+      pressStartTime = performance.now();
+      progress = 0;
+      cancelAnimationFrame(pressRAF);
+      tick();
+      if (typeof options.onStart === 'function') options.onStart(progress);
+    }
+
+    /* 逐帧更新进度环 */
+    function tick() {
+      var now = performance.now();
+      var elapsed = now - pressStartTime;
+      progress = Math.min(elapsed / holdDuration, 1);
+      updateRingProgress(progress);
+
+      if (progress >= 1) {
+        triggerConfirm();
+        return;
+      }
+      pressRAF = requestAnimationFrame(tick);
+    }
+
+    /* 更新 stroke-dashoffset */
+    function updateRingProgress(p) {
+      if (!ringEl) return;
+      var perimeter = parseFloat(ringEl.style.getPropertyValue('--hcc-ring-perimeter')) || 400;
+      var offset = perimeter * (1 - p);
+      ringEl.style.strokeDashoffset = offset.toFixed(2);
+    }
+
+    /* 达到阈值 — 确认 */
+    function triggerConfirm() {
+      cancelAnimationFrame(pressRAF);
+      // 咬合弹性动画
+      el.classList.remove('is-snap');
+      void el.offsetWidth; // reflow 重启动画
+      el.classList.add('is-snap');
+
+      setState('success');
+      setLabel(labelDone);
+      updateRingProgress(1);
+
+      // 成功态停留后回到 rest
+      setTimeout(function () {
+        if (state === 'success') {
+          setState('rest');
+          setLabel(labelRest);
+          updateRingProgress(0);
+        }
+      }, staySuccess);
+
+      if (typeof options.onConfirm === 'function') {
+        options.onConfirm();
+      }
+    }
+
+    /* 松手取消 */
+    function cancelPress() {
+      if (state !== 'pressing') return;
+      cancelAnimationFrame(pressRAF);
+
+      setState('cancelled');
+      setLabel(labelRest);
+
+      // 衰减动画：由 CSS transition 控制 stroke-dashoffset 回到全周长
+      if (ringEl) {
+        var perimeter = parseFloat(ringEl.style.getPropertyValue('--hcc-ring-perimeter')) || 400;
+        // 强制重绘以确保 transition 生效
+        ringEl.getBoundingClientRect();
+        ringEl.style.strokeDashoffset = perimeter.toFixed(2);
+      }
+
+      setTimeout(function () {
+        if (state === 'cancelled') {
+          setState('rest');
+        }
+      }, decayDuration);
+
+      if (typeof options.onCancel === 'function') {
+        options.onCancel(progress);
+      }
+      progress = 0;
+    }
+
+    /* 指针事件 */
+    function onPointerDown(e) {
+      if (isDisabled) return;
+      // 仅左键
+      if (e.button !== undefined && e.button !== 0) return;
+      startPress(e);
+      // 捕获指针，移出按钮也能继续跟踪
+      if (el.setPointerCapture && e.pointerId) {
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    function onPointerUp(e) {
+      if (state === 'pressing') cancelPress();
+    }
+    function onPointerLeave(e) {
+      // 指针移出按钮时不取消 — 允许移出后回来（由 pointer capture 保证）
+    }
+
+    /* 键盘事件 */
+    var keyHeld = false;
+    function onKeyDown(e) {
+      if (isDisabled) return;
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (!keyHeld) {
+          keyHeld = true;
+          startPress(e);
+        }
+      } else if (e.key === 'Escape') {
+        if (state === 'pressing') {
+          keyHeld = false;
+          cancelPress();
+        }
+      }
+    }
+    function onKeyUp(e) {
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (keyHeld) {
+          keyHeld = false;
+          if (state === 'pressing') cancelPress();
+        }
+      }
+    }
+
+    /* 失焦时取消进行中的键盘按压 */
+    function onBlur() {
+      if (keyHeld) {
+        keyHeld = false;
+        if (state === 'pressing') cancelPress();
+      }
+    }
+
+    /* 设置禁用 */
+    function setDisabled(disabled) {
+      isDisabled = !!disabled;
+      if (isDisabled) {
+        if (state === 'pressing') cancelPress();
+        setState('disabled');
+        el.setAttribute('aria-disabled', 'true');
+        el.setAttribute('disabled', '');
+      } else {
+        setState('rest');
+        el.removeAttribute('aria-disabled');
+        el.removeAttribute('disabled');
+      }
+    }
+
+    /* 设置 loading 态 */
+    function setLoading(loading) {
+      if (loading) {
+        if (state === 'pressing') cancelPress();
+        setState('loading');
+        setLabel('处理中');
+      } else if (state === 'loading') {
+        setState('rest');
+        setLabel(labelRest);
+      }
+    }
+
+    /* 页面隐藏时调整（暂停效果） */
+    function adjustTime(delta) {
+      if (state === 'pressing') {
+        pressStartTime -= delta;
+      }
+    }
+
+    /* 销毁 */
+    function destroy() {
+      cancelAnimationFrame(pressRAF);
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('pointercancel', onPointerUp);
+      el.removeEventListener('pointerleave', onPointerLeave);
+      el.removeEventListener('keydown', onKeyDown);
+      el.removeEventListener('keyup', onKeyUp);
+      el.removeEventListener('blur', onBlur);
+      var idx = instances.indexOf(instance);
+      if (idx > -1) instances.splice(idx, 1);
+    }
+
+    /* 初始化 */
+    function init() {
+      if (!el.classList.contains('hcc-btn')) {
+        el.classList.add('hcc-btn');
+      }
+      // 确保有进度环 SVG
+      if (!ringEl) {
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'hcc-btn-ring');
+        svg.setAttribute('viewBox', '0 0 100 48');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('aria-hidden', 'true');
+        var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '1.5');
+        rect.setAttribute('y', '1.5');
+        rect.setAttribute('width', '97');
+        rect.setAttribute('height', '45');
+        rect.setAttribute('rx', '22.5');
+        rect.setAttribute('ry', '22.5');
+        svg.appendChild(rect);
+        el.appendChild(svg);
+        ringEl = rect;
+      }
+      // 确保有 label
+      if (!labelEl) {
+        var span = document.createElement('span');
+        span.className = 'hcc-btn-label';
+        span.textContent = el.textContent || labelRest;
+        el.innerHTML = '';
+        el.appendChild(span);
+        labelEl = span;
+        // 重新找到 ring
+        ringEl = el.querySelector('.hcc-btn-ring rect');
+      }
+
+      setState(isDisabled ? 'disabled' : 'rest');
+      if (isDisabled) {
+        el.setAttribute('aria-disabled', 'true');
+      }
+
+      // 绑定事件
+      el.addEventListener('pointerdown', onPointerDown);
+      el.addEventListener('pointerup', onPointerUp);
+      el.addEventListener('pointercancel', onPointerUp);
+      el.addEventListener('pointerleave', onPointerLeave);
+      el.addEventListener('keydown', onKeyDown);
+      el.addEventListener('keyup', onKeyUp);
+      el.addEventListener('blur', onBlur);
+
+      // 延迟计算周长（等布局完成）
+      requestAnimationFrame(updateRingPerimeter);
+      window.addEventListener('resize', updateRingPerimeter);
+
+      instances.push(instance);
+    }
+
+    var instance = {
+      start: startPress,
+      cancel: cancelPress,
+      success: triggerConfirm,
+      setDisabled: setDisabled,
+      setLoading: setLoading,
+      destroy: destroy,
+      _adjust: adjustTime,
+      get state() { return state; }
+    };
+
+    init();
+    return instance;
+  }
+
+  /* ============================================================
+     Toast Queue
+     ============================================================ */
+  var toastContainer = null;
+  var toasts = [];
+
+  function ensureContainer() {
+    if (toastContainer) return toastContainer;
+    toastContainer = document.getElementById('hcc-toast-container');
+    if (!toastContainer) {
+      toastContainer = document.createElement('div');
+      toastContainer.id = 'hcc-toast-container';
+      toastContainer.className = 'hcc-toast-container';
+      toastContainer.setAttribute('role', 'region');
+      toastContainer.setAttribute('aria-live', 'polite');
+      toastContainer.setAttribute('aria-label', '通知');
+      document.body.appendChild(toastContainer);
+    }
+    return toastContainer;
+  }
+
+  /* 图标 SVG */
+  var icons = {
+    success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+    info:    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    loading: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
+  };
+
+  function showToast(options) {
+    ensureContainer();
+    options = options || {};
+    var type = options.type || 'info';
+    var title = options.title || '';
+    var description = options.description || '';
+    var duration = options.duration != null ? options.duration : 4000;
+    var closable = options.closable !== false;
+    var action = options.action || null;
+
+    var el = document.createElement('div');
+    el.className = 'hcc-toast';
+    el.setAttribute('data-type', type);
+    el.setAttribute('role', 'status');
+
+    // 图标
+    var iconDiv = document.createElement('div');
+    iconDiv.className = 'hcc-toast-icon';
+    iconDiv.innerHTML = icons[type] || icons.info;
+    el.appendChild(iconDiv);
+
+    // 正文
+    var body = document.createElement('div');
+    body.className = 'hcc-toast-body';
+    if (title) {
+      var t = document.createElement('div');
+      t.className = 'hcc-toast-title';
+      t.textContent = title;
+      body.appendChild(t);
+    }
+    if (description) {
+      var d = document.createElement('div');
+      d.className = 'hcc-toast-desc';
+      d.textContent = description;
+      body.appendChild(d);
+    }
+    el.appendChild(body);
+
+    // 操作按钮
+    if (action && action.label) {
+      var btn = document.createElement('button');
+      btn.className = 'hcc-toast-action';
+      btn.type = 'button';
+      btn.textContent = action.label;
+      btn.addEventListener('click', function () {
+        if (typeof action.onClick === 'function') {
+          action.onClick(inst);
+        }
+      });
+      el.appendChild(btn);
+    }
+
+    // 关闭按钮
+    if (closable) {
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'hcc-toast-close';
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('aria-label', '关闭');
+      closeBtn.innerHTML = '&times;';
+      closeBtn.addEventListener('click', function () {
+        inst.close();
+      });
+      el.appendChild(closeBtn);
+    }
+
+    // 进度条
+    if (duration > 0) {
+      var bar = document.createElement('div');
+      bar.className = 'hcc-toast-progress';
+      bar.style.width = '100%';
+      el.appendChild(bar);
+    }
+
+    toastContainer.appendChild(el);
+
+    /* 自动关闭逻辑 */
+    var remaining = duration;
+    var timer = null;
+    var startTime = 0;
+    var isPaused = false;
+
+    function startTimer() {
+      if (duration <= 0) return;
+      startTime = Date.now();
+      if (bar) {
+        bar.style.transition = 'width ' + remaining + 'ms linear';
+        requestAnimationFrame(function () {
+          bar.style.width = '0%';
+        });
+      }
+      timer = setTimeout(function () {
+        inst.close();
+      }, remaining);
+    }
+
+    function pauseTimer() {
+      if (duration <= 0 || isPaused) return;
+      isPaused = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      remaining -= Date.now() - startTime;
+      if (remaining < 0) remaining = 0;
+      if (bar) {
+        // 暂停进度条
+        var computed = getComputedStyle(bar).width;
+        bar.style.transition = 'none';
+        bar.style.width = computed;
+      }
+    }
+
+    function resumeTimer() {
+      if (duration <= 0 || !isPaused) return;
+      isPaused = false;
+      startTimer();
+    }
+
+    /* 悬停暂停 */
+    el.addEventListener('mouseenter', pauseTimer);
+    el.addEventListener('mouseleave', resumeTimer);
+    el.addEventListener('focusin', pauseTimer);
+    el.addEventListener('focusout', resumeTimer);
+
+    /* 页面隐藏时暂停 */
+    var visHandler = function () {
+      if (document.hidden) pauseTimer();
+      else resumeTimer();
+    };
+    document.addEventListener('visibilitychange', visHandler);
+
+    var inst = {
+      el: el,
+      close: function () {
+        if (el.classList.contains('is-leaving')) return;
+        el.classList.add('is-leaving');
+        document.removeEventListener('visibilitychange', visHandler);
+        if (timer) clearTimeout(timer);
+        var outDur = 180;
+        try {
+          var cssDur = getComputedStyle(el).animationDuration;
+          if (cssDur.indexOf('ms') > -1) outDur = parseFloat(cssDur);
+          else if (cssDur.indexOf('s') > -1) outDur = parseFloat(cssDur) * 1000;
+        } catch (e) {}
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+          var idx = toasts.indexOf(inst);
+          if (idx > -1) toasts.splice(idx, 1);
+        }, outDur);
+      },
+      _pause: pauseTimer,
+      _resume: resumeTimer,
+      _adjust: function (delta) {
+        if (!isPaused) {
+          remaining -= delta;
+          if (remaining <= 0) inst.close();
+        }
+      }
+    };
+
+    toasts.push(inst);
+    startTimer();
+    return inst;
+  }
+
+  /* ============================================================
+     暴露全局 API
+     ============================================================ */
+  var HoldConfirm = {
+    createHoldConfirm: createHoldConfirm,
+    toast: {
+      show: showToast
+    },
+    _adjustAll: function (delta) {
+      instances.forEach(function (ins) { if (ins._adjust) ins._adjust(delta); });
+      toasts.forEach(function (t) { if (t._adjust) t._adjust(delta); });
+    }
+  };
+
+  window.HoldConfirm = HoldConfirm;
+
+})();
+
+/* ============================================================
+   演示页面逻辑（展示用，可独立抽取时删除）
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var HC = window.HoldConfirm;
+
+  /* --- 场景 1：删除项目 --- */
+  HC.createHoldConfirm(document.getElementById('btn-delete-project'), {
+    labelDone: '已删除',
+    onConfirm: function () {
+      HC.toast.show({
+        type: 'success',
+        title: '项目已删除',
+        description: '「客户管理系统」已被永久删除',
+        action: {
+          label: '撤销',
+          onClick: function (toast) {
+            toast.close();
+            HC.toast.show({
+              type: 'info',
+              title: '已撤销删除',
+              description: '项目已恢复到工作区'
+            });
+          }
+        }
+      });
+    }
+  });
+
+  /* --- 场景 2：清空回收站 --- */
+  HC.createHoldConfirm(document.getElementById('btn-empty-trash'), {
+    labelDone: '已清空',
+    onConfirm: function () {
+      HC.toast.show({
+        type: 'success',
+        title: '回收站已清空',
+        description: '128 个文件已永久删除，释放 2.4 GB',
+        action: {
+          label: '撤销',
+          onClick: function (toast) {
+            toast.close();
+            HC.toast.show({
+              type: 'info',
+              title: '已撤销清空',
+              description: '128 个文件已恢复至回收站'
+            });
+          }
+        }
+      });
+    }
+  });
+
+  /* --- 场景 3：发布上线（模拟异步 loading） --- */
+  var deployBtn = HC.createHoldConfirm(document.getElementById('btn-deploy'), {
+    labelDone: '部署中',
+    onConfirm: function () {
+      deployBtn.setLoading(true);
+      HC.toast.show({
+        type: 'loading',
+        title: '正在发布',
+        description: '正在部署生产环境，预计 3 秒',
+        duration: 0
+      });
+      // 模拟异步部署
+      setTimeout(function () {
+        deployBtn.setLoading(false);
+        // 关闭 loading toast
+        var loadingToast = document.querySelector('.hcc-toast[data-type="loading"]');
+        if (loadingToast) {
+          loadingToast._hcInst && loadingToast._hcInst.close();
+        }
+        HC.toast.show({
+          type: 'success',
+          title: '发布成功',
+          description: 'v2.4.1 已全量部署至生产环境'
+        });
+      }, 3000);
+    }
+  });
+
+  /* --- 场景 4：禁用账号（禁用后不可再点） --- */
+  var disableBtn = HC.createHoldConfirm(document.getElementById('btn-disable'), {
+    labelDone: '已禁用',
+    onConfirm: function () {
+      HC.toast.show({
+        type: 'success',
+        title: '账号已禁用',
+        description: '该成员已失去所有系统访问权限',
+        action: {
+          label: '撤销',
+          onClick: function (toast) {
+            toast.close();
+            disableBtn.setDisabled(false);
+            HC.toast.show({
+              type: 'info',
+              title: '已撤销禁用',
+              description: '账号访问权限已恢复'
+            });
+          }
+        }
+      });
+      // 禁用后按钮变为不可用
+      setTimeout(function () {
+        disableBtn.setDisabled(true);
+      }, 1200);
+    }
+  });
+
+  /* --- 状态机演示 --- */
+  var stateDemoBtn = HC.createHoldConfirm(document.getElementById('btn-state-demo'), {
+    labelDone: '已确认',
+    onConfirm: function () {
+      updateStateTags('success');
+      setTimeout(function () { updateStateTags('rest'); }, 1400);
+    },
+    onStart: function () { updateStateTags('pressing'); },
+    onCancel: function () {
+      updateStateTags('cancelled');
+      setTimeout(function () { updateStateTags('rest'); }, 400);
+    }
+  });
+
+  function updateStateTags(current) {
+    var tags = document.querySelectorAll('[data-state-tag]');
+    tags.forEach(function (t) {
+      t.classList.remove('is-active', 'is-success', 'is-disabled');
+      var s = t.getAttribute('data-state-tag');
+      if (s === current) {
+        if (s === 'success') t.classList.add('is-success');
+        else if (s === 'disabled') t.classList.add('is-disabled');
+        else t.classList.add('is-active');
+      }
+    });
+  }
+
+  // 禁用态演示按钮（无交互，纯展示）
+  document.getElementById('btn-disabled-demo').addEventListener('click', function (e) {
+    e.preventDefault();
+  });
+  document.getElementById('btn-disabled-demo').setAttribute('data-state', 'disabled');
+  // 手动设置 disabled 按钮的 ring 状态
+  var disabledRect = document.querySelector('#btn-disabled-demo .hcc-btn-ring rect');
+  if (disabledRect) {
+    setTimeout(function () {
+      var p = document.getElementById('btn-disabled-demo');
+      var w = p.offsetWidth, h = p.offsetHeight;
+      var r = h / 2;
+      var perim = 2 * w + 2 * (Math.PI - 2) * r;
+      disabledRect.style.setProperty('--hcc-ring-perimeter', perim.toFixed(2));
+      disabledRect.style.strokeDashoffset = perim.toFixed(2);
+    }, 50);
+  }
+
+  /* --- Toast 演示按钮（普通 click，非 hold） --- */
+  document.getElementById('btn-toast-success').addEventListener('click', function () {
+    HC.toast.show({
+      type: 'success',
+      title: '操作成功',
+      description: '您的更改已保存'
+    });
+  });
+  document.getElementById('btn-toast-error').addEventListener('click', function () {
+    HC.toast.show({
+      type: 'error',
+      title: '操作失败',
+      description: '网络连接异常，请稍后重试'
+    });
+  });
+  document.getElementById('btn-toast-undo').addEventListener('click', function () {
+    var count = 0;
+    HC.toast.show({
+      type: 'info',
+      title: '已删除文件',
+      description: 'report-final.pdf 已移入回收站',
+      action: {
+        label: '撤销',
+        onClick: function (toast) {
+          toast.close();
+          HC.toast.show({
+            type: 'success',
+            title: '已撤销',
+            description: '文件已恢复到原位置'
+          });
+        }
+      }
+    });
+  });
+
+  // 给 ghost 版 toast 演示按钮也加上普通 click 样式
+  var toastBtns = ['btn-toast-success', 'btn-toast-error', 'btn-toast-undo'];
+  toastBtns.forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) {
+      // 这些是普通按钮，不需要 hold 交互
+      b.addEventListener('mouseenter', function () {
+        b.setAttribute('data-state', 'rest');
+      });
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
