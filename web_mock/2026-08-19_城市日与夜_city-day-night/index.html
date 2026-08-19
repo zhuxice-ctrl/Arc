@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="creative-medium" content="interactive-prototype" />
+<title>城市日与夜 · 双轨平行阅读</title>
+<style>
+/* ===== Reset & Base ===== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  line-height: 1.6;
+  color: #2B2622;
+  overflow-x: hidden;
+  background: #0E2A28;
+  cursor: none;
+}
+
+/* Hide custom cursor on touch & reduced-motion */
+@media (hover: none) and (pointer: coarse) {
+  body { cursor: auto; }
+  .cursor-day-night { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { cursor: auto; }
+  .cursor-day-night { display: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===== Font System ===== */
+.font-display {
+  font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.font-mono {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Custom Cursor ===== */
+.cursor-day-night {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 2px;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  will-change: transform;
+}
+
+.cursor-day-night::before,
+.cursor-day-night::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cursor-day-night::before {
+  left: -2px;
+  background: #F4E8D6;
+}
+
+.cursor-day-night::after {
+  right: -2px;
+  background: transparent;
+  border: 1.5px solid #F4E8D6;
+}
+
+.cursor-day-night .cursor-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #F4E8D6;
+}
+
+.cursor-day-night.near-divider::before,
+.cursor-day-night.near-divider::after {
+  width: 12px;
+  height: 12px;
+}
+
+/* ===== Split Screen Layout ===== */
+.app-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--day-width, 50%) 1px var(--night-width, 50%);
+  transition: grid-template-columns 0.1s ease-out;
+}
+
+/* ===== Divider (Dusk Line) ===== */
+.dusk-divider {
+  position: relative;
+  background: linear-gradient(
+    to right,
+    rgba(244, 232, 214, 0.6),
+    rgba(232, 163, 61, 0.9),
+    rgba(14, 42, 40, 0.6)
+  );
+  cursor: ew-resize;
+  z-index: 100;
+  user-select: none;
+  touch-action: none;
+}
+
+.dusk-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -12px;
+  width: 25px;
+  height: 100%;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.dusk-divider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(232, 163, 61, 0.15);
+  border: 1px solid rgba(232, 163, 61, 0.4);
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.dusk-divider-handle:hover {
+  background: rgba(232, 163, 61, 0.3);
+}
+
+.dusk-divider-handle svg {
+  width: 16px;
+  height: 24px;
+  stroke: #E8A33D;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+}
+
+.dusk-divider.dragging .dusk-divider-handle {
+  transform: translate(-50%, -50%) scale(1.1);
+  background: rgba(232, 163, 61, 0.4);
+}
+
+/* ===== Day Column ===== */
+.day-column {
+  position: relative;
+  background: var(--day-bg, #F4E8D6);
+  color: #2B2622;
+  min-height: 100vh;
+  overflow: hidden;
+  transition: background-color 0.6s ease;
+}
+
+/* ===== Night Column ===== */
+.night-column {
+  position: relative;
+  background: #0E2A28;
+  color: #EDE4D3;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== Stars (Night Only) ===== */
+.stars-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #EDE4D3;
+  border-radius: 50%;
+  opacity: 0;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.2); }
+}
+
+/* ===== Dusk Cross-Fade State ===== */
+.app-wrapper.dusk-mode .day-column {
+  background: #D4A574 !important;
+}
+
+.app-wrapper.dusk-mode .night-column {
+  background: #1a3a38;
+}
+
+/* ===== Content Scenes ===== */
+.scene {
+  position: relative;
+  padding: 12vh 8vw;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  opacity: 0.3;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+  z-index: 2;
+}
+
+.scene.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scene-time {
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  opacity: 0.7;
+}
+
+.day-column .scene-time {
+  color: #C75B3C;
+}
+
+.night-column .scene-time {
+  color: #E8A33D;
+}
+
+.scene-title {
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  line-height: 1.2;
+  margin-bottom: 1.5rem;
+}
+
+.scene-title .font-display {
+  font-size: 1.1em;
+}
+
+.scene-body {
+  font-size: clamp(0.95rem, 1.2vw, 1.1rem);
+  line-height: 1.8;
+  max-width: 38ch;
+  margin-bottom: 2rem;
+}
+
+.scene-skyline {
+  margin-top: 2rem;
+  width: 100%;
+  max-width: 400px;
+  height: 120px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 1s ease 0.3s, transform 1s ease 0.3s;
+}
+
+.scene.visible .scene-skyline {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Skyline common */
+.scene-skyline svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.day-column .scene-skyline .building {
+  fill: #C75B3C;
+  opacity: 0.25;
+}
+
+.day-column .scene-skyline .building.accent {
+  fill: #C75B3C;
+  opacity: 0.5;
+}
+
+.day-column .scene-skyline .sun-moon {
+  fill: #E8A33D;
+}
+
+.night-column .scene-skyline .building {
+  fill: #1a3a38;
+  stroke: #6FB3A8;
+  stroke-width: 0.5;
+  opacity: 0.6;
+}
+
+.night-column .scene-skyline .window {
+  fill: #E8A33D;
+  opacity: 0.85;
+}
+
+.night-column .scene-skyline .streetlight {
+  fill: #E8A33D;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.night-column .scene-skyline .streetlight.lit {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px #E8A33D);
+}
+
+.night-column .scene-skyline .streetlight-glow {
+  fill: #E8A33D;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.night-column .scene-skyline .streetlight-glow.lit {
+  opacity: 0.3;
+  filter: blur(2px);
+}
+
+.night-column .scene-skyline .sun-moon {
+  fill: #EDE4D3;
+  opacity: 0.9;
+}
+
+/* ===== Hero / Opening ===== */
+.hero-scene {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8vh 8vw;
+  position: relative;
+  z-index: 3;
+}
+
+.hero-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
+}
+
+.day-column .hero-eyebrow { color: #C75B3C; }
+.night-column .hero-eyebrow { color: #E8A33D; }
+
+.hero-title {
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  line-height: 1;
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.day-column .hero-title { color: #2B2622; }
+.night-column .hero-title { color: #EDE4D3; }
+
+.hero-subtitle {
+  font-size: clamp(0.9rem, 1.3vw, 1.1rem);
+  line-height: 1.7;
+  max-width: 32ch;
+  opacity: 0.75;
+  margin-bottom: 2.5rem;
+}
+
+.hero-opening {
+  font-size: clamp(0.95rem, 1.2vw, 1.05rem);
+  line-height: 1.8;
+  max-width: 32ch;
+  border-left: 2px solid;
+  padding-left: 1.2rem;
+}
+
+.day-column .hero-opening {
+  border-color: #C75B3C;
+  color: #2B2622;
+  opacity: 0.85;
+}
+
+.night-column .hero-opening {
+  border-color: #E8A33D;
+  color: #EDE4D3;
+  opacity: 0.85;
+}
+
+/* Scroll hint */
+.scroll-hint {
+  position: absolute;
+  bottom: 3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  z-index: 5;
+  animation: bob 2s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(8px); }
+}
+
+.scroll-hint-line {
+  width: 1px;
+  height: 40px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.day-column .scroll-hint { color: #2B2622; }
+.night-column .scroll-hint { color: #EDE4D3; }
+
+/* ===== Dusk Section (Scene 4-5 crossover) ===== */
+.dusk-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  letter-spacing: 0.5em;
+  color: #E8A33D;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 200;
+  transition: opacity 1s ease;
+  text-align: center;
+}
+
+.dusk-indicator.visible {
+  opacity: 1;
+}
+
+/* ===== Progress Bars ===== */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  height: 2px;
+  z-index: 150;
+  pointer-events: none;
+}
+
+.progress-bar.day-progress {
+  left: 0;
+  width: var(--day-width, 50%);
+  background: transparent;
+}
+
+.progress-bar.day-progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: var(--day-progress, 0%);
+  background: #C75B3C;
+  transition: width 0.1s linear;
+}
+
+.progress-bar.night-progress {
+  right: 0;
+  width: var(--night-width, 50%);
+  background: transparent;
+}
+
+.progress-bar.night-progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: var(--night-progress, 0%);
+  background: #E8A33D;
+  transition: width 0.1s linear;
+}
+
+/* ===== Ending / Footer ===== */
+.ending-scene {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 8vh 8vw;
+  position: relative;
+  z-index: 2;
+}
+
+.ending-text {
+  font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+  font-size: clamp(1.5rem, 3.5vw, 3rem);
+  line-height: 1.4;
+  text-align: center;
+  max-width: 20ch;
+}
+
+.day-column .ending-text {
+  color: #2B2622;
+}
+
+.night-column .ending-text {
+  color: #EDE4D3;
+}
+
+.ending-tag {
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+/* ===== Hover effect on scenes ===== */
+.scene:hover {
+  transform: translateY(-4px);
+}
+
+.day-column .scene:hover {
+  filter: drop-shadow(0 8px 20px rgba(199, 91, 60, 0.15));
+}
+
+.night-column .scene:hover .scene-skyline {
+  filter: drop-shadow(0 0 8px rgba(232, 163, 61, 0.3));
+}
+
+/* ===== Mobile / Responsive ===== */
+@media (max-width: 768px) {
+  body { cursor: auto; }
+  .cursor-day-night { display: none; }
+
+  .app-wrapper {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+  }
+
+  .dusk-divider {
+    width: 100%;
+    height: 1px;
+    cursor: ns-resize;
+    background: linear-gradient(
+      to bottom,
+      rgba(244, 232, 214, 0.6),
+      rgba(232, 163, 61, 0.9),
+      rgba(14, 42, 40, 0.6)
+    );
+  }
+
+  .dusk-divider::before {
+    left: 0;
+    top: -12px;
+    width: 100%;
+    height: 25px;
+  }
+
+  .dusk-divider-handle {
+    width: 80px;
+    height: 40px;
+  }
+
+  .dusk-divider-handle svg {
+    width: 24px;
+    height: 16px;
+    transform: rotate(90deg);
+  }
+
+  .scene {
+    padding: 10vh 6vw;
+    min-height: auto;
+  }
+
+  .hero-scene {
+    min-height: 80vh;
+    padding: 6vh 6vw;
+  }
+
+  .ending-scene {
+    min-height: 70vh;
+  }
+
+  .progress-bar.day-progress,
+  .progress-bar.night-progress {
+    display: none;
+  }
+}
+
+/* ===== Loading animation ===== */
+.app-wrapper.loading .day-column {
+  transform: translateX(100%);
+}
+
+.app-wrapper.loading .night-column {
+  transform: translateX(-100%);
+}
+
+.app-wrapper.loading .dusk-divider {
+  opacity: 0;
+}
+
+.app-wrapper .day-column,
+.app-wrapper .night-column,
+.app-wrapper .dusk-divider {
+  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.8s ease;
+}
+
+/* ===== Sun position indicator (day skyline) ===== */
+.day-column .scene-skyline .sun-moon {
+  transition: cx 1s ease;
+}
+</style>
+</head>
+<body>
+
+<!-- Custom Cursor -->
+<div class="cursor-day-night" id="cursor">
+  <div class="cursor-line"></div>
+</div>
+
+<!-- Progress Bars -->
+<div class="progress-bar day-progress" id="dayProgress"></div>
+<div class="progress-bar night-progress" id="nightProgress"></div>
+
+<!-- Dusk indicator -->
+<div class="dusk-indicator" id="duskIndicator">黄 昏 交 叉</div>
+
+<!-- Main App -->
+<div class="app-wrapper loading" id="app">
+  <!-- ===== DAY COLUMN ===== -->
+  <div class="day-column" id="dayColumn">
+    <!-- Hero -->
+    <section class="hero-scene" data-scene="hero">
+      <div class="hero-eyebrow font-mono">白昼篇 · 05:30 — 18:00</div>
+      <h1 class="hero-title font-display">城市<br />日与夜</h1>
+      <p class="hero-subtitle">
+        同一座城市，两种醒着的方式。
+        向下滚动，左栏从清晨走向傍晚，右栏从入夜走向黎明。
+      </p>
+      <div class="hero-opening">
+        天刚蒙蒙亮的时候，这座城就已经醒了。<br />
+        菜场的第一盏灯、地铁的第一班列车、写字楼的第一杯咖啡——
+        白昼的故事，从一碗热豆浆开始。
+      </div>
+      <div class="scroll-hint">
+        <span>向下滚动</span>
+        <div class="scroll-hint-line"></div>
+      </div>
+    </section>
+
+    <!-- Scene 1: 05:30 菜场早市 -->
+    <section class="scene" data-scene="1">
+      <div class="scene-time font-mono">05 : 30</div>
+      <h2 class="scene-title font-display">菜场早市</h2>
+      <p class="scene-body">
+        湿漉漉的水泥地映着日光灯的白光。
+        摊主把青菜码得整整齐齐，鱼鳞在砧板上闪着银辉。
+        阿婆挎着布袋子挑西红柿，豆浆摊的蒸汽裹着豆香漫过整条巷子。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Low sun -->
+          <circle class="sun-moon" cx="60" cy="70" r="14" />
+          <!-- Skyline: low-rise market area -->
+          <polygon class="building" points="0,120 0,90 40,90 40,75 80,75 80,85 120,85 120,70 160,70 160,90 200,90 200,80 240,80 240,95 280,95 280,85 320,85 320,92 360,92 360,88 400,88 400,120" />
+          <polygon class="building accent" points="120,70 140,70 140,55 120,55" />
+          <polygon class="building accent" points="200,80 220,80 220,65 200,65" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 2: 07:30 地铁早高峰 -->
+    <section class="scene" data-scene="2">
+      <div class="scene-time font-mono">07 : 30</div>
+      <h2 class="scene-title font-display">地铁早高峰</h2>
+      <p class="scene-body">
+        站台广播一遍遍重复着终点站的名字。
+        耳机线、背包带、公文包在人群中挤在一起，
+        有人低头刷手机，有人闭目补觉，
+        车门"嘀"地一声合上，又把一车厢梦送往市中心。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Higher sun -->
+          <circle class="sun-moon" cx="100" cy="45" r="16" />
+          <!-- Mid-rise -->
+          <polygon class="building" points="0,120 0,95 30,95 30,80 60,80 60,65 90,65 90,55 120,55 120,70 150,70 150,50 180,50 180,35 210,35 210,60 240,60 240,75 270,75 270,55 300,55 300,72 340,72 340,85 380,85 380,95 400,95 400,120" />
+          <polygon class="building accent" points="180,35 195,35 195,22 180,22" />
+          <polygon class="building accent" points="270,55 285,55 285,38 270,38" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 3: 10:00 写字楼格子间 -->
+    <section class="scene" data-scene="3">
+      <div class="scene-time font-mono">10 : 00</div>
+      <h2 class="scene-title font-display">写字楼格子间</h2>
+      <p class="scene-body">
+        空调恒温二十四度，日光灯亮得不分昼夜。
+        键盘敲击声此起彼伏，邮件提示音此起彼伏，
+        有人在茶水间接电话，有人在会议室白板前比划，
+        百叶窗把阳光切成一条一条，落在工位隔板上。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Sun high -->
+          <circle class="sun-moon" cx="200" cy="25" r="18" />
+          <!-- High-rise skyline -->
+          <polygon class="building" points="0,120 0,100 20,100 20,85 50,85 50,60 80,60 80,40 110,40 110,55 140,55 140,30 170,30 170,15 200,15 200,45 230,45 230,25 260,25 260,50 290,50 290,38 320,38 320,60 350,60 350,75 380,75 380,90 400,90 400,120" />
+          <polygon class="building accent" points="170,15 185,15 185,5 170,5" />
+          <polygon class="building accent" points="230,25 245,25 245,12 230,12" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 4: 12:00 外卖午高峰 -->
+    <section class="scene" data-scene="4">
+      <div class="scene-time font-mono">12 : 00</div>
+      <h2 class="scene-title font-display">外卖午高峰</h2>
+      <p class="scene-body">
+        正午的太阳把马路烤得发烫。
+        外卖箱上的反光条闪着光，电动车在车流里穿梭。
+        写字楼底下挤满了取餐的人，手机屏幕上的配送时间
+        从二十分钟跳到四十分钟，再跳到"已送达"。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Sun at zenith -->
+          <circle class="sun-moon" cx="280" cy="20" r="20" />
+          <!-- Dense skyline -->
+          <polygon class="building" points="0,120 0,90 15,90 15,75 40,75 40,55 70,55 70,35 100,35 100,28 130,28 130,42 160,42 160,20 190,20 190,10 220,10 220,30 250,30 250,18 280,18 280,35 310,35 310,48 340,48 340,65 370,65 370,80 400,80 400,120" />
+          <polygon class="building accent" points="190,10 205,10 205,2 190,2" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 5: 14:00 公园太极 -->
+    <section class="scene" data-scene="5">
+      <div class="scene-time font-mono">14 : 00</div>
+      <h2 class="scene-title font-display">公园太极</h2>
+      <p class="scene-body">
+        下午的阳光斜斜穿过梧桐叶，在地上印出斑斑点点。
+        老人穿白色太极服，动作慢得像在跟空气推手。
+        远处传来广场舞的音乐，近处是几声鸟叫，
+        长椅上的报纸翻到了财经版，风一吹，角翘了起来。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Sun descending -->
+          <circle class="sun-moon" cx="320" cy="35" r="18" />
+          <!-- Park + low skyline -->
+          <polygon class="building" points="0,120 0,100 40,100 40,85 80,85 80,92 120,92 120,78 160,78 160,88 200,88 200,72 240,72 240,85 280,85 280,95 320,95 320,82 360,82 360,90 400,90 400,120" />
+          <!-- Tree shapes -->
+          <ellipse class="building accent" cx="80" cy="88" rx="18" ry="22" opacity="0.4" />
+          <ellipse class="building accent" cx="200" cy="82" rx="22" ry="28" opacity="0.35" />
+          <ellipse class="building accent" cx="320" cy="86" rx="16" ry="20" opacity="0.4" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 6: 16:00 放学接孩子 -->
+    <section class="scene" data-scene="6">
+      <div class="scene-time font-mono">16 : 00</div>
+      <h2 class="scene-title font-display">放学接孩子</h2>
+      <p class="scene-body">
+        小学校门口挤满了人。
+        爷爷奶奶举着水杯、拎着外套踮脚张望，
+        铃声一响，背着大书包的小不点们鱼贯而出，
+        红领巾在夕阳下飘着，像一团团小小的火。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Lower sun -->
+          <circle class="sun-moon" cx="340" cy="55" r="17" />
+          <!-- School + residential -->
+          <polygon class="building" points="0,120 0,95 25,95 25,80 55,80 55,70 85,70 85,58 115,58 115,72 145,72 145,62 175,62 175,75 205,75 205,68 235,68 235,80 265,80 265,72 295,72 295,85 330,85 330,78 365,78 365,92 400,92 400,120" />
+          <polygon class="building accent" points="85,58 100,58 100,45 85,45" />
+          <!-- Flag pole -->
+          <line x1="205" y1="68" x2="205" y2="42" stroke="#C75B3C" stroke-width="1" opacity="0.5" />
+          <polygon class="building accent" points="205,42 220,47 205,52" opacity="0.6" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 7: 17:30 晚高峰下班 -->
+    <section class="scene" data-scene="7">
+      <div class="scene-time font-mono">17 : 30</div>
+      <h2 class="scene-title font-display">晚高峰下班</h2>
+      <p class="scene-body">
+        夕阳把写字楼的玻璃幕墙染成金色。
+        地铁口的人潮涌出来又涌进去，
+        共享单车摆了一整排又被骑走一整排，
+        路上的车灯连成一条河，缓缓地、缓缓地往家的方向流。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Setting sun -->
+          <circle class="sun-moon" cx="360" cy="78" r="16" />
+          <!-- Full skyline at golden hour -->
+          <polygon class="building" points="0,120 0,100 20,100 20,85 50,85 50,65 80,65 80,45 110,45 110,35 140,35 140,50 170,50 170,28 200,28 200,18 230,18 230,40 260,40 260,28 290,28 290,45 320,45 320,58 350,58 350,75 380,75 380,88 400,88 400,120" />
+          <polygon class="building accent" points="200,18 215,18 215,8 200,8" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Ending -->
+    <section class="ending-scene">
+      <p class="ending-text">白昼落下帷幕<br />而夜的故事刚刚开始</p>
+      <div class="ending-tag font-mono">— 同一座城 · 两种醒着的方式 —</div>
+    </section>
+  </div>
+
+  <!-- ===== DUSK DIVIDER ===== -->
+  <div class="dusk-divider" id="duskDivider">
+    <div class="dusk-divider-handle">
+      <svg viewBox="0 0 16 24">
+        <line x1="4" y1="4" x2="4" y2="20" />
+        <line x1="12" y1="4" x2="12" y2="20" />
+      </svg>
+    </div>
+  </div>
+
+  <!-- ===== NIGHT COLUMN ===== -->
+  <div class="night-column" id="nightColumn">
+    <!-- Stars -->
+    <div class="stars-container" id="starsContainer"></div>
+
+    <!-- Hero -->
+    <section class="hero-scene" data-scene="hero">
+      <div class="hero-eyebrow font-mono">深夜篇 · 20:00 — 05:00</div>
+      <h1 class="hero-title font-display">城市<br />日与夜</h1>
+      <p class="hero-subtitle">
+        同一座城市，两种醒着的方式。
+        向下滚动，左栏从清晨走向傍晚，右栏从入夜走向黎明。
+      </p>
+      <div class="hero-opening">
+        街灯一盏接一盏亮起来的时候，另一座城就醒了。<br />
+        烧烤摊的烟、便利店的光、网约车的双闪——
+        深夜的故事，从第一盏路灯开始。
+      </div>
+      <div class="scroll-hint">
+        <span>向下滚动</span>
+        <div class="scroll-hint-line"></div>
+      </div>
+    </section>
+
+    <!-- Scene 1: 20:00 广场舞 -->
+    <section class="scene" data-scene="1">
+      <div class="scene-time font-mono">20 : 00</div>
+      <h2 class="scene-title font-display">广场舞</h2>
+      <p class="scene-body">
+        广场上的音响一开，节奏就踩准了。
+        大妈们的扇子一甩一甩，
+        旁边大爷坐在石墩上下象棋，
+        小孩踩着滑板车绕圈，
+        路灯的光落在人脸上，全都带着笑。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon rising -->
+          <circle class="sun-moon" cx="80" cy="45" r="14" />
+          <!-- Night skyline -->
+          <polygon class="building" points="0,120 0,95 30,95 30,80 60,80 60,70 90,70 90,55 120,55 120,68 150,68 150,50 180,50 180,62 210,62 210,55 240,55 240,72 270,72 270,60 300,60 300,75 340,75 340,85 380,85 380,92 400,92 400,120" />
+          <!-- Windows lit -->
+          <rect class="window" x="70" y="60" width="3" height="4" />
+          <rect class="window" x="78" y="62" width="3" height="4" />
+          <rect class="window" x="100" y="45" width="3" height="4" />
+          <rect class="window" x="108" y="48" width="3" height="4" />
+          <rect class="window" x="160" y="55" width="3" height="4" />
+          <rect class="window" x="220" y="60" width="3" height="4" />
+          <rect class="window" x="250" y="62" width="3" height="4" />
+          <rect class="window" x="280" y="68" width="3" height="4" />
+          <rect class="window" x="310" y="65" width="3" height="4" />
+          <rect class="window" x="350" y="78" width="3" height="4" />
+          <!-- Streetlights -->
+          <line class="streetlight-pole" x1="50" y1="120" x2="50" y2="85" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="1" cx="50" cy="85" r="3" />
+          <ellipse class="streetlight-glow" data-glow="1" cx="50" cy="95" rx="20" ry="15" />
+          <line class="streetlight-pole" x1="180" y1="120" x2="180" y2="78" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="2" cx="180" cy="78" r="3" />
+          <ellipse class="streetlight-glow" data-glow="2" cx="180" cy="90" rx="22" ry="18" />
+          <line class="streetlight-pole" x1="300" y1="120" x2="300" y2="82" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="3" cx="300" cy="82" r="3" />
+          <ellipse class="streetlight-glow" data-glow="3" cx="300" cy="92" rx="18" ry="14" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 2: 21:00 代驾骑手 -->
+    <section class="scene" data-scene="2">
+      <div class="scene-time font-mono">21 : 00</div>
+      <h2 class="scene-title font-display">代驾骑手</h2>
+      <p class="scene-body">
+        餐厅门口停着一排折叠电动车。
+        代驾师傅戴着头盔，刷着手机等单，
+        有人把棉袄裹得紧紧的，有人蹲在路边啃包子。
+        订单提示音一响，头盔一扣，油门一拧，
+        小电驴就钻进了夜色里。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon higher -->
+          <circle class="sun-moon" cx="120" cy="30" r="15" />
+          <!-- Mid-rise at night -->
+          <polygon class="building" points="0,120 0,95 20,95 20,80 50,80 50,60 80,60 80,45 110,45 110,55 140,55 140,35 170,35 170,25 200,25 200,45 230,45 230,35 260,35 260,55 290,55 290,45 320,45 320,65 350,65 350,78 380,78 380,90 400,90 400,120" />
+          <!-- Windows -->
+          <rect class="window" x="60" y="68" width="3" height="4" />
+          <rect class="window" x="90" y="52" width="3" height="4" />
+          <rect class="window" x="100" y="55" width="3" height="4" />
+          <rect class="window" x="150" y="40" width="3" height="4" />
+          <rect class="window" x="180" y="32" width="3" height="4" />
+          <rect class="window" x="210" y="35" width="3" height="4" />
+          <rect class="window" x="240" y="42" width="3" height="4" />
+          <rect class="window" x="270" y="48" width="3" height="4" />
+          <rect class="window" x="300" y="52" width="3" height="4" />
+          <rect class="window" x="330" y="70" width="3" height="4" />
+          <rect class="window" x="360" y="82" width="3" height="4" />
+          <!-- Streetlights -->
+          <line class="streetlight-pole" x1="70" y1="120" x2="70" y2="80" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="4" cx="70" cy="80" r="3" />
+          <ellipse class="streetlight-glow" data-glow="4" cx="70" cy="90" rx="22" ry="16" />
+          <line class="streetlight-pole" x1="200" y1="120" x2="200" y2="55" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="5" cx="200" cy="55" r="3" />
+          <ellipse class="streetlight-glow" data-glow="5" cx="200" cy="68" rx="25" ry="20" />
+          <line class="streetlight-pole" x1="330" y1="120" x2="330" y2="75" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="6" cx="330" cy="75" r="3" />
+          <ellipse class="streetlight-glow" data-glow="6" cx="330" cy="85" rx="20" ry="15" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 3: 22:00 24小时便利店 -->
+    <section class="scene" data-scene="3">
+      <div class="scene-time font-mono">22 : 00</div>
+      <h2 class="scene-title font-display">24 小时便利店</h2>
+      <p class="scene-body">
+        玻璃门"叮咚"一声打开又合上。
+        关东煮在锅里咕嘟咕嘟冒热气，
+        微波炉转完"叮"地一声，
+        夜班店员靠在收银台后面刷手机，
+        荧光灯把一切都照得发白，像一艘不沉的船。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon -->
+          <circle class="sun-moon" cx="200" cy="22" r="16" />
+          <!-- Street-level storefronts -->
+          <polygon class="building" points="0,120 0,90 30,90 30,75 60,75 60,85 90,85 90,70 120,70 120,60 150,60 150,75 180,75 180,65 210,65 210,50 240,50 240,70 270,70 270,62 300,62 300,78 330,78 330,70 360,70 360,85 400,85 400,120" />
+          <!-- Storefront windows (bright) -->
+          <rect class="window" x="125" y="72" width="5" height="15" opacity="1" />
+          <rect class="window" x="135" y="72" width="5" height="15" opacity="1" />
+          <rect class="window" x="145" y="72" width="5" height="15" opacity="1" />
+          <!-- Other windows -->
+          <rect class="window" x="70" y="78" width="3" height="4" />
+          <rect class="window" x="220" y="58" width="3" height="4" />
+          <rect class="window" x="280" y="68" width="3" height="4" />
+          <rect class="window" x="340" y="75" width="3" height="4" />
+          <!-- Convenience store glow -->
+          <rect x="120" y="85" width="35" height="5" fill="#E8A33D" opacity="0.15" />
+          <!-- Streetlights -->
+          <line class="streetlight-pole" x1="80" y1="120" x2="80" y2="82" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="7" cx="80" cy="82" r="3" />
+          <ellipse class="streetlight-glow" data-glow="7" cx="80" cy="92" rx="18" ry="14" />
+          <line class="streetlight-pole" x1="250" y1="120" x2="250" y2="78" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="8" cx="250" cy="78" r="3" />
+          <ellipse class="streetlight-glow" data-glow="8" cx="250" cy="90" rx="22" ry="17" />
+          <line class="streetlight-pole" x1="370" y1="120" x2="370" y2="85" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="9" cx="370" cy="85" r="3" />
+          <ellipse class="streetlight-glow" data-glow="9" cx="370" cy="95" rx="16" ry="12" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 4: 23:00 街角烧烤摊 -->
+    <section class="scene" data-scene="4">
+      <div class="scene-time font-mono">23 : 00</div>
+      <h2 class="scene-title font-display">街角烧烤摊</h2>
+      <p class="scene-body">
+        炭火烧得通红，油烟裹着孜然味往上升。
+        塑料板凳围了一圈，啤酒瓶盖扔了一地。
+        有人大声笑，有人低头撸串，
+        老板手里的扇子扇得火星子飞起来，
+        像把一小把星星撒进了夜里。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon descending right -->
+          <circle class="sun-moon" cx="280" cy="28" r="15" />
+          <!-- Low-rise night street -->
+          <polygon class="building" points="0,120 0,92 30,92 30,82 60,82 60,88 90,88 90,75 120,75 120,85 150,85 150,72 180,72 180,82 210,82 210,78 240,78 240,88 270,88 270,80 300,80 300,90 330,90 330,85 360,85 360,92 400,92 400,120" />
+          <!-- Windows -->
+          <rect class="window" x="70" y="80" width="3" height="4" />
+          <rect class="window" x="130" y="78" width="3" height="4" />
+          <rect class="window" x="160" y="78" width="3" height="4" />
+          <rect class="window" x="220" y="82" width="3" height="4" />
+          <rect class="window" x="280" y="84" width="3" height="4" />
+          <rect class="window" x="340" y="88" width="3" height="4" />
+          <!-- Streetlights -->
+          <line class="streetlight-pole" x1="60" y1="120" x2="60" y2="85" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="10" cx="60" cy="85" r="3" />
+          <ellipse class="streetlight-glow" data-glow="10" cx="60" cy="95" rx="20" ry="15" />
+          <line class="streetlight-pole" x1="180" y1="120" x2="180" y2="75" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="11" cx="180" cy="75" r="3" />
+          <ellipse class="streetlight-glow" data-glow="11" cx="180" cy="88" rx="22" ry="18" />
+          <line class="streetlight-pole" x1="310" y1="120" x2="310" y2="82" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="12" cx="310" cy="82" r="3" />
+          <ellipse class="streetlight-glow" data-glow="12" cx="310" cy="92" rx="18" ry="14" />
+          <!-- Grill smoke embers -->
+          <circle cx="200" cy="100" r="1.5" fill="#E8A33D" opacity="0.7" />
+          <circle cx="205" cy="95" r="1" fill="#E8A33D" opacity="0.5" />
+          <circle cx="197" cy="92" r="1.2" fill="#E8A33D" opacity="0.6" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 5: 01:00 网约车夜班 -->
+    <section class="scene" data-scene="5">
+      <div class="scene-time font-mono">01 : 00</div>
+      <h2 class="scene-title font-display">网约车夜班</h2>
+      <p class="scene-body">
+        凌晨一点的马路空得像一条河。
+        司机师傅把双闪按亮，靠边等单，
+        车载电台在放很老的歌，
+        后排座位上躺着一个刚散场的醉汉，
+        嘴里含糊不清地说：师傅，往前开。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon low -->
+          <circle class="sun-moon" cx="340" cy="40" r="14" />
+          <!-- Deep night skyline -->
+          <polygon class="building" points="0,120 0,95 25,95 25,82 55,82 55,62 85,62 85,45 115,45 115,55 145,55 145,35 175,35 175,25 205,25 205,42 235,42 235,30 265,30 265,50 295,50 295,62 325,62 325,75 355,75 355,88 400,88 400,120" />
+          <!-- Few windows lit (late night) -->
+          <rect class="window" x="75" y="52" width="3" height="4" />
+          <rect class="window" x="125" y="48" width="3" height="4" />
+          <rect class="window" x="155" y="40" width="3" height="4" />
+          <rect class="window" x="215" y="35" width="3" height="4" />
+          <rect class="window" x="245" y="38" width="3" height="4" />
+          <rect class="window" x="280" y="55" width="3" height="4" />
+          <rect class="window" x="340" y="78" width="3" height="4" />
+          <!-- Streetlights -->
+          <line class="streetlight-pole" x1="65" y1="120" x2="65" y2="80" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="13" cx="65" cy="80" r="3" />
+          <ellipse class="streetlight-glow" data-glow="13" cx="65" cy="92" rx="22" ry="17" />
+          <line class="streetlight-pole" x1="195" y1="120" x2="195" y2="60" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="14" cx="195" cy="60" r="3" />
+          <ellipse class="streetlight-glow" data-glow="14" cx="195" cy="75" rx="25" ry="20" />
+          <line class="streetlight-pole" x1="320" y1="120" x2="320" y2="78" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="15" cx="320" cy="78" r="3" />
+          <ellipse class="streetlight-glow" data-glow="15" cx="320" cy="88" rx="20" ry="15" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 6: 03:00 环卫清扫 -->
+    <section class="scene" data-scene="6">
+      <div class="scene-time font-mono">03 : 00</div>
+      <h2 class="scene-title font-display">环卫清扫</h2>
+      <p class="scene-body">
+        三点钟的街道是橙色的。
+        环卫工穿荧光马甲，手里的大扫帚
+        在马路上划出"唰——唰——"的节奏。
+        垃圾桶一个接一个被清空，
+        夜的残渣被收走，等天亮的时候，
+        街道又会像被重新铺过一样干净。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Moon very low -->
+          <circle class="sun-moon" cx="360" cy="65" r="13" />
+          <!-- Quiet night skyline -->
+          <polygon class="building" points="0,120 0,95 30,95 30,80 60,80 60,70 90,70 90,55 120,55 120,68 150,68 150,50 180,50 180,62 210,62 210,55 240,55 240,72 270,72 270,60 300,60 300,75 340,75 340,85 380,85 380,92 400,92 400,120" />
+          <!-- Almost no windows -->
+          <rect class="window" x="100" y="62" width="3" height="4" opacity="0.5" />
+          <rect class="window" x="200" y="60" width="3" height="4" opacity="0.5" />
+          <rect class="window" x="280" y="68" width="3" height="4" opacity="0.5" />
+          <!-- Streetlights (always on) -->
+          <line class="streetlight-pole" x1="50" y1="120" x2="50" y2="82" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="16" cx="50" cy="82" r="3" />
+          <ellipse class="streetlight-glow" data-glow="16" cx="50" cy="92" rx="20" ry="15" />
+          <line class="streetlight-pole" x1="170" y1="120" x2="170" y2="65" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="17" cx="170" cy="65" r="3" />
+          <ellipse class="streetlight-glow" data-glow="17" cx="170" cy="78" rx="22" ry="18" />
+          <line class="streetlight-pole" x1="290" y1="120" x2="290" y2="72" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="18" cx="290" cy="72" r="3" />
+          <ellipse class="streetlight-glow" data-glow="18" cx="290" cy="82" rx="18" ry="14" />
+          <line class="streetlight-pole" x1="370" y1="120" x2="370" y2="88" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="19" cx="370" cy="88" r="3" />
+          <ellipse class="streetlight-glow" data-glow="19" cx="370" cy="95" rx="15" ry="10" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Scene 7: 05:00 早班工人 -->
+    <section class="scene" data-scene="7">
+      <div class="scene-time font-mono">05 : 00</div>
+      <h2 class="scene-title font-display">早班工人</h2>
+      <p class="scene-body">
+        天还没全亮，东边泛起一点点鱼肚白。
+        早班公交"吱"地一声停在站台上，
+        工地的安全帽已经在食堂门口排成一排，
+        早餐铺的蒸笼掀开盖子，白汽往上冒，
+        第一缕光，正好落在他们的肩膀上。
+      </p>
+      <div class="scene-skyline">
+        <svg viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
+          <!-- Faint dawn light, moon setting -->
+          <circle class="sun-moon" cx="370" cy="85" r="12" opacity="0.6" />
+          <!-- Dawn skyline (slightly lighter buildings) -->
+          <polygon class="building" points="0,120 0,92 20,92 20,80 50,80 50,65 80,65 80,50 110,50 110,60 140,60 140,42 170,42 170,32 200,32 200,50 230,50 230,38 260,38 260,55 290,55 290,68 320,68 320,80 350,80 350,90 380,90 380,95 400,95 400,120" />
+          <!-- A few early windows -->
+          <rect class="window" x="60" y="70" width="3" height="4" opacity="0.7" />
+          <rect class="window" x="90" y="55" width="3" height="4" opacity="0.7" />
+          <rect class="window" x="150" y="48" width="3" height="4" opacity="0.7" />
+          <rect class="window" x="210" y="42" width="3" height="4" opacity="0.7" />
+          <rect class="window" x="270" y="60" width="3" height="4" opacity="0.7" />
+          <rect class="window" x="330" y="75" width="3" height="4" opacity="0.7" />
+          <!-- Streetlights (fading) -->
+          <line class="streetlight-pole" x1="70" y1="120" x2="70" y2="75" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="20" cx="70" cy="75" r="3" />
+          <ellipse class="streetlight-glow" data-glow="20" cx="70" cy="88" rx="18" ry="14" />
+          <line class="streetlight-pole" x1="210" y1="120" x2="210" y2="52" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="21" cx="210" cy="52" r="3" />
+          <ellipse class="streetlight-glow" data-glow="21" cx="210" cy="65" rx="22" ry="17" />
+          <line class="streetlight-pole" x1="340" y1="120" x2="340" y2="78" stroke="#6FB3A8" stroke-width="1" opacity="0.4" />
+          <circle class="streetlight" data-light="22" cx="340" cy="78" r="3" />
+          <ellipse class="streetlight-glow" data-glow="22" cx="340" cy="88" rx="16" ry="12" />
+        </svg>
+      </div>
+    </section>
+
+    <!-- Ending -->
+    <section class="ending-scene">
+      <p class="ending-text">夜色缓缓退去<br />白昼的城又将醒来</p>
+      <div class="ending-tag font-mono">— 同一座城 · 两种醒着的方式 —</div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // ===== State =====
+  var state = {
+    dividerPosition: 50, // percentage
+    isDragging: false,
+    isMobile: window.innerWidth <= 768,
+    reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    isTouch: ("ontouchstart" in window) || (navigator.maxTouchPoints > 0),
+    isVisible: !document.hidden,
+    scrollProgress: 0,
+    duskActive: false,
+    rafId: null,
+    resizeTimeout: null
+  };
+
+  // ===== DOM refs =====
+  var app = document.getElementById("app");
+  var dayColumn = document.getElementById("dayColumn");
+  var nightColumn = document.getElementById("nightColumn");
+  var duskDivider = document.getElementById("duskDivider");
+  var cursorEl = document.getElementById("cursor");
+  var duskIndicator = document.getElementById("duskIndicator");
+  var starsContainer = document.getElementById("starsContainer");
+  var dayScenes = dayColumn.querySelectorAll(".scene");
+  var nightScenes = nightColumn.querySelectorAll(".scene");
+  var allScenes = document.querySelectorAll(".scene");
+
+  // ===== Generate Stars =====
+  function generateStars() {
+    if (state.reducedMotion) return;
+    var count = 50;
+    for (var i = 0; i < count; i++) {
+      var star = document.createElement("div");
+      star.className = "star";
+      star.style.left = Math.random() * 100 + "%";
+      star.style.top = Math.random() * 100 + "%";
+      var size = Math.random() * 2 + 1;
+      star.style.width = size + "px";
+      star.style.height = size + "px";
+      star.style.animationDelay = Math.random() * 4 + "s";
+      star.style.animationDuration = (Math.random() * 3 + 2) + "s";
+      star.style.animationName = "twinkle";
+      star.style.animationIterationCount = "infinite";
+      star.style.animationTimingFunction = "ease-in-out";
+      starsContainer.appendChild(star);
+    }
+  }
+
+  // ===== Custom Cursor =====
+  var cursorTarget = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  var cursorCurrent = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+  function updateCursor() {
+    if (!state.isVisible || state.reducedMotion || state.isTouch) return;
+
+    // Smooth follow
+    cursorCurrent.x += (cursorTarget.x - cursorCurrent.x) * 0.15;
+    cursorCurrent.y += (cursorTarget.y - cursorCurrent.y) * 0.15;
+
+    cursorEl.style.transform =
+      "translate(" + cursorCurrent.x + "px, " + cursorCurrent.y + "px) translate(-50%, -50%)";
+
+    // Check if near divider
+    var dividerRect = duskDivider.getBoundingClientRect();
+    var nearDivider =
+      cursorCurrent.x >= dividerRect.left - 30 &&
+      cursorCurrent.x <= dividerRect.right + 30;
+
+    if (nearDivider && !cursorEl.classList.contains("near-divider")) {
+      cursorEl.classList.add("near-divider");
+    } else if (!nearDivider && cursorEl.classList.contains("near-divider")) {
+      cursorEl.classList.remove("near-divider");
+    }
+
+    state.rafId = requestAnimationFrame(updateCursor);
+  }
+
+  function onMouseMove(e) {
+    cursorTarget.x = e.clientX;
+    cursorTarget.y = e.clientY;
+  }
+
+  // ===== Draggable Divider =====
+  var dragState = {
+    startPos: 0,
+    startRatio: 50,
+    rafPending: false,
+    currentPos: 50
+  };
+
+  function setDividerPosition(ratio) {
+    ratio = Math.max(20, Math.min(80, ratio));
+    state.dividerPosition = ratio;
+
+    if (state.isMobile) {
+      // Vertical layout on mobile
+      dayColumn.style.flex = "0 0 " + ratio + "%";
+      nightColumn.style.flex = "0 0 " + (100 - ratio) + "%";
+    } else {
+      // Horizontal layout
+      var dayW = ratio + "%";
+      var nightW = (100 - ratio) + "%";
+      app.style.setProperty("--day-width", dayW);
+      app.style.setProperty("--night-width", nightW);
+    }
+
+    // Update progress bar widths
+    var dayProgressEl = document.getElementById("dayProgress");
+    var nightProgressEl = document.getElementById("nightProgress");
+    dayProgressEl.style.width = dayW;
+    nightProgressEl.style.width = nightW;
+  }
+
+  function onDragStart(e) {
+    e.preventDefault();
+    state.isDragging = true;
+    duskDivider.classList.add("dragging");
+
+    var clientPos = state.isMobile ? e.touches[0].clientY : e.clientX;
+    var containerSize = state.isMobile
+      ? app.offsetHeight
+      : app.offsetWidth;
+
+    dragState.startPos = clientPos;
+    dragState.startRatio = state.dividerPosition;
+    dragState.currentPos = state.dividerPosition;
+
+    document.addEventListener(state.isMobile ? "touchmove" : "mousemove", onDragMove, { passive: false });
+    document.addEventListener(state.isMobile ? "touchend" : "mouseup", onDragEnd);
+  }
+
+  function onDragMove(e) {
+    if (!state.isDragging) return;
+    e.preventDefault();
+
+    if (dragState.rafPending) return;
+    dragState.rafPending = true;
+
+    requestAnimationFrame(function() {
+      dragState.rafPending = false;
+      if (!state.isDragging) return;
+
+      var clientPos = state.isMobile
+        ? (e.touches && e.touches[0] ? e.touches[0].clientY : 0)
+        : e.clientX;
+      var containerSize = state.isMobile
+        ? app.offsetHeight
+        : app.offsetWidth;
+      var delta = clientPos - dragState.startPos;
+      var deltaRatio = (delta / containerSize) * 100;
+
+      var newRatio = dragState.startRatio + deltaRatio;
+      newRatio = Math.max(20, Math.min(80, newRatio));
+
+      setDividerPosition(newRatio);
+    });
+  }
+
+  function onDragEnd() {
+    state.isDragging = false;
+    duskDivider.classList.remove("dragging");
+
+    // Snap-back with damping if near edges
+    var ratio = state.dividerPosition;
+    if (ratio < 25) {
+      animateDividerTo(25);
+    } else if (ratio > 75) {
+      animateDividerTo(75);
+    }
+
+    document.removeEventListener(state.isMobile ? "touchmove" : "mousemove", onDragMove);
+    document.removeEventListener(state.isMobile ? "touchend" : "mouseup", onDragEnd);
+  }
+
+  function animateDividerTo(targetRatio) {
+    var startRatio = state.dividerPosition;
+    var diff = targetRatio - startRatio;
+    var duration = 400;
+    var startTime = null;
+
+    function animate(timestamp) {
+      if (!state.isVisible) return;
+      if (!startTime) startTime = timestamp;
+      var elapsed = timestamp - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      var eased = 1 - Math.pow(1 - progress, 3);
+
+      setDividerPosition(startRatio + diff * eased);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    }
+
+    if (!state.reducedMotion) {
+      requestAnimationFrame(animate);
+    } else {
+      setDividerPosition(targetRatio);
+    }
+  }
+
+  // ===== Scroll: Scene reveals + Progress + Dusk mode =====
+  function updateOnScroll() {
+    if (!state.isVisible) return;
+
+    var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    var progress = docHeight > 0 ? scrollTop / docHeight : 0;
+    state.scrollProgress = progress;
+
+    // Progress bars
+    var dayProgressPct = Math.min(100, progress * 100);
+    var nightProgressPct = Math.min(100, progress * 100);
+    app.style.setProperty("--day-progress", dayProgressPct + "%");
+    app.style.setProperty("--night-progress", nightProgressPct + "%");
+
+    // Day column background shift (morning white -> evening orange)
+    if (!state.reducedMotion) {
+      var dayBg = interpolateColor(
+        { r: 244, g: 232, b: 214 }, // warm ivory
+        { r: 232, g: 163, b: 61 },  // soft amber
+        progress
+      );
+      dayColumn.style.setProperty("--day-bg", dayBg);
+    }
+
+    // Scene reveals using IntersectionObserver-like check
+    var viewportMiddle = window.innerHeight / 2;
+
+    allScenes.forEach(function(scene) {
+      var rect = scene.getBoundingClientRect();
+      var sceneMiddle = rect.top + rect.height / 2;
+      var distance = Math.abs(sceneMiddle - viewportMiddle);
+      var threshold = window.innerHeight * 0.6;
+
+      if (distance < threshold) {
+        if (!scene.classList.contains("visible")) {
+          scene.classList.add("visible");
+        }
+      }
+    });
+
+    // Dusk mode: active between scene 4 and 5 (roughly 40%-60% scroll)
+    var duskStart = 0.38;
+    var duskEnd = 0.62;
+    var duskProgress = 0;
+
+    if (progress >= duskStart && progress <= duskEnd) {
+      duskProgress = (progress - duskStart) / (duskEnd - duskStart);
+    } else if (progress > duskEnd) {
+      duskProgress = 1;
+    }
+
+    // Toggle dusk indicator at mid-point
+    if (progress >= 0.45 && progress <= 0.58) {
+      if (!duskIndicator.classList.contains("visible")) {
+        duskIndicator.classList.add("visible");
+      }
+    } else {
+      if (duskIndicator.classList.contains("visible")) {
+        duskIndicator.classList.remove("visible");
+      }
+    }
+
+    // Streetlights: progressively light up during dusk
+    updateStreetlights(duskProgress);
+
+    // Dusk cross-fade on columns
+    if (duskProgress > 0.3 && duskProgress < 0.8) {
+      app.classList.add("dusk-mode");
+      state.duskActive = true;
+    } else {
+      app.classList.remove("dusk-mode");
+      state.duskActive = false;
+    }
+  }
+
+  var scrollRafPending = false;
+  function onScroll() {
+    if (scrollRafPending) return;
+    scrollRafPending = true;
+    requestAnimationFrame(function() {
+      scrollRafPending = false;
+      updateOnScroll();
+    });
+  }
+
+  // ===== Streetlights animation =====
+  var allStreetlights = document.querySelectorAll(".streetlight");
+  var allGlows = document.querySelectorAll(".streetlight-glow");
+
+  function updateStreetlights(duskProgress) {
+    if (state.reducedMotion) {
+      // In reduced motion, just show all if past threshold
+      var showAll = duskProgress > 0.5;
+      allStreetlights.forEach(function(light) {
+        if (showAll) light.classList.add("lit");
+        else light.classList.remove("lit");
+      });
+      allGlows.forEach(function(glow) {
+        if (showAll) glow.classList.add("lit");
+        else glow.classList.remove("lit");
+      });
+      return;
+    }
+
+    var totalLights = allStreetlights.length;
+    var litCount = Math.floor(duskProgress * totalLights);
+
+    allStreetlights.forEach(function(light, i) {
+      var lightIdx = parseInt(light.getAttribute("data-light"), 10) || (i + 1);
+      if (lightIdx <= litCount) {
+        if (!light.classList.contains("lit")) {
+          light.classList.add("lit");
+        }
+      } else {
+        if (light.classList.contains("lit")) {
+          light.classList.remove("lit");
+        }
+      }
+    });
+
+    allGlows.forEach(function(glow, i) {
+      var glowIdx = parseInt(glow.getAttribute("data-glow"), 10) || (i + 1);
+      if (glowIdx <= litCount) {
+        if (!glow.classList.contains("lit")) {
+          glow.classList.add("lit");
+        }
+      } else {
+        if (glow.classList.contains("lit")) {
+          glow.classList.remove("lit");
+        }
+      }
+    });
+  }
+
+  // ===== Color interpolation helper =====
+  function interpolateColor(c1, c2, t) {
+    var r = Math.round(c1.r + (c2.r - c1.r) * t);
+    var g = Math.round(c1.g + (c2.g - c1.g) * t);
+    var b = Math.round(c1.b + (c2.b - c1.b) * t);
+    return "rgb(" + r + ", " + g + ", " + b + ")";
+  }
+
+  // ===== Visibility handling =====
+  function onVisibilityChange() {
+    state.isVisible = !document.hidden;
+    if (state.isVisible) {
+      // Resume animations
+      if (!state.reducedMotion && !state.isTouch) {
+        state.rafId = requestAnimationFrame(updateCursor);
+      }
+    } else {
+      // Pause animations
+      if (state.rafId) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+    }
+  }
+
+  // ===== Resize handling =====
+  function onResize() {
+    if (state.resizeTimeout) clearTimeout(state.resizeTimeout);
+    state.resizeTimeout = setTimeout(function() {
+      var wasMobile = state.isMobile;
+      state.isMobile = window.innerWidth <= 768;
+
+      if (wasMobile !== state.isMobile) {
+        // Reset layout
+        if (state.isMobile) {
+          app.style.display = "flex";
+          app.style.flexDirection = "column";
+          dayColumn.style.flex = "0 0 50%";
+          nightColumn.style.flex = "0 0 50%";
+          app.style.removeProperty("--day-width");
+          app.style.removeProperty("--night-width");
+        } else {
+          app.style.display = "grid";
+          app.style.removeProperty("flex-direction");
+          dayColumn.style.removeProperty("flex");
+          nightColumn.style.removeProperty("flex");
+          setDividerPosition(50);
+        }
+        state.dividerPosition = 50;
+      }
+
+      // Re-check scenes
+      updateOnScroll();
+    }, 150);
+  }
+
+  // ===== Init =====
+  function init() {
+    // Check touch / reduced motion
+    state.isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+    state.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    state.isMobile = window.innerWidth <= 768;
+
+    // Stars
+    generateStars();
+
+    // Initial layout
+    if (state.isMobile) {
+      app.style.display = "flex";
+      app.style.flexDirection = "column";
+      dayColumn.style.flex = "0 0 50%";
+      nightColumn.style.flex = "0 0 50%";
+      duskDivider.style.cursor = "ns-resize";
+    } else {
+      setDividerPosition(50);
+    }
+
+    // Events
+    duskDivider.addEventListener("mousedown", onDragStart);
+    duskDivider.addEventListener("touchstart", onDragStart, { passive: false });
+
+    if (!state.isTouch && !state.reducedMotion) {
+      document.addEventListener("mousemove", onMouseMove, { passive: true });
+      state.rafId = requestAnimationFrame(updateCursor);
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("resize", onResize);
+
+    // Initial scroll update
+    updateOnScroll();
+
+    // Remove loading class for intro animation
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        if (!state.reducedMotion) {
+          app.classList.remove("loading");
+        } else {
+          app.classList.remove("loading");
+        }
+      });
+    });
+
+    // Number count-up for timestamps
+    if (!state.reducedMotion) {
+      initTimestampAnimation();
+    }
+  }
+
+  // ===== Timestamp count-up animation =====
+  function initTimestampAnimation() {
+    var timestamps = document.querySelectorAll(".scene-time");
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var el = entry.target;
+          if (el.dataset.animated) return;
+          el.dataset.animated = "true";
+          animateTimestamp(el);
+        }
+      });
+    }, { threshold: 0.5 });
+
+    timestamps.forEach(function(ts) {
+      observer.observe(ts);
+    });
+  }
+
+  function animateTimestamp(el) {
+    var text = el.textContent.trim();
+    var parts = text.split(":");
+    if (parts.length < 2) return;
+    var targetHour = parseInt(parts[0], 10);
+    var targetMin = parseInt(parts[1], 10);
+    if (isNaN(targetHour) || isNaN(targetMin)) return;
+
+    var duration = 800;
+    var startTime = null;
+    var startHour = 0;
+    var startMin = 0;
+
+    function step(timestamp) {
+      if (!state.isVisible) return;
+      if (!startTime) startTime = timestamp;
+      var elapsed = timestamp - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+      // ease-out
+      var eased = 1 - Math.pow(1 - progress, 2);
+
+      var currentHour = Math.floor(startHour + (targetHour - startHour) * eased);
+      var currentMin = Math.floor(startMin + (targetMin - startMin) * eased);
+
+      var hourStr = currentHour < 10 ? "0" + currentHour : "" + currentHour;
+      var minStr = currentMin < 10 ? "0" + currentMin : "" + currentMin;
+
+      el.textContent = hourStr + " : " + minStr;
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        el.textContent = text;
+      }
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  // ===== Cleanup on unload =====
+  function cleanup() {
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+    }
+    duskDivider.removeEventListener("mousedown", onDragStart);
+    duskDivider.removeEventListener("touchstart", onDragStart);
+    document.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("scroll", onScroll);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.removeEventListener("resize", onResize);
+  }
+
+  window.addEventListener("beforeunload", cleanup);
+  window.addEventListener("pagehide", cleanup);
+
+  // Start
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
