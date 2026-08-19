@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>老式电闸刀拉闸开关</title>
+<style>
+  :root {
+    --industrial-black: #15130F;
+    --iron-dark: #1C1A16;
+    --iron-mid: #2A2721;
+    --brass: #B8893A;
+    --brass-dark: #8A6825;
+    --brass-light: #D4A956;
+    --ceramic: #EDE6D8;
+    --ceramic-shadow: #C8C0B0;
+    --bakelite: #1A1410;
+    --bakelite-edge: #2E2620;
+    --arc: #CFE4FF;
+    --arc-bright: #FFFFFF;
+    --filament-warm: #FFB64D;
+    --filament-hot: #FFE2A8;
+    --filament-dim: #6A2E15;
+    --text-muted: #8A8275;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0C0A08;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    color: var(--ceramic);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Custom cursor */
+  #cursor-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  #cursor-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 40px;
+    height: 40px;
+    transition: transform 0.05s linear, width 0.15s ease, height 0.15s ease;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+    will-change: transform;
+  }
+
+  body {
+    cursor: none;
+  }
+
+  body.cursor-drag #cursor-svg {
+    width: 52px;
+    height: 52px;
+  }
+
+  body.cursor-near #cursor-svg {
+    width: 46px;
+    height: 46px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body { cursor: default; }
+    #cursor-layer { display: none; }
+  }
+
+  /* Stage */
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(40, 32, 24, 0.5) 0%, transparent 60%),
+      linear-gradient(180deg, #120F0B 0%, #0C0A08 100%);
+  }
+
+  .stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent 39px,
+        rgba(255,255,255,0.012) 39px,
+        rgba(255,255,255,0.012) 40px
+      ),
+      repeating-linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 39px,
+        rgba(255,255,255,0.012) 39px,
+        rgba(255,255,255,0.012) 40px
+      );
+    pointer-events: none;
+  }
+
+  .switch-assembly {
+    position: relative;
+    width: 680px;
+    max-width: 90vw;
+    aspect-ratio: 4 / 3;
+    touch-action: none;
+  }
+
+  .switch-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Label / instruction */
+  .instruction {
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    transform: translateX(-50%);
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .instruction .title {
+    color: var(--ceramic);
+    font-size: 15px;
+    letter-spacing: 0.2em;
+    margin-bottom: 6px;
+  }
+
+  .state-indicator {
+    position: absolute;
+    left: 50%;
+    top: 8%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    pointer-events: none;
+    text-transform: uppercase;
+  }
+
+  .state-indicator .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin-right: 8px;
+    vertical-align: middle;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  body.state-on .state-indicator .dot {
+    background: #FFD88A;
+    box-shadow: 0 0 8px #FFD88A, 0 0 16px rgba(255,180,80,0.4);
+  }
+
+  body.state-on .state-indicator {
+    color: var(--ceramic);
+  }
+
+  /* Arc flash overlay (canvas) */
+  #arc-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Hover hint electric field */
+  .electric-field {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  body.cursor-near .electric-field {
+    opacity: 0.5;
+  }
+
+  /* Bulb glow */
+  .bulb-glow {
+    opacity: 0;
+    transition: opacity 0.1s linear;
+  }
+
+  /* Drag hint */
+  .lever-handle {
+    cursor: grab;
+  }
+
+  body.cursor-drag .lever-handle {
+    cursor: grabbing;
+  }
+
+  /* Reduced motion fallback */
+  @media (prefers-reduced-motion: reduce) {
+    .electric-field { display: none; }
+    .bulb-glow { transition: none; }
+  }
+</style>
+</head>
+<body class="state-off">
+  <div class="stage">
+
+    <div class="switch-assembly" id="switchAssembly">
+      <canvas id="arc-canvas"></canvas>
+
+      <svg class="switch-svg" viewBox="0 0 680 510" xmlns="http://www.w3.org/2000/svg" id="switchSvg">
+        <defs>
+          <!-- Bakelite base texture -->
+          <pattern id="bakeliteTex" patternUnits="userSpaceOnUse" width="4" height="4">
+            <rect width="4" height="4" fill="#1A1410"/>
+            <circle cx="1" cy="1" r="0.5" fill="#251E18" opacity="0.5"/>
+            <circle cx="3" cy="3" r="0.4" fill="#0E0B09" opacity="0.6"/>
+          </pattern>
+
+          <linearGradient id="bakeliteGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#2E2620"/>
+            <stop offset="50%" stop-color="#1A1410"/>
+            <stop offset="100%" stop-color="#14100C"/>
+          </linearGradient>
+
+          <linearGradient id="ironGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#1C1A16"/>
+            <stop offset="30%" stop-color="#3A3630"/>
+            <stop offset="50%" stop-color="#4A453C"/>
+            <stop offset="70%" stop-color="#2A2721"/>
+            <stop offset="100%" stop-color="#15130F"/>
+          </linearGradient>
+
+          <linearGradient id="brassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#E5C076"/>
+            <stop offset="30%" stop-color="#B8893A"/>
+            <stop offset="70%" stop-color="#8A6825"/>
+            <stop offset="100%" stop-color="#6B4F1C"/>
+          </linearGradient>
+
+          <radialGradient id="ceramicGrad" cx="30%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#F5EFE3"/>
+            <stop offset="60%" stop-color="#EDE6D8"/>
+            <stop offset="100%" stop-color="#B8B0A0"/>
+          </radialGradient>
+
+          <radialGradient id="bulbGlassGrad" cx="40%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="rgba(255,250,240,0.45)"/>
+            <stop offset="40%" stop-color="rgba(230,220,200,0.15)"/>
+            <stop offset="100%" stop-color="rgba(200,190,170,0.06)"/>
+          </radialGradient>
+
+          <linearGradient id="filamentGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#6A2E15"/>
+            <stop offset="100%" stop-color="#3A1A0A"/>
+          </linearGradient>
+
+          <filter id="glowFilter" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+
+          <filter id="softGlow" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="8" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+
+          <filter id="roughEdge" x="-5%" y="-5%" width="110%" height="110%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="noise"/>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8"/>
+          </filter>
+        </defs>
+
+        <!-- Ambient back wall shadow -->
+        <ellipse cx="340" cy="430" rx="280" ry="22" fill="#000" opacity="0.4"/>
+
+        <!-- ===== BAKELITE BASE ===== -->
+        <!-- Main base plate -->
+        <g id="baseGroup">
+          <!-- back plate shadow -->
+          <rect x="70" y="130" width="540" height="290" rx="6" fill="#0A0806" opacity="0.5" transform="translate(4, 6)"/>
+          <!-- plate body -->
+          <rect x="70" y="130" width="540" height="290" rx="6" fill="url(#bakeliteGrad)"/>
+          <rect x="70" y="130" width="540" height="290" rx="6" fill="url(#bakeliteTex)" opacity="0.4"/>
+          <!-- plate edge highlight -->
+          <rect x="72" y="132" width="536" height="2" rx="1" fill="#3A3028" opacity="0.6"/>
+          <!-- mounting screws on base -->
+          <circle cx="100" cy="160" r="5" fill="#2A241E"/>
+          <circle cx="100" cy="160" r="2.5" fill="#0E0B09"/>
+          <line x1="98" y1="160" x2="102" y2="160" stroke="#000" stroke-width="0.8"/>
+          <circle cx="580" cy="160" r="5" fill="#2A241E"/>
+          <circle cx="580" cy="160" r="2.5" fill="#0E0B09"/>
+          <line x1="578" y1="160" x2="582" y2="160" stroke="#000" stroke-width="0.8"/>
+          <circle cx="100" cy="390" r="5" fill="#2A241E"/>
+          <circle cx="100" cy="390" r="2.5" fill="#0E0B09"/>
+          <line x1="98" y1="390" x2="102" y2="390" stroke="#000" stroke-width="0.8"/>
+          <circle cx="580" cy="390" r="5" fill="#2A241E"/>
+          <circle cx="580" cy="390" r="2.5" fill="#0E0B09"/>
+          <line x1="578" y1="390" x2="582" y2="390" stroke="#000" stroke-width="0.8"/>
+        </g>
+
+        <!-- ===== CERAMIC INSULATORS ===== -->
+        <!-- Bottom insulator (pivot side) -->
+        <g id="insulatorBottom">
+          <rect x="235" y="340" width="70" height="70" rx="4" fill="url(#ceramicGrad)"/>
+          <!-- ribbing -->
+          <rect x="235" y="350" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="235" y="362" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="235" y="374" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="235" y="386" width="70" height="3" fill="#C8C0B0"/>
+          <!-- top brass contact plate -->
+          <rect x="248" y="332" width="44" height="10" rx="2" fill="url(#brassGrad)"/>
+          <!-- bottom edge shadow -->
+          <rect x="235" y="404" width="70" height="6" fill="#8A8272" opacity="0.5"/>
+        </g>
+
+        <!-- Top insulator (contact side) -->
+        <g id="insulatorTop">
+          <rect x="375" y="170" width="70" height="70" rx="4" fill="url(#ceramicGrad)"/>
+          <rect x="375" y="180" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="375" y="192" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="375" y="204" width="70" height="3" fill="#C8C0B0"/>
+          <rect x="375" y="216" width="70" height="3" fill="#C8C0B0"/>
+          <!-- bottom brass contact plate (fixed) -->
+          <rect x="388" y="238" width="44" height="10" rx="2" fill="url(#brassGrad)"/>
+          <!-- brass contact jaw (U-shape where blade lands) -->
+          <g id="contactJaw">
+            <path d="M 388 248 L 388 264 Q 388 270 394 270 L 426 270 Q 432 270 432 264 L 432 248"
+                  fill="none" stroke="url(#brassGrad)" stroke-width="5" stroke-linecap="round"/>
+            <!-- contact tips inner -->
+            <circle cx="396" cy="262" r="2.5" fill="#E5C076"/>
+            <circle cx="424" cy="262" r="2.5" fill="#E5C076"/>
+          </g>
+          <rect x="375" y="234" width="70" height="6" fill="#8A8272" opacity="0.4"/>
+        </g>
+
+        <!-- ===== ELECTRIC FIELD (pre-contact hint) ===== -->
+        <g class="electric-field" id="electricField">
+          <!-- wavy lines between blade tip and contact jaw -->
+          <path d="M 0 0" id="fieldLine1" stroke="#CFE4FF" stroke-width="0.8" fill="none" opacity="0.4"/>
+          <path d="M 0 0" id="fieldLine2" stroke="#CFE4FF" stroke-width="0.6" fill="none" opacity="0.3"/>
+          <path d="M 0 0" id="fieldLine3" stroke="#CFE4FF" stroke-width="0.5" fill="none" opacity="0.2"/>
+        </g>
+
+        <!-- ===== WIRING on base ===== -->
+        <g id="wiring">
+          <!-- bottom wire from left terminal to bottom insulator -->
+          <path d="M 100 390 Q 170 395 270 390" stroke="#3A2F1E" stroke-width="3" fill="none"/>
+          <path d="M 100 390 Q 170 395 270 390" stroke="#6B5530" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <!-- top wire from right terminal to top insulator -->
+          <path d="M 580 160 Q 490 155 410 205" stroke="#3A2F1E" stroke-width="3" fill="none"/>
+          <path d="M 580 160 Q 490 155 410 205" stroke="#6B5530" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <!-- terminal caps -->
+          <rect x="93" y="383" width="14" height="14" rx="2" fill="#6B4F1C"/>
+          <rect x="95" y="385" width="10" height="10" rx="1" fill="#B8893A"/>
+          <rect x="573" y="153" width="14" height="14" rx="2" fill="#6B4F1C"/>
+          <rect x="575" y="155" width="10" height="10" rx="1" fill="#B8893A"/>
+        </g>
+
+        <!-- ===== LEVER / BLADE (rotating group) ===== -->
+        <g id="leverGroup" style="transform-origin: 270px 337px;">
+          <!-- Pivot bolt (brass) -->
+          <circle cx="270" cy="337" r="12" fill="url(#brassGrad)"/>
+          <circle cx="270" cy="337" r="7" fill="#8A6825"/>
+          <circle cx="267" cy="334" r="2" fill="#E5C076" opacity="0.8"/>
+
+          <!-- Iron blade arm -->
+          <g id="bladeArm">
+            <!-- main blade body -->
+            <rect x="263" y="100" width="14" height="237" rx="2" fill="url(#ironGrad)"/>
+            <!-- blade edge highlight -->
+            <rect x="264" y="101" width="2" height="235" fill="#5A5448" opacity="0.6"/>
+            <rect x="274" y="101" width="2" height="235" fill="#0E0C0A" opacity="0.4"/>
+            <!-- rivets along blade -->
+            <circle cx="270" cy="130" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="160" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="190" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="220" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="250" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="280" r="2.5" fill="#6B4F1C"/>
+            <circle cx="270" cy="310" r="2.5" fill="#6B4F1C"/>
+
+            <!-- blade tip contact (brass) -->
+            <g id="bladeTip">
+              <rect x="261" y="95" width="18" height="14" rx="2" fill="url(#brassGrad)"/>
+              <rect x="262" y="96" width="3" height="12" fill="#E5C076" opacity="0.7"/>
+            </g>
+          </g>
+
+          <!-- Insulated handle grip (top of lever) -->
+          <g id="leverHandle" class="lever-handle" style="cursor: grab;">
+            <!-- handle body (ceramic/wood look) -->
+            <rect x="256" y="55" width="28" height="48" rx="5" fill="#3A2E1A"/>
+            <rect x="257" y="56" width="26" height="46" rx="4" fill="#5A4528"/>
+            <!-- handle ridges -->
+            <rect x="257" y="62" width="26" height="1.5" fill="#2A1E0E" opacity="0.7"/>
+            <rect x="257" y="68" width="26" height="1.5" fill="#2A1E0E" opacity="0.7"/>
+            <rect x="257" y="74" width="26" height="1.5" fill="#2A1E0E" opacity="0.7"/>
+            <rect x="257" y="80" width="26" height="1.5" fill="#2A1E0E" opacity="0.7"/>
+            <rect x="257" y="86" width="26" height="1.5" fill="#2A1E0E" opacity="0.7"/>
+            <!-- handle top cap -->
+            <ellipse cx="270" cy="56" rx="12" ry="3" fill="#7A6038"/>
+            <!-- hit area (invisible larger) -->
+            <rect x="240" y="40" width="60" height="70" fill="transparent"/>
+          </g>
+        </g>
+
+        <!-- ===== BULB ROW (load indicators) ===== -->
+        <g id="bulbRow" transform="translate(0, 0)">
+          <!-- bulbs will be 5 in a row on top of the base -->
+          <g id="bulb1" class="bulb" data-index="0" transform="translate(110, 220)">
+            <g class="bulb-socket">
+              <rect x="-8" y="14" width="16" height="12" rx="1" fill="#2A241E"/>
+              <rect x="-7" y="16" width="14" height="2" fill="#4A4035"/>
+              <rect x="-7" y="20" width="14" height="2" fill="#1A1510"/>
+            </g>
+            <ellipse class="bulb-glass" cx="0" cy="4" rx="12" ry="14" fill="url(#bulbGlassGrad)" stroke="#3A352A" stroke-width="0.5"/>
+            <!-- filament -->
+            <g class="bulb-filament" filter="url(#glowFilter)">
+              <path d="M -5 8 Q -6 2 -3 -1 Q -1 -3 0 0 Q 1 -3 3 -1 Q 6 2 5 8"
+                    fill="none" stroke="url(#filamentGrad)" stroke-width="1" stroke-linecap="round" id="fil1"/>
+            </g>
+            <ellipse class="bulb-glow" cx="0" cy="4" rx="18" ry="20" fill="#FFD88A" opacity="0" id="glow1"/>
+          </g>
+
+          <g id="bulb2" class="bulb" data-index="1" transform="translate(180, 220)">
+            <g class="bulb-socket">
+              <rect x="-8" y="14" width="16" height="12" rx="1" fill="#2A241E"/>
+              <rect x="-7" y="16" width="14" height="2" fill="#4A4035"/>
+              <rect x="-7" y="20" width="14" height="2" fill="#1A1510"/>
+            </g>
+            <ellipse class="bulb-glass" cx="0" cy="4" rx="12" ry="14" fill="url(#bulbGlassGrad)" stroke="#3A352A" stroke-width="0.5"/>
+            <g class="bulb-filament" filter="url(#glowFilter)">
+              <path d="M -5 8 Q -6 2 -3 -1 Q -1 -3 0 0 Q 1 -3 3 -1 Q 6 2 5 8"
+                    fill="none" stroke="url(#filamentGrad)" stroke-width="1" stroke-linecap="round" id="fil2"/>
+            </g>
+            <ellipse class="bulb-glow" cx="0" cy="4" rx="18" ry="20" fill="#FFD88A" opacity="0" id="glow2"/>
+          </g>
+
+          <g id="bulb3" class="bulb" data-index="2" transform="translate(250, 220)">
+            <g class="bulb-socket">
+              <rect x="-8" y="14" width="16" height="12" rx="1" fill="#2A241E"/>
+              <rect x="-7" y="16" width="14" height="2" fill="#4A4035"/>
+              <rect x="-7" y="20" width="14" height="2" fill="#1A1510"/>
+            </g>
+            <ellipse class="bulb-glass" cx="0" cy="4" rx="12" ry="14" fill="url(#bulbGlassGrad)" stroke="#3A352A" stroke-width="0.5"/>
+            <g class="bulb-filament" filter="url(#glowFilter)">
+              <path d="M -5 8 Q -6 2 -3 -1 Q -1 -3 0 0 Q 1 -3 3 -1 Q 6 2 5 8"
+                    fill="none" stroke="url(#filamentGrad)" stroke-width="1" stroke-linecap="round" id="fil3"/>
+            </g>
+            <ellipse class="bulb-glow" cx="0" cy="4" rx="18" ry="20" fill="#FFD88A" opacity="0" id="glow3"/>
+          </g>
+
+          <g id="bulb4" class="bulb" data-index="3" transform="translate(480, 280)">
+            <g class="bulb-socket">
+              <rect x="-8" y="14" width="16" height="12" rx="1" fill="#2A241E"/>
+              <rect x="-7" y="16" width="14" height="2" fill="#4A4035"/>
+              <rect x="-7" y="20" width="14" height="2" fill="#1A1510"/>
+            </g>
+            <ellipse class="bulb-glass" cx="0" cy="4" rx="12" ry="14" fill="url(#bulbGlassGrad)" stroke="#3A352A" stroke-width="0.5"/>
+            <g class="bulb-filament" filter="url(#glowFilter)">
+              <path d="M -5 8 Q -6 2 -3 -1 Q -1 -3 0 0 Q 1 -3 3 -1 Q 6 2 5 8"
+                    fill="none" stroke="url(#filamentGrad)" stroke-width="1" stroke-linecap="round" id="fil4"/>
+            </g>
+            <ellipse class="bulb-glow" cx="0" cy="4" rx="18" ry="20" fill="#FFD88A" opacity="0" id="glow4"/>
+          </g>
+
+          <g id="bulb5" class="bulb" data-index="4" transform="translate(550, 320)">
+            <g class="bulb-socket">
+              <rect x="-8" y="14" width="16" height="12" rx="1" fill="#2A241E"/>
+              <rect x="-7" y="16" width="14" height="2" fill="#4A4035"/>
+              <rect x="-7" y="20" width="14" height="2" fill="#1A1510"/>
+            </g>
+            <ellipse class="bulb-glass" cx="0" cy="4" rx="12" ry="14" fill="url(#bulbGlassGrad)" stroke="#3A352A" stroke-width="0.5"/>
+            <g class="bulb-filament" filter="url(#glowFilter)">
+              <path d="M -5 8 Q -6 2 -3 -1 Q -1 -3 0 0 Q 1 -3 3 -1 Q 6 2 5 8"
+                    fill="none" stroke="url(#filamentGrad)" stroke-width="1" stroke-linecap="round" id="fil5"/>
+            </g>
+            <ellipse class="bulb-glow" cx="0" cy="4" rx="18" ry="20" fill="#FFD88A" opacity="0" id="glow5"/>
+          </g>
+        </g>
+
+        <!-- Wire connecting bulbs (series-ish) -->
+        <g id="bulbWiring" opacity="0.7">
+          <path d="M 110 234 L 110 260 Q 110 270 120 270 L 170 270 Q 180 270 180 260 L 180 234"
+                stroke="#3A2F1E" stroke-width="2" fill="none"/>
+          <path d="M 180 234 L 180 250 Q 180 258 190 258 L 240 258 Q 250 258 250 250 L 250 234"
+                stroke="#3A2F1E" stroke-width="2" fill="none"/>
+          <path d="M 250 234 L 250 280 Q 250 295 270 295 L 360 295"
+                stroke="#3A2F1E" stroke-width="2" fill="none"/>
+          <path d="M 410 295 L 480 295 L 480 294"
+                stroke="#3A2F1E" stroke-width="2" fill="none"/>
+          <path d="M 480 294 L 480 285 Q 480 275 490 275 L 540 275 Q 550 275 550 285 L 550 318"
+                stroke="#3A2F1E" stroke-width="2" fill="none"/>
+        </g>
+
+        <!-- Contact spark point marker (for arc canvas alignment) -->
+        <circle id="contactPoint" cx="410" cy="262" r="0" fill="transparent"/>
+        <circle id="pivotPoint" cx="270" cy="337" r="0" fill="transparent"/>
+      </svg>
+
+      <div class="state-indicator">
+        <span class="dot"></span>
+        <span id="stateText">电路断开</span>
+      </div>
+
+      <div class="instruction">
+        <div class="title">拖动闸刀拉杆</div>
+        <div>越过死点 · 电弧亮起 · 钨丝渐明</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom cursor layer -->
+  <div id="cursor-layer">
+    <svg id="cursor-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <!-- Screwdriver -->
+      <g transform="rotate(45 20 20)">
+        <!-- handle -->
+        <rect x="17" y="6" width="6" height="16" rx="2" fill="#8B3A1A"/>
+        <rect x="17.5" y="7" width="1.5" height="14" fill="#C25A2C" opacity="0.6"/>
+        <!-- handle ridges -->
+        <rect x="17" y="9" width="6" height="1" fill="#5A2410" opacity="0.7"/>
+        <rect x="17" y="12" width="6" height="1" fill="#5A2410" opacity="0.7"/>
+        <rect x="17" y="15" width="6" height="1" fill="#5A2410" opacity="0.7"/>
+        <rect x="17" y="18" width="6" height="1" fill="#5A2410" opacity="0.7"/>
+        <!-- metal shaft -->
+        <rect x="18.5" y="22" width="3" height="10" fill="#888"/>
+        <rect x="18.5" y="22" width="1" height="10" fill="#AAA"/>
+        <!-- flat tip -->
+        <polygon points="18.5,32 21.5,32 20.5,35 19.5,35" fill="#666"/>
+      </g>
+    </svg>
+  </div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ====== CONFIG ======
+  var CONFIG = {
+    // Lever geometry (SVG coordinates)
+    pivotX: 270,
+    pivotY: 337,
+    leverLength: 282, // from pivot to tip approximately
+    // Angle range
+    angleOff: -55,   // degrees, lever up-left (disconnected)
+    angleOn: 32,     // degrees, lever down-right (engaged in jaw)
+    angleDead: 10,   // dead-point threshold — past this, snap engages
+    // Physics
+    springK: 0.12,    // return spring strength
+    damping: 0.82,    // velocity damping per frame
+    mass: 1.0,
+    snapForce: 0.55,  // magnetic pull force past dead point
+    // Thermal
+    filamentHeatSpeed: 0.012,   // per frame at full power
+    filamentCoolSpeed: 0.006,   // per frame when off
+    filamentGlowExponent: 2.2,  // brightness curve
+    // Bulb stagger
+    bulbCount: 5,
+    bulbStagger: 0.15, // delay factor between bulbs (0-1)
+    // Arc
+    arcParticleCount: 24,
+    arcParticleSpeed: 3.5,
+    // Interaction
+    nearDistance: 100, // px from handle to trigger "near" state
+  };
+
+  // ====== STATE ======
+  var state = {
+    angle: CONFIG.angleOff,       // current lever angle
+    targetAngle: CONFIG.angleOff, // angle the user is pulling to
+    angularVel: 0,
+    isDragging: false,
+    isEngaged: false,             // past dead point / latched on
+    dragOffsetAngle: 0,           // offset between grab point and lever angle
+    filamentHeat: [0, 0, 0, 0, 0], // 0..1 heat for each bulb
+    arcParticles: [],
+    lastArcTime: 0,
+    mouseX: 0,
+    mouseY: 0,
+    svgMouseX: 0,
+    svgMouseY: 0,
+    isNear: false,
+    rafId: null,
+    running: true,
+    shakeTime: 0,
+    shakeAmp: 0,
+  };
+
+  // ====== DOM REFS ======
+  var body = document.body;
+  var leverGroup = document.getElementById('leverGroup');
+  var switchSvg = document.getElementById('switchSvg');
+  var switchAssembly = document.getElementById('switchAssembly');
+  var leverHandle = document.getElementById('leverHandle');
+  var stateText = document.getElementById('stateText');
+  var arcCanvas = document.getElementById('arc-canvas');
+  var arcCtx = arcCanvas.getContext('2d');
+  var cursorSvg = document.getElementById('cursor-svg');
+  var cursorLayer = document.getElementById('cursor-layer');
+  var contactPointEl = document.getElementById('contactPoint');
+  var pivotPointEl = document.getElementById('pivotPoint');
+  var fieldLines = [
+    document.getElementById('fieldLine1'),
+    document.getElementById('fieldLine2'),
+    document.getElementById('fieldLine3'),
+  ];
+
+  // Reduced motion check
+  var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ====== SVG COORD HELPERS ======
+  var svgRect = null;
+  function updateSvgRect() {
+    svgRect = switchSvg.getBoundingClientRect();
+  }
+  function clientToSvg(cx, cy) {
+    if (!svgRect) updateSvgRect();
+    var vbx = 680, vby = 510;
+    return {
+      x: (cx - svgRect.left) * (vbx / svgRect.width),
+      y: (cy - svgRect.top) * (vby / svgRect.height)
+    };
+  }
+
+  // ====== CANVAS SETUP ======
+  function setupCanvas() {
+    var rect = switchAssembly.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    arcCanvas.width = rect.width * dpr;
+    arcCanvas.height = rect.height * dpr;
+    arcCanvas.style.width = rect.width + 'px';
+    arcCanvas.style.height = rect.height + 'px';
+    arcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ====== ANGLE HELPERS ======
+  function angleBetween(ox, oy, px, py) {
+    return Math.atan2(py - oy, px - ox) * 180 / Math.PI;
+  }
+
+  function clamp(v, a, b) {
+    return v < a ? a : (v > b ? b : v);
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  // ====== LEVER TIP POSITION ======
+  function getLeverTipPos() {
+    var rad = state.angle * Math.PI / 180;
+    // Lever extends upward from pivot; tip is at (pivotX + sin*len, pivotY - cos*len) when angle=0
+    // We'll model: at angle 0 the lever points straight up.
+    // Positive angle = clockwise (toward contact jaw on right-down).
+    var tipOffsetYFromPivot = -242; // blade tip is ~242px above pivot in SVG (at rest angleOff ~ -55deg in our model)
+    // Actually let's compute: the tip is at y=95, pivot at y=337 => 242px above. x=270 for both.
+    // So in "straight up" position (angle 0), tip is at (pivotX, pivotY - 242).
+    // Rotate by angle (clockwise = +angle in screen coords where y increases downward).
+    var tipLen = 242;
+    var radPos = rad - Math.PI / 2; // 0 angle means up (-90deg in standard atan2)
+    return {
+      x: CONFIG.pivotX + Math.cos(radPos) * tipLen,
+      y: CONFIG.pivotY + Math.sin(radPos) * tipLen
+    };
+  }
+
+  // ====== CUSTOM CURSOR ======
+  function updateCursorPosition(x, y) {
+    state.mouseX = x;
+    state.mouseY = y;
+    if (!prefersReduced) {
+      cursorSvg.style.transform = 'translate(' + (x - 20) + 'px, ' + (y - 20) + 'px)';
+    }
+    var svgPt = clientToSvg(x, y);
+    state.svgMouseX = svgPt.x;
+    state.svgMouseY = svgPt.y;
+  }
+
+  function checkNearHandle() {
+    if (state.isDragging || prefersReduced) {
+      state.isNear = false;
+      body.classList.remove('cursor-near');
+      return;
+    }
+    // Compute handle position in SVG space
+    var rad = state.angle * Math.PI / 180;
+    var radPos = rad - Math.PI / 2;
+    var handleLen = 270; // approx from pivot to handle center
+    var hx = CONFIG.pivotX + Math.cos(radPos) * handleLen;
+    var hy = CONFIG.pivotY + Math.sin(radPos) * handleLen;
+    var dx = state.svgMouseX - hx;
+    var dy = state.svgMouseY - hy;
+    var distSvg = Math.sqrt(dx*dx + dy*dy);
+    // convert nearDistance to svg space roughly
+    var nearSvg = CONFIG.nearDistance * (680 / (svgRect ? svgRect.width : 680));
+    var near = distSvg < nearSvg;
+    if (near !== state.isNear) {
+      state.isNear = near;
+      body.classList.toggle('cursor-near', near);
+    }
+  }
+
+  // ====== DRAG LOGIC ======
+  function startDrag(clientX, clientY) {
+    if (state.isEngaged) {
+      // If engaged, allow pulling from the current on-angle
+      state.isEngaged = false;
+      body.classList.remove('state-on');
+      body.classList.add('state-off');
+      stateText.textContent = '电路断开';
+    }
+    state.isDragging = true;
+    body.classList.add('cursor-drag');
+    body.classList.remove('cursor-near');
+
+    var svgPt = clientToSvg(clientX, clientY);
+    var mouseAngle = angleBetween(CONFIG.pivotX, CONFIG.pivotY, svgPt.x, svgPt.y) + 90;
+    // mouseAngle: at straight up = 0, clockwise positive
+    state.dragOffsetAngle = state.angle - mouseAngle;
+    state.angularVel = 0;
+  }
+
+  function updateDrag(clientX, clientY) {
+    if (!state.isDragging) return;
+    var svgPt = clientToSvg(clientX, clientY);
+    var mouseAngle = angleBetween(CONFIG.pivotX, CONFIG.pivotY, svgPt.x, svgPt.y) + 90;
+    var target = mouseAngle + state.dragOffsetAngle;
+    // Clamp between off and on range with some overshoot allowance
+    state.targetAngle = clamp(target, CONFIG.angleOff - 10, CONFIG.angleOn + 15);
+  }
+
+  function endDrag() {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+    body.classList.remove('cursor-drag');
+    // Check if engaged (past dead point toward on)
+    if (state.angle > CONFIG.angleDead) {
+      state.isEngaged = true;
+      state.targetAngle = CONFIG.angleOn;
+      body.classList.remove('state-off');
+      body.classList.add('state-on');
+      stateText.textContent = '电路接通';
+      // Trigger arc flash
+      triggerArc();
+      // Trigger engagement shake
+      state.shakeTime = 0.15;
+      state.shakeAmp = 1.2;
+    } else {
+      state.isEngaged = false;
+      state.targetAngle = CONFIG.angleOff;
+      // small arc if we were close
+      if (state.angle > CONFIG.angleDead - 15) {
+        triggerArc(true);
+      }
+    }
+  }
+
+  // ====== ARC PARTICLES ======
+  function triggerArc(weak) {
+    if (prefersReduced) return;
+    var tip = getLeverTipPos();
+    var count = weak ? 8 : CONFIG.arcParticleCount;
+    var speed = weak ? 1.5 : CONFIG.arcParticleSpeed;
+    for (var i = 0; i < count; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var spd = speed * (0.3 + Math.random() * 0.9);
+      state.arcParticles.push({
+        x: tip.x,
+        y: tip.y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1.0,
+        decay: 0.02 + Math.random() * 0.03,
+        size: 0.8 + Math.random() * 2.5,
+        isMain: i < 3 && !weak,
+      });
+    }
+    // main flash bolt
+    state.arcFlash = weak ? 0.3 : 1.0;
+  }
+
+  function updateParticles(dt) {
+    var parts = state.arcParticles;
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.vy += 0.02; // slight gravity
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        parts.splice(i, 1);
+      }
+    }
+    if (state.arcFlash > 0) {
+      state.arcFlash -= 0.08;
+      if (state.arcFlash < 0) state.arcFlash = 0;
+    }
+  }
+
+  function drawParticles() {
+    arcCtx.clearRect(0, 0, arcCanvas.width / (window.devicePixelRatio||1), arcCanvas.height / (window.devicePixelRatio||1));
+
+    if (prefersReduced) return;
+
+    var rect = switchAssembly.getBoundingClientRect();
+    var scaleX = rect.width / 680;
+    var scaleY = rect.height / 510;
+
+    // main flash glow
+    if (state.arcFlash > 0) {
+      var tip = getLeverTipPos();
+      var tx = tip.x * scaleX;
+      var ty = tip.y * scaleY;
+      var grad = arcCtx.createRadialGradient(tx, ty, 0, tx, ty, 80 * state.arcFlash);
+      grad.addColorStop(0, 'rgba(207, 228, 255, ' + (0.7 * state.arcFlash) + ')');
+      grad.addColorStop(0.4, 'rgba(207, 228, 255, ' + (0.3 * state.arcFlash) + ')');
+      grad.addColorStop(1, 'rgba(207, 228, 255, 0)');
+      arcCtx.fillStyle = grad;
+      arcCtx.fillRect(tx - 100, ty - 100, 200, 200);
+
+      // flash bolt line to jaw
+      var jawX = 410 * scaleX;
+      var jawY = 262 * scaleY;
+      arcCtx.beginPath();
+      arcCtx.moveTo(tx, ty);
+      var segs = 6;
+      for (var s = 1; s <= segs; s++) {
+        var tt = s / segs;
+        var bx = tx + (jawX - tx) * tt + (Math.random() - 0.5) * 14 * state.arcFlash;
+        var by = ty + (jawY - ty) * tt + (Math.random() - 0.5) * 14 * state.arcFlash;
+        arcCtx.lineTo(bx, by);
+      }
+      arcCtx.strokeStyle = 'rgba(255, 255, 255, ' + (0.9 * state.arcFlash) + ')';
+      arcCtx.lineWidth = 2.5;
+      arcCtx.shadowColor = '#CFE4FF';
+      arcCtx.shadowBlur = 16;
+      arcCtx.stroke();
+      arcCtx.shadowBlur = 0;
+    }
+
+    // particles
+    for (var i = 0; i < state.arcParticles.length; i++) {
+      var p = state.arcParticles[i];
+      var px = p.x * scaleX;
+      var py = p.y * scaleY;
+      var alpha = p.life;
+      var r = p.size * (0.6 + p.life * 0.4);
+
+      if (p.isMain) {
+        arcCtx.beginPath();
+        arcCtx.arc(px, py, r * 3, 0, Math.PI * 2);
+        arcCtx.fillStyle = 'rgba(207, 228, 255, ' + (alpha * 0.3) + ')';
+        arcCtx.fill();
+      }
+
+      arcCtx.beginPath();
+      arcCtx.arc(px, py, r, 0, Math.PI * 2);
+      // blue-white core
+      arcCtx.fillStyle = p.isMain
+        ? 'rgba(255, 255, 255, ' + alpha + ')'
+        : 'rgba(220, 235, 255, ' + alpha + ')';
+      arcCtx.fill();
+    }
+  }
+
+  // ====== THERMAL / BULBS ======
+  function updateFilaments(dt) {
+    // Power to bulbs: full when engaged, else proportional to closeness to contact
+    var closeness = 0;
+    if (state.isEngaged) {
+      closeness = 1;
+    } else {
+      // proximity: how close is blade tip to jaw?
+      var tip = getLeverTipPos();
+      var jawX = 410, jawY = 262;
+      var dx = tip.x - jawX;
+      var dy = tip.y - jawY;
+      var dist = Math.sqrt(dx*dx + dy*dy);
+      // When very close (< 40 svg units), start pre-heating
+      closeness = clamp(1 - dist / 60, 0, 0.35); // max 35% brightness from proximity
+    }
+
+    for (var i = 0; i < CONFIG.bulbCount; i++) {
+      var targetHeat = closeness;
+      // stagger: bulb 0 responds first, bulb 4 last
+      // The stagger is achieved by reducing effective target for later bulbs
+      // based on how "established" the power is.
+      var staggerDelay = i * CONFIG.bulbStagger;
+      var effectiveTarget = clamp((targetHeat - staggerDelay) / (1 - staggerDelay), 0, 1);
+
+      if (effectiveTarget > state.filamentHeat[i]) {
+        // heating up
+        state.filamentHeat[i] += CONFIG.filamentHeatSpeed * (effectiveTarget - state.filamentHeat[i]) * 8;
+        if (state.filamentHeat[i] > effectiveTarget) state.filamentHeat[i] = effectiveTarget;
+      } else {
+        // cooling down
+        state.filamentHeat[i] -= CONFIG.filamentCoolSpeed * (state.filamentHeat[i] - effectiveTarget) * 6;
+        if (state.filamentHeat[i] < effectiveTarget) state.filamentHeat[i] = effectiveTarget;
+      }
+    }
+  }
+
+  function renderBulbs() {
+    for (var i = 0; i < CONFIG.bulbCount; i++) {
+      var heat = state.filamentHeat[i];
+      var glowEl = document.getElementById('glow' + (i+1));
+      var filEl = document.getElementById('fil' + (i+1));
+      var heatPow = Math.pow(heat, CONFIG.filamentGlowExponent);
+
+      // Glow opacity
+      glowEl.setAttribute('opacity', (heatPow * 0.85).toFixed(3));
+      glowEl.setAttribute('fill', heat > 0.6 ? '#FFE8B0' : '#FFC870');
+
+      // Filament color - from dark red to bright white-yellow
+      if (heat < 0.01) {
+        filEl.setAttribute('stroke', '#3A1A0A');
+      } else if (heat < 0.3) {
+        // dim red-orange
+        var t = heat / 0.3;
+        filEl.setAttribute('stroke', 'rgb(' + Math.round(106 + 50*t) + ',' + Math.round(46 + 30*t) + ',' + Math.round(21 + 10*t) + ')');
+      } else if (heat < 0.7) {
+        // orange to yellow
+        var t = (heat - 0.3) / 0.4;
+        filEl.setAttribute('stroke', 'rgb(' + Math.round(255) + ',' + Math.round(120 + 100*t) + ',' + Math.round(40 + 50*t) + ')');
+      } else {
+        // yellow to white
+        var t = (heat - 0.7) / 0.3;
+        filEl.setAttribute('stroke', 'rgb(255,' + Math.round(220 + 35*t) + ',' + Math.round(140 + 115*t) + ')');
+      }
+
+      // Glow size scales with heat
+      var glowSize = 12 + heatPow * 22;
+      glowEl.setAttribute('rx', glowSize.toFixed(1));
+      glowEl.setAttribute('ry', (glowSize * 1.1).toFixed(1));
+    }
+  }
+
+  // ====== ELECTRIC FIELD LINES ======
+  function updateElectricField() {
+    if (prefersReduced) return;
+    var tip = getLeverTipPos();
+    var jawX = 410, jawY = 262;
+    var dx = jawX - tip.x;
+    var dy = jawY - tip.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+
+    // Flickering field lines — only visible when close
+    var visibility = clamp(1 - dist / 180, 0, 1);
+    if (!state.isNear && !state.isDragging) visibility *= 0.3;
+
+    var fieldGroup = document.getElementById('electricField');
+    fieldGroup.setAttribute('opacity', (visibility * 0.6).toFixed(3));
+
+    if (visibility < 0.01) return;
+
+    // 3 wavy lines between tip and jaw
+    var midX = (tip.x + jawX) / 2;
+    var midY = (tip.y + jawY) / 2;
+    var perpX = -dy / dist * 1;
+    var perpY = dx / dist * 1;
+    var t = Date.now() * 0.006;
+    var waveAmp = 3 + visibility * 5;
+
+    for (var i = 0; i < 3; i++) {
+      var phase = t + i * 2.1;
+      var offset = (i - 1) * 4;
+      var cp1x = midX + perpX * offset + Math.sin(phase) * waveAmp;
+      var cp1y = midY + perpY * offset + Math.cos(phase * 1.3) * waveAmp;
+      var cp2x = midX - perpX * offset * 0.5 + Math.cos(phase * 0.7) * waveAmp * 0.8;
+      var cp2y = midY - perpY * offset * 0.5 + Math.sin(phase * 1.1) * waveAmp * 0.8;
+      var d = 'M ' + tip.x.toFixed(1) + ' ' + tip.y.toFixed(1) +
+              ' C ' + cp1x.toFixed(1) + ' ' + cp1y.toFixed(1) +
+              ', ' + cp2x.toFixed(1) + ' ' + cp2y.toFixed(1) +
+              ', ' + jawX.toFixed(1) + ' ' + jawY.toFixed(1);
+      fieldLines[i].setAttribute('d', d);
+    }
+  }
+
+  // ====== PHYSICS STEP ======
+  function physicsStep() {
+    if (state.isDragging) {
+      // User is dragging — apply spring toward target angle with resistance
+      var diff = state.targetAngle - state.angle;
+      // Resistance increases near dead point
+      var distToDead = Math.abs(state.angle - CONFIG.angleDead);
+      var resistance = 1.0;
+      if (distToDead < 15) {
+        // Higher resistance near dead point
+        resistance = 0.5 + (distToDead / 15) * 0.5;
+      }
+      // Direct position tracking with filtering (weight feel)
+      state.angularVel += diff * 0.35 * resistance;
+      state.angularVel *= CONFIG.damping;
+      state.angle += state.angularVel;
+
+      // Clamp
+      if (state.angle < CONFIG.angleOff - 5) {
+        state.angle = CONFIG.angleOff - 5;
+        state.angularVel *= -0.3;
+      }
+      if (state.angle > CONFIG.angleOn + 10) {
+        state.angle = CONFIG.angleOn + 10;
+        state.angularVel *= -0.3;
+      }
+    } else if (state.isEngaged) {
+      // Engaged — snap to on position with slight overshoot/bounce
+      var diff = CONFIG.angleOn - state.angle;
+      state.angularVel += diff * CONFIG.springK * 1.5;
+      state.angularVel *= 0.78;
+      state.angle += state.angularVel;
+
+      // Small continuous micro-tremor when engaged (contact vibration)
+      if (Math.abs(state.angularVel) < 0.1) {
+        state.angle += (Math.random() - 0.5) * 0.08;
+      }
+    } else {
+      // Not dragging, not engaged — spring back to off position
+      var diff = CONFIG.angleOff - state.angle;
+      state.angularVel += diff * CONFIG.springK;
+      state.angularVel *= CONFIG.damping;
+      state.angle += state.angularVel;
+
+      // If very close to rest, settle
+      if (Math.abs(diff) < 0.05 && Math.abs(state.angularVel) < 0.01) {
+        state.angle = CONFIG.angleOff;
+        state.angularVel = 0;
+      }
+    }
+  }
+
+  // ====== RENDER LEVER ======
+  function renderLever() {
+    var displayAngle = state.angle;
+    // Add shake after snap-in
+    if (state.shakeTime > 0) {
+      displayAngle += (Math.random() - 0.5) * state.shakeAmp;
+      state.shakeTime -= 1/60;
+      state.shakeAmp *= 0.88;
+      if (state.shakeTime < 0) {
+        state.shakeTime = 0;
+        state.shakeAmp = 0;
+      }
+    }
+    leverGroup.style.transform = 'rotate(' + displayAngle + 'deg)';
+    leverGroup.style.transformOrigin = CONFIG.pivotX + 'px ' + CONFIG.pivotY + 'px';
+  }
+
+  // ====== MAIN LOOP ======
+  var lastTime = 0;
+  function animate(now) {
+    if (!state.running) return;
+
+    var dt = (now - lastTime) / 1000;
+    if (dt > 0.05) dt = 0.05; // cap delta
+    lastTime = now;
+
+    checkNearHandle();
+    physicsStep();
+    updateElectricField();
+    updateFilaments(dt);
+    updateParticles(dt);
+
+    renderLever();
+    renderBulbs();
+    drawParticles();
+
+    state.rafId = requestAnimationFrame(animate);
+  }
+
+  // ====== VISIBILITY PAUSING ======
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      state.running = false;
+      if (state.rafId) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+    } else {
+      if (!state.rafId) {
+        state.running = true;
+        lastTime = performance.now();
+        state.rafId = requestAnimationFrame(animate);
+      }
+    }
+  });
+
+  window.addEventListener('beforeunload', function() {
+    state.running = false;
+    if (state.rafId) cancelAnimationFrame(state.rafId);
+  });
+
+  // ====== EVENT BINDING ======
+  function bindEvents() {
+    // Mouse
+    document.addEventListener('mousemove', function(e) {
+      updateCursorPosition(e.clientX, e.clientY);
+      updateDrag(e.clientX, e.clientY);
+    });
+
+    leverHandle.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      startDrag(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mouseup', function() {
+      endDrag();
+    });
+
+    // Touch
+    leverHandle.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      var t = e.touches[0];
+      updateCursorPosition(t.clientX, t.clientY);
+      startDrag(t.clientX, t.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+      var t = e.touches[0];
+      updateCursorPosition(t.clientX, t.clientY);
+      updateDrag(t.clientX, e.touches[0].clientY);
+    }, { passive: true });
+
+    document.addEventListener('touchend', function() {
+      endDrag();
+    });
+
+    // Resize
+    window.addEventListener('resize', function() {
+      updateSvgRect();
+      setupCanvas();
+    });
+
+    // Keyboard: space to toggle
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (state.isEngaged) {
+          state.isEngaged = false;
+          state.isDragging = false;
+          body.classList.remove('state-on');
+          body.classList.add('state-off');
+          stateText.textContent = '电路断开';
+          state.targetAngle = CONFIG.angleOff;
+          triggerArc(true);
+        } else {
+          state.isEngaged = true;
+          state.isDragging = false;
+          body.classList.remove('state-off');
+          body.classList.add('state-on');
+          stateText.textContent = '电路接通';
+          state.targetAngle = CONFIG.angleOn;
+          triggerArc();
+          state.shakeTime = 0.15;
+          state.shakeAmp = 1.2;
+        }
+      }
+    });
+  }
+
+  // ====== INIT ======
+  function init() {
+    updateSvgRect();
+    setupCanvas();
+    bindEvents();
+    // Set initial lever position
+    state.angle = CONFIG.angleOff;
+    renderLever();
+    renderBulbs();
+    // start animation
+    lastTime = performance.now();
+    state.rafId = requestAnimationFrame(animate);
+  }
+
+  // Wait for DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Announce upgrade capability
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch(e) {}
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+})();
+</script>
+</body>
+</html>
