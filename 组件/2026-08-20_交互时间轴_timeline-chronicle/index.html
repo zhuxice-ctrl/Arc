@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>驿路编年 · 交互时间轴组件 V3</title>
+<meta name="creative-medium" content="interactive-prototype">
+<meta name="description" content="生产级可复用交互时间轴组件——纵向轴线、节点三态、异步详情、全键盘操作、CSS 变量主题化">
+<style>
+/* ================================================================
+   驿路编年 Timeline 组件样式
+   可整块抽取：从 BEGIN 到 END 之间为组件 CSS
+   ================================================================ */
+/* --- BEGIN Timeline Component CSS --- */
+
+:root {
+  /* 组件主题变量 */
+  --tl-bg: #FAF6EE;           /* 暖纸底色 */
+  --tl-text: #2B2620;         /* 墨黑文字 */
+  --tl-text-soft: #6B6256;    /* 次级文字 */
+  --tl-text-mute: #A39B8B;    /* 灰弱文字 */
+  --tl-axis-color: #D8CFC0;   /* 轴线色 */
+  --tl-axis-active: #4A7C59;  /* 轴线激活段（竹青） */
+  --tl-node-completed: #4A7C59;  /* completed 节点 竹青 */
+  --tl-node-current: #B4432F;    /* current 节点 赭红 */
+  --tl-node-upcoming: #A39B8B;   /* upcoming 节点 灰 */
+  --tl-accent: #B4432F;          /* 强调色 赭红 */
+  --tl-panel-bg: #FFFDF8;        /* 详情面板底色 */
+  --tl-panel-border: #E8DFCF;    /* 面板边框 */
+  --tl-panel-shadow: 0 2px 12px rgba(43, 38, 32, 0.08);
+  --tl-radius: 4px;
+  --tl-radius-lg: 6px;
+  --tl-duration: 300ms;
+  --tl-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tl-focus-ring: 2px solid #B4432F;
+  --tl-focus-offset: 3px;
+  --tl-font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --tl-font-serif: "Noto Serif SC", "Songti SC", "Source Han Serif SC", "SimSun", Georgia, serif;
+  --tl-font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+.tl-timeline {
+  position: relative;
+  font-family: var(--tl-font-sans);
+  color: var(--tl-text);
+  font-size: 15px;
+  line-height: 1.6;
+  user-select: none;
+}
+
+/* 轴线（SVG） */
+.tl-axis-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.tl-axis-line {
+  fill: none;
+  stroke: var(--tl-axis-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.tl-axis-active {
+  fill: none;
+  stroke: var(--tl-axis-active);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 10000;
+  stroke-dashoffset: 10000;
+  transition: stroke-dashoffset var(--tl-duration) var(--tl-ease);
+}
+
+/* 节点列表 */
+.tl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.tl-item {
+  position: relative;
+  padding-bottom: 28px;
+}
+
+.tl-item:last-child {
+  padding-bottom: 0;
+}
+
+/* 节点按钮 */
+.tl-node-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  position: relative;
+}
+
+.tl-node-btn:focus {
+  outline: none;
+}
+
+.tl-node-btn:focus-visible {
+  outline: var(--tl-focus-ring);
+  outline-offset: var(--tl-focus-offset);
+  border-radius: var(--tl-radius);
+}
+
+.tl-node-btn:hover .tl-node-dot {
+  transform: scale(1.15);
+}
+
+.tl-node-btn:hover .tl-node-title {
+  color: var(--tl-accent);
+}
+
+.tl-node-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tl-node-btn[aria-disabled="true"]:hover .tl-node-dot {
+  transform: none;
+}
+
+.tl-node-btn[aria-disabled="true"]:hover .tl-node-title {
+  color: inherit;
+}
+
+/* 节点圆点 */
+.tl-node-dot-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.tl-node-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--tl-node-completed);
+  border: 2px solid var(--tl-node-completed);
+  transition: transform 150ms var(--tl-ease);
+}
+
+.tl-item[data-state="completed"] .tl-node-dot {
+  background: var(--tl-node-completed);
+  border-color: var(--tl-node-completed);
+}
+
+.tl-item[data-state="current"] .tl-node-dot {
+  background: var(--tl-node-current);
+  border-color: var(--tl-node-current);
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 0 0 0 rgba(180, 67, 47, 0.4);
+  animation: tl-pulse 2s ease-out infinite;
+}
+
+.tl-item[data-state="upcoming"] .tl-node-dot {
+  background: var(--tl-bg);
+  border-color: var(--tl-node-upcoming);
+  border-width: 2px;
+  width: 12px;
+  height: 12px;
+}
+
+.tl-item[data-state="disabled"] .tl-node-dot {
+  background: var(--tl-node-upcoming);
+  border-color: var(--tl-node-upcoming);
+  opacity: 0.6;
+}
+
+@keyframes tl-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(180, 67, 47, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(180, 67, 47, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(180, 67, 47, 0);
+  }
+}
+
+/* 节点内容 */
+.tl-node-content {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+
+.tl-node-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tl-text);
+  margin: 0;
+  transition: color 150ms var(--tl-ease);
+}
+
+.tl-item[data-state="upcoming"] .tl-node-title {
+  color: var(--tl-text-mute);
+  font-weight: 500;
+}
+
+.tl-node-meta {
+  font-family: var(--tl-font-mono);
+  font-size: 12px;
+  color: var(--tl-text-soft);
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
+
+.tl-node-desc {
+  font-size: 13px;
+  color: var(--tl-text-soft);
+  margin-top: 4px;
+}
+
+/* 详情面板 */
+.tl-detail {
+  margin-top: 12px;
+  margin-left: 44px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    max-height var(--tl-duration) var(--tl-ease),
+    opacity var(--tl-duration) var(--tl-ease),
+    transform var(--tl-duration) var(--tl-ease);
+}
+
+.tl-item.is-expanded .tl-detail {
+  max-height: 500px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tl-detail-inner {
+  background: var(--tl-panel-bg);
+  border: 1px solid var(--tl-panel-border);
+  border-radius: var(--tl-radius-lg);
+  padding: 14px 18px;
+  box-shadow: var(--tl-panel-shadow);
+}
+
+/* 骨架加载 */
+.tl-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-skeleton-line {
+  height: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--tl-panel-border) 25%,
+    #f0e8d8 50%,
+    var(--tl-panel-border) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 3px;
+  animation: tl-shimmer 1.6s linear infinite;
+}
+
+.tl-skeleton-line.short { width: 40%; }
+.tl-skeleton-line.mid { width: 65%; }
+.tl-skeleton-line.long { width: 90%; }
+
+@keyframes tl-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* 错误状态 */
+.tl-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.tl-error-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--tl-node-current);
+}
+
+.tl-error-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--tl-text-soft);
+}
+
+.tl-error-retry {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--tl-panel-border);
+  padding: 4px 12px;
+  border-radius: var(--tl-radius);
+  font-size: 12px;
+  color: var(--tl-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 150ms var(--tl-ease);
+}
+
+.tl-error-retry:hover {
+  border-color: var(--tl-accent);
+  color: var(--tl-accent);
+}
+
+.tl-error-retry:focus-visible {
+  outline: var(--tl-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 空状态 */
+.tl-empty {
+  font-size: 13px;
+  color: var(--tl-text-mute);
+  padding: 4px 0;
+  font-style: italic;
+}
+
+/* 详情列表 */
+.tl-detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tl-detail-item {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--tl-panel-border);
+}
+
+.tl-detail-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.tl-detail-time {
+  font-family: var(--tl-font-mono);
+  font-size: 12px;
+  color: var(--tl-text-soft);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tl-detail-text {
+  color: var(--tl-text);
+}
+
+/* changelog 详情 */
+.tl-changelog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tl-changelog-item {
+  font-size: 13px;
+  color: var(--tl-text);
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.6;
+}
+
+.tl-changelog-item::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tl-node-completed);
+}
+
+.tl-changelog-item.fix::before {
+  background: var(--tl-node-current);
+}
+
+.tl-changelog-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 6px;
+  font-weight: 500;
+  vertical-align: 1px;
+}
+
+.tl-changelog-tag.feat {
+  background: rgba(74, 124, 89, 0.12);
+  color: var(--tl-node-completed);
+}
+
+.tl-changelog-tag.fix {
+  background: rgba(180, 67, 47, 0.1);
+  color: var(--tl-node-current);
+}
+
+.tl-changelog-tag.perf {
+  background: rgba(163, 155, 139, 0.15);
+  color: var(--tl-text-soft);
+}
+
+/* 左右交替布局 */
+.tl-timeline[data-layout="alternate"] .tl-axis-svg {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tl-timeline[data-layout="alternate"] .tl-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item {
+  width: 50%;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) {
+  align-self: flex-start;
+  padding-right: 32px;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-btn {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-dot-wrap {
+  order: 2;
+  position: absolute;
+  right: -12px;
+  top: 0;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-content {
+  text-align: right;
+  order: 1;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-detail {
+  margin-left: 0;
+  margin-right: 44px;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(even) {
+  align-self: flex-end;
+  padding-left: 32px;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(even) .tl-node-dot-wrap {
+  position: absolute;
+  left: -12px;
+  top: 0;
+}
+
+.tl-timeline[data-layout="alternate"] .tl-item:nth-child(even) .tl-detail {
+  margin-left: 44px;
+}
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .tl-axis-active,
+  .tl-node-dot,
+  .tl-detail,
+  .tl-skeleton-line {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .tl-item[data-state="current"] .tl-node-dot {
+    box-shadow: 0 0 0 4px rgba(180, 67, 47, 0.2);
+  }
+
+  .tl-item.is-expanded .tl-detail {
+    transform: none;
+  }
+}
+
+/* 页面隐藏时暂停动画 */
+@media (hidden) {
+  .tl-skeleton-line,
+  .tl-item[data-state="current"] .tl-node-dot {
+    animation-play-state: paused;
+  }
+}
+
+/* --- END Timeline Component CSS --- */
+
+/* ================================================================
+   展示页样式（抽取组件时可删除）
+   ================================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  background: var(--tl-bg);
+  color: var(--tl-text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+}
+
+.page-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--tl-panel-border);
+}
+
+.page-title {
+  font-family: var(--tl-font-serif);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--tl-text);
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--tl-text-soft);
+  margin: 0;
+}
+
+.page-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 22px;
+  background: var(--tl-accent);
+  margin-right: 10px;
+  vertical-align: -3px;
+  border-radius: 2px;
+}
+
+.section {
+  margin-bottom: 56px;
+}
+
+.section-title {
+  font-family: var(--tl-font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tl-text);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title::before {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 16px;
+  background: var(--tl-node-completed);
+  border-radius: 1px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--tl-text-soft);
+  margin: 0 0 20px;
+  padding-left: 12px;
+}
+
+.demo-card {
+  background: var(--tl-panel-bg);
+  border: 1px solid var(--tl-panel-border);
+  border-radius: var(--tl-radius-lg);
+  padding: 28px 32px;
+  box-shadow: var(--tl-panel-shadow);
+}
+
+/* 用法文档区 */
+.docs-section {
+  margin-bottom: 32px;
+}
+
+.docs-section h3 {
+  font-family: var(--tl-font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tl-text);
+  margin: 0 0 12px;
+  padding-left: 8px;
+  border-left: 3px solid var(--tl-accent);
+}
+
+.code-block {
+  background: #2B2620;
+  color: #F2EADD;
+  border-radius: var(--tl-radius-lg);
+  padding: 16px 20px;
+  font-family: var(--tl-font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+
+.code-block .code-key {
+  color: #E8B670;
+}
+
+.code-block .code-str {
+  color: #9CC48E;
+}
+
+.code-block .code-comment {
+  color: #8A7F6E;
+  font-style: italic;
+}
+
+.code-block .code-fn {
+  color: #D4A0A0;
+}
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.docs-table th,
+.docs-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--tl-panel-border);
+  vertical-align: top;
+}
+
+.docs-table th {
+  font-weight: 600;
+  color: var(--tl-text-soft);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  background: rgba(216, 207, 192, 0.15);
+}
+
+.docs-table tr:last-child td {
+  border-bottom: none;
+}
+
+.docs-table code {
+  font-family: var(--tl-font-mono);
+  font-size: 12px;
+  background: rgba(216, 207, 192, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--tl-text);
+}
+
+.docs-note {
+  font-size: 13px;
+  color: var(--tl-text-soft);
+  background: rgba(74, 124, 89, 0.06);
+  border-left: 3px solid var(--tl-node-completed);
+  padding: 10px 14px;
+  border-radius: 0 var(--tl-radius) var(--tl-radius) 0;
+  margin: 0;
+}
+
+.footer {
+  margin-top: 64px;
+  padding-top: 20px;
+  border-top: 1px solid var(--tl-panel-border);
+  font-size: 12px;
+  color: var(--tl-text-mute);
+  text-align: center;
+  font-family: var(--tl-font-serif);
+}
+
+/* 状态演示提示 */
+.demo-hint {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(180, 67, 47, 0.08);
+  color: var(--tl-node-current);
+  margin-left: 8px;
+  vertical-align: 2px;
+  font-weight: 500;
+}
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .page {
+    padding: 32px 16px 64px;
+  }
+
+  .page-title {
+    font-size: 22px;
+  }
+
+  .demo-card {
+    padding: 20px 18px;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item {
+    width: 100%;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-axis-svg {
+    left: 12px;
+    transform: none;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) {
+    padding-right: 0;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-dot-wrap {
+    order: 0;
+    position: static;
+    right: auto;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-node-content {
+    text-align: left;
+    order: 0;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(odd) .tl-detail {
+    margin-right: 0;
+    margin-left: 44px;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(even) {
+    padding-left: 0;
+  }
+
+  .tl-timeline[data-layout="alternate"] .tl-item:nth-child(even) .tl-node-dot-wrap {
+    position: static;
+    left: auto;
+  }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-header">
+    <h1 class="page-title">驿路编年 · Timeline</h1>
+    <p class="page-subtitle">生产级可复用交互时间轴组件 · 纵向轴线 · 节点三态 · 异步详情 · 全键盘操作</p>
+  </header>
+
+  <!-- 场景一：物流跟踪（单侧布局 + 异步详情） -->
+  <section class="section">
+    <h2 class="section-title">场景一 · 物流跟踪 <span class="demo-hint">单侧布局 · 异步加载</span></h2>
+    <p class="section-desc">一单从杭州余杭仓发往成都锦江的包裹，点击节点查看扫描明细。第 4 个节点演示「加载 → 出错 → 重试」完整链路；最后一个节点为 upcoming 不可展开态。</p>
+    <div class="demo-card">
+      <div id="logistics-timeline" class="tl-timeline" role="list" aria-label="物流跟踪"></div>
+    </div>
+  </section>
+
+  <!-- 场景二：版本更新日志（左右交替布局 + 静态详情） -->
+  <section class="section">
+    <h2 class="section-title">场景二 · 版本更新日志 <span class="demo-hint">交替布局 · 静态详情</span></h2>
+    <p class="section-desc">拾光笔记版本更迭记录，左右交替排布。内容即详情，展开可见完整 changelog。</p>
+    <div class="demo-card">
+      <div id="changelog-timeline" class="tl-timeline" role="list" aria-label="版本更新日志"></div>
+    </div>
+  </section>
+
+  <!-- 用法文档 -->
+  <section class="section">
+    <h2 class="section-title">用法文档</h2>
+
+    <div class="docs-section">
+      <h3>快速接入</h3>
+      <pre class="code-block"><span class="code-comment">// 1. 在页面中引入组件 CSS 与 JS（可整块抽取）</span>
+<span class="code-comment">// 2. 准备一个容器</span>
+&lt;div id=<span class="code-str">"my-timeline"</span>&gt;&lt;/div&gt;
+
+<span class="code-comment">// 3. 初始化</span>
+<span class="code-fn">const</span> tl = <span class="code-fn">new Timeline</span>(document.<span class="code-fn">getElementById</span>(<span class="code-str">"my-timeline"</span>), {
+  <span class="code-key">items</span>: [
+    { <span class="code-key">id</span>: <span class="code-str">"1"</span>, <span class="code-key">title</span>: <span class="code-str">"已揽收"</span>, <span class="code-key">meta</span>: <span class="code-str">"08-15 09:30"</span>, <span class="code-key">state</span>: <span class="code-str">"completed"</span> },
+    { <span class="code-key">id</span>: <span class="code-str">"2"</span>, <span class="code-key">title</span>: <span class="code-str">"派送中"</span>, <span class="code-key">meta</span>: <span class="code-str">"08-17 14:00"</span>, <span class="code-key">state</span>: <span class="code-str">"current"</span> }
+  ],
+  <span class="code-key">layout</span>: <span class="code-str">"single"</span>, <span class="code-comment">// single | alternate</span>
+  <span class="code-key">loadDetail</span>: <span class="code-fn">async</span> (item) => {
+    <span class="code-comment">// 返回 HTML 字符串或 DOM 元素；抛错则显示 error 态</span>
+    <span class="code-fn">return</span> <span class="code-str">`&lt;p&gt;${item.title} 详情&lt;/p&gt;`</span>;
+  },
+  <span class="code-key">onChange</span>: (item, expanded) => {
+    console.<span class="code-fn">log</span>(item.id, expanded ? <span class="code-str">"展开"</span> : <span class="code-str">"收起"</span>);
+  }
+});</pre>
+    </div>
+
+    <div class="docs-section">
+      <h3>CSS 变量</h3>
+      <table class="docs-table">
+        <thead>
+          <tr><th style="width:35%">变量名</th><th style="width:25%">默认值</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--tl-bg</code></td><td>#FAF6EE</td><td>组件底色</td></tr>
+          <tr><td><code>--tl-text</code></td><td>#2B2620</td><td>主文字色（墨黑）</td></tr>
+          <tr><td><code>--tl-text-soft</code></td><td>#6B6256</td><td>次级文字色</td></tr>
+          <tr><td><code>--tl-text-mute</code></td><td>#A39B8B</td><td>弱化文字色</td></tr>
+          <tr><td><code>--tl-axis-color</code></td><td>#D8CFC0</td><td>轴线底色</td></tr>
+          <tr><td><code>--tl-axis-active</code></td><td>#4A7C59</td><td>轴线激活段色（竹青）</td></tr>
+          <tr><td><code>--tl-node-completed</code></td><td>#4A7C59</td><td>已完成节点色</td></tr>
+          <tr><td><code>--tl-node-current</code></td><td>#B4432F</td><td>当前节点色（赭红）</td></tr>
+          <tr><td><code>--tl-node-upcoming</code></td><td>#A39B8B</td><td>待到达节点色</td></tr>
+          <tr><td><code>--tl-accent</code></td><td>#B4432F</td><td>强调色（hover / focus）</td></tr>
+          <tr><td><code>--tl-panel-bg</code></td><td>#FFFDF8</td><td>详情面板底色</td></tr>
+          <tr><td><code>--tl-panel-border</code></td><td>#E8DFCF</td><td>面板边框色</td></tr>
+          <tr><td><code>--tl-panel-shadow</code></td><td>0 2px 12px rgba(...)</td><td>面板阴影</td></tr>
+          <tr><td><code>--tl-radius</code></td><td>4px</td><td>小圆角</td></tr>
+          <tr><td><code>--tl-radius-lg</code></td><td>6px</td><td>大圆角</td></tr>
+          <tr><td><code>--tl-duration</code></td><td>300ms</td><td>过渡动画时长</td></tr>
+          <tr><td><code>--tl-ease</code></td><td>cubic-bezier(.2,.8,.2,1)</td><td>缓动函数</td></tr>
+          <tr><td><code>--tl-focus-ring</code></td><td>2px solid #B4432F</td><td>键盘焦点环</td></tr>
+          <tr><td><code>--tl-font-sans</code></td><td>系统无衬线</td><td>正文字体</td></tr>
+          <tr><td><code>--tl-font-serif</code></td><td>系统衬线</td><td>标题字体</td></tr>
+          <tr><td><code>--tl-font-mono</code></td><td>系统等宽</td><td>日期数字字体</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="docs-section">
+      <h3>JS 配置项</h3>
+      <table class="docs-table">
+        <thead>
+          <tr><th style="width:22%">配置项</th><th style="width:18%">类型</th><th style="width:20%">默认值</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>items</code></td><td>Array</td><td>[]</td><td>节点数据数组，每项含 id/title/meta/state/detail</td></tr>
+          <tr><td><code>layout</code></td><td>String</td><td>"single"</td><td>布局方式：<code>single</code> 单侧 / <code>alternate</code> 左右交替</td></tr>
+          <tr><td><code>expandable</code></td><td>Boolean</td><td>true</td><td>节点是否可展开（upcoming 与 disabled 始终不可展开）</td></tr>
+          <tr><td><code>loadDetail</code></td><td>Function</td><td>null</td><td>异步加载详情的函数，返回 HTML 字符串或 DOM；抛错触发 error 态；返回空字符串触发 empty 态</td></tr>
+          <tr><td><code>onChange</code></td><td>Function</td><td>null</td><td>展开/收起回调，参数 (item, expanded)</td></tr>
+          <tr><td><code>initialExpandedId</code></td><td>String</td><td>null</td><td>初始展开的节点 id</td></tr>
+          <tr><td><code>accordion</code></td><td>Boolean</td><td>false</td><td>手风琴模式：展开新节点时收起其他</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="docs-section">
+      <h3>节点状态机</h3>
+      <table class="docs-table">
+        <thead>
+          <tr><th style="width:20%">状态</th><th style="width:18%">层级</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>rest</code></td><td>节点</td><td>默认静止态</td></tr>
+          <tr><td><code>hover</code></td><td>节点</td><td>鼠标悬停，节点放大 + 标题变色</td></tr>
+          <tr><td><code>focus-visible</code></td><td>节点</td><td>键盘聚焦，赭红焦点环</td></tr>
+          <tr><td><code>expanded</code></td><td>节点</td><td>展开态，详情面板展开 + 轴段生长</td></tr>
+          <tr><td><code>disabled</code></td><td>节点</td><td>禁用态，opacity 0.5 + cursor not-allowed</td></tr>
+          <tr><td><code>completed</code></td><td>节点语义</td><td>已完成节点（竹青实心）</td></tr>
+          <tr><td><code>current</code></td><td>节点语义</td><td>当前节点（赭红 + 脉冲呼吸）</td></tr>
+          <tr><td><code>upcoming</code></td><td>节点语义</td><td>待到达节点（灰色空心，不可展开）</td></tr>
+          <tr><td><code>loading</code></td><td>详情</td><td>骨架 shimmer 加载</td></tr>
+          <tr><td><code>error</code></td><td>详情</td><td>错误图标 + 重试按钮</td></tr>
+          <tr><td><code>empty</code></td><td>详情</td><td>空数据提示</td></tr>
+          <tr><td><code>success</code></td><td>详情</td><td>正常内容展示</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="docs-section">
+      <h3>键盘操作</h3>
+      <table class="docs-table">
+        <thead>
+          <tr><th style="width:28%">按键</th><th>功能</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Tab</code></td><td>进入/离开时间轴容器</td></tr>
+          <tr><td><code>↑ / ↓</code></td><td>在节点间上下移动焦点（roving tabindex）</td></tr>
+          <tr><td><code>Home</code></td><td>跳到第一个节点</td></tr>
+          <tr><td><code>End</code></td><td>跳到最后一个节点</td></tr>
+          <tr><td><code>Enter / Space</code></td><td>展开或收起当前节点</td></tr>
+          <tr><td><code>Esc</code></td><td>收起当前展开的节点</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="docs-section">
+      <h3>可访问性</h3>
+      <p class="docs-note">
+        节点使用 <code>&lt;button&gt;</code> + <code>aria-expanded</code> + <code>aria-controls</code> 语义；
+        详情面板使用 <code>role="region"</code> + <code>aria-label</code>；
+        加载状态使用 <code>aria-busy="true"</code>；
+        采用 roving tabindex 模式保证键盘导航；
+        支持 <code>prefers-reduced-motion</code>，关闭所有非必要动画。
+      </p>
+    </div>
+
+    <div class="docs-section">
+      <h3>公开 API</h3>
+      <table class="docs-table">
+        <thead>
+          <tr><th style="width:28%">方法</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>expand(id)</code></td><td>展开指定节点</td></tr>
+          <tr><td><code>collapse(id)</code></td><td>收起指定节点</td></tr>
+          <tr><td><code>toggle(id)</code></td><td>切换指定节点展开状态</td></tr>
+          <tr><td><code>collapseAll()</code></td><td>收起所有节点</td></tr>
+          <tr><td><code>update(items)</code></td><td>更新节点数据并重新渲染</td></tr>
+          <tr><td><code>destroy()</code></td><td>销毁实例，解绑事件</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="footer">
+    驿路编年 · V3 交互时间轴组件 · 纯 vanilla 单文件 · 零依赖
+  </footer>
+
+</div>
+
+<script>
+/* ================================================================
+   驿路编年 Timeline 组件 JS
+   可整块抽取：从 BEGIN 到 END 之间为组件 JS
+   ================================================================ */
+/* --- BEGIN Timeline Component JS --- */
+
+(function (global) {
+  'use strict';
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  class Timeline {
+    constructor(container, options) {
+      this.container = container;
+      this.options = Object.assign({
+        items: [],
+        layout: 'single',       // single | alternate
+        expandable: true,
+        loadDetail: null,       // async function(item) => html string or DOM
+        onChange: null,         // function(item, expanded)
+        initialExpandedId: null,
+        accordion: false
+      }, options || {});
+
+      this.items = this.options.items.slice();
+      this.expanded = new Set();
+      this.loadTokens = new Map(); // id -> token number
+      this.tokenCounter = 0;
+      this.currentFocusIndex = 0;
+      this._visibilityHandler = null;
+      this._isVisible = true;
+
+      this._init();
+    }
+
+    _init() {
+      this.container.setAttribute('data-layout', this.options.layout);
+      this.container.classList.add('tl-timeline');
+
+      this._render();
+      this._bindEvents();
+
+      if (this.options.initialExpandedId) {
+        this.expand(this.options.initialExpandedId);
+      }
+
+      // 监听页面可见性，暂停/恢复动画相关
+      this._visibilityHandler = () => {
+        this._isVisible = !document.hidden;
+        // CSS 动画由浏览器自动处理；这里处理 JS 定时器
+        if (this._isVisible) {
+          // 恢复时无需特殊操作 —— 加载中的请求已在进行
+        }
+      };
+      document.addEventListener('visibilitychange', this._visibilityHandler);
+    }
+
+    _render() {
+      // 清空
+      this.container.innerHTML = '';
+
+      // 创建 SVG 轴线
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('class', 'tl-axis-svg');
+      svg.setAttribute('aria-hidden', 'true');
+      this._svg = svg;
+
+      // 轴底线
+      const axisLine = document.createElementNS(SVG_NS, 'line');
+      axisLine.setAttribute('class', 'tl-axis-line');
+      axisLine.setAttribute('x1', '12');
+      axisLine.setAttribute('x2', '12');
+      axisLine.setAttribute('y1', '0');
+      axisLine.setAttribute('y2', '100%');
+      svg.appendChild(axisLine);
+
+      // 激活轴段（stroke-draw 动画）
+      const axisActive = document.createElementNS(SVG_NS, 'line');
+      axisActive.setAttribute('class', 'tl-axis-active');
+      axisActive.setAttribute('x1', '12');
+      axisActive.setAttribute('x2', '12');
+      axisActive.setAttribute('y1', '0');
+      axisActive.setAttribute('y2', '0');
+      this._axisActive = axisActive;
+      svg.appendChild(axisActive);
+
+      this.container.appendChild(svg);
+
+      // 创建节点列表
+      const list = document.createElement('ul');
+      list.className = 'tl-list';
+      this._list = list;
+
+      this.items.forEach((item, index) => {
+        const li = this._createItem(item, index);
+        list.appendChild(li);
+      });
+
+      this.container.appendChild(list);
+
+      // 更新轴线位置（布局后）
+      requestAnimationFrame(() => this._updateAxis());
+
+      // 只让第一个可交互节点 tabindex=0
+      this._updateRovingTabindex();
+    }
+
+    _createItem(item, index) {
+      const li = document.createElement('li');
+      li.className = 'tl-item';
+      li.setAttribute('role', 'listitem');
+      li.setAttribute('data-state', item.state || 'completed');
+      li.setAttribute('data-id', item.id);
+
+      const isExpandable = this._isItemExpandable(item);
+
+      // 节点按钮
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tl-node-btn';
+      btn.setAttribute('tabindex', index === 0 ? '0' : '-1');
+      btn.setAttribute('aria-expanded', 'false');
+
+      const detailId = 'tl-detail-' + this._uid() + '-' + item.id;
+      btn.setAttribute('aria-controls', detailId);
+
+      if (!isExpandable) {
+        btn.setAttribute('aria-disabled', 'true');
+        btn.setAttribute('tabindex', '-1');
+      }
+
+      // 圆点
+      const dotWrap = document.createElement('span');
+      dotWrap.className = 'tl-node-dot-wrap';
+      const dot = document.createElement('span');
+      dot.className = 'tl-node-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      dotWrap.appendChild(dot);
+      btn.appendChild(dotWrap);
+
+      // 内容
+      const content = document.createElement('span');
+      content.className = 'tl-node-content';
+
+      const title = document.createElement('span');
+      title.className = 'tl-node-title';
+      title.textContent = item.title;
+      content.appendChild(title);
+
+      if (item.meta) {
+        const meta = document.createElement('div');
+        meta.className = 'tl-node-meta';
+        meta.textContent = item.meta;
+        content.appendChild(meta);
+      }
+
+      if (item.desc) {
+        const desc = document.createElement('div');
+        desc.className = 'tl-node-desc';
+        desc.textContent = item.desc;
+        content.appendChild(desc);
+      }
+
+      btn.appendChild(content);
+      li.appendChild(btn);
+
+      // 详情面板
+      const detail = document.createElement('div');
+      detail.className = 'tl-detail';
+      detail.id = detailId;
+      detail.setAttribute('role', 'region');
+      detail.setAttribute('aria-label', item.title + ' 详情');
+      detail.setAttribute('aria-hidden', 'true');
+
+      const inner = document.createElement('div');
+      inner.className = 'tl-detail-inner';
+      detail.appendChild(inner);
+
+      li.appendChild(detail);
+
+      // 存储引用
+      li._tl = {
+        item: item,
+        btn: btn,
+        detail: detail,
+        inner: inner,
+        state: 'rest'
+      };
+
+      // 点击展开
+      if (isExpandable) {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.toggle(item.id);
+        });
+      }
+
+      return li;
+    }
+
+    _isItemExpandable(item) {
+      if (!this.options.expandable) return false;
+      if (item.state === 'upcoming') return false;
+      if (item.state === 'disabled') return false;
+      if (item.disabled) return false;
+      return true;
+    }
+
+    _bindEvents() {
+      // 键盘事件：委托在容器上
+      this.container.addEventListener('keydown', (e) => {
+        const items = this._getInteractiveItems();
+        if (items.length === 0) return;
+
+        const currentLi = e.target.closest('.tl-item');
+        if (!currentLi) return;
+        if (!currentLi._tl) return;
+
+        const currentIndex = items.indexOf(currentLi);
+        if (currentIndex === -1) return;
+
+        let newIndex = currentIndex;
+        let handled = false;
+
+        switch (e.key) {
+          case 'ArrowDown':
+            newIndex = Math.min(currentIndex + 1, items.length - 1);
+            handled = true;
+            break;
+          case 'ArrowUp':
+            newIndex = Math.max(currentIndex - 1, 0);
+            handled = true;
+            break;
+          case 'Home':
+            newIndex = 0;
+            handled = true;
+            break;
+          case 'End':
+            newIndex = items.length - 1;
+            handled = true;
+            break;
+          case 'Enter':
+          case ' ':
+            e.preventDefault();
+            if (this._isItemExpandable(currentLi._tl.item)) {
+              this.toggle(currentLi._tl.item.id);
+            }
+            handled = true;
+            break;
+          case 'Escape':
+            if (this.expanded.has(currentLi._tl.item.id)) {
+              this.collapse(currentLi._tl.item.id);
+              handled = true;
+            }
+            break;
+        }
+
+        if (handled && newIndex !== currentIndex) {
+          e.preventDefault();
+          this._focusItem(items[newIndex]);
+          this.currentFocusIndex = newIndex;
+        }
+      });
+
+      // 窗口 resize 时重新计算轴线
+      let resizeTimer = null;
+      window.addEventListener('resize', () => {
+        if (resizeTimer) cancelAnimationFrame(resizeTimer);
+        resizeTimer = requestAnimationFrame(() => {
+          this._updateAxis();
+        });
+      });
+    }
+
+    _getInteractiveItems() {
+      const all = this._list.querySelectorAll('.tl-item');
+      const result = [];
+      all.forEach((li) => {
+        if (this._isItemExpandable(li._tl.item)) {
+          result.push(li);
+        }
+      });
+      return result;
+    }
+
+    _focusItem(li) {
+      const btn = li._tl.btn;
+      btn.focus({ preventScroll: false });
+
+      // roving tabindex
+      const items = this._getInteractiveItems();
+      items.forEach((item) => {
+        item._tl.btn.setAttribute('tabindex', '-1');
+      });
+      btn.setAttribute('tabindex', '0');
+    }
+
+    _updateRovingTabindex() {
+      const items = this._getInteractiveItems();
+      items.forEach((item, i) => {
+        item._tl.btn.setAttribute('tabindex', i === this.currentFocusIndex ? '0' : '-1');
+      });
+    }
+
+    _uid() {
+      return Math.random().toString(36).slice(2, 8);
+    }
+
+    _updateAxis() {
+      // 计算轴线 x 位置
+      const firstItem = this._list.querySelector('.tl-item');
+      if (!firstItem) return;
+
+      const dot = firstItem.querySelector('.tl-node-dot-wrap');
+      if (!dot) return;
+
+      const containerRect = this.container.getBoundingClientRect();
+      const dotRect = dot.getBoundingClientRect();
+      const x = dotRect.left + dotRect.width / 2 - containerRect.left;
+
+      // 更新 SVG 轴线 x 坐标
+      const axisLine = this._svg.querySelector('.tl-axis-line');
+      const axisActive = this._axisActive;
+
+      axisLine.setAttribute('x1', x);
+      axisLine.setAttribute('x2', x);
+      axisActive.setAttribute('x1', x);
+      axisActive.setAttribute('x2', x);
+
+      // 计算激活轴段高度（从顶部到最后一个展开节点 + completed 节点位置）
+      this._updateActiveAxisHeight();
+    }
+
+    _updateActiveAxisHeight() {
+      // 找到最后一个 completed 或 current 或 expanded 节点
+      const items = this._list.querySelectorAll('.tl-item');
+      let lastActiveY = 0;
+      const containerRect = this.container.getBoundingClientRect();
+
+      items.forEach((li) => {
+        const state = li.getAttribute('data-state');
+        const isExpanded = li.classList.contains('is-expanded');
+        if (state === 'completed' || state === 'current' || isExpanded) {
+          const dot = li.querySelector('.tl-node-dot-wrap');
+          if (dot) {
+            const dotRect = dot.getBoundingClientRect();
+            const y = dotRect.top + dotRect.height / 2 - containerRect.top;
+            if (y > lastActiveY) lastActiveY = y;
+          }
+        }
+      });
+
+      // 用 stroke-dashoffset 实现绘制效果
+      const axisActive = this._axisActive;
+      // 设置线的终点为 lastActiveY
+      axisActive.setAttribute('y2', lastActiveY);
+
+      // 用 stroke-dasharray/dashoffset 控制可见长度
+      // 总长度设为容器高度，dashoffset = total - visible
+      const totalHeight = this.container.offsetHeight + 100;
+      axisActive.setAttribute('stroke-dasharray', totalHeight);
+      axisActive.setAttribute('stroke-dashoffset', totalHeight - lastActiveY);
+    }
+
+    // ---- 公开方法 ----
+
+    expand(id) {
+      const li = this._list.querySelector('.tl-item[data-id="' + CSS.escape(id) + '"]');
+      if (!li) return;
+      if (li.classList.contains('is-expanded')) return;
+      const item = li._tl.item;
+      if (!this._isItemExpandable(item)) return;
+
+      // 手风琴模式：收起其他
+      if (this.options.accordion) {
+        this.expanded.forEach((expId) => {
+          if (expId !== id) this.collapse(expId);
+        });
+      }
+
+      li.classList.add('is-expanded');
+      li._tl.btn.setAttribute('aria-expanded', 'true');
+      li._tl.detail.setAttribute('aria-hidden', 'false');
+
+      this.expanded.add(id);
+
+      // 加载详情
+      this._loadDetail(li, item);
+
+      // 更新激活轴段
+      requestAnimationFrame(() => this._updateActiveAxisHeight());
+
+      if (this.options.onChange) {
+        this.options.onChange(item, true);
+      }
+    }
+
+    collapse(id) {
+      const li = this._list.querySelector('.tl-item[data-id="' + CSS.escape(id) + '"]');
+      if (!li) return;
+      if (!li.classList.contains('is-expanded')) return;
+
+      li.classList.remove('is-expanded');
+      li._tl.btn.setAttribute('aria-expanded', 'false');
+      li._tl.detail.setAttribute('aria-hidden', 'true');
+
+      // 失效旧的加载 token
+      if (this.loadTokens.has(id)) {
+        this.loadTokens.delete(id);
+      }
+
+      this.expanded.delete(id);
+
+      requestAnimationFrame(() => this._updateActiveAxisHeight());
+
+      if (this.options.onChange) {
+        this.options.onChange(li._tl.item, false);
+      }
+    }
+
+    toggle(id) {
+      const li = this._list.querySelector('.tl-item[data-id="' + CSS.escape(id) + '"]');
+      if (!li) return;
+      if (li.classList.contains('is-expanded')) {
+        this.collapse(id);
+      } else {
+        this.expand(id);
+      }
+    }
+
+    collapseAll() {
+      this.expanded.forEach((id) => this.collapse(id));
+    }
+
+    update(items) {
+      this.items = items.slice();
+      this.expanded.clear();
+      this.loadTokens.clear();
+      this.currentFocusIndex = 0;
+      this._render();
+    }
+
+    destroy() {
+      if (this._visibilityHandler) {
+        document.removeEventListener('visibilitychange', this._visibilityHandler);
+        this._visibilityHandler = null;
+      }
+      this.loadTokens.clear();
+      this.expanded.clear();
+      this.container.innerHTML = '';
+    }
+
+    // ---- 内部：详情加载 ----
+
+    _loadDetail(li, item) {
+      const inner = li._tl.inner;
+      inner.innerHTML = '';
+      inner.setAttribute('aria-busy', 'true');
+
+      // 先显示 loading
+      this._renderSkeleton(inner);
+
+      // 生成新 token
+      const token = ++this.tokenCounter;
+      this.loadTokens.set(item.id, token);
+
+      // 检测是否有静态 detail
+      if (item.detail !== undefined && !this.options.loadDetail) {
+        // 静态详情，模拟一点延迟以展示生长动画
+        setTimeout(() => {
+          if (this.loadTokens.get(item.id) !== token) return; // 已失效
+          this._renderDetailContent(inner, item.detail);
+          inner.setAttribute('aria-busy', 'false');
+        }, 120);
+        return;
+      }
+
+      // 异步加载
+      if (this.options.loadDetail) {
+        Promise.resolve()
+          .then(() => this.options.loadDetail(item))
+          .then((content) => {
+            if (this.loadTokens.get(item.id) !== token) return;
+            if (content === null || content === undefined || content === '') {
+              this._renderEmpty(inner);
+            } else {
+              this._renderDetailContent(inner, content);
+            }
+            inner.setAttribute('aria-busy', 'false');
+          })
+          .catch((err) => {
+            if (this.loadTokens.get(item.id) !== token) return;
+            this._renderError(inner, item, err);
+            inner.setAttribute('aria-busy', 'false');
+          });
+      }
+    }
+
+    _renderDetailContent(inner, content) {
+      inner.innerHTML = '';
+      if (typeof content === 'string') {
+        inner.innerHTML = content;
+      } else if (content instanceof Node) {
+        inner.appendChild(content);
+      }
+    }
+
+    _renderSkeleton(inner) {
+      inner.innerHTML = '';
+      const skel = document.createElement('div');
+      skel.className = 'tl-skeleton';
+      const lines = ['short', 'long', 'mid'];
+      lines.forEach((cls) => {
+        const line = document.createElement('div');
+        line.className = 'tl-skeleton-line ' + cls;
+        skel.appendChild(line);
+      });
+      inner.appendChild(skel);
+    }
+
+    _renderError(inner, item, err) {
+      inner.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'tl-error';
+
+      const icon = document.createElementNS(SVG_NS, 'svg');
+      icon.setAttribute('class', 'tl-error-icon');
+      icon.setAttribute('viewBox', '0 0 24 24');
+      icon.setAttribute('fill', 'none');
+      icon.setAttribute('stroke', 'currentColor');
+      icon.setAttribute('stroke-width', '2');
+      icon.setAttribute('stroke-linecap', 'round');
+      icon.setAttribute('stroke-linejoin', 'round');
+      icon.setAttribute('aria-hidden', 'true');
+
+      const circle = document.createElementNS(SVG_NS, 'circle');
+      circle.setAttribute('cx', '12');
+      circle.setAttribute('cy', '12');
+      circle.setAttribute('r', '10');
+      icon.appendChild(circle);
+
+      const line1 = document.createElementNS(SVG_NS, 'line');
+      line1.setAttribute('x1', '12');
+      line1.setAttribute('y1', '8');
+      line1.setAttribute('x2', '12');
+      line1.setAttribute('y2', '13');
+      icon.appendChild(line1);
+
+      const dot = document.createElementNS(SVG_NS, 'circle');
+      dot.setAttribute('cx', '12');
+      dot.setAttribute('cy', '16.5');
+      dot.setAttribute('r', '1');
+      dot.setAttribute('fill', 'currentColor');
+      icon.appendChild(dot);
+
+      const text = document.createElement('span');
+      text.className = 'tl-error-text';
+      text.textContent = (err && err.message) || '加载失败，请重试';
+
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'tl-error-retry';
+      retry.textContent = '重试';
+      retry.addEventListener('click', () => {
+        // 重新加载
+        const li = inner.closest('.tl-item');
+        if (li && li._tl) {
+          // 重置 token
+          const id = li._tl.item.id;
+          const token = ++this.tokenCounter;
+          this.loadTokens.set(id, token);
+          inner.setAttribute('aria-busy', 'true');
+          this._renderSkeleton(inner);
+
+          if (this.options.loadDetail) {
+            Promise.resolve()
+              .then(() => this.options.loadDetail(li._tl.item))
+              .then((content) => {
+                if (this.loadTokens.get(id) !== token) return;
+                if (content === null || content === undefined || content === '') {
+                  this._renderEmpty(inner);
+                } else {
+                  this._renderDetailContent(inner, content);
+                }
+                inner.setAttribute('aria-busy', 'false');
+              })
+              .catch((e) => {
+                if (this.loadTokens.get(id) !== token) return;
+                this._renderError(inner, li._tl.item, e);
+                inner.setAttribute('aria-busy', 'false');
+              });
+          }
+        }
+      });
+
+      wrap.appendChild(icon);
+      wrap.appendChild(text);
+      wrap.appendChild(retry);
+      inner.appendChild(wrap);
+    }
+
+    _renderEmpty(inner) {
+      inner.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'tl-empty';
+      empty.textContent = '暂无相关记录';
+      inner.appendChild(empty);
+    }
+  }
+
+  // 暴露到全局
+  global.Timeline = Timeline;
+
+})(window);
+
+/* --- END Timeline Component JS --- */
+
+/* ================================================================
+   展示页演示代码（抽取组件时可删除）
+   ================================================================ */
+(function () {
+  'use strict';
+
+  // ---- 场景一：物流跟踪 ----
+  const logisticsItems = [
+    {
+      id: 'lg-1',
+      title: '已揽收',
+      meta: '08-15 09:32',
+      desc: '杭州余杭仓 · 快件已被揽收员扫描',
+      state: 'completed'
+    },
+    {
+      id: 'lg-2',
+      title: '到达杭州转运中心',
+      meta: '08-15 21:08',
+      desc: '杭州转运中心 · 已完成分拣，准备发往下一站',
+      state: 'completed'
+    },
+    {
+      id: 'lg-3',
+      title: '发往成都',
+      meta: '08-16 03:47',
+      desc: '航空件 · 航班 CA1742 已起飞',
+      state: 'completed'
+    },
+    {
+      id: 'lg-4',
+      title: '到达成都转运中心',
+      meta: '08-16 14:22',
+      desc: '成都转运中心 · 点击查看扫描明细（演示错误重试）',
+      state: 'completed'
+    },
+    {
+      id: 'lg-5',
+      title: '派送中',
+      meta: '08-17 08:15',
+      desc: '锦江一部 · 快递员王师傅正在为您派送',
+      state: 'current'
+    },
+    {
+      id: 'lg-6',
+      title: '已签收',
+      meta: '预计今日 18:00 前送达',
+      desc: '',
+      state: 'upcoming'
+    }
+  ];
+
+  // 各节点的扫描明细
+  const logisticsDetails = {
+    'lg-1': [
+      { time: '08-15 09:32:14', text: '【杭州余杭仓】揽收员 李建国 已揽收' },
+      { time: '08-15 09:32:16', text: '快件重量：0.48 kg' },
+      { time: '08-15 09:35:22', text: '已上传运单，等待发车' }
+    ],
+    'lg-2': [
+      { time: '08-15 20:47:33', text: '【杭州转运中心】到达分拣流水线 3 号' },
+      { time: '08-15 20:52:18', text: '自动分拣完成，分配至西南方向格口' },
+      { time: '08-15 21:08:02', text: '已装车，发往成都转运中心' }
+    ],
+    'lg-3': [
+      { time: '08-16 01:15:40', text: '【杭州萧山机场】到达航空货站' },
+      { time: '08-16 02:30:11', text: '安检通过，待装机' },
+      { time: '08-16 03:47:00', text: '航班 CA1742 起飞，预计飞行 2 小时 45 分' }
+    ],
+    // lg-4 模拟空数据（empty 态）
+    'lg-4-empty': [],
+    'lg-5': [
+      { time: '08-17 07:50:08', text: '【锦江一部】快件已从网点发出' },
+      { time: '08-17 08:15:33', text: '快递员 王师傅（工号 20387）正在派送' },
+      { time: '08-17 08:15:45', text: '预计送达时间：今日 17:00 - 18:00' }
+    ]
+  };
+
+  // 第 4 个节点用 counter 控制：第一次失败，第二次成功
+  let lg4Attempts = 0;
+
+  const logisticsTimeline = new Timeline(
+    document.getElementById('logistics-timeline'),
+    {
+      items: logisticsItems,
+      layout: 'single',
+      async loadDetail(item) {
+        // 模拟网络延迟
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
+        if (item.id === 'lg-4') {
+          lg4Attempts++;
+          if (lg4Attempts === 1) {
+            throw new Error('网络异常，扫描明细加载失败');
+          }
+          // 第二次成功，返回空数据演示 empty 态
+          const records = logisticsDetails['lg-4-empty'];
+          if (records.length === 0) {
+            return '';
+          }
+          return renderLogisticsDetail(records);
+        }
+
+        const records = logisticsDetails[item.id];
+        if (!records) return '';
+        return renderLogisticsDetail(records);
+      }
+    }
+  );
+
+  function renderLogisticsDetail(records) {
+    let html = '<ul class="tl-detail-list">';
+    records.forEach((r) => {
+      html += '<li class="tl-detail-item">' +
+        '<span class="tl-detail-time">' + r.time + '</span>' +
+        '<span class="tl-detail-text">' + r.text + '</span>' +
+        '</li>';
+    });
+    html += '</ul>';
+    return html;
+  }
+
+  // ---- 场景二：版本更新日志 ----
+  const changelogItems = [
+    {
+      id: 'cl-1',
+      title: 'v2.4.0 · 盛夏更新',
+      meta: '2024-07-15',
+      desc: '全新便签模板与双链引用',
+      state: 'current',
+      detail: renderChangelog([
+        { type: 'feat', text: '新增便签模板系统，内置 12 款常用模板（日记、读书笔记、会议纪要等）' },
+        { type: 'feat', text: '新增双链引用功能，支持 [[笔记名]] 语法快速关联其他笔记' },
+        { type: 'feat', text: '编辑器新增分栏预览模式，左侧编辑右侧实时渲染' },
+        { type: 'perf', text: '优化大文档加载速度，10MB 以上文档打开时间缩短 60%' },
+        { type: 'fix', text: '修复夜间模式下标签颜色对比度不足的问题' },
+        { type: 'fix', text: '修复导入 Markdown 时表格对齐方式丢失的问题' }
+      ])
+    },
+    {
+      id: 'cl-2',
+      title: 'v2.3.2 · 稳定性修复',
+      meta: '2024-06-28',
+      desc: '修复多项已知问题',
+      state: 'completed',
+      detail: renderChangelog([
+        { type: 'fix', text: '修复在 iOS 17 上键盘弹出时编辑器滚动位置异常的问题' },
+        { type: 'fix', text: '修复云同步在弱网环境下可能出现版本冲突的问题' },
+        { type: 'fix', text: '修复搜索结果高亮显示在深色模式下不可见的问题' },
+        { type: 'perf', text: '优化启动速度，冷启动时间减少约 200ms' }
+      ])
+    },
+    {
+      id: 'cl-3',
+      title: 'v2.3.0 · 云端协作',
+      meta: '2024-05-20',
+      desc: '支持多人实时协作编辑',
+      state: 'completed',
+      detail: renderChangelog([
+        { type: 'feat', text: '新增多人实时协作功能，最多支持 20 人同时编辑同一份笔记' },
+        { type: 'feat', text: '新增评论与批注功能，可在任意段落旁添加讨论' },
+        { type: 'feat', text: '新增版本历史，支持查看任意历史版本并一键回退' },
+        { type: 'fix', text: '修复导出 PDF 时中文换行不正确的问题' }
+      ])
+    },
+    {
+      id: 'cl-4',
+      title: 'v2.2.1 · 功能增强',
+      meta: '2024-04-02',
+      desc: '标签体系升级与编辑器优化',
+      state: 'completed',
+      detail: renderChangelog([
+        { type: 'feat', text: '标签体系升级，支持嵌套标签与标签颜色自定义' },
+        { type: 'feat', text: '编辑器新增 Vim / Emacs 键位绑定选项' },
+        { type: 'feat', text: '新增字数统计悬浮窗，实时显示字符数、词数与阅读时长' },
+        { type: 'fix', text: '修复 Markdown 代码块中粘贴内容格式错乱的问题' },
+        { type: 'fix', text: '修复侧边栏在小屏设备上收起后仍占用空间的问题' }
+      ])
+    }
+  ];
+
+  const changelogTimeline = new Timeline(
+    document.getElementById('changelog-timeline'),
+    {
+      items: changelogItems,
+      layout: 'alternate',
+      expandable: true,
+      initialExpandedId: 'cl-1',
+      accordion: true
+    }
+  );
+
+  function renderChangelog(items) {
+    let html = '<ul class="tl-changelog-list">';
+    items.forEach((item) => {
+      const typeLabel = item.type === 'feat' ? '新功能' : item.type === 'fix' ? '修复' : '优化';
+      html += '<li class="tl-changelog-item ' + item.type + '">' +
+        '<span class="tl-changelog-tag ' + item.type + '">' + typeLabel + '</span>' +
+        item.text +
+        '</li>';
+    });
+    html += '</ul>';
+    return html;
+  }
+
+  // 暴露到全局方便调试
+  window.__logisticsTimeline = logisticsTimeline;
+  window.__changelogTimeline = changelogTimeline;
+
+})();
+</script>
+</body>
+</html>
