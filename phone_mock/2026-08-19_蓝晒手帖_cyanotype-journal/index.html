@@ -1,0 +1,2586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<title>蓝晒手帖 · V2 原生 App</title>
+<style>
+/* ========================================
+   蓝晒手帖 · Cyanotype Journal
+   色彩体系：普鲁士蓝家族 + 水彩纸白 + 药液黄绿
+   ======================================== */
+:root {
+  /* 普鲁士蓝家族 —— 来自工艺本身，不是科技蓝 */
+  --prussian-deep: #1A4D8F;
+  --prussian-mid: #2E6DB5;
+  --prussian-light: #6B9BD4;
+  --prussian-pale: #C5D9EF;
+  --prussian-ghost: #E8EFF8;
+
+  /* 水彩纸白 —— 暖白非纯白 */
+  --paper-white: #F5F1E8;
+  --paper-cream: #EDE7D8;
+  --paper-shadow: rgba(13, 43, 78, 0.08);
+
+  /* 药液黄绿 —— 未曝光状态 */
+  --chem-yellowgreen: #B5C68A;
+  --chem-paleyellow: #D4DDAF;
+  --chem-exposed-mid: #7A8A6B;
+  --chem-exposed-deep: #3F4A38;
+
+  /* 日光琥珀 —— 紫外线/太阳指示 */
+  --sun-amber: #E8A547;
+  --sun-warm: #D88A2B;
+  --sun-pale: #F5D59A;
+
+  /* 文字 —— 墨蓝 */
+  --ink-deep: #0D2B4E;
+  --ink-mid: #3A5A80;
+  --ink-light: #5A7A9E;
+  --ink-faint: #8FA8C5;
+
+  /* 状态色 */
+  --ok-green: #6B9B6B;
+  --warn-amber: #D89A3A;
+  --danger-red: #C05A4A;
+
+  /* 尺寸 */
+  --app-width: 390px;
+  --statusbar-h: 44px;
+  --tabbar-h: 72px;
+  --safe-bottom: 20px;
+
+  /* 动效 —— 化学与光：缓慢、渐变、不可逆 */
+  --ease-expose: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-dissolve: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  background: #DFE8F0;
+  color: var(--ink-deep);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* ===== App 容器 ===== */
+.app {
+  position: relative;
+  width: var(--app-width);
+  height: 844px;
+  background: var(--paper-white);
+  border-radius: 44px;
+  overflow: hidden;
+  box-shadow:
+    0 30px 60px -20px rgba(13, 43, 78, 0.35),
+    0 10px 20px -10px rgba(13, 43, 78, 0.2);
+  isolation: isolate;
+}
+
+/* 纸纤维纹理 —— CSS 模拟，不用图片 */
+.paper-texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 20% 30%, rgba(26, 77, 143, 0.02) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(181, 198, 138, 0.025) 0%, transparent 50%);
+}
+.paper-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.17 0 0 0 0 0.31 0 0 0 0.04 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+
+/* ===== 状态栏 ===== */
+.status-bar {
+  position: relative;
+  z-index: 100;
+  height: var(--statusbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  padding-top: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-deep);
+  font-variant-numeric: tabular-nums;
+}
+.status-bar .sb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-bar .sb-signal, .status-bar .sb-wifi {
+  width: 16px;
+  height: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.status-bar .sb-signal i, .status-bar .sb-wifi i {
+  display: block;
+  width: 3px;
+  background: var(--ink-deep);
+  border-radius: 1px;
+}
+.status-bar .sb-signal i:nth-child(1) { height: 40%; }
+.status-bar .sb-signal i:nth-child(2) { height: 60%; }
+.status-bar .sb-signal i:nth-child(3) { height: 80%; }
+.status-bar .sb-signal i:nth-child(4) { height: 100%; }
+.status-bar .sb-wifi svg { width: 15px; height: 11px; fill: var(--ink-deep); }
+.status-bar .sb-battery {
+  width: 24px;
+  height: 11px;
+  border: 1px solid var(--ink-deep);
+  border-radius: 3px;
+  position: relative;
+  padding: 1px;
+}
+.status-bar .sb-battery::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: 3px;
+  width: 2px;
+  height: 5px;
+  background: var(--ink-deep);
+  border-radius: 0 2px 2px 0;
+}
+.status-bar .sb-battery i {
+  display: block;
+  height: 100%;
+  width: 80%;
+  background: var(--ink-deep);
+  border-radius: 1px;
+}
+
+/* ===== 页面栈 ===== */
+.page-stack {
+  position: absolute;
+  top: var(--statusbar-h);
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom));
+  overflow: hidden;
+  z-index: 1;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  background: var(--paper-white);
+  transition: transform 0.35s var(--ease-expose), opacity 0.35s var(--ease-expose);
+  will-change: transform, opacity;
+}
+.page.tab-page { z-index: 1; }
+.page.sub-page { z-index: 10; }
+.page.hidden {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(30px);
+}
+.page.sub-page.hidden {
+  transform: translateX(100%);
+  opacity: 1;
+}
+
+/* 滚动条隐藏 */
+.page::-webkit-scrollbar { display: none; }
+.page { scrollbar-width: none; }
+
+/* 页面内边距 */
+.page-inner {
+  padding: 16px 20px 32px;
+  position: relative;
+}
+
+/* ===== 底部 Tab Bar ===== */
+.tab-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: rgba(245, 241, 232, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(13, 43, 78, 0.08);
+  display: flex;
+  z-index: 50;
+}
+.tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-light);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tab-item:active { transform: scale(0.97); }
+.tab-item.active { color: var(--prussian-deep); }
+.tab-item svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab-item.active svg { stroke-width: 2.2; }
+.tab-item .tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  width: 20px;
+  height: 2px;
+  background: var(--prussian-deep);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.tab-item.active .tab-indicator { opacity: 1; }
+
+/* ===== 通用排版 ===== */
+.serif {
+  font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
+  letter-spacing: 0.01em;
+}
+.tabular { font-variant-numeric: tabular-nums; }
+
+.page-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink-deep);
+  margin-bottom: 4px;
+}
+.page-subtitle {
+  font-size: 13px;
+  color: var(--ink-light);
+  margin-bottom: 20px;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-light);
+  text-transform: none;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-label::before {
+  content: "";
+  width: 3px;
+  height: 12px;
+  background: var(--prussian-mid);
+  border-radius: 2px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(13, 43, 78, 0.08);
+  margin: 20px 0;
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.btn:active { transform: scale(0.97); opacity: 0.85; }
+
+.btn-primary {
+  background: var(--prussian-deep);
+  color: var(--paper-white);
+  font-size: 16px;
+  font-weight: 500;
+  padding: 16px 32px;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(26, 77, 143, 0.25);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--prussian-deep);
+  border: 1px solid var(--prussian-light);
+  font-size: 14px;
+  padding: 12px 24px;
+  border-radius: 10px;
+}
+.btn-text {
+  color: var(--prussian-mid);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ========================================
+   Tab 1：今日 —— 日照情报站
+   ======================================== */
+.today-hero {
+  position: relative;
+  background: linear-gradient(160deg, var(--prussian-pale) 0%, var(--paper-white) 70%);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.today-date {
+  font-size: 13px;
+  color: var(--ink-mid);
+  margin-bottom: 4px;
+}
+.today-uv-card {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.uv-big {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.uv-num {
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--prussian-deep);
+  font-variant-numeric: tabular-nums;
+}
+.uv-label {
+  font-size: 16px;
+  color: var(--sun-warm);
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+.uv-desc {
+  font-size: 12px;
+  color: var(--ink-light);
+  max-width: 120px;
+  text-align: right;
+  line-height: 1.5;
+}
+
+/* 太阳弧线图 */
+.sun-arc-wrap {
+  position: relative;
+  height: 100px;
+  margin: 8px 0 12px;
+}
+.sun-arc-svg {
+  width: 100%;
+  height: 100%;
+}
+.sun-time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-light);
+  font-variant-numeric: tabular-nums;
+  margin-top: -8px;
+}
+.sun-window-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--sun-warm);
+  font-weight: 500;
+}
+.sun-window-tag i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--sun-amber);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* 推荐曝光时长表 */
+.exposure-table {
+  background: var(--paper-cream);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+.exposure-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(13, 43, 78, 0.06);
+}
+.exposure-row:last-child { border-bottom: none; padding-bottom: 0; }
+.exposure-row:first-child { padding-top: 0; }
+.exposure-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  border: 1px solid rgba(13, 43, 78, 0.1);
+}
+.exposure-swatch.light { background: var(--prussian-pale); }
+.exposure-swatch.mid { background: var(--prussian-light); }
+.exposure-swatch.deep { background: var(--prussian-deep); }
+.exposure-info { flex: 1; }
+.exposure-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-deep);
+  margin-bottom: 2px;
+}
+.exposure-note {
+  font-size: 11px;
+  color: var(--ink-light);
+}
+.exposure-time {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--prussian-deep);
+  font-variant-numeric: tabular-nums;
+}
+.exposure-time small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-light);
+  margin-left: 2px;
+}
+
+/* 今日贴士 */
+.today-tips {
+  font-size: 13px;
+  color: var(--ink-mid);
+  line-height: 1.7;
+  padding: 14px 16px;
+  background: rgba(107, 155, 212, 0.08);
+  border-left: 3px solid var(--prussian-light);
+  border-radius: 4px;
+  margin-bottom: 100px;
+}
+
+/* 底部固定开始按钮 */
+.fab-bottom {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  right: 20px;
+  z-index: 20;
+}
+.fab-bottom .btn-primary {
+  width: 100%;
+  font-size: 17px;
+  padding: 18px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px -4px rgba(26, 77, 143, 0.4), 0 2px 8px rgba(26, 77, 143, 0.2);
+}
+
+/* ========================================
+   Tab 2：晒版 —— 计时器 + 纸面预览
+   ======================================== */
+.print-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.print-header {
+  padding: 8px 20px 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.print-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink-deep);
+}
+.print-meta {
+  font-size: 12px;
+  color: var(--ink-light);
+  display: flex;
+  gap: 10px;
+}
+.print-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* 纸面预览区 */
+.paper-preview {
+  flex: 1;
+  margin: 12px 20px;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow:
+    0 4px 16px rgba(13, 43, 78, 0.15),
+    inset 0 0 30px rgba(13, 43, 78, 0.05);
+  transition: background 0.5s var(--ease-expose);
+  will-change: background;
+  min-height: 280px;
+}
+.paper-preview.exposure-0 { background: var(--chem-yellowgreen); }
+.paper-preview.exposure-25 { background: #A8B87A; }
+.paper-preview.exposure-50 { background: #889568; }
+.paper-preview.exposure-75 { background: var(--chem-exposed-mid); }
+.paper-preview.exposure-100 { background: var(--chem-exposed-deep); }
+.paper-preview.exposure-wash { background: var(--prussian-deep); }
+
+.paper-preview .paper-noise {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* 蓝晒影像（SVG 植物） */
+.cyanotype-image {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 1.5s var(--ease-dissolve);
+}
+.cyanotype-image svg { width: 70%; height: 70%; }
+.cyanotype-image.show { opacity: 1; }
+
+/* 物影物体（曝光前在纸面的物体剪影 —— 深色调） */
+.plant-objects {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  transition: opacity 0.8s var(--ease-dissolve);
+}
+.plant-objects svg { width: 70%; height: 70%; }
+.plant-objects.hidden { opacity: 0; }
+
+/* 计时器圆环 */
+.timer-section {
+  padding: 12px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.timer-ring-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+}
+.timer-ring-wrap svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.timer-ring-bg {
+  fill: none;
+  stroke: var(--prussian-ghost);
+  stroke-width: 8;
+}
+.timer-ring-fg {
+  fill: none;
+  stroke: var(--prussian-deep);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 440;
+  stroke-dashoffset: 440;
+  transition: stroke-dashoffset 0.3s linear;
+}
+.timer-display {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.timer-time {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--ink-deep);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.timer-target {
+  font-size: 12px;
+  color: var(--ink-light);
+  margin-top: 4px;
+}
+.timer-target b { color: var(--prussian-deep); font-weight: 600; }
+
+/* 目标时间选择 */
+.target-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.target-chip {
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  border: 1px solid var(--prussian-pale);
+  background: var(--paper-white);
+  color: var(--ink-mid);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.target-chip:active { transform: scale(0.97); }
+.target-chip.active {
+  background: var(--prussian-deep);
+  border-color: var(--prussian-deep);
+  color: var(--paper-white);
+}
+
+.timer-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.timer-controls .btn { min-width: 100px; }
+
+/* 水槽区域 */
+.water-tank {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(180deg, rgba(107, 155, 212, 0.3) 0%, rgba(46, 109, 181, 0.6) 100%);
+  transform: translateY(100%);
+  transition: transform 0.5s var(--ease-expose);
+  z-index: 15;
+  pointer-events: none;
+  overflow: hidden;
+}
+.water-tank.show {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.water-tank::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3);
+}
+.water-tank-label {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  color: var(--paper-white);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 涟漪 */
+.ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: rippleSpread 2s var(--ease-dissolve) forwards;
+  pointer-events: none;
+}
+@keyframes rippleSpread {
+  0% { width: 10px; height: 10px; opacity: 1; margin-left: -5px; margin-top: -5px; }
+  100% { width: 300px; height: 300px; opacity: 0; margin-left: -150px; margin-top: -150px; }
+}
+
+/* 冲洗中的纸面效果 */
+.washing .paper-noise {
+  animation: dissolve 3s var(--ease-dissolve) forwards;
+}
+@keyframes dissolve {
+  0% { filter: blur(0); opacity: 1; }
+  50% { filter: blur(4px); opacity: 0.7; }
+  100% { filter: blur(0); opacity: 1; }
+}
+
+/* 保存入册按钮 */
+.save-btn-wrap {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  right: 20px;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease 0.5s;
+}
+.save-btn-wrap.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.save-btn-wrap .btn-primary {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+}
+
+/* ========================================
+   Tab 3：作品 —— 时间线
+   ======================================== */
+.works-header {
+  padding: 0 4px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.works-count {
+  font-size: 13px;
+  color: var(--ink-light);
+}
+.works-count b {
+  color: var(--prussian-deep);
+  font-weight: 600;
+}
+
+/* 时间线 */
+.timeline {
+  position: relative;
+  padding-left: 24px;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--prussian-pale);
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 20px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.timeline-item:active { opacity: 0.7; }
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -21px;
+  top: 20px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--paper-white);
+  border: 2px solid var(--prussian-mid);
+}
+.timeline-item .tl-date {
+  font-size: 12px;
+  color: var(--ink-light);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: var(--paper-cream);
+  border-radius: 12px;
+  border: 1px solid rgba(13, 43, 78, 0.04);
+}
+.tl-thumb {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: var(--prussian-deep);
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tl-thumb svg { width: 75%; height: 75%; }
+.tl-thumb svg path, .tl-thumb svg polygon, .tl-thumb svg ellipse { fill: var(--paper-white); }
+.tl-info { flex: 1; min-width: 0; }
+.tl-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-deep);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-meta {
+  font-size: 11px;
+  color: var(--ink-light);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  line-height: 1.6;
+}
+.tl-meta span { display: flex; align-items: center; gap: 3px; }
+.tl-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.tl-tag.light { background: var(--prussian-pale); color: var(--prussian-deep); }
+.tl-tag.mid { background: var(--prussian-light); color: var(--paper-white); }
+.tl-tag.deep { background: var(--prussian-deep); color: var(--paper-white); }
+
+/* 空状态 */
+.works-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ink-light);
+}
+.works-empty svg {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+.works-empty p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* 作品详情页 */
+.detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(245, 241, 232, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(13, 43, 78, 0.06);
+}
+.back-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--prussian-deep);
+  transition: background 0.2s ease;
+}
+.back-btn:active { background: var(--prussian-ghost); }
+.back-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.detail-header h3 {
+  flex: 1;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink-deep);
+  padding-right: 36px;
+}
+
+.detail-image {
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: var(--prussian-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.detail-image svg { width: 65%; height: 65%; }
+.detail-image svg path, .detail-image svg polygon, .detail-image svg ellipse { fill: var(--paper-white); }
+
+.detail-body { padding: 20px; }
+.detail-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink-deep);
+  margin-bottom: 4px;
+}
+.detail-subtitle {
+  font-size: 13px;
+  color: var(--ink-light);
+  margin-bottom: 20px;
+}
+
+.detail-params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.param-item {
+  padding: 14px;
+  background: var(--paper-cream);
+  border-radius: 10px;
+}
+.param-label {
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-bottom: 4px;
+}
+.param-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--prussian-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-note {
+  font-size: 13px;
+  color: var(--ink-mid);
+  line-height: 1.8;
+  padding: 14px;
+  background: rgba(107, 155, 212, 0.06);
+  border-radius: 8px;
+  border-left: 3px solid var(--prussian-light);
+}
+.detail-note-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--prussian-mid);
+  margin-bottom: 6px;
+}
+
+/* ========================================
+   Tab 4：我的
+   ======================================== */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px 20px;
+}
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--prussian-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--paper-white);
+  font-size: 20px;
+  font-weight: 600;
+}
+.profile-info h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-deep);
+  margin-bottom: 2px;
+}
+.profile-info p {
+  font-size: 12px;
+  color: var(--ink-light);
+}
+
+/* 统计卡片 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--paper-cream);
+  border-radius: 12px;
+  padding: 14px 10px;
+  text-align: center;
+}
+.stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--prussian-deep);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-light);
+}
+
+/* 设置列表项 */
+.list-group {
+  margin-bottom: 20px;
+  background: var(--paper-cream);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(13, 43, 78, 0.05);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.list-item:last-child { border-bottom: none; }
+.list-item:active { background: rgba(13, 43, 78, 0.04); }
+.list-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--prussian-pale);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--prussian-deep);
+  flex-shrink: 0;
+}
+.list-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.list-label { flex: 1; font-size: 14px; color: var(--ink-deep); }
+.list-value { font-size: 13px; color: var(--ink-light); font-variant-numeric: tabular-nums; }
+.list-arrow { color: var(--ink-faint); }
+.list-arrow svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 药液批次 */
+.batch-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(13, 43, 78, 0.05);
+}
+.batch-item:last-child { border-bottom: none; }
+.batch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.batch-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-deep);
+}
+.batch-days {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.batch-days.ok { color: var(--ok-green); }
+.batch-days.warn { color: var(--warn-amber); }
+.batch-days.danger { color: var(--danger-red); }
+.batch-bar {
+  height: 4px;
+  background: rgba(13, 43, 78, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.batch-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+.batch-bar-fill.ok { background: var(--ok-green); }
+.batch-bar-fill.warn { background: var(--warn-amber); }
+.batch-bar-fill.danger { background: var(--danger-red); }
+.batch-date {
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-top: 6px;
+}
+
+/* 纸张库存 */
+.stock-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(13, 43, 78, 0.05);
+}
+.stock-item:last-child { border-bottom: none; }
+.stock-name { font-size: 14px; color: var(--ink-deep); }
+.stock-name small { display: block; font-size: 11px; color: var(--ink-light); margin-top: 2px; font-weight: 400; }
+.stock-count {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--prussian-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========================================
+   设计规范页 & 接口文档页
+   ======================================== */
+.doc-page .detail-body { padding-top: 12px; }
+.doc-section { margin-bottom: 24px; }
+.doc-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-deep);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.doc-section h3::before {
+  content: "";
+  width: 4px;
+  height: 16px;
+  background: var(--prussian-mid);
+  border-radius: 2px;
+}
+.doc-section p {
+  font-size: 13px;
+  color: var(--ink-mid);
+  line-height: 1.8;
+  margin-bottom: 8px;
+}
+.doc-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.doc-section ul li {
+  font-size: 13px;
+  color: var(--ink-mid);
+  line-height: 1.8;
+  padding-left: 16px;
+  position: relative;
+}
+.doc-section ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  background: var(--prussian-light);
+  border-radius: 50%;
+}
+
+/* 色板展示 */
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.color-swatch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.color-swatch-item .sw {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px solid rgba(13, 43, 78, 0.1);
+}
+.color-swatch-item .sw-name {
+  font-size: 10px;
+  color: var(--ink-light);
+  text-align: center;
+  font-family: monospace;
+}
+
+/* 接口文档代码块 */
+.api-block {
+  background: var(--ink-deep);
+  color: var(--paper-white);
+  border-radius: 10px;
+  padding: 14px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+.api-block .method {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-right: 8px;
+}
+.api-block .method.get { background: var(--ok-green); color: var(--paper-white); }
+.api-block .method.post { background: var(--prussian-light); color: var(--paper-white); }
+.api-block .method.put { background: var(--warn-amber); color: var(--ink-deep); }
+.api-block .method.delete { background: var(--danger-red); color: var(--paper-white); }
+.api-block .endpoint { color: var(--prussian-pale); font-weight: 500; }
+.api-block .desc { color: var(--ink-faint); margin-top: 6px; }
+.api-block .param { color: var(--sun-pale); }
+.api-block .code-indent { padding-left: 20px; }
+
+/* ========================================
+   响应式 —— 小屏适配
+   ======================================== */
+@media (max-width: 440px) {
+  body { padding: 0; background: var(--paper-white); }
+  .app {
+    width: 100%;
+    height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* ========================================
+   Reduced Motion
+   ======================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.2s !important;
+  }
+  .page { transition: opacity 0.2s ease; transform: none !important; }
+  .page.sub-page.hidden { opacity: 0; }
+  .timer-ring-fg { transition: stroke-dashoffset 0.2s linear; }
+  .washing .paper-noise { animation: none; filter: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="paper-texture"></div>
+
+  <!-- 状态栏 -->
+  <div class="status-bar">
+    <span class="sb-time" id="statusTime">9:41</span>
+    <div class="sb-right">
+      <div class="sb-signal"><i></i><i></i><i></i><i></i></div>
+      <div class="sb-wifi">
+        <svg viewBox="0 0 16 12"><path d="M8 11.5a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM3.8 7.3a6 6 0 0 1 8.4 0M1.5 4.8a9.2 9.2 0 0 1 13 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </div>
+      <div class="sb-battery"><i></i></div>
+    </div>
+  </div>
+
+  <!-- 页面栈 -->
+  <div class="page-stack" id="pageStack">
+
+    <!-- ========== Tab 1：今日 ========== -->
+    <div class="page tab-page" id="page-today" data-tab="today">
+      <div class="page-inner">
+        <h1 class="page-title serif">今日日照</h1>
+        <p class="page-subtitle">2026年8月19日 · 星期三 · 农历七月十六</p>
+
+        <div class="today-hero">
+          <div class="today-date">当前紫外线指数</div>
+          <div class="today-uv-card">
+            <div class="uv-big">
+              <span class="uv-num serif tabular">6</span>
+              <span class="uv-label">强</span>
+            </div>
+            <div class="uv-desc">
+              需涂抹防晒霜<br>晒版条件良好
+            </div>
+          </div>
+
+          <!-- 太阳弧线 -->
+          <div class="sun-arc-wrap">
+            <svg class="sun-arc-svg" viewBox="0 0 350 80" preserveAspectRatio="none">
+              <!-- 最佳晒版窗口（高亮弧段） -->
+              <path d="M 30 70 A 145 145 0 0 1 320 70"
+                    fill="none" stroke="#E8EFF8" stroke-width="6" stroke-linecap="round"/>
+              <!-- 可晒版区域 UV>=3 -->
+              <path id="sunWindowArc" d="M 100 42 A 145 145 0 0 1 270 42"
+                    fill="none" stroke="#E8A547" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+              <!-- 太阳位置 -->
+              <circle id="sunDot" cx="200" cy="30" r="6" fill="#E8A547">
+                <animate attributeName="r" values="6;8;6" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="200" cy="30" r="10" fill="#E8A547" opacity="0.3">
+                <animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.4;0.1;0.4" dur="2s" repeatCount="indefinite"/>
+              </circle>
+            </svg>
+          </div>
+          <div class="sun-time-row">
+            <span>日出 05:42</span>
+            <span class="sun-window-tag"><i></i>最佳窗口 10:30–15:00</span>
+            <span>日落 19:08</span>
+          </div>
+        </div>
+
+        <div class="section-label">推荐曝光时长</div>
+        <div class="exposure-table">
+          <div class="exposure-row">
+            <div class="exposure-swatch light"></div>
+            <div class="exposure-info">
+              <div class="exposure-name">浅蓝调</div>
+              <div class="exposure-note">淡雅层次，适合物影初尝试</div>
+            </div>
+            <div class="exposure-time tabular">8<small>分钟</small></div>
+          </div>
+          <div class="exposure-row">
+            <div class="exposure-swatch mid"></div>
+            <div class="exposure-info">
+              <div class="exposure-name">中蓝调</div>
+              <div class="exposure-note">经典普鲁士蓝，对比适中</div>
+            </div>
+            <div class="exposure-time tabular">15<small>分钟</small></div>
+          </div>
+          <div class="exposure-row">
+            <div class="exposure-swatch deep"></div>
+            <div class="exposure-info">
+              <div class="exposure-name">深蓝调</div>
+              <div class="exposure-note">浓郁深沉，细节保留丰富</div>
+            </div>
+            <div class="exposure-time tabular">25<small>分钟</small></div>
+          </div>
+        </div>
+
+        <div class="section-label">今日贴士</div>
+        <div class="today-tips">
+          今日紫外线较强，建议将曝光时间缩短 1–2 分钟。午后 13:00–14:00 光线最稳定，适合追求均匀色调的作品。
+        </div>
+
+        <div style="height: 80px;"></div>
+      </div>
+
+      <!-- 固定底部按钮 -->
+      <div class="fab-bottom">
+        <button class="btn btn-primary" id="btnStartPrint">开始晒版</button>
+      </div>
+    </div>
+
+    <!-- ========== Tab 2：晒版 ========== -->
+    <div class="page tab-page hidden" id="page-print" data-tab="print">
+      <div class="print-page">
+        <div class="print-header">
+          <h2 class="serif">晒版中</h2>
+          <div class="print-meta">
+            <span>UV <b>6</b></span>
+            <span>晴</span>
+          </div>
+        </div>
+
+        <!-- 纸面预览 -->
+        <div class="paper-preview exposure-0" id="paperPreview">
+          <div class="paper-noise"></div>
+          <!-- 物影物体（蕨叶等） -->
+          <div class="plant-objects" id="plantObjects">
+            <svg viewBox="0 0 200 200" id="plantSvg">
+              <!-- 植物剪影将通过 JS 注入到 cyanotype-image 中 -->
+            </svg>
+          </div>
+          <!-- 最终蓝晒影像 -->
+          <div class="cyanotype-image" id="cyanotypeImage">
+            <svg viewBox="0 0 200 200" fill="#F5F1E8">
+              <!-- 蕨叶形状 -->
+              <g id="fernShape">
+                <path d="M100 180 C 100 150, 90 120, 70 90 C 50 60, 40 40, 50 25 M100 180 C 100 150, 110 120, 130 90 C 150 60, 160 40, 150 25 M100 180 L 100 30" stroke="#F5F1E8" stroke-width="2" fill="none"/>
+                <!-- 左侧叶片 -->
+                <ellipse cx="65" cy="50" rx="20" ry="6" transform="rotate(-30 65 50)"/>
+                <ellipse cx="55" cy="70" rx="22" ry="6" transform="rotate(-40 55 70)"/>
+                <ellipse cx="50" cy="90" rx="24" ry="7" transform="rotate(-50 50 90)"/>
+                <ellipse cx="55" cy="110" rx="22" ry="6" transform="rotate(-55 55 110)"/>
+                <ellipse cx="65" cy="130" rx="18" ry="5" transform="rotate(-50 65 130)"/>
+                <ellipse cx="78" cy="148" rx="14" ry="4" transform="rotate(-40 78 148)"/>
+                <!-- 右侧叶片 -->
+                <ellipse cx="135" cy="50" rx="20" ry="6" transform="rotate(30 135 50)"/>
+                <ellipse cx="145" cy="70" rx="22" ry="6" transform="rotate(40 145 70)"/>
+                <ellipse cx="150" cy="90" rx="24" ry="7" transform="rotate(50 150 90)"/>
+                <ellipse cx="145" cy="110" rx="22" ry="6" transform="rotate(55 145 110)"/>
+                <ellipse cx="135" cy="130" rx="18" ry="5" transform="rotate(50 135 130)"/>
+                <ellipse cx="122" cy="148" rx="14" ry="4" transform="rotate(40 122 148)"/>
+              </g>
+            </svg>
+          </div>
+
+          <!-- 水槽 -->
+          <div class="water-tank" id="waterTank">
+            <div class="water-tank-label">放入水中冲洗</div>
+          </div>
+        </div>
+
+        <!-- 计时器 -->
+        <div class="timer-section">
+          <div class="target-selector" id="targetSelector">
+            <div class="target-chip" data-target="8">浅蓝 8′</div>
+            <div class="target-chip active" data-target="15">中蓝 15′</div>
+            <div class="target-chip" data-target="25">深蓝 25′</div>
+          </div>
+
+          <div class="timer-ring-wrap">
+            <svg viewBox="0 0 160 160">
+              <circle class="timer-ring-bg" cx="80" cy="80" r="70"/>
+              <circle class="timer-ring-fg" id="timerRing" cx="80" cy="80" r="70"/>
+            </svg>
+            <div class="timer-display">
+              <div class="timer-time serif tabular" id="timerDisplay">15:00</div>
+              <div class="timer-target">目标 <b id="targetDisplay">15:00</b></div>
+            </div>
+          </div>
+
+          <div class="timer-controls" id="timerControls">
+            <button class="btn btn-primary" id="btnTimerStart">开始曝光</button>
+            <button class="btn btn-ghost" id="btnTimerReset" style="display:none">重置</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 保存入册按钮（冲洗完成后显示） -->
+      <div class="save-btn-wrap" id="saveBtnWrap">
+        <button class="btn btn-primary" id="btnSaveWork">保存入册</button>
+      </div>
+    </div>
+
+    <!-- ========== Tab 3：作品 ========== -->
+    <div class="page tab-page hidden" id="page-works" data-tab="works">
+      <div class="page-inner">
+        <div class="works-header">
+          <h1 class="page-title serif">作品册</h1>
+          <div class="works-count">共 <b>4</b> 件</div>
+        </div>
+
+        <div class="timeline" id="worksTimeline">
+          <!-- 动态渲染 -->
+        </div>
+
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 4：我的 ========== -->
+    <div class="page tab-page hidden" id="page-mine" data-tab="mine">
+      <div class="page-inner">
+        <div class="profile-header">
+          <div class="avatar serif">蓝</div>
+          <div class="profile-info">
+            <h2>光与化学</h2>
+            <p>蓝晒爱好者 · 已记录 4 件作品</p>
+          </div>
+        </div>
+
+        <div class="section-label">晒版统计</div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-num serif tabular">4</div>
+            <div class="stat-label">累计作品</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num serif tabular">75</div>
+            <div class="stat-label">总曝光（分钟）</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num serif tabular">13:00</div>
+            <div class="stat-label">最常晒版</div>
+          </div>
+        </div>
+
+        <div class="section-label">药液批次</div>
+        <div class="list-group">
+          <div class="batch-item">
+            <div class="batch-head">
+              <span class="batch-name">A液 · 柠檬酸铁铵</span>
+              <span class="batch-days ok">剩余 5 天</span>
+            </div>
+            <div class="batch-bar"><div class="batch-bar-fill ok" style="width: 35%"></div></div>
+            <div class="batch-date">配制于 8月10日 · 建议 14 天内用完</div>
+          </div>
+          <div class="batch-item">
+            <div class="batch-head">
+              <span class="batch-name">B液 · 铁氰化钾</span>
+              <span class="batch-days ok">剩余 5 天</span>
+            </div>
+            <div class="batch-bar"><div class="batch-bar-fill ok" style="width: 35%"></div></div>
+            <div class="batch-date">配制于 8月10日 · 建议 14 天内用完</div>
+          </div>
+          <div class="batch-item">
+            <div class="batch-head">
+              <span class="batch-name">混合工作液</span>
+              <span class="batch-days warn">剩余 2 天</span>
+            </div>
+            <div class="batch-bar"><div class="batch-bar-fill warn" style="width: 15%"></div></div>
+            <div class="batch-date">配制于 8月17日 · 混合后 3–5 天内用完</div>
+          </div>
+        </div>
+
+        <div class="section-label">纸张库存</div>
+        <div class="list-group">
+          <div class="stock-item">
+            <div class="stock-name">阿诗水彩纸 300g<small>中粗纹理 · A4</small></div>
+            <div class="stock-count tabular">×12</div>
+          </div>
+          <div class="stock-item">
+            <div class="stock-name">获多福水彩纸 300g<small>细纹 · A4</small></div>
+            <div class="stock-count tabular">×5</div>
+          </div>
+          <div class="stock-item">
+            <div class="stock-name">宝虹水彩纸 200g<small>中粗 · A5</small></div>
+            <div class="stock-count tabular">×8</div>
+          </div>
+        </div>
+
+        <div class="section-label">设置</div>
+        <div class="list-group">
+          <div class="list-item" data-action="design-spec">
+            <div class="list-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+            <span class="list-label">设计规范</span>
+            <span class="list-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+          <div class="list-item" data-action="api-doc">
+            <div class="list-icon">
+              <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+            </div>
+            <span class="list-label">接口文档</span>
+            <span class="list-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+          <div class="list-item">
+            <div class="list-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z M12 6v6l4 2"/></svg>
+            </div>
+            <span class="list-label">默认曝光参数</span>
+            <span class="list-value">中蓝调</span>
+            <span class="list-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+          <div class="list-item">
+            <div class="list-icon">
+              <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <span class="list-label">晒版提醒</span>
+            <span class="list-value">开启</span>
+            <span class="list-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+          <div class="list-item">
+            <div class="list-icon">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <span class="list-label">关于蓝晒手帖</span>
+            <span class="list-value">v2.0.0</span>
+            <span class="list-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+        </div>
+
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+
+    <!-- ========== 子页面：作品详情 ========== -->
+    <div class="page sub-page hidden" id="page-workDetail">
+      <div class="detail-header">
+        <button class="back-btn" data-close="page-workDetail">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h3 id="detailTitle">作品详情</h3>
+      </div>
+      <div class="detail-image" id="detailImage">
+        <svg viewBox="0 0 200 200" id="detailImageSvg">
+        </svg>
+      </div>
+      <div class="detail-body">
+        <h2 class="detail-title serif" id="detailWorkTitle">蕨叶物影</h2>
+        <p class="detail-subtitle" id="detailWorkDate">2026年8月17日 · 星期一</p>
+
+        <div class="detail-params">
+          <div class="param-item">
+            <div class="param-label">曝光时长</div>
+            <div class="param-value tabular" id="detailExposure">18 分钟</div>
+          </div>
+          <div class="param-item">
+            <div class="param-label">紫外线指数</div>
+            <div class="param-value tabular" id="detailUV">UV 7</div>
+          </div>
+          <div class="param-item">
+            <div class="param-label">天气</div>
+            <div class="param-value" id="detailWeather">晴</div>
+          </div>
+          <div class="param-item">
+            <div class="param-label">色调</div>
+            <div class="param-value" id="detailTone">中蓝</div>
+          </div>
+          <div class="param-item">
+            <div class="param-label">纸张</div>
+            <div class="param-value" id="detailPaper">阿诗 300g</div>
+          </div>
+          <div class="param-item">
+            <div class="param-label">药液批次</div>
+            <div class="param-value" id="detailBatch">8月10日</div>
+          </div>
+        </div>
+
+        <div class="detail-note">
+          <div class="detail-note-label">创作手记</div>
+          <p id="detailNote">第一次用蕨叶做物影，叶片的脉络在阳光下投出细密的纹路。曝光时间稍长了些，下次试试 15 分钟看会不会更通透。</p>
+        </div>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+
+    <!-- ========== 子页面：设计规范 ========== -->
+    <div class="page sub-page hidden doc-page" id="page-designSpec">
+      <div class="detail-header">
+        <button class="back-btn" data-close="page-designSpec">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h3>设计规范</h3>
+      </div>
+      <div class="detail-body">
+        <div class="doc-section">
+          <h3>设计理念</h3>
+          <p>蓝晒手帖的界面像一本蓝晒工作者的随身手册——记录每一次与阳光的合作。视觉语言全部来自蓝晒工艺本身：普鲁士蓝、水彩纸、药液黄绿。不是科技蓝，是化学反应蓝。</p>
+        </div>
+
+        <div class="doc-section">
+          <h3>色彩体系</h3>
+          <p>主色取自普鲁士蓝家族，辅助色来自水彩纸白与药液黄绿。严禁蓝紫渐变。</p>
+          <div class="color-swatches">
+            <div class="color-swatch-item"><div class="sw" style="background:#1A4D8F"></div><div class="sw-name">#1A4D8F</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#2E6DB5"></div><div class="sw-name">#2E6DB5</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#6B9BD4"></div><div class="sw-name">#6B9BD4</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#C5D9EF"></div><div class="sw-name">#C5D9EF</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#F5F1E8"></div><div class="sw-name">#F5F1E8</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#B5C68A"></div><div class="sw-name">#B5C68A</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#E8A547"></div><div class="sw-name">#E8A547</div></div>
+            <div class="color-swatch-item"><div class="sw" style="background:#0D2B4E"></div><div class="sw-name">#0D2B4E</div></div>
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>字体系统</h3>
+          <ul>
+            <li><b>标题 / 数字</b>：衬线体（Georgia / 宋体），呼应古典摄影气质</li>
+            <li><b>正文</b>：无衬线（system-ui / PingFang），保证小屏可读性</li>
+            <li><b>数字</b>：tabular-nums，计时器使用等宽数字</li>
+          </ul>
+        </div>
+
+        <div class="doc-section">
+          <h3>材质语言</h3>
+          <ul>
+            <li>水彩纸质感贯穿全局——CSS noise 模拟纸纤维</li>
+            <li>药液涂刷边缘有不规则晕染感</li>
+            <li>卡片使用柔和阴影，模拟纸页层叠</li>
+          </ul>
+        </div>
+
+        <div class="doc-section">
+          <h3>动效语言</h3>
+          <ul>
+            <li>化学与光的运动——缓慢、不可逆、渐变</li>
+            <li>曝光是渐进变深，不用弹性回弹</li>
+            <li>冲洗是溶解扩散，涟漪从中心向外</li>
+            <li>计时器圆环匀速填充</li>
+            <li>支持 prefers-reduced-motion 降级</li>
+          </ul>
+        </div>
+
+        <div class="doc-section">
+          <h3>空间逻辑</h3>
+          <ul>
+            <li>编辑式 / 手册式——信息以区块+分隔线组织</li>
+            <li>不全塞圆角卡片，避免卡片堆砌感</li>
+            <li>时间线用竖线串联</li>
+            <li>计时器页面留大面积给纸面预览</li>
+          </ul>
+        </div>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+
+    <!-- ========== 子页面：接口文档 ========== -->
+    <div class="page sub-page hidden doc-page" id="page-apiDoc">
+      <div class="detail-header">
+        <button class="back-btn" data-close="page-apiDoc">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h3>接口文档</h3>
+      </div>
+      <div class="detail-body">
+        <div class="doc-section">
+          <h3>基础信息</h3>
+          <ul>
+            <li>Base URL: <code>https://api.cyanotype.app/v2</code></li>
+            <li>认证方式：Bearer Token</li>
+            <li>数据格式：JSON</li>
+            <li>时区：所有时间均为用户本地时区</li>
+          </ul>
+        </div>
+
+        <div class="doc-section">
+          <h3>紫外线与天气</h3>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/weather/today</span>
+            <div class="desc">获取今日紫外线指数与日照信息</div>
+            <div style="margin-top:8px;">
+              <div class="code-indent">Query 参数：</div>
+              <div class="code-indent"><span class="param">lat</span> number — 纬度</div>
+              <div class="code-indent"><span class="param">lon</span> number — 经度</div>
+            </div>
+          </div>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/weather/forecast</span>
+            <div class="desc">获取未来 7 天紫外线预报</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/exposure/recommend</span>
+            <div class="desc">根据当前紫外线推荐曝光时长</div>
+            <div style="margin-top:8px;">
+              <div class="code-indent">Query 参数：</div>
+              <div class="code-indent"><span class="param">uvIndex</span> number — 紫外线指数</div>
+              <div class="code-indent"><span class="param">paperType</span> string — 纸张类型</div>
+              <div class="code-indent"><span class="param">tone</span> string — desired 色调 (light/mid/deep)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>作品管理</h3>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/works</span>
+            <div class="desc">获取作品列表（分页）</div>
+            <div style="margin-top:8px;">
+              <div class="code-indent">Query 参数：</div>
+              <div class="code-indent"><span class="param">page</span> number — 页码，默认 1</div>
+              <div class="code-indent"><span class="param">pageSize</span> number — 每页数量，默认 20</div>
+              <div class="code-indent"><span class="param">sort</span> string — 排序 (date_desc/date_asc/uv_desc)</div>
+            </div>
+          </div>
+
+          <div class="api-block">
+            <span class="method post">POST</span>
+            <span class="endpoint">/works</span>
+            <div class="desc">创建一条作品记录</div>
+            <div style="margin-top:8px;">
+              <div class="code-indent">Body 字段：</div>
+              <div class="code-indent"><span class="param">title</span> string — 作品名称</div>
+              <div class="code-indent"><span class="param">exposureSeconds</span> number — 曝光秒数</div>
+              <div class="code-indent"><span class="param">uvIndex</span> number — 紫外线指数</div>
+              <div class="code-indent"><span class="param">weather</span> string — 天气</div>
+              <div class="code-indent"><span class="param">tone</span> string — 色调</div>
+              <div class="code-indent"><span class="param">paperId</span> string — 纸张 ID</div>
+              <div class="code-indent"><span class="param">batchId</span> string — 药液批次 ID</div>
+              <div class="code-indent"><span class="param">note</span> string — 备注</div>
+              <div class="code-indent"><span class="param">imageData</span> string — 作品图像 base64</div>
+            </div>
+          </div>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/works/{id}</span>
+            <div class="desc">获取作品详情</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method put">PUT</span>
+            <span class="endpoint">/works/{id}</span>
+            <div class="desc">更新作品信息</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method delete">DELETE</span>
+            <span class="endpoint">/works/{id}</span>
+            <div class="desc">删除作品记录</div>
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>药液与纸张</h3>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/batches</span>
+            <div class="desc">获取药液批次列表</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method post">POST</span>
+            <span class="endpoint">/batches</span>
+            <div class="desc">新增药液批次</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/papers</span>
+            <div class="desc">获取纸张库存</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method put">PUT</span>
+            <span class="endpoint">/papers/{id}/stock</span>
+            <div class="desc">更新纸张库存数量</div>
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>用户与统计</h3>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/users/me</span>
+            <div class="desc">获取当前用户信息</div>
+          </div>
+
+          <div class="api-block">
+            <span class="method get">GET</span>
+            <span class="endpoint">/stats/summary</span>
+            <div class="desc">获取晒版统计概览（累计作品、总曝光时长、最常时段等）</div>
+          </div>
+        </div>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+
+  </div>
+
+  <!-- 底部 Tab Bar -->
+  <div class="tab-bar">
+    <div class="tab-item active" data-tab="today">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <span>今日</span>
+      <div class="tab-indicator"></div>
+    </div>
+    <div class="tab-item" data-tab="print">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+      <span>晒版</span>
+      <div class="tab-indicator"></div>
+    </div>
+    <div class="tab-item" data-tab="works">
+      <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <span>作品</span>
+      <div class="tab-indicator"></div>
+    </div>
+    <div class="tab-item" data-tab="mine">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <span>我的</span>
+      <div class="tab-indicator"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ========================================
+  // 工具函数
+  // ========================================
+  var $ = function (id) { return document.getElementById(id); };
+  var $all = function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+
+  // 格式化 mm:ss
+  function fmtTime(seconds) {
+    var m = Math.floor(seconds / 60);
+    var s = seconds % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  // reduced motion 检测
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ========================================
+  // 数据
+  // ========================================
+  var worksData = [
+    {
+      id: 1,
+      title: '蕨叶物影',
+      date: '8月17日',
+      dateFull: '2026年8月17日 · 星期一',
+      exposure: 18,
+      uv: 7,
+      weather: '晴',
+      tone: 'mid',
+      toneLabel: '中蓝',
+      paper: '阿诗 300g 中粗',
+      batch: '8月10日批次',
+      note: '第一次用蕨叶做物影，叶片的脉络在阳光下投出细密的纹路。曝光时间稍长了些，下次试试 15 分钟看会不会更通透。',
+      plant: 'fern'
+    },
+    {
+      id: 2,
+      title: '银杏叶组合',
+      date: '8月15日',
+      dateFull: '2026年8月15日 · 星期六',
+      exposure: 12,
+      uv: 5,
+      weather: '多云',
+      tone: 'light',
+      toneLabel: '浅蓝',
+      paper: '获多福 300g 细纹',
+      batch: '8月10日批次',
+      note: '三枚银杏叶错落摆放，形成节奏感。紫外线偏弱，色调偏浅但层次细腻，意外地好看。',
+      plant: 'ginkgo'
+    },
+    {
+      id: 3,
+      title: '羽毛与种子',
+      date: '8月12日',
+      dateFull: '2026年8月12日 · 星期三',
+      exposure: 25,
+      uv: 8,
+      weather: '晴',
+      tone: 'deep',
+      toneLabel: '深蓝',
+      paper: '阿诗 300g 中粗',
+      batch: '8月3日批次',
+      note: '长曝光出的深蓝调非常浓郁，羽毛的纤毫毕现。种子荚的圆形轮廓与羽毛的飘逸形成对比。',
+      plant: 'feather'
+    },
+    {
+      id: 4,
+      title: '蕨叶与花瓣',
+      date: '8月10日',
+      dateFull: '2026年8月10日 · 星期一',
+      exposure: 20,
+      uv: 6,
+      weather: '晴',
+      tone: 'deep',
+      toneLabel: '深蓝',
+      paper: '宝虹 200g 中粗',
+      batch: '8月3日批次',
+      note: '蕨叶与花瓣的组合，硬挺与柔软的对比。纸基偏薄有些许卷曲，下次换厚纸。',
+      plant: 'fernPetal'
+    }
+  ];
+
+  // 植物 SVG 路径（白色剪影，用于蓝晒效果）
+  var plantSVGs = {
+    fern: '<g>' +
+      '<path d="M100 180 C 100 150, 90 120, 70 90 C 50 60, 40 40, 50 25" stroke="#F5F1E8" stroke-width="2" fill="none"/>' +
+      '<path d="M100 180 C 100 150, 110 120, 130 90 C 150 60, 160 40, 150 25" stroke="#F5F1E8" stroke-width="2" fill="none"/>' +
+      '<path d="M100 180 L 100 30" stroke="#F5F1E8" stroke-width="2" fill="none"/>' +
+      '<ellipse cx="65" cy="50" rx="20" ry="6" transform="rotate(-30 65 50)"/>' +
+      '<ellipse cx="55" cy="70" rx="22" ry="6" transform="rotate(-40 55 70)"/>' +
+      '<ellipse cx="50" cy="90" rx="24" ry="7" transform="rotate(-50 50 90)"/>' +
+      '<ellipse cx="55" cy="110" rx="22" ry="6" transform="rotate(-55 55 110)"/>' +
+      '<ellipse cx="65" cy="130" rx="18" ry="5" transform="rotate(-50 65 130)"/>' +
+      '<ellipse cx="78" cy="148" rx="14" ry="4" transform="rotate(-40 78 148)"/>' +
+      '<ellipse cx="135" cy="50" rx="20" ry="6" transform="rotate(30 135 50)"/>' +
+      '<ellipse cx="145" cy="70" rx="22" ry="6" transform="rotate(40 145 70)"/>' +
+      '<ellipse cx="150" cy="90" rx="24" ry="7" transform="rotate(50 150 90)"/>' +
+      '<ellipse cx="145" cy="110" rx="22" ry="6" transform="rotate(55 145 110)"/>' +
+      '<ellipse cx="135" cy="130" rx="18" ry="5" transform="rotate(50 135 130)"/>' +
+      '<ellipse cx="122" cy="148" rx="14" ry="4" transform="rotate(40 122 148)"/>' +
+      '</g>',
+    ginkgo: '<g>' +
+      '<path d="M100 180 L 100 70" stroke="#F5F1E8" stroke-width="2" fill="none"/>' +
+      '<path d="M70 60 C 60 30, 140 30, 130 60 C 125 45, 110 50, 100 40 C 90 50, 75 45, 70 60 Z"/>' +
+      '<path d="M85 100 C 75 75, 125 75, 115 100 C 110 88, 100 92, 100 82 C 100 92, 90 88, 85 100 Z" transform="translate(-20 10)"/>' +
+      '<path d="M85 100 C 75 75, 125 75, 115 100 C 110 88, 100 92, 100 82 C 100 92, 90 88, 85 100 Z" transform="translate(35 20)"/>' +
+      '</g>',
+    feather: '<g>' +
+      '<path d="M100 20 L 100 180" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 40 C 70 50, 55 80, 60 110 C 65 90, 80 75, 100 70" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 40 C 130 50, 145 80, 140 110 C 135 90, 120 75, 100 70" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 75 C 65 85, 50 120, 55 150 C 60 130, 80 115, 100 105" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 75 C 135 85, 150 120, 145 150 C 140 130, 120 115, 100 105" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 115 C 70 125, 58 155, 65 180 C 65 165, 80 150, 100 140" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<path d="M100 115 C 130 125, 142 155, 135 180 C 135 165, 120 150, 100 140" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '<circle cx="70" cy="170" r="6"/>' +
+      '<circle cx="130" cy="160" r="5"/>' +
+      '<path d="M100 180 C 95 185, 90 188, 85 185" stroke="#F5F1E8" stroke-width="1.5" fill="none"/>' +
+      '</g>',
+    fernPetal: '<g>' +
+      '<path d="M60 180 L 60 60" stroke="#F5F1E8" stroke-width="2" fill="none"/>' +
+      '<ellipse cx="40" cy="75" rx="14" ry="4" transform="rotate(-40 40 75)"/>' +
+      '<ellipse cx="35" cy="100" rx="16" ry="5" transform="rotate(-50 35 100)"/>' +
+      '<ellipse cx="38" cy="125" rx="14" ry="4" transform="rotate(-55 38 125)"/>' +
+      '<ellipse cx="80" cy="75" rx="14" ry="4" transform="rotate(40 80 75)"/>' +
+      '<ellipse cx="85" cy="100" rx="16" ry="5" transform="rotate(50 85 100)"/>' +
+      '<ellipse cx="82" cy="125" rx="14" ry="4" transform="rotate(55 82 125)"/>' +
+      '<ellipse cx="140" cy="70" rx="20" ry="25" transform="rotate(-10 140 70)"/>' +
+      '<ellipse cx="125" cy="55" rx="10" ry="16" transform="rotate(-30 125 55)"/>' +
+      '<ellipse cx="155" cy="55" rx="10" ry="16" transform="rotate(30 155 55)"/>' +
+      '<path d="M140 100 C 120 120, 160 120, 140 100 Z" transform="translate(10 20)"/>' +
+      '</g>'
+  };
+
+  // ========================================
+  // 状态栏时间
+  // ========================================
+  function updateStatusTime() {
+    var now = new Date();
+    var h = now.getHours();
+    var m = now.getMinutes();
+    $('statusTime').textContent = h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  updateStatusTime();
+  var statusTimer = setInterval(updateStatusTime, 30000);
+
+  // ========================================
+  // Tab 切换
+  // ========================================
+  var currentTab = 'today';
+  var tabItems = $all('.tab-item');
+  var tabPages = $all('.tab-page');
+
+  function switchTab(tabName) {
+    if (tabName === currentTab) return;
+    currentTab = tabName;
+
+    tabItems.forEach(function (el) {
+      el.classList.toggle('active', el.dataset.tab === tabName);
+    });
+    tabPages.forEach(function (page) {
+      var isActive = page.dataset.tab === tabName;
+      page.classList.toggle('hidden', !isActive);
+      if (isActive) {
+        page.scrollTop = 0;
+      }
+    });
+  }
+
+  tabItems.forEach(function (el) {
+    el.addEventListener('click', function () {
+      switchTab(el.dataset.tab);
+    });
+  });
+
+  // 开始晒版按钮 → 切到晒版 tab
+  $('btnStartPrint').addEventListener('click', function () {
+    switchTab('print');
+  });
+
+  // ========================================
+  // 子页面导航
+  // ========================================
+  function openPage(pageId) {
+    var page = $('page-' + pageId);
+    if (!page) return;
+    page.classList.remove('hidden');
+    page.scrollTop = 0;
+  }
+
+  function closePage(pageId) {
+    var page = $('page-' + pageId);
+    if (!page) return;
+    page.classList.add('hidden');
+  }
+
+  $all('[data-close]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      closePage(btn.dataset.close);
+    });
+  });
+
+  // 我的页面列表项点击
+  $all('.list-item[data-action]').forEach(function (item) {
+    item.addEventListener('click', function () {
+      var action = item.dataset.action;
+      if (action === 'design-spec') openPage('designSpec');
+      if (action === 'api-doc') openPage('apiDoc');
+    });
+  });
+
+  // ========================================
+  // 作品时间线渲染
+  // ========================================
+  function renderWorksTimeline() {
+    var container = $('worksTimeline');
+    var html = '';
+    worksData.forEach(function (w, i) {
+      var toneClass = w.tone;
+      var plantSvg = plantSVGs[w.plant] || plantSVGs.fern;
+      html +=
+        '<div class="timeline-item" data-id="' + w.id + '">' +
+          '<div class="tl-date">' + w.date + '</div>' +
+          '<div class="timeline-card">' +
+            '<div class="tl-thumb"><svg viewBox="0 0 200 200" fill="#F5F1E8">' + plantSvg + '</svg></div>' +
+            '<div class="tl-info">' +
+              '<div class="tl-title">' + w.title + '</div>' +
+              '<div class="tl-meta">' +
+                '<span>曝光 ' + w.exposure + '′</span>' +
+                '<span>UV' + w.uv + '</span>' +
+                '<span>' + w.weather + '</span>' +
+                '<span class="tl-tag ' + toneClass + '">' + w.toneLabel + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    });
+    container.innerHTML = html;
+
+    // 点击事件
+    $all('.timeline-item', container).forEach(function (item) {
+      item.addEventListener('click', function () {
+        var id = parseInt(item.dataset.id, 10);
+        showWorkDetail(id);
+      });
+    });
+  }
+
+  function showWorkDetail(id) {
+    var w = worksData.find(function (x) { return x.id === id; });
+    if (!w) return;
+
+    $('detailWorkTitle').textContent = w.title;
+    $('detailWorkDate').textContent = w.dateFull;
+    $('detailExposure').textContent = w.exposure + ' 分钟';
+    $('detailUV').textContent = 'UV ' + w.uv;
+    $('detailWeather').textContent = w.weather;
+    $('detailTone').textContent = w.toneLabel;
+    $('detailPaper').textContent = w.paper;
+    $('detailBatch').textContent = w.batch;
+    $('detailNote').textContent = w.note;
+    $('detailTitle').textContent = w.title;
+
+    var svg = $('detailImageSvg');
+    svg.innerHTML = plantSVGs[w.plant] || plantSVGs.fern;
+
+    openPage('workDetail');
+  }
+
+  renderWorksTimeline();
+
+  // ========================================
+  // 晒版计时器
+  // ========================================
+  var timerState = {
+    targetSeconds: 15 * 60, // 默认 15 分钟
+    elapsedSeconds: 0,
+    running: false,
+    rafId: null,
+    lastTime: 0,
+    completed: false,
+    washing: false
+  };
+
+  var timerRing = $('timerRing');
+  var timerDisplay = $('timerDisplay');
+  var targetDisplay = $('targetDisplay');
+  var paperPreview = $('paperPreview');
+  var btnStart = $('btnTimerStart');
+  var btnReset = $('btnTimerReset');
+  var waterTank = $('waterTank');
+  var cyanotypeImage = $('cyanotypeImage');
+  var plantObjects = $('plantObjects');
+  var saveBtnWrap = $('saveBtnWrap');
+
+  var ringCircumference = 2 * Math.PI * 70; // r=70
+  timerRing.style.strokeDasharray = ringCircumference;
+  timerRing.style.strokeDashoffset = ringCircumference;
+
+  function updateTimerDisplay() {
+    var remaining = Math.max(0, timerState.targetSeconds - timerState.elapsedSeconds);
+    timerDisplay.textContent = fmtTime(remaining);
+    targetDisplay.textContent = fmtTime(timerState.targetSeconds);
+
+    var progress = Math.min(1, timerState.elapsedSeconds / timerState.targetSeconds);
+    timerRing.style.strokeDashoffset = ringCircumference * (1 - progress);
+
+    // 更新纸面颜色
+    var levels = ['exposure-0', 'exposure-25', 'exposure-50', 'exposure-75', 'exposure-100'];
+    var pct = progress * 100;
+    var levelIndex = pct < 12.5 ? 0 : pct < 37.5 ? 1 : pct < 62.5 ? 2 : pct < 87.5 ? 3 : 4;
+    levels.forEach(function (cls, i) {
+      paperPreview.classList.toggle(cls, i === levelIndex);
+    });
+  }
+
+  // RAF 驱动的计时器
+  function tick(timestamp) {
+    if (!timerState.running) return;
+
+    if (!timerState.lastTime) timerState.lastTime = timestamp;
+    var delta = (timestamp - timerState.lastTime) / 1000;
+    timerState.lastTime = timestamp;
+
+    // 加速模式：演示用，1 秒 = 实际 1 秒（但展示效果可能太慢）
+    // 为了演示，这里保持 1:1。如果需要加快演示速度可调整 speed 倍数
+    var speed = 1;
+    timerState.elapsedSeconds += delta * speed;
+
+    if (timerState.elapsedSeconds >= timerState.targetSeconds) {
+      timerState.elapsedSeconds = timerState.targetSeconds;
+      timerState.running = false;
+      timerState.completed = true;
+      updateTimerDisplay();
+      onTimerComplete();
+      return;
+    }
+
+    updateTimerDisplay();
+    timerState.rafId = requestAnimationFrame(tick);
+  }
+
+  function startTimer() {
+    if (timerState.running) return;
+    if (timerState.completed) {
+      // 已完成则重置再开始
+      resetTimer();
+    }
+    timerState.running = true;
+    timerState.lastTime = 0;
+    btnStart.textContent = '暂停';
+    btnReset.style.display = '';
+    timerState.rafId = requestAnimationFrame(tick);
+  }
+
+  function pauseTimer() {
+    if (!timerState.running) return;
+    timerState.running = false;
+    if (timerState.rafId) {
+      cancelAnimationFrame(timerState.rafId);
+      timerState.rafId = null;
+    }
+    btnStart.textContent = '继续';
+  }
+
+  function resetTimer() {
+    pauseTimer();
+    timerState.elapsedSeconds = 0;
+    timerState.completed = false;
+    timerState.washing = false;
+    btnStart.textContent = '开始曝光';
+    btnReset.style.display = 'none';
+
+    // 重置纸面状态
+    paperPreview.classList.remove('exposure-wash', 'washing');
+    plantObjects.classList.remove('hidden');
+    cyanotypeImage.classList.remove('show');
+    waterTank.classList.remove('show');
+    saveBtnWrap.classList.remove('show');
+
+    updateTimerDisplay();
+  }
+
+  function onTimerComplete() {
+    btnStart.textContent = '曝光完成';
+    btnStart.classList.remove('btn-primary');
+    btnStart.classList.add('btn-ghost');
+    btnReset.style.display = '';
+
+    // 显示水槽
+    setTimeout(function () {
+      waterTank.classList.add('show');
+    }, 500);
+  }
+
+  btnStart.addEventListener('click', function () {
+    if (timerState.completed) {
+      // 已完成状态 —— 不做操作或提示进入冲洗
+      // 改为：点击触发冲洗
+      if (!timerState.washing) {
+        startWashing();
+      }
+      return;
+    }
+    if (timerState.running) {
+      pauseTimer();
+    } else {
+      startTimer();
+    }
+  });
+
+  btnReset.addEventListener('click', function () {
+    resetTimer();
+    btnStart.classList.add('btn-primary');
+    btnStart.classList.remove('btn-ghost');
+  });
+
+  // 目标时间选择
+  $all('.target-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      if (timerState.running || timerState.completed) return;
+      var target = parseInt(chip.dataset.target, 10);
+      timerState.targetSeconds = target * 60;
+      timerState.elapsedSeconds = 0;
+
+      $all('.target-chip').forEach(function (c) { c.classList.remove('active'); });
+      chip.classList.add('active');
+
+      updateTimerDisplay();
+    });
+  });
+
+  // 纸面点击 → 触发冲洗
+  paperPreview.addEventListener('click', function () {
+    if (timerState.completed && !timerState.washing) {
+      startWashing();
+    }
+  });
+
+  // ========================================
+  // 冲洗显影动画（签名动效）
+  // ========================================
+  var washRafId = null;
+  var washStartTime = 0;
+  var washDuration = reduceMotion ? 500 : 3000;
+
+  function startWashing() {
+    if (timerState.washing) return;
+    timerState.washing = true;
+
+    // 隐藏物影物体（它们在水里"溶解"了）
+    plantObjects.classList.add('hidden');
+
+    // 涟漪效果
+    for (var i = 0; i < 3; i++) {
+      (function (idx) {
+        setTimeout(function () {
+          createRipple();
+        }, idx * 400);
+      })(i);
+    }
+
+    // 添加冲洗中的溶解效果类
+    paperPreview.classList.add('washing');
+
+    // 动画：从灰绿渐变到普鲁士蓝
+    washStartTime = performance.now();
+    animateWash();
+
+    // 按钮文字更新
+    btnStart.textContent = '冲洗中...';
+  }
+
+  function animateWash() {
+    washRafId = requestAnimationFrame(animateWashFrame);
+  }
+
+  function animateWashFrame(now) {
+    if (!timerState.washing) return;
+
+    var elapsed = now - washStartTime;
+    var progress = Math.min(1, elapsed / washDuration);
+
+    // 颜色插值：从 #3F4A38 (深灰绿) 到 #1A4D8F (普鲁士蓝)
+    var r = Math.round(63 + (26 - 63) * progress);
+    var g = Math.round(74 + (77 - 74) * progress);
+    var b = Math.round(56 + (143 - 56) * progress);
+    paperPreview.style.background = 'rgb(' + r + ',' + g + ',' + b + ')';
+
+    // 蓝晒影像逐渐显现
+    cyanotypeImage.style.opacity = Math.min(1, progress * 1.5);
+
+    if (progress >= 1) {
+      cancelAnimationFrame(washRafId);
+      washRafId = null;
+      onWashComplete();
+    } else {
+      washRafId = requestAnimationFrame(animateWashFrame);
+    }
+  }
+
+  function onWashComplete() {
+    paperPreview.classList.remove('washing');
+    paperPreview.style.background = '';
+    paperPreview.classList.add('exposure-wash');
+    cyanotypeImage.classList.add('show');
+    cyanotypeImage.style.opacity = '';
+
+    btnStart.textContent = '显影完成';
+
+    // 显示保存按钮
+    saveBtnWrap.classList.add('show');
+  }
+
+  function createRipple() {
+    var ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    // 随机位置
+    var x = 20 + Math.random() * 60; // 20-80%
+    var y = 30 + Math.random() * 40;
+    ripple.style.left = x + '%';
+    ripple.style.top = y + '%';
+    ripple.style.animationDuration = reduceMotion ? '0.5s' : '2s';
+    paperPreview.appendChild(ripple);
+
+    setTimeout(function () {
+      if (ripple.parentNode) {
+        ripple.parentNode.removeChild(ripple);
+      }
+    }, reduceMotion ? 600 : 2100);
+  }
+
+  // 保存入册
+  $('btnSaveWork').addEventListener('click', function () {
+    // 简单反馈：弹出保存成功的视觉反馈后切到作品 tab
+    var btn = $('btnSaveWork');
+    var originalText = btn.textContent;
+    btn.textContent = '已保存 ✓';
+    btn.style.background = '#6B9B6B';
+
+    setTimeout(function () {
+      btn.textContent = originalText;
+      btn.style.background = '';
+
+      // 添加一条新作品到数据列表前面
+      var tone = 'mid';
+      var toneLabel = '中蓝';
+      var mins = Math.round(timerState.targetSeconds / 60);
+      if (mins <= 10) { tone = 'light'; toneLabel = '浅蓝'; }
+      else if (mins >= 20) { tone = 'deep'; toneLabel = '深蓝'; }
+
+      var today = new Date();
+      var dateStr = (today.getMonth() + 1) + '月' + today.getDate() + '日';
+      var dateFull = today.getFullYear() + '年' + (today.getMonth() + 1) + '月' + today.getDate() + '日';
+
+      var newWork = {
+        id: Date.now(),
+        title: '今日新晒 · 蕨叶',
+        date: dateStr,
+        dateFull: dateFull,
+        exposure: mins,
+        uv: 6,
+        weather: '晴',
+        tone: tone,
+        toneLabel: toneLabel,
+        paper: '阿诗 300g 中粗',
+        batch: '8月10日批次',
+        note: '今日新晒作品，阳光正好。',
+        plant: 'fern'
+      };
+      worksData.unshift(newWork);
+      renderWorksTimeline();
+
+      // 更新作品数量
+      var countEl = document.querySelector('.works-count b');
+      if (countEl) countEl.textContent = worksData.length;
+
+      // 更新统计
+      var statCards = $all('.stat-card');
+      if (statCards[0]) statCards[0].querySelector('.stat-num').textContent = worksData.length;
+
+      // 重置并切到作品
+      resetTimer();
+      btnStart.classList.add('btn-primary');
+      btnStart.classList.remove('btn-ghost');
+      switchTab('works');
+    }, 1000);
+  });
+
+  // 初始化显示
+  updateTimerDisplay();
+
+  // ========================================
+  // 健壮性：visibilitychange 暂停/恢复
+  // ========================================
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      // 页面隐藏 → 暂停所有动画
+      if (timerState.running) {
+        pauseTimer();
+      }
+      if (washRafId) {
+        cancelAnimationFrame(washRafId);
+        washRafId = null;
+      }
+      if (statusTimer) {
+        clearInterval(statusTimer);
+        statusTimer = null;
+      }
+    } else {
+      // 页面显示 → 恢复
+      updateStatusTime();
+      if (!statusTimer) statusTimer = setInterval(updateStatusTime, 30000);
+
+      // 计时器恢复由用户手动控制（不自动继续，符合晒版实际操作逻辑）
+      // 冲洗动画如果在进行中，重新启动（从当前进度继续）
+      if (timerState.washing && washStartTime) {
+        // 简单处理：直接跳到完成状态，避免复杂进度保存
+        // 实际生产中应保存进度，这里简化
+        animateWash();
+      }
+    }
+  });
+
+  // ========================================
+  // 健壮性：页面卸载时清理
+  // ========================================
+  window.addEventListener('beforeunload', function () {
+    if (timerState.rafId) cancelAnimationFrame(timerState.rafId);
+    if (washRafId) cancelAnimationFrame(washRafId);
+    if (statusTimer) clearInterval(statusTimer);
+    timerState.rafId = null;
+    washRafId = null;
+    statusTimer = null;
+  });
+
+  // ========================================
+  // 太阳位置动画（简单根据当前时间模拟）
+  // ========================================
+  function updateSunPosition() {
+    var now = new Date();
+    var hours = now.getHours();
+    var minutes = now.getMinutes();
+    var currentMin = hours * 60 + minutes;
+
+    // 日出 5:42 = 342min，日落 19:08 = 1148min
+    var sunriseMin = 5 * 60 + 42;
+    var sunsetMin = 19 * 60 + 8;
+
+    var progress = 0;
+    if (currentMin <= sunriseMin) progress = 0;
+    else if (currentMin >= sunsetMin) progress = 1;
+    else progress = (currentMin - sunriseMin) / (sunsetMin - sunriseMin);
+
+    // 沿着弧线移动：x 从 30 → 320，y 从 70 → 顶部 → 70（抛物线）
+    var sunDot = $('sunDot');
+    if (!sunDot) return;
+    var x = 30 + progress * 290;
+    // y 用二次曲线：mid = 10 (top), ends = 70
+    var y = 70 - Math.sin(progress * Math.PI) * 60;
+
+    // 找到 animate 子元素并跟随
+    sunDot.setAttribute('cx', x);
+    sunDot.setAttribute('cy', y);
+
+    // 光晕也跟着动
+    var glow = sunDot.nextElementSibling;
+    if (glow && glow.tagName === 'circle') {
+      glow.setAttribute('cx', x);
+      glow.setAttribute('cy', y);
+    }
+  }
+  updateSunPosition();
+
+})();
+</script>
+</body>
+</html>
