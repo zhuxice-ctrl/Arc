@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>骨架屏 Skeleton · V3 交互组件</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+/* ============================================================
+   【可抽取】Skeleton 组件 CSS · 开始
+   说明：以下所有 .sk-* 选择器与 :root 中 --sk-* 变量均可独立复制使用。
+   ============================================================ */
+:root {
+  /* 基础色 */
+  --sk-base: #E5E1D8;          /* 骨架底色（暖灰） */
+  --sk-shine: #F1EEE6;         /* 扫光色 */
+  --sk-shine-edge: #EAE7DC;    /* 扫光边缘过渡色 */
+  --sk-bg: #F6F3EC;            /* 容器背景（米白） */
+  --sk-fg: #1C4A3C;            /* 主文字色（深林绿） */
+  --sk-muted: #6B7A70;         /* 次要文字色 */
+  --sk-accent: #C98A2D;        /* 点缀色（琥珀金） */
+  --sk-error: #A83F3F;         /* 错误色 */
+  --sk-error-bg: #F4E2E2;      /* 错误背景 */
+  --sk-ring: rgba(28, 74, 60, 0.35); /* 焦点环 */
+
+  /* 尺寸与形状 */
+  --sk-radius: 8px;            /* 矩形圆角 */
+  --sk-radius-sm: 4px;         /* 小圆角 */
+  --sk-radius-lg: 12px;        /* 大圆角 */
+  --sk-text-h: 14px;           /* 文本行高度 */
+  --sk-text-gap: 10px;         /* 文本行间距 */
+  --sk-gap: 16px;              /* 区块间距 */
+
+  /* 动画 */
+  --sk-duration: 1.6s;         /* 扫光周期 */
+  --sk-easing: linear;         /* 扫光缓动 */
+  --sk-fade: 260ms;            /* 内容淡入时长 */
+  --sk-fade-easing: ease-out;  /* 淡入缓动 */
+}
+
+/* 骨架容器 */
+.sk-wrap {
+  position: relative;
+  box-sizing: border-box;
+}
+
+.sk-wrap *,
+.sk-wrap *::before,
+.sk-wrap *::after {
+  box-sizing: border-box;
+}
+
+/* 骨架层（loading 状态显示） */
+.sk-skeleton {
+  display: block;
+  width: 100%;
+}
+
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sk-gap);
+  margin-bottom: var(--sk-text-gap);
+}
+
+.sk-row:last-child { margin-bottom: 0; }
+
+.sk-row[data-align="top"] { align-items: flex-start; }
+.sk-row[data-align="center"] { align-items: center; }
+.sk-row[data-align="bottom"] { align-items: flex-end; }
+
+.sk-row[data-justify="start"] { justify-content: flex-start; }
+.sk-row[data-justify="end"] { justify-content: flex-end; }
+.sk-row[data-justify="between"] { justify-content: space-between; }
+.sk-row[data-justify="center"] { justify-content: center; }
+
+/* 图元基类 */
+.sk-prim {
+  position: relative;
+  display: block;
+  background: var(--sk-base);
+  overflow: hidden;
+  border-radius: var(--sk-radius);
+}
+
+/* 扫光效果（用 mask 做斜向扫光条） */
+.sk-prim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    var(--sk-shine) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  background-position: 150% 0;
+  background-repeat: no-repeat;
+  animation: sk-shimmer var(--sk-duration) var(--sk-easing) infinite;
+}
+
+@keyframes sk-shimmer {
+  0%   { background-position: 150% 0; }
+  100% { background-position: -150% 0; }
+}
+
+/* 文本行 */
+.sk-text {
+  width: 100%;
+  height: var(--sk-text-h);
+  border-radius: var(--sk-radius-sm);
+}
+
+/* 圆形 */
+.sk-circle {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 矩形 */
+.sk-rect {
+  border-radius: var(--sk-radius);
+}
+
+/* 图像块 */
+.sk-image {
+  border-radius: var(--sk-radius);
+}
+
+/* 网格行（多列均匀分布） */
+.sk-grid {
+  display: grid;
+  gap: var(--sk-gap);
+}
+
+/* 内容层（默认隐藏，success 时淡入） */
+.sk-content {
+  opacity: 0;
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--sk-fade) var(--sk-fade-easing),
+              visibility 0s linear var(--sk-fade);
+}
+
+/* 状态：loading */
+.sk-wrap[data-state="loading"] .sk-skeleton { display: block; }
+.sk-wrap[data-state="loading"] .sk-content { opacity: 0; visibility: hidden; }
+.sk-wrap[data-state="loading"] .sk-status-panel { display: none; }
+
+/* 状态：success */
+.sk-wrap[data-state="success"] .sk-skeleton { display: none; }
+.sk-wrap[data-state="success"] .sk-content {
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--sk-fade) var(--sk-fade-easing),
+              visibility 0s linear 0s;
+  inset: auto;
+}
+.sk-wrap[data-state="success"] .sk-status-panel { display: none; }
+
+/* 状态：error / empty 共用状态面板 */
+.sk-wrap[data-state="error"] .sk-skeleton,
+.sk-wrap[data-state="empty"] .sk-skeleton { display: none; }
+
+.sk-wrap[data-state="error"] .sk-content,
+.sk-wrap[data-state="empty"] .sk-content { display: none; }
+
+.sk-wrap[data-state="error"] .sk-status-panel,
+.sk-wrap[data-state="empty"] .sk-status-panel { display: flex; }
+
+/* 状态面板（错误 / 空） */
+.sk-status-panel {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--sk-fg);
+}
+
+.sk-status-icon {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.sk-status-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--sk-fg);
+}
+
+.sk-status-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--sk-muted);
+  max-width: 320px;
+}
+
+/* 重试按钮 */
+.sk-retry-btn {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
+  color: #fff;
+  background: var(--sk-fg);
+  border: 1px solid var(--sk-fg);
+  border-radius: var(--sk-radius-sm);
+  cursor: pointer;
+  transition: background 150ms ease, transform 100ms ease,
+              box-shadow 150ms ease, opacity 150ms ease;
+  user-select: none;
+}
+
+.sk-retry-btn:hover {
+  background: #15372c;
+}
+
+.sk-retry-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--sk-ring);
+}
+
+.sk-retry-btn:active {
+  transform: translateY(1px);
+  background: #0f2a22;
+}
+
+.sk-retry-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* error 状态下按钮用主色，empty 状态下用琥珀金 */
+.sk-wrap[data-state="empty"] .sk-retry-btn {
+  background: var(--sk-accent);
+  border-color: var(--sk-accent);
+}
+
+.sk-wrap[data-state="empty"] .sk-retry-btn:hover {
+  background: #b57a24;
+}
+
+/* 无障碍：对屏幕阅读器可见但视觉隐藏 */
+.sk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* reduced motion 降级 */
+@media (prefers-reduced-motion: reduce) {
+  .sk-prim::after {
+    animation: none;
+    background: transparent;
+  }
+  .sk-content {
+    transition: none;
+  }
+  .sk-retry-btn {
+    transition: none;
+  }
+}
+/* ============================================================
+   【可抽取】Skeleton 组件 CSS · 结束
+   ============================================================ */
+
+/* ============================================================
+   演示页面样式（非组件部分）
+   ============================================================ */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #F6F3EC;
+  color: #1C4A3C;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 32px 80px;
+}
+
+/* 页头 */
+.page-header {
+  margin-bottom: 36px;
+}
+
+.page-header .eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: #C98A2D;
+  margin-bottom: 10px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #1C4A3C;
+}
+
+.page-header .subtitle {
+  font-size: 14px;
+  color: #6B7A70;
+  margin: 0;
+}
+
+/* 控制栏 */
+.controls {
+  background: #fff;
+  border: 1px solid #E5E1D8;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.controls .ctl-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls label {
+  font-size: 13px;
+  color: #6B7A70;
+  flex-shrink: 0;
+}
+
+.city-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.city-chip {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #F1EEE6;
+  color: #6B7A70;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease,
+              border-color 150ms ease;
+}
+
+.city-chip:hover {
+  background: #E5E1D8;
+  color: #1C4A3C;
+}
+
+.city-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(28, 74, 60, 0.25);
+}
+
+.city-chip[data-active="true"] {
+  background: #1C4A3C;
+  color: #fff;
+  border-color: #1C4A3C;
+}
+
+.ctl-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #1C4A3C;
+  border: 1px solid #C9C2B2;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease,
+              box-shadow 150ms ease;
+}
+
+.ctl-btn:hover {
+  background: #F1EEE6;
+  border-color: #1C4A3C;
+}
+
+.ctl-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(28, 74, 60, 0.25);
+}
+
+.ctl-btn:active {
+  background: #E5E1D8;
+}
+
+.ctl-btn.is-primary {
+  background: #1C4A3C;
+  color: #fff;
+  border-color: #1C4A3C;
+}
+
+.ctl-btn.is-primary:hover {
+  background: #15372c;
+}
+
+.ctl-btn.is-danger {
+  color: #A83F3F;
+  border-color: #D4B0B0;
+}
+
+.ctl-btn.is-danger:hover {
+  background: #F4E2E2;
+  border-color: #A83F3F;
+}
+
+.ctl-btn.is-warn {
+  color: #C98A2D;
+  border-color: #E0C58A;
+}
+
+.ctl-btn.is-warn:hover {
+  background: #F8EFDB;
+  border-color: #C98A2D;
+}
+
+.ctl-sep {
+  width: 1px;
+  height: 22px;
+  background: #E5E1D8;
+  margin: 0 4px;
+}
+
+/* 天气面板网格 */
+.weather-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.weather-main {
+  grid-column: 1 / -1;
+}
+
+.weather-card {
+  background: #fff;
+  border: 1px solid #E5E1D8;
+  border-radius: 12px;
+  padding: 24px;
+  position: relative;
+  min-height: 120px;
+}
+
+.weather-card .card-label {
+  font-size: 12px;
+  color: #9A8F78;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+/* 主卡内容 */
+.main-card-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.main-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.main-city {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1C4A3C;
+  margin: 0;
+}
+
+.main-weather-text {
+  font-size: 14px;
+  color: #6B7A70;
+  margin: 0;
+}
+
+.main-update {
+  font-size: 12px;
+  color: #9A8F78;
+  margin-top: 4px;
+}
+
+.main-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.main-icon {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.main-temp {
+  font-size: 52px;
+  font-weight: 300;
+  color: #1C4A3C;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.main-temp sup {
+  font-size: 20px;
+  vertical-align: super;
+  margin-left: 2px;
+}
+
+/* 指标网格 */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #F8F6F0;
+  border-radius: 8px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #9A8F78;
+  margin: 0;
+}
+
+.metric-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1C4A3C;
+  margin: 0;
+}
+
+.metric-value .unit {
+  font-size: 12px;
+  color: #6B7A70;
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+/* 逐时温度条 */
+.hourly-list {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.hourly-item {
+  flex: 1;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+}
+
+.hourly-time {
+  font-size: 11px;
+  color: #9A8F78;
+  margin: 0;
+}
+
+.hourly-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.hourly-temp {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1C4A3C;
+  margin: 0;
+}
+
+/* 五日预报 */
+.daily-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.daily-item {
+  display: grid;
+  grid-template-columns: 64px 32px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #F1EEE6;
+}
+
+.daily-item:last-child { border-bottom: none; }
+
+.daily-day {
+  font-size: 13px;
+  color: #1C4A3C;
+  font-weight: 500;
+  margin: 0;
+}
+
+.daily-icon {
+  width: 28px;
+  height: 28px;
+  justify-self: center;
+}
+
+.daily-range {
+  position: relative;
+  height: 4px;
+  background: #F1EEE6;
+  border-radius: 2px;
+}
+
+.daily-range-fill {
+  position: absolute;
+  height: 100%;
+  background: linear-gradient(90deg, #6BAF9D, #C98A2D);
+  border-radius: 2px;
+}
+
+.daily-temps {
+  font-size: 13px;
+  color: #6B7A70;
+  text-align: right;
+  margin: 0;
+}
+
+.daily-temps .hi {
+  color: #1C4A3C;
+  font-weight: 600;
+}
+
+/* 用法文档 */
+.usage-section {
+  margin-top: 56px;
+}
+
+.usage-section h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1C4A3C;
+  margin: 0 0 8px;
+}
+
+.usage-section .section-lead {
+  font-size: 13px;
+  color: #6B7A70;
+  margin: 0 0 24px;
+}
+
+.usage-block {
+  background: #fff;
+  border: 1px solid #E5E1D8;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+
+.usage-block h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1C4A3C;
+  margin: 0 0 12px;
+}
+
+.usage-block p {
+  font-size: 13px;
+  color: #4A5A50;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.usage-block code {
+  background: #F1EEE6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code",
+               Consolas, Monaco, "Courier New", monospace;
+  color: #1C4A3C;
+}
+
+.usage-block pre {
+  background: #1C2B25;
+  color: #D8E4DC;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 8px 0 12px;
+  font-family: "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code",
+               Consolas, Monaco, "Courier New", monospace;
+}
+
+.usage-block pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* 配置表 */
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.config-table th,
+.config-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #F1EEE6;
+  vertical-align: top;
+}
+
+.config-table th {
+  font-weight: 600;
+  color: #1C4A3C;
+  background: #F8F6F0;
+  font-size: 12px;
+}
+
+.config-table tr:last-child td { border-bottom: none; }
+
+.config-table code {
+  background: #F1EEE6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  color: #1C4A3C;
+}
+
+/* 页脚 */
+.page-footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid #E5E1D8;
+  font-size: 12px;
+  color: #9A8F78;
+  text-align: center;
+}
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .page { padding: 24px 16px 60px; }
+  .weather-grid { grid-template-columns: 1fr; }
+  .main-temp { font-size: 40px; }
+  .main-icon { width: 48px; height: 48px; }
+  .controls { padding: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 页头 -->
+  <header class="page-header">
+    <div class="eyebrow">V3 · 反馈类组件</div>
+    <h1>骨架屏 Skeleton</h1>
+    <p class="subtitle">声明式模板骨架系统 · 完整状态机 · 可访问性就绪 · 主题化可抽取</p>
+  </header>
+
+  <!-- 控制栏 -->
+  <section class="controls" aria-label="演示控制台">
+    <div class="ctl-group">
+      <label>城市</label>
+      <div class="city-chips" role="tablist" aria-label="切换城市">
+        <button class="city-chip" data-city="hangzhou" data-active="true" role="tab" aria-selected="true">杭州</button>
+        <button class="city-chip" data-city="chengdu" data-active="false" role="tab" aria-selected="false">成都</button>
+        <button class="city-chip" data-city="xiamen" data-active="false" role="tab" aria-selected="false">厦门</button>
+      </div>
+    </div>
+    <div class="ctl-sep"></div>
+    <div class="ctl-group">
+      <button class="ctl-btn is-primary" id="btn-reload" type="button">重新加载</button>
+    </div>
+    <div class="ctl-sep"></div>
+    <div class="ctl-group">
+      <button class="ctl-btn is-danger" id="btn-sim-error" type="button">模拟失败</button>
+      <button class="ctl-btn is-warn" id="btn-sim-empty" type="button">模拟空数据</button>
+    </div>
+  </section>
+
+  <!-- 天气面板 -->
+  <section class="weather-grid" aria-label="天气面板">
+    <!-- 主卡 -->
+    <div class="weather-card weather-main" data-sk-block="main">
+      <div class="card-label">当前天气</div>
+      <div id="sk-main"></div>
+    </div>
+
+    <!-- 指标网格 -->
+    <div class="weather-card" data-sk-block="metrics">
+      <div class="card-label">气象指标</div>
+      <div id="sk-metrics"></div>
+    </div>
+
+    <!-- 逐时温度 -->
+    <div class="weather-card" data-sk-block="hourly">
+      <div class="card-label">逐时预报</div>
+      <div id="sk-hourly"></div>
+    </div>
+
+    <!-- 五日预报 -->
+    <div class="weather-card" data-sk-block="daily">
+      <div class="card-label">五日预报</div>
+      <div id="sk-daily"></div>
+    </div>
+  </section>
+
+  <!-- 用法文档 -->
+  <section class="usage-section" id="usage">
+    <h2>用法</h2>
+    <p class="section-lead">组件以纯 CSS + 原生 JS 实现，零依赖，可独立抽取至任意项目。</p>
+
+    <div class="usage-block">
+      <h3>一、快速开始</h3>
+      <p>从本文件中复制 <code>/* Skeleton 组件 CSS */</code> 与 <code>/* Skeleton 组件 JS */</code> 两个注释块之间的全部代码，放入你的项目。</p>
+      <pre><code>import { createSkeleton } from './skeleton.js';
+
+const sk = createSkeleton({
+  target: document.getElementById('my-content'),
+  load: fetchData,        // 返回 Promise 的加载函数
+  template: [
+    { type: 'row', items: [
+      { type: 'circle', size: 48 },
+      { type: 'col', flex: 1, gap: 8, items: [
+        { type: 'text', width: '60%' },
+        { type: 'text', width: '40%', height: 12 },
+      ]},
+    ]},
+    { type: 'text', lines: 3, gap: 8 },
+  ],
+});
+
+// 手动触发加载
+sk.load();
+
+// 销毁
+// sk.destroy();</code></pre>
+    </div>
+
+    <div class="usage-block">
+      <h3>二、配置项</h3>
+      <table class="config-table">
+        <thead>
+          <tr><th style="width:18%">参数</th><th style="width:14%">类型</th><th style="width:14%">默认值</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>target</code></td>
+            <td>HTMLElement</td>
+            <td>必填</td>
+            <td>骨架屏挂载的容器元素。</td>
+          </tr>
+          <tr>
+            <td><code>load</code></td>
+            <td>Function</td>
+            <td>必填</td>
+            <td>数据加载函数，需返回 Promise。resolve 时进入 success，reject 进入 error。</td>
+          </tr>
+          <tr>
+            <td><code>template</code></td>
+            <td>Array</td>
+            <td>[]</td>
+            <td>骨架模板声明，由图元节点（text / circle / rect / image / row / col / grid）组合而成。</td>
+          </tr>
+          <tr>
+            <td><code>renderContent</code></td>
+            <td>Function</td>
+            <td>null</td>
+            <td>数据加载成功后，接收数据并返回 HTML 字符串或 DOM 节点，渲染到内容层。</td>
+          </tr>
+          <tr>
+            <td><code>autoLoad</code></td>
+            <td>Boolean</td>
+            <td>true</td>
+            <td>是否在创建后立即触发加载。</td>
+          </tr>
+          <tr>
+            <td><code>minDuration</code></td>
+            <td>Number</td>
+            <td>0</td>
+            <td>骨架最少展示时长（毫秒），避免瞬时闪烁。</td>
+          </tr>
+          <tr>
+            <td><code>onStateChange</code></td>
+            <td>Function</td>
+            <td>null</td>
+            <td>状态变化回调，参数为 <code>(state, data?)</code>。</td>
+          </tr>
+          <tr>
+            <td><code>emptyText</code></td>
+            <td>Object</td>
+            <td>{ title, desc }</td>
+            <td>空状态下的标题与描述文案。</td>
+          </tr>
+          <tr>
+            <td><code>errorText</code></td>
+            <td>Object</td>
+            <td>{ title, desc, retry }</td>
+            <td>错误状态下的文案与重试按钮文字。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="usage-block">
+      <h3>三、图元节点类型</h3>
+      <table class="config-table">
+        <thead>
+          <tr><th style="width:16%">类型</th><th style="width:28%">属性</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>text</code></td>
+            <td><code>width</code> / <code>height</code> / <code>lines</code> / <code>gap</code></td>
+            <td>文本行。<code>lines</code> 为行数，多行时末行宽度自动缩减为 60%。</td>
+          </tr>
+          <tr>
+            <td><code>circle</code></td>
+            <td><code>size</code></td>
+            <td>圆形占位，常用于头像、图标。</td>
+          </tr>
+          <tr>
+            <td><code>rect</code></td>
+            <td><code>width</code> / <code>height</code> / <code>radius</code></td>
+            <td>矩形块，用于卡片、图片、按钮等。</td>
+          </tr>
+          <tr>
+            <td><code>image</code></td>
+            <td><code>width</code> / <code>height</code> / <code>ratio</code></td>
+            <td>图像块，可设置宽高比。</td>
+          </tr>
+          <tr>
+            <td><code>row</code></td>
+            <td><code>items</code> / <code>gap</code> / <code>align</code> / <code>justify</code></td>
+            <td>横向排布容器，包裹子图元。</td>
+          </tr>
+          <tr>
+            <td><code>col</code></td>
+            <td><code>items</code> / <code>gap</code> / <code>flex</code></td>
+            <td>纵向排布容器，包裹子图元。</td>
+          </tr>
+          <tr>
+            <td><code>grid</code></td>
+            <td><code>columns</code> / <code>gap</code> / <code>items</code></td>
+            <td>网格容器，<code>columns</code> 可为数字或 CSS 模板字符串。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="usage-block">
+      <h3>四、主题化 CSS 变量</h3>
+      <p>在你的 :root 或作用域选择器中覆盖以下变量即可换肤：</p>
+      <table class="config-table">
+        <thead>
+          <tr><th style="width:28%">变量</th><th style="width:20%">默认值</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--sk-base</code></td><td>#E5E1D8</td><td>骨架底色</td></tr>
+          <tr><td><code>--sk-shine</code></td><td>#F1EEE6</td><td>扫光高亮色</td></tr>
+          <tr><td><code>--sk-bg</code></td><td>#F6F3EC</td><td>容器背景</td></tr>
+          <tr><td><code>--sk-fg</code></td><td>#1C4A3C</td><td>主文字色（深林绿）</td></tr>
+          <tr><td><code>--sk-muted</code></td><td>#6B7A70</td><td>次要文字色</td></tr>
+          <tr><td><code>--sk-accent</code></td><td>#C98A2D</td><td>点缀色（琥珀金）</td></tr>
+          <tr><td><code>--sk-error</code></td><td>#A83F3F</td><td>错误色</td></tr>
+          <tr><td><code>--sk-ring</code></td><td>rgba(28,74,60,.35)</td><td>焦点环颜色</td></tr>
+          <tr><td><code>--sk-radius</code></td><td>8px</td><td>矩形圆角</td></tr>
+          <tr><td><code>--sk-radius-sm</code></td><td>4px</td><td>小圆角</td></tr>
+          <tr><td><code>--sk-radius-lg</code></td><td>12px</td><td>大圆角</td></tr>
+          <tr><td><code>--sk-text-h</code></td><td>14px</td><td>文本行高度</td></tr>
+          <tr><td><code>--sk-text-gap</code></td><td>10px</td><td>文本行间距</td></tr>
+          <tr><td><code>--sk-gap</code></td><td>16px</td><td>区块间距</td></tr>
+          <tr><td><code>--sk-duration</code></td><td>1.6s</td><td>扫光周期</td></tr>
+          <tr><td><code>--sk-easing</code></td><td>linear</td><td>扫光缓动函数</td></tr>
+          <tr><td><code>--sk-fade</code></td><td>260ms</td><td>内容淡入时长</td></tr>
+          <tr><td><code>--sk-fade-easing</code></td><td>ease-out</td><td>淡入缓动函数</td></tr>
+          <tr><td><code>--sk-error-bg</code></td><td>#F4E2E2</td><td>错误状态背景色</td></tr>
+          <tr><td><code>--sk-shine-edge</code></td><td>#EAE7DC</td><td>扫光边缘过渡色</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="usage-block">
+      <h3>五、状态与方法</h3>
+      <p><strong>状态机：</strong>loading → success / error / empty，可由 <code>load()</code> 重新进入 loading。</p>
+      <p><strong>实例方法：</strong></p>
+      <ul style="font-size:13px;color:#4A5A50;line-height:1.8;padding-left:20px;margin:0 0 12px;">
+        <li><code>sk.load()</code> — 重新触发加载，回到 loading 状态。</li>
+        <li><code>sk.setState(state, payload?)</code> — 手动设置状态（'loading' | 'success' | 'error' | 'empty'）。</li>
+        <li><code>sk.getState()</code> — 获取当前状态。</li>
+        <li><code>sk.destroy()</code> — 销毁实例，清理 DOM 与事件监听。</li>
+      </ul>
+      <p><strong>可访问性：</strong>容器自动设置 <code>role="status"</code>、<code>aria-live="polite"</code>，加载时 <code>aria-busy="true"</code>；错误状态下重试按钮 Tab 可达，焦点环可见。</p>
+    </div>
+
+    <div class="usage-block">
+      <h3>六、抽取与复用说明</h3>
+      <p>本 HTML 文件由三部分组成：</p>
+      <ol style="font-size:13px;color:#4A5A50;line-height:1.8;padding-left:20px;margin:0 0 12px;">
+        <li><strong>组件 CSS（可抽取）</strong> — 以 <code>/* 【可抽取】Skeleton 组件 CSS · 开始 */</code> 与 <code>· 结束 */</code> 为界，复制到项目的 CSS 文件。</li>
+        <li><strong>组件 JS（可抽取）</strong> — 以 <code>/* 【可抽取】Skeleton 组件 JS · 开始 */</code> 与 <code>· 结束 */</code> 为界，可保存为 <code>skeleton.js</code> 并以 <code>createSkeleton</code> 导出。</li>
+        <li><strong>演示页面（可删除）</strong> — 其余 CSS / HTML / JS 仅为演示与文档，抽取组件时可全部移除。</li>
+      </ol>
+      <p>组件不依赖任何框架或外部库，在 IE11+ 及所有现代浏览器中可用。</p>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    V3 交互组件库 · 骨架屏 Skeleton · 纯 Vanilla 实现 · 零依赖
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   【可抽取】Skeleton 组件 JS · 开始
+   暴露全局方法 createSkeleton(options)
+   ============================================================ */
+(function (global) {
+  'use strict';
+
+  // SVG 图标（错误 / 空状态）
+  const ICON_ERROR = '<svg class="sk-status-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<circle cx="24" cy="24" r="22" fill="#F4E2E2"/>' +
+    '<path d="M24 14v12" stroke="#A83F3F" stroke-width="2.5" stroke-linecap="round"/>' +
+    '<circle cx="24" cy="31" r="1.5" fill="#A83F3F"/>' +
+    '</svg>';
+
+  const ICON_EMPTY = '<svg class="sk-status-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<circle cx="24" cy="24" r="22" fill="#F8EFDB"/>' +
+    '<path d="M15 20h18M15 26h12M15 32h9" stroke="#C98A2D" stroke-width="2.5" stroke-linecap="round"/>' +
+    '<circle cx="33" cy="33" r="4" fill="#C98A2D"/>' +
+    '</svg>';
+
+  /**
+   * 创建骨架屏实例
+   * @param {Object} opts
+   * @param {HTMLElement} opts.target      挂载容器
+   * @param {Function}    opts.load        返回 Promise 的加载函数
+   * @param {Array}       opts.template    骨架模板
+   * @param {Function}    [opts.renderContent]  成功时渲染内容 (data) => string|Node
+   * @param {Boolean}     [opts.autoLoad=true]
+   * @param {Number}      [opts.minDuration=0]
+   * @param {Function}    [opts.onStateChange]
+   * @param {Object}      [opts.emptyText]
+   * @param {Object}      [opts.errorText]
+   * @returns {Object} 实例
+   */
+  function createSkeleton(opts) {
+    if (!opts || !opts.target) {
+      throw new Error('createSkeleton: target is required');
+    }
+    if (typeof opts.load !== 'function') {
+      throw new Error('createSkeleton: load function is required');
+    }
+
+    var target = opts.target;
+    var loadFn = opts.load;
+    var template = opts.template || [];
+    var renderContent = opts.renderContent || null;
+    var autoLoad = opts.autoLoad !== false;
+    var minDuration = opts.minDuration || 0;
+    var onStateChange = opts.onStateChange || null;
+
+    var emptyText = opts.emptyText || {};
+    emptyText.title = emptyText.title || '暂无数据';
+    emptyText.desc = emptyText.desc || '当前没有可展示的内容，请稍后再试。';
+
+    var errorText = opts.errorText || {};
+    errorText.title = errorText.title || '加载失败';
+    errorText.desc = errorText.desc || '请检查网络连接后重试。';
+    errorText.retry = errorText.retry || '重新加载';
+
+    var state = 'loading';
+    var loadToken = 0;   // 防止竞态
+    var hiddenHandler = null;
+    var destroyed = false;
+    var pageVisHandler = null;
+
+    // ---- 构建 DOM ----
+    var wrap = document.createElement('div');
+    wrap.className = 'sk-wrap';
+    wrap.setAttribute('data-state', 'loading');
+    wrap.setAttribute('role', 'status');
+    wrap.setAttribute('aria-live', 'polite');
+    wrap.setAttribute('aria-busy', 'true');
+
+    // 骨架层
+    var skeletonEl = document.createElement('div');
+    skeletonEl.className = 'sk-skeleton';
+    skeletonEl.setAttribute('aria-hidden', 'true');
+    renderTemplate(skeletonEl, template);
+    wrap.appendChild(skeletonEl);
+
+    // 内容层
+    var contentEl = document.createElement('div');
+    contentEl.className = 'sk-content';
+    wrap.appendChild(contentEl);
+
+    // 状态面板（error / empty 共用）
+    var statusPanel = document.createElement('div');
+    statusPanel.className = 'sk-status-panel';
+    statusPanel.setAttribute('aria-live', 'assertive');
+    var statusIcon = document.createElement('div');
+    statusIcon.className = 'sk-status-icon-wrap';
+    statusIcon.innerHTML = ICON_ERROR;
+    var statusTitle = document.createElement('p');
+    statusTitle.className = 'sk-status-title';
+    var statusDesc = document.createElement('p');
+    statusDesc.className = 'sk-status-desc';
+    var retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'sk-retry-btn';
+
+    statusPanel.appendChild(statusIcon);
+    statusPanel.appendChild(statusTitle);
+    statusPanel.appendChild(statusDesc);
+    statusPanel.appendChild(retryBtn);
+    wrap.appendChild(statusPanel);
+
+    // 屏幕阅读器播报
+    var srLive = document.createElement('div');
+    srLive.className = 'sk-sr-only';
+    srLive.setAttribute('aria-live', 'polite');
+    wrap.appendChild(srLive);
+
+    // 重试按钮点击
+    retryBtn.addEventListener('click', function () {
+      if (destroyed) return;
+      instance.load();
+    });
+
+    // 挂载
+    target.innerHTML = '';
+    target.appendChild(wrap);
+
+    // ---- 内部方法 ----
+    function setStatusPanel(type) {
+      if (type === 'error') {
+        statusIcon.innerHTML = ICON_ERROR;
+        statusTitle.textContent = errorText.title;
+        statusDesc.textContent = errorText.desc;
+        retryBtn.textContent = errorText.retry;
+        retryBtn.style.display = '';
+      } else if (type === 'empty') {
+        statusIcon.innerHTML = ICON_EMPTY;
+        statusTitle.textContent = emptyText.title;
+        statusDesc.textContent = emptyText.desc;
+        retryBtn.textContent = '刷新';
+        retryBtn.style.display = '';
+      }
+    }
+
+    function announce(text) {
+      // 触发屏幕阅读器播报
+      srLive.textContent = '';
+      // 强制 reflow 确保下一次写入被识别为新内容
+      void srLive.offsetWidth;
+      srLive.textContent = text;
+    }
+
+    function changeState(newState, payload) {
+      if (state === newState) return;
+      state = newState;
+      wrap.setAttribute('data-state', newState);
+
+      if (newState === 'loading') {
+        wrap.setAttribute('aria-busy', 'true');
+        announce('正在加载');
+      } else {
+        wrap.setAttribute('aria-busy', 'false');
+        if (newState === 'success') announce('加载完成');
+        else if (newState === 'error') announce(errorText.title);
+        else if (newState === 'empty') announce(emptyText.title);
+      }
+
+      if (onStateChange) {
+        try { onStateChange(newState, payload); } catch (e) { /* noop */ }
+      }
+    }
+
+    function doLoad() {
+      if (destroyed) return;
+      var myToken = ++loadToken;
+      changeState('loading');
+      retryBtn.disabled = true;
+
+      var startTime = Date.now();
+
+      var p;
+      try {
+        p = Promise.resolve(loadFn());
+      } catch (err) {
+        p = Promise.reject(err);
+      }
+
+      p.then(function (data) {
+        if (destroyed || myToken !== loadToken) return;
+
+        // 判断是否为空数据
+        var isEmpty = data === null || data === undefined ||
+          (Array.isArray(data) && data.length === 0) ||
+          (typeof data === 'object' && data !== null &&
+           Object.keys(data).length === 0 && !(data instanceof Date));
+
+        var elapsed = Date.now() - startTime;
+        var wait = Math.max(0, minDuration - elapsed);
+
+        setTimeout(function () {
+          if (destroyed || myToken !== loadToken) return;
+
+          if (isEmpty) {
+            setStatusPanel('empty');
+            changeState('empty');
+          } else {
+            // 渲染内容
+            if (renderContent) {
+              var result;
+              try {
+                result = renderContent(data);
+              } catch (e) {
+                result = '';
+              }
+              contentEl.innerHTML = '';
+              if (typeof result === 'string') {
+                contentEl.innerHTML = result;
+              } else if (result && result.nodeType) {
+                contentEl.appendChild(result);
+              }
+            }
+            changeState('success', data);
+          }
+          retryBtn.disabled = false;
+        }, wait);
+      }).catch(function (err) {
+        if (destroyed || myToken !== loadToken) return;
+        var elapsed = Date.now() - startTime;
+        var wait = Math.max(0, minDuration - elapsed);
+
+        setTimeout(function () {
+          if (destroyed || myToken !== loadToken) return;
+          setStatusPanel('error');
+          // 错误时把具体信息追加到描述后（如 404 / 500 等）
+          if (err && err.message) {
+            statusDesc.textContent = errorText.desc + '（' + err.message + '）';
+          }
+          changeState('error', err);
+          retryBtn.disabled = false;
+          // 自动聚焦重试按钮，方便键盘用户直接操作
+          try { retryBtn.focus({ preventScroll: true }); } catch (e) { retryBtn.focus(); }
+        }, wait);
+      });
+    }
+
+    // 页面隐藏时停止 RAF/定时器（扫光用 CSS 动画，浏览器自动暂停；此处处理 minDuration setTimeout 的竞态即可）
+    function handleVisibility() {
+      // 当页面从隐藏恢复时，若仍在 loading，确保状态正确
+      if (document.visibilityState === 'visible' && state === 'loading') {
+        // no-op：CSS 动画由浏览器自动恢复
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    pageVisHandler = handleVisibility;
+
+    // ---- 公共 API ----
+    var instance = {
+      load: function () {
+        doLoad();
+        return this;
+      },
+      setState: function (newState, payload) {
+        if (['loading', 'success', 'error', 'empty'].indexOf(newState) === -1) {
+          throw new Error('Invalid state: ' + newState);
+        }
+        if (newState === 'loading') {
+          doLoad();
+        } else {
+          if (newState === 'error' || newState === 'empty') {
+            setStatusPanel(newState);
+          }
+          changeState(newState, payload);
+        }
+        return this;
+      },
+      getState: function () { return state; },
+      get el() { return wrap; },
+      destroy: function () {
+        if (destroyed) return;
+        destroyed = true;
+        if (pageVisHandler) {
+          document.removeEventListener('visibilitychange', pageVisHandler);
+        }
+        if (wrap && wrap.parentNode) {
+          wrap.parentNode.removeChild(wrap);
+        }
+        target = null;
+        loadFn = null;
+        renderContent = null;
+        onStateChange = null;
+      }
+    };
+
+    // 自动加载
+    if (autoLoad) {
+      // 下一帧启动，确保 DOM 已挂载
+      if (window.requestAnimationFrame) {
+        window.requestAnimationFrame(function () { doLoad(); });
+      } else {
+        setTimeout(doLoad, 16);
+      }
+    }
+
+    return instance;
+  }
+
+  // ---- 模板渲染 ----
+  function renderTemplate(container, nodes) {
+    if (!nodes || !nodes.length) return;
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var el = renderNode(node);
+      if (el) container.appendChild(el);
+    }
+  }
+
+  function renderNode(node) {
+    if (!node || !node.type) return null;
+    switch (node.type) {
+      case 'text':   return renderText(node);
+      case 'circle': return renderCircle(node);
+      case 'rect':   return renderRect(node);
+      case 'image':  return renderImage(node);
+      case 'row':    return renderRow(node);
+      case 'col':    return renderCol(node);
+      case 'grid':   return renderGrid(node);
+      default:       return null;
+    }
+  }
+
+  function renderText(node) {
+    var lines = node.lines || 1;
+    var gap = node.gap != null ? node.gap + 'px' : '';
+    var wrap = document.createElement('div');
+    wrap.className = 'sk-text-wrap';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    if (gap) wrap.style.gap = gap;
+
+    for (var i = 0; i < lines; i++) {
+      var el = document.createElement('span');
+      el.className = 'sk-prim sk-text';
+      if (node.width) {
+        var w = typeof node.width === 'number' ? node.width + 'px' : node.width;
+        el.style.width = w;
+      }
+      if (node.height) {
+        var h = typeof node.height === 'number' ? node.height + 'px' : node.height;
+        el.style.height = h;
+      }
+      // 末行缩短，更贴近真实文本
+      if (lines > 1 && i === lines - 1 && !node.width) {
+        el.style.width = '60%';
+      }
+      wrap.appendChild(el);
+    }
+    return wrap;
+  }
+
+  function renderCircle(node) {
+    var el = document.createElement('span');
+    el.className = 'sk-prim sk-circle';
+    var size = node.size || 40;
+    var sz = typeof size === 'number' ? size + 'px' : size;
+    el.style.width = sz;
+    el.style.height = sz;
+    return el;
+  }
+
+  function renderRect(node) {
+    var el = document.createElement('span');
+    el.className = 'sk-prim sk-rect';
+    if (node.width) {
+      el.style.width = typeof node.width === 'number' ? node.width + 'px' : node.width;
+    }
+    if (node.height) {
+      el.style.height = typeof node.height === 'number' ? node.height + 'px' : node.height;
+    }
+    if (node.radius != null) {
+      el.style.borderRadius = typeof node.radius === 'number' ? node.radius + 'px' : node.radius;
+    }
+    return el;
+  }
+
+  function renderImage(node) {
+    var el = document.createElement('span');
+    el.className = 'sk-prim sk-image';
+    if (node.width) {
+      el.style.width = typeof node.width === 'number' ? node.width + 'px' : node.width;
+    }
+    if (node.height) {
+      el.style.height = typeof node.height === 'number' ? node.height + 'px' : node.height;
+    }
+    if (node.ratio) {
+      el.style.aspectRatio = node.ratio;
+      el.style.height = 'auto';
+    }
+    if (!node.width && !node.height) {
+      el.style.width = '100%';
+      el.style.aspectRatio = node.ratio || '16 / 9';
+    }
+    return el;
+  }
+
+  function renderRow(node) {
+    var el = document.createElement('div');
+    el.className = 'sk-row';
+    if (node.gap != null) {
+      el.style.gap = typeof node.gap === 'number' ? node.gap + 'px' : node.gap;
+    }
+    if (node.align) el.setAttribute('data-align', node.align);
+    if (node.justify) el.setAttribute('data-justify', node.justify);
+    if (node.flex != null) el.style.flex = node.flex;
+    if (node.items) renderTemplate(el, node.items);
+    return el;
+  }
+
+  function renderCol(node) {
+    var el = document.createElement('div');
+    el.className = 'sk-col';
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.gap = 'var(--sk-text-gap)';
+    if (node.gap != null) {
+      el.style.gap = typeof node.gap === 'number' ? node.gap + 'px' : node.gap;
+    }
+    if (node.flex != null) el.style.flex = node.flex;
+    if (node.items) renderTemplate(el, node.items);
+    return el;
+  }
+
+  function renderGrid(node) {
+    var el = document.createElement('div');
+    el.className = 'sk-grid';
+    var cols = node.columns || 2;
+    if (typeof cols === 'number') {
+      el.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    } else {
+      el.style.gridTemplateColumns = cols;
+    }
+    if (node.gap != null) {
+      el.style.gap = typeof node.gap === 'number' ? node.gap + 'px' : node.gap;
+    }
+    if (node.items) {
+      // 每项都用一个容器包裹，方便 grid 布局
+      for (var i = 0; i < node.items.length; i++) {
+        var child = renderNode(node.items[i]);
+        if (child) el.appendChild(child);
+      }
+    }
+    return el;
+  }
+
+  // 暴露
+  global.createSkeleton = createSkeleton;
+
+})(typeof window !== 'undefined' ? window : this);
+/* ============================================================
+   【可抽取】Skeleton 组件 JS · 结束
+   ============================================================ */
+</script>
+
+<script>
+/* ============================================================
+   演示页面 JS（非组件部分）
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // ---- 模拟数据 ----
+  var CITIES = {
+    hangzhou: {
+      name: '杭州',
+      temp: 31,
+      weather: '多云转晴',
+      updateTime: '14:32 更新',
+      icon: 'sun-cloud',
+      metrics: {
+        humidity: { value: 68, unit: '%', label: '湿度' },
+        wind:     { value: 3.2, unit: 'm/s', label: '风速' },
+        feels:    { value: 34, unit: '°', label: '体感温度' },
+      },
+      hourly: [
+        { time: '现在', temp: 31, icon: 'sun-cloud' },
+        { time: '15时', temp: 32, icon: 'sun' },
+        { time: '16时', temp: 32, icon: 'sun' },
+        { time: '17时', temp: 30, icon: 'sun-cloud' },
+        { time: '18时', temp: 28, icon: 'cloud' },
+        { time: '19时', temp: 26, icon: 'cloud' },
+        { time: '20时', temp: 25, icon: 'night-cloud' },
+        { time: '21时', temp: 24, icon: 'night' },
+      ],
+      daily: [
+        { day: '今天',    icon: 'sun-cloud', low: 25, high: 32 },
+        { day: '明天',    icon: 'sun',       low: 26, high: 34 },
+        { day: '周三',    icon: 'cloud',     low: 24, high: 30 },
+        { day: '周四',    icon: 'rain',      low: 23, high: 28 },
+        { day: '周五',    icon: 'cloud',     low: 24, high: 29 },
+      ],
+    },
+    chengdu: {
+      name: '成都',
+      temp: 27,
+      weather: '阴有小雨',
+      updateTime: '14:35 更新',
+      icon: 'rain',
+      metrics: {
+        humidity: { value: 82, unit: '%', label: '湿度' },
+        wind:     { value: 1.8, unit: 'm/s', label: '风速' },
+        feels:    { value: 29, unit: '°', label: '体感温度' },
+      },
+      hourly: [
+        { time: '现在', temp: 27, icon: 'rain' },
+        { time: '15时', temp: 27, icon: 'rain' },
+        { time: '16时', temp: 26, icon: 'cloud-rain' },
+        { time: '17时', temp: 26, icon: 'cloud' },
+        { time: '18时', temp: 25, icon: 'cloud' },
+        { time: '19时', temp: 24, icon: 'cloud' },
+        { time: '20时', temp: 23, icon: 'night-cloud' },
+        { time: '21时', temp: 23, icon: 'night' },
+      ],
+      daily: [
+        { day: '今天',    icon: 'rain',      low: 22, high: 27 },
+        { day: '明天',    icon: 'cloud',     low: 21, high: 26 },
+        { day: '周三',    icon: 'cloud-rain', low: 22, high: 27 },
+        { day: '周四',    icon: 'sun-cloud', low: 23, high: 29 },
+        { day: '周五',    icon: 'sun',       low: 24, high: 31 },
+      ],
+    },
+    xiamen: {
+      name: '厦门',
+      temp: 33,
+      weather: '晴',
+      updateTime: '14:30 更新',
+      icon: 'sun',
+      metrics: {
+        humidity: { value: 72, unit: '%', label: '湿度' },
+        wind:     { value: 4.5, unit: 'm/s', label: '风速' },
+        feels:    { value: 37, unit: '°', label: '体感温度' },
+      },
+      hourly: [
+        { time: '现在', temp: 33, icon: 'sun' },
+        { time: '15时', temp: 34, icon: 'sun' },
+        { time: '16时', temp: 34, icon: 'sun' },
+        { time: '17时', temp: 32, icon: 'sun-cloud' },
+        { time: '18时', temp: 30, icon: 'sun-cloud' },
+        { time: '19时', temp: 28, icon: 'cloud' },
+        { time: '20时', temp: 27, icon: 'night' },
+        { time: '21时', temp: 26, icon: 'night' },
+      ],
+      daily: [
+        { day: '今天',    icon: 'sun',       low: 27, high: 34 },
+        { day: '明天',    icon: 'sun-cloud', low: 26, high: 33 },
+        { day: '周三',    icon: 'sun-cloud', low: 26, high: 32 },
+        { day: '周四',    icon: 'cloud',     low: 25, high: 31 },
+        { day: '周五',    icon: 'rain',      low: 25, high: 30 },
+      ],
+    },
+  };
+
+  // ---- 天气图标（内联 SVG） ----
+  var WEATHER_ICONS = {
+    sun: '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<circle cx="24" cy="24" r="9" fill="#F2B735"/>' +
+         '<g stroke="#F2B735" stroke-width="2.5" stroke-linecap="round">' +
+         '<line x1="24" y1="6" x2="24" y2="11"/>' +
+         '<line x1="24" y1="37" x2="24" y2="42"/>' +
+         '<line x1="6" y1="24" x2="11" y2="24"/>' +
+         '<line x1="37" y1="24" x2="42" y2="24"/>' +
+         '<line x1="11.5" y1="11.5" x2="14.5" y2="14.5"/>' +
+         '<line x1="33.5" y1="33.5" x2="36.5" y2="36.5"/>' +
+         '<line x1="36.5" y1="11.5" x2="33.5" y2="14.5"/>' +
+         '<line x1="14.5" y1="33.5" x2="11.5" y2="36.5"/>' +
+         '</g></svg>',
+    'sun-cloud': '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<circle cx="17" cy="17" r="7" fill="#F2B735"/>' +
+         '<g stroke="#F2B735" stroke-width="2" stroke-linecap="round">' +
+         '<line x1="17" y1="4" x2="17" y2="7"/>' +
+         '<line x1="4" y1="17" x2="7" y2="17"/>' +
+         '<line x1="7.5" y1="7.5" x2="9.5" y2="9.5"/>' +
+         '</g>' +
+         '<path d="M32 22c-2.2 0-4 1.3-4.7 3.1C26.4 25 25 26.8 25 29c0 2.8 2.2 5 5 5h11c2.8 0 5-2.2 5-5s-2.2-5-5-5h-1c-.5-2.5-2.7-4.5-5.5-4.5-1.2 0-2.3.4-3.2 1.1C35.5 23.3 33.9 22 32 22z" fill="#E5E1D8" stroke="#C9C2B2" stroke-width="1.5"/>' +
+         '</svg>',
+    cloud: '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<path d="M15 32c-3.9 0-7-3.1-7-7s3.1-7 7-7c.8 0 1.5.1 2.2.4C18.4 15 21.6 13 25 13c5 0 9 4 9 9 1.7 0 3 1.3 3 3s-1.3 3-3 3H15z" fill="#E5E1D8" stroke="#C9C2B2" stroke-width="1.5"/>' +
+         '</svg>',
+    rain: '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<path d="M15 26c-3.9 0-7-3.1-7-7s3.1-7 7-7c.8 0 1.5.1 2.2.4C18.4 9 21.6 7 25 7c5 0 9 4 9 9 1.7 0 3 1.3 3 3s-1.3 3-3 3H15z" fill="#E5E1D8" stroke="#C9C2B2" stroke-width="1.5"/>' +
+         '<g stroke="#5A8FB0" stroke-width="2.5" stroke-linecap="round">' +
+         '<line x1="17" y1="31" x2="15" y2="37"/>' +
+         '<line x1="24" y1="31" x2="22" y2="39"/>' +
+         '<line x1="31" y1="31" x2="29" y2="37"/>' +
+         '</g></svg>',
+    'cloud-rain': '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<path d="M15 26c-3.9 0-7-3.1-7-7s3.1-7 7-7c.8 0 1.5.1 2.2.4C18.4 9 21.6 7 25 7c5 0 9 4 9 9 1.7 0 3 1.3 3 3s-1.3 3-3 3H15z" fill="#E5E1D8" stroke="#C9C2B2" stroke-width="1.5"/>' +
+         '<g stroke="#5A8FB0" stroke-width="2.5" stroke-linecap="round">' +
+         '<line x1="20" y1="31" x2="18" y2="38"/>' +
+         '<line x1="28" y1="31" x2="26" y2="37"/>' +
+         '</g></svg>',
+    night: '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<path d="M32 30c-6.6 0-12-5.4-12-12 0-1.8.4-3.5 1.1-5C20.5 14 19 14 17.5 14c-5.5 0-10 4.5-10 10s4.5 10 10 10c1.4 0 2.8-.3 4-.8.7 4 4.1 7.1 8.3 7.1 4.6 0 8.3-3.3 9.2-7.7-.9.3-1.9.4-3 .4z" fill="#4A5A70"/>' +
+         '</svg>',
+    'night-cloud': '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+         '<path d="M28 14c-3.9 0-7-3.1-7-7 0-1.4.4-2.7 1.1-3.8C21.1 3.4 20 3 19 3c-4.4 0-8 3.6-8 8 0 .5 0 1 .1 1.5C7.3 14 5 17 5 20.5 5 24.6 8.4 28 12.5 28h17c4.1 0 7.5-3.4 7.5-7.5S33.6 13 29.5 13c-.5 0-1 0-1.5.1-.1 0 0 0 0 0z" fill="#4A5A70"/>' +
+         '<path d="M20 35c-2.8 0-5-2.2-5-5s2.2-5 5-5c.5 0 1 .1 1.5.2C22.2 23.5 24.5 22 27 22c3.3 0 6 2.7 6 6 1.1 0 2 .9 2 2s-.9 2-2 2H20z" fill="#E5E1D8" stroke="#C9C2B2" stroke-width="1.5"/>' +
+         '</svg>',
+  };
+
+  function iconSvg(name, size) {
+    var svg = WEATHER_ICONS[name] || WEATHER_ICONS.sun;
+    if (size) {
+      return svg.replace('<svg ', '<svg width="' + size + '" height="' + size + '" ');
+    }
+    return svg;
+  }
+
+  // ---- 模拟加载函数 ----
+  var currentCity = 'hangzhou';
+  var simulateError = false;
+  var simulateEmpty = false;
+  var loadDelay = 1400;
+
+  function mockLoad(cityKey) {
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        if (simulateError) {
+          reject(new Error('网络连接超时'));
+          return;
+        }
+        if (simulateEmpty) {
+          resolve(null);
+          return;
+        }
+        var data = CITIES[cityKey];
+        if (!data) {
+          reject(new Error('城市数据不存在'));
+          return;
+        }
+        // 深拷贝
+        resolve(JSON.parse(JSON.stringify(data)));
+      }, loadDelay);
+    });
+  }
+
+  // ---- 骨架模板定义 ----
+
+  // 主卡模板
+  var mainTpl = [
+    { type: 'row', gap: 20, align: 'center', justify: 'between', items: [
+      { type: 'col', gap: 10, flex: 1, items: [
+        { type: 'text', width: 80, height: 22 },
+        { type: 'text', width: 96, height: 14 },
+        { type: 'text', width: 70, height: 12 },
+      ]},
+      { type: 'row', gap: 12, align: 'center', items: [
+        { type: 'circle', size: 56 },
+        { type: 'text', width: 80, height: 44 },
+      ]},
+    ]},
+  ];
+
+  // 指标网格模板
+  var metricsTpl = [
+    { type: 'grid', columns: 3, gap: 12, items: [
+      { type: 'col', gap: 6, items: [
+        { type: 'text', width: 32, height: 12 },
+        { type: 'text', width: 56, height: 20 },
+      ]},
+      { type: 'col', gap: 6, items: [
+        { type: 'text', width: 32, height: 12 },
+        { type: 'text', width: 56, height: 20 },
+      ]},
+      { type: 'col', gap: 6, items: [
+        { type: 'text', width: 32, height: 12 },
+        { type: 'text', width: 56, height: 20 },
+      ]},
+    ]},
+  ];
+
+  // 逐时模板
+  var hourlyTpl = [
+    { type: 'grid', columns: 8, gap: 8, items: (function () {
+      var arr = [];
+      for (var i = 0; i < 8; i++) {
+        arr.push({ type: 'col', gap: 6, align: 'center', items: [
+          { type: 'text', width: 24, height: 12 },
+          { type: 'circle', size: 20 },
+          { type: 'text', width: 20, height: 14 },
+        ]});
+      }
+      return arr;
+    })()},
+  ];
+
+  // 五日预报模板
+  var dailyTpl = [
+    { type: 'col', gap: 10, items: (function () {
+      var arr = [];
+      for (var i = 0; i < 5; i++) {
+        arr.push({ type: 'row', gap: 12, align: 'center', items: [
+          { type: 'text', width: 44, height: 13 },
+          { type: 'circle', size: 22 },
+          { type: 'text', flex: 1, height: 4 },
+          { type: 'text', width: 40, height: 13 },
+        ]});
+      }
+      return arr;
+    })()},
+  ];
+
+  // ---- 渲染内容函数 ----
+
+  function renderMain(data) {
+    return '<div class="main-card-inner">' +
+      '<div class="main-left">' +
+        '<h3 class="main-city">' + data.name + '</h3>' +
+        '<p class="main-weather-text">' + data.weather + '</p>' +
+        '<p class="main-update">' + data.updateTime + '</p>' +
+      '</div>' +
+      '<div class="main-right">' +
+        '<div class="main-icon">' + iconSvg(data.icon, 64) + '</div>' +
+        '<div class="main-temp">' + data.temp + '<sup>°C</sup></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderMetrics(data) {
+    var m = data.metrics;
+    return '<div class="metrics-grid">' +
+      '<div class="metric-item">' +
+        '<p class="metric-label">' + m.humidity.label + '</p>' +
+        '<p class="metric-value">' + m.humidity.value + '<span class="unit">' + m.humidity.unit + '</span></p>' +
+      '</div>' +
+      '<div class="metric-item">' +
+        '<p class="metric-label">' + m.wind.label + '</p>' +
+        '<p class="metric-value">' + m.wind.value + '<span class="unit">' + m.wind.unit + '</span></p>' +
+      '</div>' +
+      '<div class="metric-item">' +
+        '<p class="metric-label">' + m.feels.label + '</p>' +
+        '<p class="metric-value">' + m.feels.value + '<span class="unit">' + m.feels.unit + '</span></p>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderHourly(data) {
+    var html = '<div class="hourly-list">';
+    for (var i = 0; i < data.hourly.length; i++) {
+      var h = data.hourly[i];
+      html += '<div class="hourly-item">' +
+        '<p class="hourly-time">' + h.time + '</p>' +
+        '<div class="hourly-icon">' + iconSvg(h.icon, 24) + '</div>' +
+        '<p class="hourly-temp">' + h.temp + '°</p>' +
+      '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderDaily(data) {
+    // 计算全量温度范围用于比例
+    var allLows = data.daily.map(function (d) { return d.low; });
+    var allHighs = data.daily.map(function (d) { return d.high; });
+    var minT = Math.min.apply(null, allLows);
+    var maxT = Math.max.apply(null, allHighs);
+    var range = maxT - minT || 1;
+
+    var html = '<div class="daily-list">';
+    for (var i = 0; i < data.daily.length; i++) {
+      var d = data.daily[i];
+      var leftPct = ((d.low - minT) / range) * 100;
+      var widthPct = ((d.high - d.low) / range) * 100;
+      html += '<div class="daily-item">' +
+        '<p class="daily-day">' + d.day + '</p>' +
+        '<div class="daily-icon">' + iconSvg(d.icon, 28) + '</div>' +
+        '<div class="daily-range">' +
+          '<div class="daily-range-fill" style="left:' + leftPct + '%;width:' + widthPct + '%"></div>' +
+        '</div>' +
+        '<p class="daily-temps"><span class="hi">' + d.high + '°</span> / ' + d.low + '°</p>' +
+      '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ---- 创建骨架实例 ----
+  var skMain, skMetrics, skHourly, skDaily;
+
+  function initSkeletons() {
+    skMain = createSkeleton({
+      target: document.getElementById('sk-main'),
+      template: mainTpl,
+      load: function () { return mockLoad(currentCity); },
+      renderContent: renderMain,
+      minDuration: 600,
+      autoLoad: false,
+      errorText: {
+        title: '天气加载失败',
+        desc: '无法获取当前天气信息，请检查网络后重试。',
+        retry: '重试加载',
+      },
+      emptyText: {
+        title: '暂无天气数据',
+        desc: '该城市暂无气象记录，请稍后再试。',
+      },
+    });
+
+    skMetrics = createSkeleton({
+      target: document.getElementById('sk-metrics'),
+      template: metricsTpl,
+      load: function () { return mockLoad(currentCity); },
+      renderContent: renderMetrics,
+      minDuration: 800,
+      autoLoad: false,
+      errorText: {
+        title: '指标加载失败',
+        desc: '气象指标数据暂不可用。',
+        retry: '重试',
+      },
+      emptyText: {
+        title: '暂无指标数据',
+        desc: '',
+      },
+    });
+
+    skHourly = createSkeleton({
+      target: document.getElementById('sk-hourly'),
+      template: hourlyTpl,
+      load: function () { return mockLoad(currentCity); },
+      renderContent: renderHourly,
+      minDuration: 1000,
+      autoLoad: false,
+      errorText: {
+        title: '逐时预报加载失败',
+        desc: '无法获取逐时温度数据。',
+        retry: '重试',
+      },
+      emptyText: {
+        title: '暂无逐时数据',
+        desc: '',
+      },
+    });
+
+    skDaily = createSkeleton({
+      target: document.getElementById('sk-daily'),
+      template: dailyTpl,
+      load: function () { return mockLoad(currentCity); },
+      renderContent: renderDaily,
+      minDuration: 1200,
+      autoLoad: false,
+      errorText: {
+        title: '预报加载失败',
+        desc: '五日预报数据暂不可用。',
+        retry: '重试',
+      },
+      emptyText: {
+        title: '暂无预报数据',
+        desc: '',
+      },
+    });
+  }
+
+  function loadAll() {
+    skMain.load();
+    skMetrics.load();
+    skHourly.load();
+    skDaily.load();
+  }
+
+  // ---- 控制按钮 ----
+  function bindControls() {
+    // 城市切换
+    var chips = document.querySelectorAll('.city-chip');
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        var city = chip.getAttribute('data-city');
+        if (city === currentCity) return;
+        currentCity = city;
+        chips.forEach(function (c) {
+          var active = c.getAttribute('data-city') === city;
+          c.setAttribute('data-active', active ? 'true' : 'false');
+          c.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        simulateError = false;
+        simulateEmpty = false;
+        loadAll();
+      });
+    });
+
+    // 重新加载
+    document.getElementById('btn-reload').addEventListener('click', function () {
+      simulateError = false;
+      simulateEmpty = false;
+      loadAll();
+    });
+
+    // 模拟失败
+    document.getElementById('btn-sim-error').addEventListener('click', function () {
+      simulateError = true;
+      simulateEmpty = false;
+      loadAll();
+    });
+
+    // 模拟空数据
+    document.getElementById('btn-sim-empty').addEventListener('click', function () {
+      simulateEmpty = true;
+      simulateError = false;
+      loadAll();
+    });
+  }
+
+  // ---- 启动 ----
+  document.addEventListener('DOMContentLoaded', function () {
+    initSkeletons();
+    bindControls();
+    // 首屏加载
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () { loadAll(); });
+    } else {
+      setTimeout(loadAll, 50);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
