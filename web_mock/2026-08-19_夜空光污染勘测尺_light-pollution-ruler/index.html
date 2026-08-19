@@ -1,0 +1,1754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>城市观星者 · 光污染勘测尺</title>
+<style>
+/* ============ 仪器主题变量 ============ */
+:root {
+  --deep-space: #060709;
+  --deep-space-2: #0c0e12;
+  --sodium: #F5A623;
+  --sodium-bright: #FFB347;
+  --sodium-dim: #c98a1a;
+  --star-white: #E8EDF3;
+  --star-warm: #f0e6d2;
+  --star-cool: #d6e4f5;
+  --instrument-grey: #4a5058;
+  --instrument-light: #7a828c;
+  --instrument-dark: #2a2d33;
+  --instrument-line: #3a3f47;
+  --reading-green: #6ee8a6;
+  --reading-amber: #F5A623;
+  --panel-bg: rgba(10, 12, 15, 0.92);
+  --panel-border: rgba(245, 166, 35, 0.25);
+  --font-mono: "SFMono-Regular", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --font-display: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--deep-space);
+  color: var(--star-white);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  cursor: none;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* ============ 自定义光标 ============ */
+.cursor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+}
+
+.cursor::before,
+.cursor::after {
+  content: '';
+  position: absolute;
+  background: #fff;
+  transition: transform 0.15s ease-out;
+}
+
+.cursor::before {
+  top: 50%; left: 0;
+  width: 100%; height: 1px;
+  transform: translateY(-50%);
+}
+
+.cursor::after {
+  left: 50%; top: 0;
+  width: 1px; height: 100%;
+  transform: translateX(-50%);
+}
+
+.cursor .cursor-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 4px; height: 4px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.cursor.cursor-hover::before { transform: translateY(-50%) scaleX(1.8); }
+.cursor.cursor-hover::after { transform: translateX(-50%) scaleY(1.8); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor::before, .cursor::after { transition: none; }
+}
+
+/* ============ 星空画布 ============ */
+.starfield-wrap {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100vh;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.starfield-wrap canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 钠灯光雾层 */
+.light-fog {
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 100%;
+  height: 60%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(245, 166, 35, 0.45) 0%, rgba(245, 166, 35, 0.12) 35%, rgba(245, 166, 35, 0) 70%);
+  opacity: 0.08;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+/* 地平线城市剪影 */
+.skyline {
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 100%;
+  height: 120px;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+/* ============ 顶部仪器标头 ============ */
+.instrument-header {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%;
+  padding: 28px 48px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.instrument-header > * { pointer-events: auto; }
+
+.brand-mark {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.brand-mark .brand-title {
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--sodium);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.brand-mark .brand-sub {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--instrument-light);
+  font-family: var(--font-mono);
+}
+
+.instrument-stamp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--instrument-light);
+  letter-spacing: 1px;
+}
+
+.instrument-stamp .stamp-line {
+  display: flex;
+  gap: 12px;
+}
+
+.stamp-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--reading-green);
+  display: inline-block;
+  margin-right: 6px;
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ============ 读数面板（左上） ============ */
+.readout-panel {
+  position: fixed;
+  top: 120px;
+  left: 48px;
+  z-index: 10;
+  font-family: var(--font-mono);
+  pointer-events: none;
+}
+
+.readout-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.readout-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--instrument-light);
+  text-transform: uppercase;
+  min-width: 90px;
+}
+
+.readout-value {
+  font-size: 42px;
+  font-weight: 300;
+  color: var(--reading-amber);
+  line-height: 1;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout-unit {
+  font-size: 13px;
+  color: var(--instrument-light);
+  margin-left: 2px;
+}
+
+.readout-sub {
+  font-size: 12px;
+  color: var(--star-white);
+  opacity: 0.7;
+  margin-top: 4px;
+  line-height: 1.5;
+  max-width: 280px;
+  font-family: var(--font-sans);
+}
+
+.bortle-class {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--panel-bg);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--sodium);
+  font-family: var(--font-mono);
+}
+
+/* ============ 光尺（页面脊柱） ============ */
+.ruler-section {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 20;
+  padding: 0 48px 56px;
+}
+
+.ruler-container {
+  position: relative;
+  width: 100%;
+  height: 160px;
+}
+
+.ruler-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--star-white) 0%, var(--sodium) 50%, var(--sodium-bright) 100%);
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.ruler-track::before {
+  content: '';
+  position: absolute;
+  top: -12px; left: -2px;
+  width: calc(100% + 4px);
+  height: 26px;
+  background: transparent;
+}
+
+/* 刻度 */
+.ruler-ticks {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.ruler-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.tick-line {
+  width: 1px;
+  background: var(--instrument-light);
+  transition: height 0.3s ease, background 0.3s ease;
+}
+
+.tick-line.major { height: 18px; background: var(--star-white); opacity: 0.6; }
+.tick-line.minor { height: 8px; opacity: 0.4; }
+
+.tick-label {
+  position: absolute;
+  top: 28px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--instrument-light);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.tick-label-below {
+  position: absolute;
+  top: 46px;
+  font-size: 9px;
+  color: var(--instrument-grey);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  max-width: 80px;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* 游标 */
+.ruler-cursor {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 120px;
+  background: var(--sodium-bright);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 0 16px var(--sodium), 0 0 32px rgba(245, 166, 35, 0.5);
+}
+
+.ruler-cursor::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 14px; height: 14px;
+  border: 2px solid var(--sodium-bright);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--deep-space);
+  box-shadow: 0 0 8px var(--sodium), inset 0 0 4px rgba(245, 166, 35, 0.3);
+}
+
+.ruler-cursor::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 4px; height: 4px;
+  background: var(--sodium-bright);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.cursor-grip {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.cursor-grip:active { cursor: grabbing; }
+
+/* 城市标记 */
+.city-markers {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.city-marker {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.marker-pip {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--deep-space);
+  border: 1.5px solid var(--sodium);
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.marker-pip::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 2px; height: 2px;
+  background: var(--sodium);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.city-marker:hover .marker-pip {
+  transform: translateX(-50%) scale(1.4);
+  background: var(--sodium);
+  box-shadow: 0 0 12px var(--sodium);
+}
+
+.city-marker:hover .marker-pip::before {
+  background: var(--deep-space);
+}
+
+.marker-label {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--sodium);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease, top 0.25s ease;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  background: var(--deep-space);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+}
+
+.city-marker:hover .marker-label {
+  opacity: 1;
+  top: -36px;
+}
+
+.marker-line {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 1px;
+  height: 30px;
+  background: var(--sodium);
+  opacity: 0.3;
+  transform: translateX(-50%);
+}
+
+.city-marker.active .marker-pip {
+  background: var(--sodium);
+  box-shadow: 0 0 16px var(--sodium), 0 0 32px rgba(245, 166, 35, 0.4);
+}
+
+.city-marker.active .marker-label {
+  opacity: 1;
+  top: -36px;
+}
+
+/* 光尺两端标签 */
+.ruler-end-label {
+  position: absolute;
+  top: -40px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--instrument-light);
+  text-transform: uppercase;
+}
+
+.ruler-end-label.left { left: 0; }
+.ruler-end-label.right { right: 0; text-align: right; }
+
+.ruler-end-label .end-value {
+  display: block;
+  font-size: 11px;
+  color: var(--star-white);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* ============ 城市详情面板 ============ */
+.city-detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-width: 100vw;
+  height: 100vh;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+  z-index: 30;
+  transform: translateX(100%);
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow-y: auto;
+  padding: 60px 40px 40px;
+}
+
+.city-detail.open { transform: translateX(0); }
+
+.detail-close {
+  position: absolute;
+  top: 20px; right: 20px;
+  width: 32px; height: 32px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--instrument-light);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  transition: all 0.2s ease;
+}
+
+.detail-close:hover {
+  border-color: var(--sodium);
+  color: var(--sodium);
+}
+
+.detail-city-header {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--instrument-line);
+}
+
+.detail-city-name {
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: 4px;
+  color: var(--star-white);
+  margin-bottom: 8px;
+}
+
+.detail-city-region {
+  font-size: 12px;
+  color: var(--instrument-light);
+  font-family: var(--font-mono);
+  letter-spacing: 2px;
+}
+
+.detail-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.detail-metric {
+  padding: 16px;
+  border: 1px solid var(--instrument-line);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.metric-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--instrument-light);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--sodium);
+  font-family: var(--font-mono);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-unit {
+  font-size: 12px;
+  color: var(--instrument-light);
+  margin-left: 4px;
+}
+
+.detail-section {
+  margin-bottom: 28px;
+}
+
+.detail-section-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--sodium);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-section-title::before {
+  content: '';
+  width: 8px; height: 1px;
+  background: var(--sodium);
+}
+
+.detail-section p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: rgba(232, 237, 243, 0.75);
+  margin-bottom: 10px;
+}
+
+.detail-sources {
+  list-style: none;
+  padding: 0;
+}
+
+.detail-sources li {
+  font-size: 12px;
+  color: rgba(232, 237, 243, 0.65);
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-sans);
+}
+
+.detail-sources li .source-name { color: var(--star-white); }
+.detail-sources li .source-pct { color: var(--sodium); font-family: var(--font-mono); }
+
+.detail-tip {
+  padding: 14px 16px;
+  border-left: 2px solid var(--sodium);
+  background: rgba(245, 166, 35, 0.05);
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(232, 237, 243, 0.8);
+}
+
+/* ============ 底部说明（滚动区域） ============ */
+.info-section {
+  position: relative;
+  z-index: 15;
+  margin-top: 100vh;
+  padding: 80px 48px 120px;
+  background: var(--deep-space);
+  border-top: 1px solid var(--instrument-line);
+}
+
+.info-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 60px;
+}
+
+.info-col-title {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--sodium);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--instrument-line);
+}
+
+.info-col p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(232, 237, 243, 0.7);
+  margin-bottom: 14px;
+}
+
+.info-col strong {
+  color: var(--star-white);
+  font-weight: 500;
+}
+
+.bortle-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.bortle-table th, .bortle-table td {
+  padding: 8px 4px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bortle-table th {
+  color: var(--instrument-light);
+  font-weight: 400;
+  letter-spacing: 1px;
+  font-size: 10px;
+}
+
+.bortle-table td.class-num {
+  color: var(--sodium);
+  font-size: 13px;
+  width: 30px;
+}
+
+.bortle-table td.class-name {
+  color: var(--star-white);
+}
+
+.bortle-table td.class-mag {
+  color: var(--instrument-light);
+  text-align: right;
+}
+
+/* 页脚 */
+.site-footer {
+  position: relative;
+  z-index: 15;
+  padding: 40px 48px;
+  border-top: 1px solid var(--instrument-line);
+  background: var(--deep-space);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--instrument-grey);
+  letter-spacing: 1px;
+}
+
+/* ============ 载入遮罩 ============ */
+.loader {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: var(--deep-space);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  transition: opacity 0.8s ease, visibility 0.8s ease;
+}
+
+.loader.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.loader-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--instrument-light);
+  text-transform: uppercase;
+}
+
+.loader-bar {
+  width: 200px;
+  height: 1px;
+  background: var(--instrument-dark);
+  position: relative;
+  overflow: hidden;
+}
+
+.loader-bar-fill {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  width: 0;
+  background: var(--sodium);
+  box-shadow: 0 0 8px var(--sodium);
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 900px) {
+  .instrument-header { padding: 20px 24px; }
+  .readout-panel { left: 24px; top: 90px; }
+  .readout-value { font-size: 32px; }
+  .readout-sub { max-width: 200px; }
+  .ruler-section { padding: 0 24px 48px; }
+  .ruler-container { height: 140px; }
+  .info-section { padding: 60px 24px 80px; }
+  .info-grid { grid-template-columns: 1fr; gap: 40px; }
+  .city-detail { width: 100%; padding: 50px 24px 24px; }
+  .site-footer { padding: 24px; flex-direction: column; gap: 8px; text-align: center; }
+  .tick-label-below { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ruler-cursor, .marker-pip, .city-detail, .loader,
+  .tick-line, .marker-label, .light-fog {
+    transition: none !important;
+  }
+  .stamp-dot { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor">
+  <div class="cursor-dot"></div>
+</div>
+
+<!-- 载入 -->
+<div class="loader" id="loader">
+  <div class="loader-text">校准测光仪</div>
+  <div class="loader-bar">
+    <div class="loader-bar-fill" id="loaderFill"></div>
+  </div>
+</div>
+
+<!-- 星空画布 -->
+<div class="starfield-wrap" id="starfieldWrap">
+  <canvas id="starCanvas"></canvas>
+  <div class="light-fog" id="lightFog"></div>
+  <svg class="skyline" id="skyline" viewBox="0 0 1200 120" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,120 L0,95 L40,95 L40,80 L60,80 L60,70 L80,70 L80,85 L120,85 L120,60 L140,50 L160,60 L180,60 L180,80 L220,80 L220,55 L240,45 L260,55 L280,55 L280,75 L320,75 L320,65 L340,65 L340,50 L360,40 L380,50 L380,70 L420,70 L420,55 L460,55 L460,45 L480,35 L500,45 L520,45 L520,65 L560,65 L560,50 L580,50 L580,60 L620,60 L620,45 L660,45 L660,55 L700,55 L700,65 L740,65 L740,50 L760,40 L780,50 L780,70 L820,70 L820,55 L860,55 L860,45 L880,35 L900,45 L920,45 L920,65 L960,65 L960,55 L1000,55 L1000,70 L1040,70 L1040,60 L1060,60 L1060,50 L1080,40 L1100,50 L1120,50 L1120,75 L1160,75 L1160,85 L1200,85 L1200,120 Z" fill="#0a0c10"/>
+  </svg>
+</div>
+
+<!-- 顶部标头 -->
+<div class="instrument-header">
+  <div class="brand-mark">
+    <span class="brand-title">光污染勘测尺</span>
+    <span class="brand-sub">Bortle Dark-Sky Scale · 城市观星者</span>
+  </div>
+  <div class="instrument-stamp">
+    <div class="stamp-line"><span class="stamp-dot"></span>LIVE READING</div>
+    <div>MODEL B-SCALE / V1.0</div>
+    <div id="stampTime">--:--:--</div>
+  </div>
+</div>
+
+<!-- 左侧读数 -->
+<div class="readout-panel">
+  <div class="readout-row">
+    <span class="readout-label">Bortle 等级</span>
+    <div>
+      <span class="readout-value" id="bortleValue">1.0</span>
+      <span class="readout-unit">级</span>
+    </div>
+  </div>
+  <div class="readout-row">
+    <span class="readout-label">可见星等</span>
+    <div>
+      <span class="readout-value" id="magValue">7.8</span>
+      <span class="readout-unit">mag</span>
+    </div>
+  </div>
+  <div class="readout-row">
+    <span class="readout-label">可见恒星</span>
+    <div>
+      <span class="readout-value" id="starCount">~2500</span>
+      <span class="readout-unit">颗</span>
+    </div>
+  </div>
+  <p class="readout-sub" id="bortleDesc">
+    极佳暗夜。天顶处银河布满纹理，黄道光清晰可见，肉眼可见最暗 7.8 等星。
+  </p>
+  <div style="margin-top: 24px;">
+    <span class="bortle-class" id="bortleClassTag">CLASS 1 · 最暗天空</span>
+  </div>
+</div>
+
+<!-- 光尺主脊柱 -->
+<section class="ruler-section" id="rulerSection">
+  <div class="ruler-container" id="rulerContainer">
+    <div class="ruler-end-label left">
+      PRISTINE DARK
+      <span class="end-value">Bortle 1 · 暗夜</span>
+    </div>
+    <div class="ruler-end-label right">
+      CITY CENTER
+      <span class="end-value">Bortle 9 · 极亮</span>
+    </div>
+
+    <div class="ruler-track" id="rulerTrack"></div>
+
+    <div class="ruler-ticks" id="rulerTicks"></div>
+
+    <div class="city-markers" id="cityMarkers"></div>
+
+    <div class="ruler-cursor" id="rulerCursor">
+      <div class="cursor-grip" id="cursorGrip"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 城市详情面板 -->
+<aside class="city-detail" id="cityDetail" aria-hidden="true">
+  <button class="detail-close" id="detailClose" aria-label="关闭">×</button>
+  <div id="detailContent"></div>
+</aside>
+
+<!-- 下方信息区 -->
+<section class="info-section">
+  <div class="info-grid">
+    <div class="info-col">
+      <h3 class="info-col-title">关于 Bortle 等级</h3>
+      <p>
+        <strong>波特尔暗空分类法</strong>（Bortle Dark-Sky Scale）由美国业余天文学家约翰·波特尔（John E. Bortle）于 2001 年正式发表，将夜空的黑暗程度从 1 级到 9 级分为九档。
+      </p>
+      <p>
+        这把尺子衡量的不只是"天上有多少颗星"，更是<strong>光污染对天文观测的综合影响</strong>——包括天光亮度、黄道光可见度、银河结构、对空散射光等多重指标。
+      </p>
+      <p>
+        对城市观星者来说，理解 Bortle 等级意味着理解<strong>你所在的地方能看到什么</strong>——以及驱车多远才能遇见一片真正的暗夜。
+      </p>
+    </div>
+    <div class="info-col">
+      <h3 class="info-col-title">九级对照速查</h3>
+      <table class="bortle-table">
+        <thead>
+          <tr><th>级</th><th>名称</th><th style="text-align:right">极限星等</th></tr>
+        </thead>
+        <tbody id="bortleTableBody"></tbody>
+      </table>
+    </div>
+    <div class="info-col">
+      <h3 class="info-col-title">光污染从哪来</h3>
+      <p>
+        <strong>街道照明</strong>是最大的单一来源，尤其是高压钠灯与 LED 路灯向上散射的部分。一盏设计不佳的路灯能把数十公里外的夜空点亮。
+      </p>
+      <p>
+        <strong>商业招牌与建筑泛光照明</strong>贡献了城市中心约 30% 的天光。玻璃幕墙反射与霓虹灯光向上散射，形成肉眼可见的橙色光穹。
+      </p>
+      <p>
+        <strong>机动车灯与工业照明</strong>则构成了城市边缘的光污染梯度——驱车驶离市区时你能清晰地感知到，星空是一寸一寸亮回来的。
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <span>城市观星者 · 光污染勘测尺 V1.0</span>
+  <span>数据来源：World Atlas of Artificial Night Sky Brightness · 2026</span>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============ 工具函数 ============
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // 极暗/减少动画偏好
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ============ Bortle 等级数据 ============
+  const BORTLE_DATA = [
+    { class: 1, name: '最暗天空',   mag: 7.8, stars: 2500, desc: '极佳暗夜。天顶处银河布满纹理与暗星云，黄道光与对日照清晰可见，肉眼可见最暗 7.8 等恒星。天空背景漆黑。', skyColor: '#060709' },
+    { class: 2, name: '典型暗夜',   mag: 7.2, stars: 1700, desc: '优秀的乡村夜空。银河仍具丰富结构，M33 直接可见，天顶处天光可忽略。极限星等约 7.2。', skyColor: '#07080b' },
+    { class: 3, name: '乡村夜空',   mag: 6.5, stars: 900,  desc: '乡村水平。银河结构仍清晰可见，但外围细节开始模糊。地平线上方有轻微光污染痕迹。', skyColor: '#080a0e' },
+    { class: 4, name: '乡村/郊区过渡', mag: 5.8, stars: 450, desc: '从乡村到郊区的过渡。银河在天顶处仍可见，但地平线方向已被光雾遮蔽。', skyColor: '#0a0c11' },
+    { class: 5, name: '郊区夜空',   mag: 5.0, stars: 200,  desc: '典型郊区。银河仅在天顶附近隐约可见，地平方向 15° 内全被光雾覆盖。', skyColor: '#0c0e14' },
+    { class: 6, name: '明亮郊区',   mag: 4.4, stars: 100,  desc: '明亮的郊区夜空。银河几乎不可见，仅在最佳条件下能在天顶察觉一条淡带。', skyColor: '#0e1017' },
+    { class: 7, name: '城市郊区过渡', mag: 3.8, stars: 50,  desc: '城郊过渡带。整个天空背景呈现明显灰白色，银河完全消失。M31 勉强可见。', skyColor: '#11121a' },
+    { class: 8, name: '城市夜空',   mag: 3.2, stars: 20,   desc: '典型城市夜空。天空发出明显的橙白色光，仅最亮的恒星和行星能被辨认。', skyColor: '#14151d' },
+    { class: 9, name: '市中心夜空', mag: 2.5, stars: 5,    desc: '市中心级光污染。整个天空被橙色光雾淹没，肉眼仅可见 2–3 颗最亮恒星与月亮。', skyColor: '#17161f' }
+  ];
+
+  // 根据 Bortle 等级获取极限星等（插值）
+  function getLimitingMag(bortle) {
+    const idx = clamp(Math.floor(bortle) - 1, 0, 8);
+    const next = clamp(idx + 1, 0, 8);
+    const t = bortle - Math.floor(bortle);
+    return lerp(BORTLE_DATA[idx].mag, BORTLE_DATA[next].mag, t);
+  }
+
+  function getStarCount(bortle) {
+    const idx = clamp(Math.floor(bortle) - 1, 0, 8);
+    const next = clamp(idx + 1, 0, 8);
+    const t = bortle - Math.floor(bortle);
+    return Math.round(lerp(BORTLE_DATA[idx].stars, BORTLE_DATA[next].stars, t));
+  }
+
+  function getBortleDesc(bortle) {
+    const idx = clamp(Math.round(bortle) - 1, 0, 8);
+    return BORTLE_DATA[idx].desc;
+  }
+
+  function getBortleName(bortle) {
+    const idx = clamp(Math.round(bortle) - 1, 0, 8);
+    return BORTLE_DATA[idx].name;
+  }
+
+  // ============ 城市数据 ============
+  const CITIES = [
+    {
+      id: 'lenghu',
+      name: '冷湖',
+      region: '青海省 · 海西州',
+      bortle: 1.2,
+      mag: 7.6,
+      skybright: '0.12 mag/arcsec²',
+      description: '亚洲最佳暗夜保护区之一，位于柴达木盆地西北缘。2018 年起建立暗夜公园，冬季晴夜天顶极限星等可达 7.8 等，银河横贯天际肉眼可见暗星云结构。',
+      sources: [
+        { name: '自然背景光', pct: '68%' },
+        { name: '镇区零散灯光', pct: '18%' },
+        { name: '工矿远场散射', pct: '10%' },
+        { name: '交通道路', pct: '4%' }
+      ],
+      tip: '最佳观测季节为 9–11 月，秋高气爽且银河入夜即升。到访请遵守暗夜公园红色照明规范。'
+    },
+    {
+      id: 'ali',
+      name: '阿里',
+      region: '西藏自治区 · 噶尔县',
+      bortle: 2.0,
+      mag: 7.1,
+      skybright: '0.20 mag/arcsec²',
+      description: '中国首个国际暗夜公园，海拔 4200 米以上。大气透明度极高，暗夜品质在北半球名列前茅。冬季晴夜比例超过 200 天。',
+      sources: [
+        { name: '自然背景光', pct: '55%' },
+        { name: '县城散射光', pct: '25%' },
+        { name: '道路照明', pct: '12%' },
+        { name: '工矿与其他', pct: '8%' }
+      ],
+      tip: '高海拔地区注意高原反应。冬季夜间气温可达 -30°C，务必做好保暖。'
+    },
+    {
+      id: 'tianhuangping',
+      name: '天荒坪',
+      region: '浙江省 · 湖州市安吉县',
+      bortle: 3.0,
+      mag: 6.5,
+      skybright: '0.45 mag/arcsec²',
+      description: '江南地区罕见的暗夜保护区，位于天目山脉腹地。海拔近千米，距离杭州约 2 小时车程，是长三角观星者最易抵达的暗夜窗口。',
+      sources: [
+        { name: '杭州都市圈远场', pct: '40%' },
+        { name: '镇区照明', pct: '25%' },
+        { name: '自然背景光', pct: '20%' },
+        { name: '景区与道路', pct: '15%' }
+      ],
+      tip: '秋季晴夜质量最佳。景区夜间封闭，需提前预约或从周边村落徒步进入。'
+    },
+    {
+      id: 'hangzhou',
+      name: '杭州',
+      region: '浙江省 · 杭州市',
+      bortle: 7.0,
+      mag: 3.8,
+      skybright: '4.2 mag/arcsec²',
+      description: '典型的省会城市光污染水平。市区内仅能目视最亮的恒星与行星，银河完全不可见。城郊山区（如临安、淳安）能达到 4–5 级。',
+      sources: [
+        { name: '街道照明', pct: '35%' },
+        { name: '商业建筑照明', pct: '28%' },
+        { name: '机动车灯光', pct: '18%' },
+        { name: '工业区与其他', pct: '19%' }
+      ],
+      tip: '市区内推荐行星观测与月面观测——这些目标不受光污染影响。驱车 2 小时可达安吉天荒坪。'
+    },
+    {
+      id: 'shanghai',
+      name: '上海',
+      region: '上海市 · 中心区',
+      bortle: 8.2,
+      mag: 3.0,
+      skybright: '6.8 mag/arcsec²',
+      description: '中国光污染最严重的城市之一。中心城区夜间天空呈橙白色，目视极限星等约 3 等，晴朗夜晚仅能看到十几颗最亮的恒星。',
+      sources: [
+        { name: '街道与高架照明', pct: '32%' },
+        { name: '商业楼宇泛光', pct: '30%' },
+        { name: '霓虹与广告屏', pct: '20%' },
+        { name: '机动车与港口', pct: '18%' }
+      ],
+      tip: '崇明岛东端是上海辖区内光污染最低的区域（约 5–6 级），距人民广场约 90 分钟车程。'
+    },
+    {
+      id: 'beijing',
+      name: '北京',
+      region: '北京市 · 中心城区',
+      bortle: 8.0,
+      mag: 3.1,
+      skybright: '6.0 mag/arcsec²',
+      description: '北方特大城市的典型光污染水平。三环以内夜空通亮，夏季银河完全不可见。向北驱车至怀柔、密云山区可达 4–5 级。',
+      sources: [
+        { name: '街道照明', pct: '30%' },
+        { name: '建筑景观照明', pct: '25%' },
+        { name: '机动车灯光', pct: '22%' },
+        { name: '工业与其他', pct: '23%' }
+      ],
+      tip: '密云古北口与怀柔喇叭沟门是北京周边最佳观测地，约 2 小时车程，Bortle 4 级左右。'
+    }
+  ];
+
+  // ============ 初始化星空画布 ============
+  const canvas = $('starCanvas');
+  const ctx = canvas.getContext('2d');
+  let canvasW = 0, canvasH = 0;
+  let stars = [];
+  const STAR_COUNT = 2200;
+
+  // 生成恒星数据：位置、星等、闪烁相位、色温
+  function generateStars() {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+      // 星等分布：越暗的星越多，符合真实分布
+      // 用指数分布生成 0 ~ 8.5 等
+      const r = Math.random();
+      const magnitude = Math.pow(r, 0.6) * 8.5;
+      
+      const x = Math.random() * canvasW;
+      const y = Math.random() * canvasH * 0.85; // 底部 15% 留给地平线
+      
+      // 闪烁相位（错开，避免同步）
+      const twinklePhase = Math.random() * Math.PI * 2;
+      // 闪烁速度
+      const twinkleSpeed = 0.5 + Math.random() * 1.5;
+      // 闪烁幅度（越亮的星闪得越明显）
+      const twinkleAmp = 0.08 + (1 - magnitude / 8.5) * 0.12;
+      
+      // 随机色温（偏白/偏暖/偏冷，偏蓝最暗的星）
+      const tempRoll = Math.random();
+      let color;
+      if (tempRoll < 0.6) color = '#E8EDF3';     // 银白
+      else if (tempRoll < 0.8) color = '#f0e6d2'; // 暖白
+      else if (tempRoll < 0.95) color = '#d6e4f5'; // 冷白
+      else color = '#ffe2b8';                     // 橙（亮星少）
+      
+      stars.push({
+        x, y,
+        magnitude,
+        twinklePhase,
+        twinkleSpeed,
+        twinkleAmp,
+        color,
+        baseSize: getStarSize(magnitude)
+      });
+    }
+  }
+
+  function getStarSize(mag) {
+    // 星等越小越亮越大。0等 ~2.2px，6等 ~0.4px
+    return Math.max(0.3, 2.2 - mag * 0.3);
+  }
+
+  function resizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const wrap = $('starfieldWrap');
+    canvasW = wrap.clientWidth;
+    canvasH = wrap.clientHeight;
+    canvas.width = canvasW * dpr;
+    canvas.height = canvasH * dpr;
+    canvas.style.width = canvasW + 'px';
+    canvas.style.height = canvasH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (stars.length > 0) {
+      generateStars(); // 重新生成以适配新尺寸
+    }
+  }
+
+  // ============ 渲染星空 ============
+  let currentBortle = 1.0;
+  let targetBortle = 1.0;
+  let rafId = null;
+  let time = 0;
+  let lastFrameTime = 0;
+  let isPaused = false;
+  let sodiumFogTarget = 0;
+  let sodiumFogCurrent = 0;
+
+  function renderStars(deltaTime) {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    
+    const limitingMag = getLimitingMag(currentBortle);
+    
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      
+      // 可见性：基于极限星等的平滑过渡
+      const magDiff = limitingMag - s.magnitude;
+      if (magDiff < -1.5) continue; // 完全不可见的跳过
+      
+      // 可见度 alpha：星等高于极限时逐渐消失
+      let visibility;
+      if (magDiff >= 0) {
+        visibility = 1;
+      } else {
+        // 在 0 ~ -1.5 等范围内渐变消失
+        visibility = 1 + magDiff / 1.5;
+        visibility = clamp(visibility, 0, 1);
+      }
+      
+      // 闪烁
+      const twinkle = 1 + Math.sin(time * s.twinkleSpeed + s.twinklePhase) * s.twinkleAmp;
+      
+      // 总不透明度
+      let alpha = visibility * twinkle;
+      alpha = clamp(alpha, 0, 1);
+      
+      if (alpha <= 0.01) continue;
+      
+      // 大小随可见性微调
+      const size = s.baseSize * (0.5 + 0.5 * visibility) * twinkle;
+      
+      // 绘制：亮星画带光晕的，暗星画小点
+      ctx.globalAlpha = alpha;
+      
+      if (s.magnitude < 2.5) {
+        // 亮星：带径向渐变光晕
+        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, size * 4);
+        grad.addColorStop(0, s.color);
+        grad.addColorStop(0.3, s.color);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, size * 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (s.magnitude < 5) {
+        // 中等亮度星
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, size, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // 暗星：微小像素点
+        ctx.fillStyle = s.color;
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+      }
+    }
+    
+    ctx.globalAlpha = 1;
+  }
+
+  // ============ 渲染循环 ============
+  function tick(timestamp) {
+    if (isPaused) return;
+    
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const deltaTime = (timestamp - lastFrameTime) / 1000;
+    lastFrameTime = timestamp;
+    
+    time += deltaTime;
+    
+    // Bortle 值缓动
+    const bortleLerpSpeed = 0.08;
+    currentBortle = lerp(currentBortle, targetBortle, bortleLerpSpeed);
+    
+    // 更新钠雾
+    const fogT = (currentBortle - 1) / 8; // 0 ~ 1
+    sodiumFogTarget = fogT;
+    sodiumFogCurrent = lerp(sodiumFogCurrent, sodiumFogTarget, 0.05);
+    
+    updateLightFog(sodiumFogCurrent);
+    
+    // 更新读数显示
+    if (Math.abs(currentBortle - lastDisplayedBortle) > 0.01) {
+      updateReadouts(currentBortle);
+    }
+    
+    renderStars(deltaTime);
+    
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function startRender() {
+    if (rafId) cancelAnimationFrame(rafId);
+    lastFrameTime = 0;
+    isPaused = false;
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopRender() {
+    isPaused = true;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // 页面可见性切换
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      stopRender();
+      clearInterval(timeInterval);
+    } else {
+      lastFrameTime = 0;
+      startRender();
+      startTimeClock();
+    }
+  });
+
+  // ============ 光雾更新 ============
+  function updateLightFog(intensity) {
+    const fog = $('lightFog');
+    // 不透明度从 0.05 到 0.6
+    fog.style.opacity = (0.05 + intensity * 0.55).toFixed(3);
+    
+    // 城市剪影亮度
+    const skyline = $('skyline');
+    skyline.style.opacity = (0.2 + intensity * 0.5).toFixed(3);
+  }
+
+  // ============ 读数更新 ============
+  let lastDisplayedBortle = -1;
+
+  function updateReadouts(bortle) {
+    $('bortleValue').textContent = bortle.toFixed(1);
+    $('magValue').textContent = getLimitingMag(bortle).toFixed(1);
+    
+    const count = getStarCount(bortle);
+    $('starCount').textContent = '~' + count.toLocaleString();
+    
+    // 描述与标签（只在整数附近变化）
+    const rounded = Math.round(bortle);
+    if (rounded !== lastDisplayedBortle) {
+      $('bortleDesc').textContent = getBortleDesc(bortle);
+      $('bortleClassTag').textContent = 'CLASS ' + rounded + ' · ' + getBortleName(bortle);
+      lastDisplayedBortle = rounded;
+    }
+  }
+
+  // ============ 光尺构建 ============
+  function buildRulerTicks() {
+    const ticksContainer = $('rulerTicks');
+    ticksContainer.innerHTML = '';
+    
+    for (let i = 1; i <= 9; i++) {
+      const pct = (i - 1) / 8 * 100;
+      const tick = document.createElement('div');
+      tick.className = 'ruler-tick';
+      tick.style.left = pct + '%';
+      
+      const line = document.createElement('div');
+      line.className = 'tick-line major';
+      
+      const label = document.createElement('div');
+      label.className = 'tick-label';
+      label.textContent = i;
+      
+      const below = document.createElement('div');
+      below.className = 'tick-label-below';
+      below.textContent = BORTLE_DATA[i - 1].name;
+      
+      tick.appendChild(line);
+      tick.appendChild(label);
+      tick.appendChild(below);
+      ticksContainer.appendChild(tick);
+    }
+    
+    // 次刻度（0.5 级）
+    for (let i = 1; i < 9; i++) {
+      const pct = (i + 0.5 - 1) / 8 * 100;
+      const tick = document.createElement('div');
+      tick.className = 'ruler-tick';
+      tick.style.left = pct + '%';
+      
+      const line = document.createElement('div');
+      line.className = 'tick-line minor';
+      
+      tick.appendChild(line);
+      ticksContainer.appendChild(tick);
+    }
+  }
+
+  function buildCityMarkers() {
+    const container = $('cityMarkers');
+    container.innerHTML = '';
+    
+    CITIES.forEach(function(city) {
+      const pct = (city.bortle - 1) / 8 * 100;
+      const marker = document.createElement('div');
+      marker.className = 'city-marker';
+      marker.dataset.cityId = city.id;
+      marker.style.left = pct + '%';
+      
+      const line = document.createElement('div');
+      line.className = 'marker-line';
+      
+      const pip = document.createElement('div');
+      pip.className = 'marker-pip';
+      
+      const label = document.createElement('div');
+      label.className = 'marker-label';
+      label.textContent = city.name + ' · ' + city.bortle.toFixed(1) + '级';
+      
+      marker.appendChild(label);
+      marker.appendChild(pip);
+      marker.appendChild(line);
+      
+      marker.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openCityDetail(city.id);
+      });
+      
+      marker.addEventListener('mouseenter', function() {
+        setCursorHover(true);
+      });
+      marker.addEventListener('mouseleave', function() {
+        setCursorHover(false);
+      });
+      
+      container.appendChild(marker);
+    });
+  }
+
+  // ============ 光尺交互 ============
+  let isDragging = false;
+
+  function setBortleValue(value) {
+    targetBortle = clamp(value, 1, 9);
+    updateCursorPosition();
+  }
+
+  function updateCursorPosition() {
+    const cursor = $('rulerCursor');
+    const pct = (targetBortle - 1) / 8 * 100;
+    cursor.style.left = pct + '%';
+  }
+
+  function getBortleFromClientX(clientX) {
+    const track = $('rulerTrack');
+    const rect = track.getBoundingClientRect();
+    const x = clamp(clientX - rect.left, 0, rect.width);
+    const pct = x / rect.width;
+    return 1 + pct * 8;
+  }
+
+  function handleDrag(e) {
+    if (!isDragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const bortle = getBortleFromClientX(clientX);
+    setBortleValue(bortle);
+  }
+
+  function startDrag(e) {
+    isDragging = true;
+    setCursorHover(true);
+    handleDrag(e);
+    e.preventDefault();
+  }
+
+  function endDrag() {
+    isDragging = false;
+    setCursorHover(false);
+  }
+
+  // 轨道点击跳转
+  function onTrackClick(e) {
+    const bortle = getBortleFromClientX(e.clientX);
+    setBortleValue(bortle);
+  }
+
+  // ============ 城市详情面板 ============
+  function openCityDetail(cityId) {
+    const city = CITIES.find(function(c) { return c.id === cityId; });
+    if (!city) return;
+    
+    const content = $('detailContent');
+    
+    let sourcesHtml = '';
+    city.sources.forEach(function(s) {
+      sourcesHtml += '<li><span class="source-name">' + s.name + '</span><span class="source-pct">' + s.pct + '</span></li>';
+    });
+    
+    content.innerHTML = 
+      '<div class="detail-city-header">' +
+        '<h2 class="detail-city-name">' + city.name + '</h2>' +
+        '<div class="detail-city-region">' + city.region + '</div>' +
+      '</div>' +
+      '<div class="detail-metrics">' +
+        '<div class="detail-metric">' +
+          '<div class="metric-label">Bortle 等级</div>' +
+          '<div class="metric-value">' + city.bortle.toFixed(1) + '<span class="metric-unit">级</span></div>' +
+        '</div>' +
+        '<div class="detail-metric">' +
+          '<div class="metric-label">极限星等</div>' +
+          '<div class="metric-value">' + city.mag.toFixed(1) + '<span class="metric-unit">mag</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="detail-section">' +
+        '<h3 class="detail-section-title">天光亮度</h3>' +
+        '<p>' + city.skybright + '（天顶处）</p>' +
+      '</div>' +
+      '<div class="detail-section">' +
+        '<h3 class="detail-section-title">概况</h3>' +
+        '<p>' + city.description + '</p>' +
+      '</div>' +
+      '<div class="detail-section">' +
+        '<h3 class="detail-section-title">光污染来源构成</h3>' +
+        '<ul class="detail-sources">' + sourcesHtml + '</ul>' +
+      '</div>' +
+      '<div class="detail-tip">' + city.tip + '</div>';
+    
+    $('cityDetail').classList.add('open');
+    $('cityDetail').setAttribute('aria-hidden', 'false');
+    
+    // 同时把游标移到对应位置
+    setBortleValue(city.bortle);
+    
+    // 激活标记
+    document.querySelectorAll('.city-marker').forEach(function(m) {
+      m.classList.toggle('active', m.dataset.cityId === cityId);
+    });
+  }
+
+  function closeCityDetail() {
+    $('cityDetail').classList.remove('open');
+    $('cityDetail').setAttribute('aria-hidden', 'true');
+    document.querySelectorAll('.city-marker').forEach(function(m) {
+      m.classList.remove('active');
+    });
+  }
+
+  // ============ 自定义光标 ============
+  const cursorEl = $('cursor');
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+  let cursorTargetX = window.innerWidth / 2;
+  let cursorTargetY = window.innerHeight / 2;
+  let cursorRaf = null;
+
+  function setCursorHover(hover) {
+    if (hover) cursorEl.classList.add('cursor-hover');
+    else cursorEl.classList.remove('cursor-hover');
+  }
+
+  function updateCursorPosition() {
+    const ease = 0.18;
+    cursorX += (cursorTargetX - cursorX) * ease;
+    cursorY += (cursorTargetY - cursorY) * ease;
+    cursorEl.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+    
+    if (Math.abs(cursorTargetX - cursorX) > 0.5 || Math.abs(cursorTargetY - cursorY) > 0.5) {
+      cursorRaf = requestAnimationFrame(updateCursorPosition);
+    } else {
+      cursorRaf = null;
+    }
+  }
+
+  function startCursorRaf() {
+    if (!cursorRaf && !prefersReducedMotion) {
+      cursorRaf = requestAnimationFrame(updateCursorPosition);
+    }
+    if (prefersReducedMotion) {
+      cursorX = cursorTargetX;
+      cursorY = cursorTargetY;
+      cursorEl.style.transform = 'translate(' + cursorX + 'px, ' + cursorY + 'px) translate(-50%, -50%)';
+    }
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    cursorTargetX = e.clientX;
+    cursorTargetY = e.clientY;
+    startCursorRaf();
+  }, { passive: true });
+
+  // ============ 时间戳时钟 ============
+  let timeInterval = null;
+  function startTimeClock() {
+    function update() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      $('stampTime').textContent = h + ':' + m + ':' + s + ' CST';
+    }
+    update();
+    timeInterval = setInterval(update, 1000);
+  }
+
+  // ============ Bortle 表格 ============
+  function buildBortleTable() {
+    const tbody = $('bortleTableBody');
+    tbody.innerHTML = '';
+    BORTLE_DATA.forEach(function(b) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = 
+        '<td class="class-num">' + b.class + '</td>' +
+        '<td class="class-name">' + b.name + '</td>' +
+        '<td class="class-mag">' + b.mag.toFixed(1) + ' mag</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ============ 载入动画 ============
+  function runLoader(callback) {
+    const fill = $('loaderFill');
+    let progress = 0;
+    const duration = 1400;
+    const startTime = performance.now();
+    
+    function step(now) {
+      const elapsed = now - startTime;
+      progress = clamp(elapsed / duration, 0, 1);
+      fill.style.width = (progress * 100) + '%';
+      
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        setTimeout(callback, 300);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ============ 初始化 ============
+  function init() {
+    resizeCanvas();
+    generateStars();
+    buildRulerTicks();
+    buildCityMarkers();
+    buildBortleTable();
+    
+    // 初始游标位置
+    setBortleValue(1.0);
+    
+    // 拖拽事件
+    const grip = $('cursorGrip');
+    const track = $('rulerTrack');
+    
+    grip.addEventListener('mousedown', startDrag);
+    grip.addEventListener('touchstart', startDrag, { passive: false });
+    
+    track.addEventListener('click', onTrackClick);
+    
+    document.addEventListener('mousemove', handleDrag);
+    document.addEventListener('touchmove', handleDrag, { passive: false });
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+    
+    // 关闭详情
+    $('detailClose').addEventListener('click', closeCityDetail);
+    
+    // 详情面板按钮 hover
+    $('detailClose').addEventListener('mouseenter', function() { setCursorHover(true); });
+    $('detailClose').addEventListener('mouseleave', function() { setCursorHover(false); });
+    
+    // 轨道悬停
+    track.addEventListener('mouseenter', function() { setCursorHover(true); });
+    track.addEventListener('mouseleave', function() { if (!isDragging) setCursorHover(false); });
+    grip.addEventListener('mouseenter', function() { setCursorHover(true); });
+    grip.addEventListener('mouseleave', function() { if (!isDragging) setCursorHover(false); });
+    
+    // 窗口大小变化
+    let resizeTimer = null;
+    window.addEventListener('resize', function() {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function() {
+        resizeCanvas();
+        updateCursorPosition();
+      }, 150);
+    });
+    
+    // 键盘支持
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeCityDetail();
+      }
+      if (e.key === 'ArrowLeft') {
+        setBortleValue(targetBortle - 0.3);
+      }
+      if (e.key === 'ArrowRight') {
+        setBortleValue(targetBortle + 0.3);
+      }
+    });
+    
+    // 滚动时给光尺加阴影/淡化等（克制的滚动效果）
+    window.addEventListener('scroll', function() {
+      const scrollY = window.scrollY;
+      const ruler = $('rulerSection');
+      if (scrollY > 100) {
+        ruler.style.opacity = clamp(1 - (scrollY - 100) / 400, 0.3, 1).toFixed(2);
+      } else {
+        ruler.style.opacity = '1';
+      }
+    }, { passive: true });
+    
+    // 启动渲染
+    startRender();
+    startTimeClock();
+    
+    // 载入动画
+    runLoader(function() {
+      $('loader').classList.add('hidden');
+      // 初始缓动到 1.0，展现星空
+      setBortleValue(1.0);
+    });
+    
+    // 宣告可升级
+    announceUpgrade();
+  }
+
+  function announceUpgrade() {
+    try {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    } catch (e) {}
+  }
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', announceUpgrade, { once: true });
+  }
+
+  // DOM ready 后启动
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // 页面卸载时清理
+  window.addEventListener('beforeunload', function() {
+    stopRender();
+    clearInterval(timeInterval);
+    if (cursorRaf) cancelAnimationFrame(cursorRaf);
+  });
+
+})();
+</script>
+</body>
+</html>
