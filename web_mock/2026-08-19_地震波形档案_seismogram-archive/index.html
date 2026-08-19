@@ -1,0 +1,2176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>地震波形档案 · Seismogram Archive</title>
+<style>
+/* ============================================================
+   地震波形档案 — Seismogram Archive
+   设计母题：地震台网值班室记录仪
+   ============================================================ */
+
+:root {
+  /* 色板 — 仪器语境，禁蓝紫 */
+  --console-bg: #0B0E11;
+  --console-bg-2: #11151a;
+  --console-bg-3: #161b21;
+  --panel-line: #1f262d;
+  --panel-line-2: #2a333b;
+
+  --trace-amber: #E8A23B;   /* P波/主迹线 磷光琥珀 */
+  --trace-amber-dim: #7a5722;
+  --trace-teal: #3FB8AF;    /* S波/次级 青绿 */
+  --trace-teal-dim: #266964;
+  --warn-red: #E8453B;      /* 峰值警示 */
+  --warn-red-dim: #7a241f;
+  --paper: #E8E2D4;         /* 米白文字 */
+  --paper-dim: #a39e92;
+  --paper-faint: #5a574f;
+
+  --grid-line: #1a2026;
+  --grid-minor: #14181d;
+
+  --station-tag-bg: rgba(17,21,26,0.88);
+  --dossier-bg: #0f1318;
+
+  --scan-glow: rgba(232,162,59,0.12);
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--console-bg);
+  color: var(--paper);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
+               system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+}
+
+/* 全局自定义光标 — 十字准星 / 记录笔指针 */
+.cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  transition: width .15s ease, height .15s ease, opacity .2s ease;
+}
+.cursor::before,
+.cursor::after {
+  content: "";
+  position: absolute;
+  background: var(--paper);
+}
+.cursor::before {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+.cursor::after {
+  top: 50%;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+.cursor-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--trace-amber);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px var(--trace-amber);
+}
+.cursor.hover-arrival {
+  width: 32px;
+  height: 32px;
+}
+.cursor.hover-arrival .cursor-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--warn-red);
+  box-shadow: 0 0 12px var(--warn-red);
+}
+.cursor.hidden { opacity: 0; }
+
+/* 容器 */
+.app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ============================================================
+   顶部控制条 — 仪器面板
+   ============================================================ */
+.top-bar {
+  flex: 0 0 auto;
+  height: 56px;
+  background: var(--console-bg-2);
+  border-bottom: 1px solid var(--panel-line);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 24px;
+  user-select: none;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--trace-amber);
+  border-radius: 2px;
+  position: relative;
+}
+.brand-logo::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--trace-amber);
+  transform: translateY(-50%);
+}
+.brand-logo::after {
+  content: "";
+  position: absolute;
+  top: 30%;
+  left: 35%;
+  width: 2px;
+  height: 40%;
+  background: var(--warn-red);
+}
+.brand-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--paper);
+}
+.brand-sub {
+  font-size: 11px;
+  color: var(--paper-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.top-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--panel-line);
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.control-label {
+  font-size: 10px;
+  color: var(--paper-faint);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.network-select {
+  display: flex;
+  gap: 2px;
+  background: var(--console-bg-3);
+  border: 1px solid var(--panel-line);
+  border-radius: 3px;
+  padding: 2px;
+}
+.network-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  color: var(--paper-dim);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.05em;
+  transition: background .15s ease, color .15s ease;
+}
+.network-btn:hover { color: var(--paper); }
+.network-btn.active {
+  background: var(--trace-amber);
+  color: var(--console-bg);
+  font-weight: 600;
+}
+
+.quake-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--console-bg-3);
+  border: 1px solid var(--panel-line);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+.quake-nav-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--paper-dim);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background .15s ease, color .15s ease;
+  font-size: 12px;
+}
+.quake-nav-btn:hover { background: var(--panel-line); color: var(--paper); }
+.quake-list {
+  display: flex;
+  gap: 2px;
+}
+.quake-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  color: var(--paper-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.quake-chip:hover { color: var(--paper); border-color: var(--panel-line-2); }
+.quake-chip.active {
+  color: var(--trace-amber);
+  border-color: var(--trace-amber-dim);
+  background: rgba(232,162,59,0.08);
+}
+.quake-chip.big {
+  color: var(--warn-red);
+  border-color: var(--warn-red-dim);
+}
+.quake-chip.big.active {
+  background: rgba(232,69,59,0.12);
+}
+
+.time-window {
+  font-size: 11px;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  letter-spacing: 0.03em;
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+.time-window .time-val {
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.rec-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--paper-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn-red);
+  box-shadow: 0 0 8px var(--warn-red);
+  animation: recPulse 1.6s ease-in-out infinite;
+}
+@keyframes recPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ============================================================
+   中部 — 波形迹线脊柱（核心）
+   ============================================================ */
+.trace-area {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(to bottom,
+      var(--console-bg) 0%,
+      var(--console-bg-2) 100%);
+}
+.trace-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 台站标签 — 左侧固定式 */
+.station-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 90px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+.station-label {
+  position: absolute;
+  left: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.station-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--paper);
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+.station-name {
+  font-size: 10px;
+  color: var(--paper-dim);
+  letter-spacing: 0.05em;
+}
+.station-lat {
+  font-size: 9px;
+  color: var(--paper-faint);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+/* 时间刻度 — 顶部 */
+.time-scale {
+  position: absolute;
+  top: 0;
+  left: 90px;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  z-index: 3;
+  border-bottom: 1px solid var(--panel-line);
+  background: rgba(11,14,17,0.6);
+}
+.time-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--paper-faint);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  transform: translateX(-50%);
+}
+.time-tick::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 5px;
+  background: var(--panel-line-2);
+}
+
+/* 扫描线 */
+.scanline {
+  position: absolute;
+  top: 28px;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--trace-amber) 10%,
+    var(--trace-amber) 90%,
+    transparent 100%);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 0 6px var(--scan-glow);
+}
+
+/* 波至点标记层（点击热点） */
+.arrival-layer {
+  position: absolute;
+  top: 28px;
+  left: 90px;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+}
+.arrival-mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.arrival-mark::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  transition: width .2s ease, height .2s ease;
+}
+.arrival-mark::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+.arrival-mark:hover { transform: translate(-50%, -50%) scale(1.4); }
+.arrival-mark:hover::after { opacity: 0.8; }
+.arrival-mark.p-wave { color: var(--trace-amber); }
+.arrival-mark.s-wave { color: var(--trace-teal); }
+.arrival-mark.peak { color: var(--warn-red); width: 18px; height: 18px; }
+.arrival-mark.peak::before {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 8px currentColor;
+}
+.arrival-mark.active::before {
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 12px currentColor;
+}
+.arrival-mark.active::after {
+  opacity: 1;
+  animation: arrivalPulse 1.2s ease-out infinite;
+}
+@keyframes arrivalPulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.arrival-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  top: -8px;
+  left: 50%;
+  font-size: 9px;
+  color: currentColor;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .2s ease;
+  pointer-events: none;
+}
+.arrival-mark:hover .arrival-label,
+.arrival-mark.active .arrival-label { opacity: 1; }
+
+/* 台站分隔线 */
+.station-divider {
+  position: absolute;
+  left: 90px;
+  right: 0;
+  height: 1px;
+  background: var(--panel-line);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 左边界（台站标签区与波形区分隔） */
+.label-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 90px;
+  width: 1px;
+  background: var(--panel-line);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ============================================================
+   震情档案面板 — 右侧浮出
+   ============================================================ */
+.dossier {
+  position: absolute;
+  top: 40px;
+  right: 16px;
+  width: 340px;
+  max-height: calc(100% - 60px);
+  background: var(--dossier-bg);
+  border: 1px solid var(--panel-line-2);
+  border-radius: 4px;
+  z-index: 10;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(380px);
+  opacity: 0;
+  transition: transform .4s cubic-bezier(.22,.9,.32,1), opacity .3s ease;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.5),
+    0 0 0 1px var(--panel-line) inset;
+}
+.dossier.open {
+  transform: translateX(0);
+  opacity: 1;
+}
+.dossier-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--panel-line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(to bottom, var(--console-bg-3), transparent);
+}
+.dossier-epi {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--warn-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--warn-red);
+  font-variant-numeric: tabular-nums;
+  background: rgba(232,69,59,0.1);
+  flex-shrink: 0;
+}
+.dossier-title-block { flex: 1; min-width: 0; }
+.dossier-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--paper);
+  margin-bottom: 2px;
+}
+.dossier-sub {
+  font-size: 11px;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+}
+.dossier-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--panel-line-2);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--paper-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all .15s ease;
+  flex-shrink: 0;
+}
+.dossier-close:hover {
+  color: var(--paper);
+  border-color: var(--paper-faint);
+}
+
+.dossier-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+.dossier-section { margin-bottom: 14px; }
+.dossier-section:last-child { margin-bottom: 0; }
+.dossier-section-title {
+  font-size: 10px;
+  color: var(--paper-faint);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.data-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.data-item { display: flex; flex-direction: column; gap: 2px; }
+.data-item.full { grid-column: 1 / -1; }
+.data-key {
+  font-size: 10px;
+  color: var(--paper-faint);
+  letter-spacing: 0.05em;
+}
+.data-val {
+  font-size: 13px;
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.data-val.mag {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--warn-red);
+}
+.data-val.depth { color: var(--trace-teal); }
+
+.dossier-desc {
+  font-size: 12px;
+  color: var(--paper-dim);
+  line-height: 1.7;
+  text-align: justify;
+}
+
+.dossier-impact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.impact-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--panel-line);
+}
+.impact-row:last-child { border-bottom: none; }
+.impact-key { color: var(--paper-dim); }
+.impact-val {
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.dossier-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--panel-line);
+  display: flex;
+  gap: 8px;
+  background: var(--console-bg-3);
+}
+.dossier-btn {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--panel-line-2);
+  border-radius: 3px;
+  color: var(--paper-dim);
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.05em;
+  transition: all .15s ease;
+}
+.dossier-btn:hover {
+  color: var(--paper);
+  border-color: var(--paper-faint);
+  background: var(--console-bg);
+}
+.dossier-btn.primary {
+  color: var(--trace-amber);
+  border-color: var(--trace-amber-dim);
+  background: rgba(232,162,59,0.08);
+}
+.dossier-btn.primary:hover {
+  background: rgba(232,162,59,0.16);
+  color: var(--trace-amber);
+}
+
+/* ============================================================
+   底部 — 走时弧回放区
+   ============================================================ */
+.arc-area {
+  flex: 0 0 auto;
+  height: 160px;
+  background: var(--console-bg-2);
+  border-top: 1px solid var(--panel-line);
+  position: relative;
+  overflow: hidden;
+}
+.arc-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.arc-label {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  font-size: 10px;
+  color: var(--paper-faint);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  z-index: 2;
+}
+.arc-legend {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  display: flex;
+  gap: 16px;
+  font-size: 10px;
+  color: var(--paper-dim);
+  z-index: 2;
+  font-variant-numeric: tabular-nums;
+}
+.arc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.arc-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.arc-legend-dot.p { background: var(--trace-amber); }
+.arc-legend-dot.s { background: var(--trace-teal); }
+.arc-legend-dot.epi { background: var(--warn-red); }
+
+.arc-time {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  font-size: 11px;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  z-index: 2;
+}
+.arc-time .t-val {
+  color: var(--trace-amber);
+  font-weight: 500;
+}
+
+.replay-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 16px;
+  padding: 6px 14px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--trace-amber-dim);
+  border-radius: 3px;
+  color: var(--trace-amber);
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.08em;
+  z-index: 2;
+  transition: all .15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.replay-btn:hover {
+  background: rgba(232,162,59,0.12);
+  border-color: var(--trace-amber);
+}
+.replay-btn.playing {
+  background: rgba(232,162,59,0.18);
+}
+
+.play-icon {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  transition: border .15s ease;
+}
+.replay-btn.playing .play-icon {
+  width: 6px;
+  height: 8px;
+  border: none;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+  /* 引导 / 首屏提示 */
+  .hint-overlay {
+    position: absolute;
+    top: 42px;
+    right: 24px;
+    left: auto;
+    transform: none;
+    font-size: 11px;
+    color: var(--paper-faint);
+    letter-spacing: 0.12em;
+    z-index: 5;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: hintFade 4.5s ease-out forwards;
+    animation-delay: 1s;
+  }
+@keyframes hintFade {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.hint-key {
+  padding: 2px 6px;
+  border: 1px solid var(--panel-line-2);
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   震例切换时的横移过渡
+   ============================================================ */
+.trace-area.switching .trace-canvas {
+  animation: traceSlide .5s cubic-bezier(.22,.9,.32,1);
+}
+@keyframes traceSlide {
+  0% { opacity: 0.4; transform: translateX(-30px); filter: blur(2px); }
+  100% { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+
+/* 滚动条样式 */
+.dossier-body::-webkit-scrollbar { width: 4px; }
+.dossier-body::-webkit-scrollbar-track { background: transparent; }
+.dossier-body::-webkit-scrollbar-thumb {
+  background: var(--panel-line-2);
+  border-radius: 2px;
+}
+
+/* ============================================================
+   响应式 — 窄屏适配
+   ============================================================ */
+@media (max-width: 900px) {
+  .dossier { width: calc(100% - 32px); max-width: 340px; }
+  .station-labels { width: 70px; }
+  .station-label { left: 8px; }
+  .label-divider { left: 70px; }
+  .time-scale { left: 70px; }
+  .arrival-layer { left: 70px; }
+  .station-divider { left: 70px; }
+  .brand-sub { display: none; }
+}
+
+/* ============================================================
+   reduced motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot { animation: none; }
+  .arrival-mark.active::after { animation: none; opacity: 0.6; }
+  .hint-overlay { animation: none; opacity: 1; }
+  .dossier { transition: none; }
+  .trace-area.switching .trace-canvas { animation: none; }
+  .arrival-mark,
+  .arrival-mark::before,
+  .arrival-mark::after,
+  .network-btn,
+  .quake-chip,
+  .quake-nav-btn,
+  .dossier-btn,
+  .replay-btn,
+  .dossier-close,
+  .cursor { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor">
+  <div class="cursor-dot"></div>
+</div>
+
+<div class="app">
+
+  <!-- ========== 顶部控制条 ========== -->
+  <header class="top-bar">
+    <div class="brand">
+      <div class="brand-logo"></div>
+      <div>
+        <div class="brand-title">地震波形档案</div>
+        <div class="brand-sub">SEISMOGRAM ARCHIVE · LAB-07</div>
+      </div>
+    </div>
+
+    <div class="top-divider"></div>
+
+    <div class="control-group">
+      <span class="control-label">台网</span>
+      <div class="network-select">
+        <button class="network-btn active" data-net="national">全国台网</button>
+        <button class="network-btn" data-net="global">全球台网</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">震例</span>
+      <div class="quake-nav">
+        <button class="quake-nav-btn" id="prevQuake" title="上一震例">◀</button>
+        <div class="quake-list" id="quakeList"></div>
+        <button class="quake-nav-btn" id="nextQuake" title="下一震例">▶</button>
+      </div>
+    </div>
+
+    <div class="time-window">
+      <span>时窗 <span class="time-val" id="timeStart">—</span> → <span class="time-val" id="timeEnd">—</span></span>
+    </div>
+
+    <div class="rec-status">
+      <div class="rec-dot"></div>
+      <span>ARCHIVE</span>
+    </div>
+  </header>
+
+  <!-- ========== 中部波形迹线脊柱 ========== -->
+  <section class="trace-area" id="traceArea">
+    <canvas class="trace-canvas" id="traceCanvas"></canvas>
+
+    <!-- 台站标签 -->
+    <div class="station-labels" id="stationLabels"></div>
+    <div class="label-divider"></div>
+
+    <!-- 时间刻度 -->
+    <div class="time-scale" id="timeScale"></div>
+
+    <!-- 扫描线 -->
+    <div class="scanline" id="scanline" style="left: 90px;"></div>
+
+    <!-- 台站分隔线 -->
+    <div id="stationDividers"></div>
+
+    <!-- 波至点标记层 -->
+    <div class="arrival-layer" id="arrivalLayer"></div>
+
+    <!-- 引导提示 -->
+    <div class="hint-overlay" id="hintOverlay">
+      点击波形上的 <span class="hint-key">P 波</span> / <span class="hint-key">S 波</span> 到达点 · 键盘 ← → 切换震例
+    </div>
+  </section>
+
+  <!-- ========== 震情档案面板 ========== -->
+  <aside class="dossier" id="dossier">
+    <div class="dossier-header">
+      <div class="dossier-epi" id="dossierEpi">M</div>
+      <div class="dossier-title-block">
+        <div class="dossier-title" id="dossierTitle">—</div>
+        <div class="dossier-sub" id="dossierSub">—</div>
+      </div>
+      <button class="dossier-close" id="dossierClose" title="关闭">✕</button>
+    </div>
+    <div class="dossier-body">
+      <div class="dossier-section">
+        <div class="dossier-section-title">基本参数</div>
+        <div class="data-grid">
+          <div class="data-item">
+            <span class="data-key">震级</span>
+            <span class="data-val mag" id="dMag">—</span>
+          </div>
+          <div class="data-item">
+            <span class="data-key">深度</span>
+            <span class="data-val depth" id="dDepth">—</span>
+          </div>
+          <div class="data-item full">
+            <span class="data-key">发震时刻</span>
+            <span class="data-val" id="dTime">—</span>
+          </div>
+          <div class="data-item full">
+            <span class="data-key">震中位置</span>
+            <span class="data-val" id="dLoc">—</span>
+          </div>
+          <div class="data-item">
+            <span class="data-key">纬度</span>
+            <span class="data-val" id="dLat">—</span>
+          </div>
+          <div class="data-item">
+            <span class="data-key">经度</span>
+            <span class="data-val" id="dLon">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dossier-section">
+        <div class="dossier-section-title">震情简述</div>
+        <p class="dossier-desc" id="dDesc">—</p>
+      </div>
+
+      <div class="dossier-section">
+        <div class="dossier-section-title">影响与损失</div>
+        <div class="dossier-impact" id="dImpact"></div>
+      </div>
+    </div>
+    <div class="dossier-footer">
+      <button class="dossier-btn" id="nextArrivalBtn">下一到达 ▶</button>
+      <button class="dossier-btn primary" id="replayFromDossier">走时弧回放</button>
+    </div>
+  </aside>
+
+  <!-- ========== 底部走时弧回放区 ========== -->
+  <section class="arc-area" id="arcArea">
+    <canvas class="arc-canvas" id="arcCanvas"></canvas>
+    <div class="arc-label">走时剖面 · TRAVEL-TIME CROSS-SECTION</div>
+    <div class="arc-legend">
+      <div class="arc-legend-item"><div class="arc-legend-dot p"></div>P 波</div>
+      <div class="arc-legend-item"><div class="arc-legend-dot s"></div>S 波</div>
+      <div class="arc-legend-item"><div class="arc-legend-dot epi"></div>震中</div>
+    </div>
+    <div class="arc-time">
+      T+ <span class="t-val" id="arcTimeVal">00:00</span>
+    </div>
+    <button class="replay-btn" id="replayBtn">
+      <div class="play-icon"></div>
+      <span>走时弧回放</span>
+    </button>
+  </section>
+</div>
+
+<script>
+/* ============================================================
+   地震波形档案 — 逻辑层
+   ============================================================ */
+
+// ---------- 数据：6 次真实历史大震 ----------
+const QUAKES = [
+  {
+    id: "wenchuan",
+    name: "汶川地震",
+    short: "汶川",
+    mag: 8.0,
+    depth: 14,
+    lat: 31.0,
+    lon: 103.4,
+    location: "四川省阿坝州汶川县",
+    time: "2008-05-12 14:28:04",
+    isBig: false,
+    desc: "2008年5月12日14时28分，四川汶川县发生里氏8.0级特大地震，震源深度约14公里。地震波及大半个中国及亚洲多个国家和地区，是中华人民共和国成立以来破坏力最大的地震之一。",
+    impact: [
+      { key: "震中烈度", val: "XI 度" },
+      { key: "遇难人数", val: "69,227 人" },
+      { key: "受伤人数", val: "374,643 人" },
+      { key: "失踪人数", val: "17,923 人" },
+      { key: "直接经济损失", val: "约 8452 亿元" },
+    ]
+  },
+  {
+    id: "tangshan",
+    name: "唐山地震",
+    short: "唐山",
+    mag: 7.8,
+    depth: 11,
+    lat: 39.6,
+    lon: 118.2,
+    location: "河北省唐山市",
+    time: "1976-07-28 03:42:53",
+    isBig: false,
+    desc: "1976年7月28日凌晨3时42分，河北省唐山市发生7.8级强烈地震，震源深度约11公里。由于地震发生在深夜且城市建筑抗震能力薄弱，造成极其惨重的人员伤亡，是20世纪死亡人数最多的地震之一。",
+    impact: [
+      { key: "震中烈度", val: "XI 度" },
+      { key: "遇难人数", val: "242,769 人" },
+      { key: "重伤人数", val: "164,851 人" },
+      { key: "倒塌房屋", val: "约 65 万间" },
+      { key: "有感范围", val: "约 220 万平方公里" },
+    ]
+  },
+  {
+    id: "tohoku",
+    name: "东日本大地震",
+    short: "东日本9.0",
+    mag: 9.0,
+    depth: 24,
+    lat: 38.3,
+    lon: 142.4,
+    location: "日本东北地方太平洋近海",
+    time: "2011-03-11 14:46:24",
+    isBig: true,
+    desc: "2011年3月11日，日本东北太平洋海域发生矩震级9.0级超级大地震，震源深度约24公里。这是日本观测史上最大规模地震，引发最高达40.5米的巨大海啸，并造成福岛第一核电站核泄漏事故。其在全球地震台网记录的波形振幅之大，几乎刺破所有台站记录的满量程。",
+    impact: [
+      { key: "震级类型", val: "Mw 9.0（矩震级）" },
+      { key: "遇难人数", val: "18,434 人" },
+      { key: "失踪人数", val: "3,767 人" },
+      { key: "海啸高度", val: "最高 40.5 m" },
+      { key: "核事故等级", val: "INES 7 级" },
+    ]
+  },
+  {
+    id: "nepal",
+    name: "尼泊尔地震",
+    short: "尼泊尔",
+    mag: 7.8,
+    depth: 8,
+    lat: 28.2,
+    lon: 84.7,
+    location: "尼泊尔甘达基专区",
+    time: "2015-04-25 11:56:26",
+    isBig: false,
+    desc: "2015年4月25日，尼泊尔发生7.8级强烈地震，震源深度仅8公里，属于极浅源地震。地震造成尼泊尔首都加德满都谷地严重破坏，大量历史古建筑坍塌，珠穆朗玛峰南坡发生雪崩。",
+    impact: [
+      { key: "震中烈度", val: "IX 度" },
+      { key: "遇难人数", val: "8,857 人" },
+      { key: "受伤人数", val: "23,397 人" },
+      { key: "无家可归者", val: "约 350 万人" },
+      { key: "经济损失", val: "约 100 亿美元" },
+    ]
+  },
+  {
+    id: "chile",
+    name: "智利大地震",
+    short: "智利9.5",
+    mag: 9.5,
+    depth: 33,
+    lat: -38.2,
+    lon: -73.0,
+    location: "智利瓦尔迪维亚附近海域",
+    time: "1960-05-22 15:11:20",
+    isBig: true,
+    desc: "1960年5月22日发生的智利大地震，矩震级9.5级，是有仪器记录以来地球上发生过的最大地震。地震发生在纳斯卡板块俯冲到南美板块之下的边界，引发了横跨整个太平洋的巨大海啸，波及日本、菲律宾、新西兰等地。",
+    impact: [
+      { key: "震级类型", val: "Mw 9.5（有记录最大）" },
+      { key: "遇难人数", val: "1,000–6,000 人" },
+      { key: "海啸高度", val: "最高 25 m" },
+      { key: "破裂长度", val: "约 1,000 km" },
+      { key: "影响范围", val: "环太平洋全域" },
+    ]
+  },
+  {
+    id: "sumatra",
+    name: "印度洋大地震",
+    short: "印度洋9.1",
+    mag: 9.1,
+    depth: 30,
+    lat: 3.3,
+    lon: 95.8,
+    location: "印尼苏门答腊外海",
+    time: "2004-12-26 07:58:53",
+    isBig: true,
+    desc: "2004年12月26日，印尼苏门答腊岛北部外海发生矩震级9.1级特大地震，震源深度约30公里。地震引发了印度洋沿岸有史以来最严重的海啸灾难，波及14个国家，造成了极其惨重的人员伤亡。",
+    impact: [
+      { key: "震级类型", val: "Mw 9.1–9.3" },
+      { key: "遇难人数", val: "约 227,898 人" },
+      { key: "海啸高度", val: "最高 30 m" },
+      { key: "受灾国家", val: "14 个" },
+      { key: "破裂长度", val: "约 1,300 km" },
+    ]
+  },
+];
+
+// ---------- 数据：台站（5 个台站轨）----------
+const STATIONS = [
+  { code: "ENH", name: "恩施",  lat: 30.3,  lon: 109.5, distKm: 580 },
+  { code: "KMI", name: "昆明",  lat: 25.1,  lon: 102.7, distKm: 890 },
+  { code: "MDJ", name: "牡丹江", lat: 44.6,  lon: 129.6, distKm: 2100 },
+  { code: "LSA", name: "拉萨",  lat: 29.7,  lon: 91.1,  distKm: 1350 },
+  { code: "SSE", name: "佘山",  lat: 31.1,  lon: 121.2, distKm: 1650 },
+];
+
+// ---------- 状态 ----------
+let state = {
+  quakeIndex: 0,
+  activeArrival: null,   // {stationIdx, type: 'p'|'s'|'peak'}
+  isReplaying: false,
+  replayT: 0,            // 回放秒数
+  scanX: 0,              // 扫描线位置（像素）
+};
+
+// ---------- 工具 ----------
+const $ = (id) => document.getElementById(id);
+
+// ---------- 计算震中距（球面近似）----------
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// 计算每个台站对当前震例的 P/S 波到时
+// 简化模型：Vp ≈ 6.8 km/s, Vs ≈ 3.9 km/s（浅源近场近似）
+function computeArrivals(quake, stations) {
+  const VP = 6.8;  // km/s
+  const VS = 3.9;
+  return stations.map((s, i) => {
+    const dist = haversineKm(quake.lat, quake.lon, s.lat, s.lon);
+    const pTime = dist / VP;
+    const sTime = dist / VS;
+    // 峰值大致在 S 波之后稍晚，与震级有关
+    const peakDelay = 8 + quake.mag * 4 + Math.random() * 6;
+    const peakTime = sTime + peakDelay;
+    return { stationIdx: i, pTime, sTime, peakTime, distKm: dist };
+  });
+}
+
+// ---------- 波形生成（种子化伪随机，保证可重现）----------
+let traceCanvas, traceCtx;
+let arcCanvas, arcCtx;
+let traceWidth = 0, traceHeight = 0;
+let arcWidth = 0, arcHeight = 0;
+let waveformData = [];     // 二维 [stationIdx][sampleIdx]
+let currentArrivals = [];  // 当前震例的各台站到时
+let sampleCount = 2400;    // 240 秒（4分钟）窗口 × 10 sample/s
+let timeWindowSec = 240;
+
+function setupCanvas() {
+  const traceArea = $("traceArea");
+  traceCanvas = $("traceCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = traceArea.getBoundingClientRect();
+  traceWidth = rect.width;
+  traceHeight = rect.height;
+  traceCanvas.width = traceWidth * dpr;
+  traceCanvas.height = traceHeight * dpr;
+  traceCanvas.style.width = traceWidth + "px";
+  traceCanvas.style.height = traceHeight + "px";
+  traceCtx = traceCanvas.getContext("2d");
+  traceCtx.scale(dpr, dpr);
+
+  const arcArea = $("arcArea");
+  arcCanvas = $("arcCanvas");
+  const arcRect = arcArea.getBoundingClientRect();
+  arcWidth = arcRect.width;
+  arcHeight = arcRect.height;
+  arcCanvas.width = arcWidth * dpr;
+  arcCanvas.height = arcHeight * dpr;
+  arcCanvas.style.width = arcWidth + "px";
+  arcCanvas.style.height = arcHeight + "px";
+  arcCtx = arcCanvas.getContext("2d");
+  arcCtx.scale(dpr, dpr);
+}
+
+function timeToX(sec) {
+  const left = 90;  // 台站标签区宽度
+  const rightPad = 10;
+  const drawWidth = traceWidth - left - rightPad;
+  return left + (sec / timeWindowSec) * drawWidth;
+}
+
+function stationToY(idx, total) {
+  const top = 28;  // 时间刻度高度
+  const bottomPad = 10;
+  const drawHeight = traceHeight - top - bottomPad;
+  const spacing = drawHeight / total;
+  return top + spacing * (idx + 0.5);
+}
+
+function stationBandHeight(total) {
+  const top = 28;
+  const bottomPad = 10;
+  const drawHeight = traceHeight - top - bottomPad;
+  return drawHeight / total;
+}
+
+function drawAll() {
+  if (!traceCtx) return;
+  traceCtx.clearRect(0, 0, traceWidth, traceHeight);
+
+  // 画背景网格（横向细线）
+  drawGrid();
+
+  // 画每条台站波形
+  const n = STATIONS.length;
+  const bandH = stationBandHeight(n);
+
+  for (let i = 0; i < n; i++) {
+    const cy = stationToY(i, n);
+    const ampScale = bandH * 0.42;
+    drawTrace(i, cy, ampScale);
+    drawBaseline(cy);
+  }
+
+  // 画台站分隔线位置（DOM 处理，这里不画）
+}
+
+function drawGrid() {
+  const top = 28;
+  const left = 90;
+  const right = traceWidth - 10;
+  const bottom = traceHeight - 10;
+  const n = STATIONS.length;
+
+  // 细网格：每台站轨内画 4 条等距辅助线
+  traceCtx.strokeStyle = "rgba(26,32,38,0.6)";
+  traceCtx.lineWidth = 1;
+  const bandH = stationBandHeight(n);
+
+  for (let i = 0; i <= n; i++) {
+    const y = top + bandH * i;
+    traceCtx.beginPath();
+    traceCtx.moveTo(left, y);
+    traceCtx.lineTo(right, y);
+    traceCtx.stroke();
+  }
+
+  // 每个台站轨内的细分辅助线
+  for (let i = 0; i < n; i++) {
+    const cy = stationToY(i, n);
+    traceCtx.strokeStyle = "rgba(20,24,29,0.8)";
+    traceCtx.setLineDash([3, 6]);
+    for (let j = -2; j <= 2; j++) {
+      if (j === 0) continue;
+      const y = cy + j * (bandH * 0.18);
+      traceCtx.beginPath();
+      traceCtx.moveTo(left, y);
+      traceCtx.lineTo(right, y);
+      traceCtx.stroke();
+    }
+    traceCtx.setLineDash([]);
+  }
+}
+
+function drawBaseline(y) {
+  const left = 90;
+  const right = traceWidth - 10;
+  traceCtx.strokeStyle = "rgba(42,51,59,0.5)";
+  traceCtx.lineWidth = 1;
+  traceCtx.beginPath();
+  traceCtx.moveTo(left, y);
+  traceCtx.lineTo(right, y);
+  traceCtx.stroke();
+}
+
+function drawTrace(stationIdx, cy, ampScale) {
+  const data = waveformData[stationIdx];
+  if (!data) return;
+
+  const left = 90;
+  const right = traceWidth - 10;
+  const drawWidth = right - left;
+  const samples = data.length;
+
+  // P 波前 — 暗色噪声
+  const pIdx = Math.floor(currentArrivals[stationIdx].pTime * 10);
+  traceCtx.strokeStyle = "rgba(122,87,34,0.6)";
+  traceCtx.lineWidth = 1;
+  traceCtx.beginPath();
+  for (let i = 0; i < pIdx && i < samples; i++) {
+    const x = left + (i / samples) * drawWidth;
+    const y = cy - data[i] * ampScale;
+    if (i === 0) traceCtx.moveTo(x, y);
+    else traceCtx.lineTo(x, y);
+  }
+  traceCtx.stroke();
+
+  // P 波段 — 琥珀色
+  const sIdx = Math.floor(currentArrivals[stationIdx].sTime * 10);
+  traceCtx.strokeStyle = "#E8A23B";
+  traceCtx.lineWidth = 1.2;
+  traceCtx.shadowColor = "rgba(232,162,59,0.3)";
+  traceCtx.shadowBlur = 4;
+  traceCtx.beginPath();
+  let started = false;
+  for (let i = pIdx; i < sIdx && i < samples; i++) {
+    const x = left + (i / samples) * drawWidth;
+    const y = cy - data[i] * ampScale;
+    if (!started) { traceCtx.moveTo(x, y); started = true; }
+    else traceCtx.lineTo(x, y);
+  }
+  traceCtx.stroke();
+  traceCtx.shadowBlur = 0;
+
+  // S 波段 — 青绿
+  const peakIdx = Math.floor(currentArrivals[stationIdx].peakTime * 10);
+  traceCtx.strokeStyle = "#3FB8AF";
+  traceCtx.lineWidth = 1.3;
+  traceCtx.shadowColor = "rgba(63,184,175,0.3)";
+  traceCtx.shadowBlur = 5;
+  traceCtx.beginPath();
+  started = false;
+  for (let i = sIdx; i < peakIdx && i < samples; i++) {
+    const x = left + (i / samples) * drawWidth;
+    const y = cy - data[i] * ampScale;
+    if (!started) { traceCtx.moveTo(x, y); started = true; }
+    else traceCtx.lineTo(x, y);
+  }
+  traceCtx.stroke();
+  traceCtx.shadowBlur = 0;
+
+  // 面波 / 峰值段 — 警示红
+  traceCtx.strokeStyle = "#E8453B";
+  traceCtx.lineWidth = 1.4;
+  traceCtx.shadowColor = "rgba(232,69,59,0.4)";
+  traceCtx.shadowBlur = 6;
+  traceCtx.beginPath();
+  started = false;
+  for (let i = peakIdx; i < samples; i++) {
+    const x = left + (i / samples) * drawWidth;
+    const y = cy - data[i] * ampScale;
+    if (!started) { traceCtx.moveTo(x, y); started = true; }
+    else traceCtx.lineTo(x, y);
+  }
+  traceCtx.stroke();
+  traceCtx.shadowBlur = 0;
+}
+
+// ---------- 台站标签 ----------
+function renderStationLabels() {
+  const container = $("stationLabels");
+  container.innerHTML = "";
+  const n = STATIONS.length;
+  STATIONS.forEach((s, i) => {
+    const y = stationToY(i, n);
+    const el = document.createElement("div");
+    el.className = "station-label";
+    el.style.top = y + "px";
+    el.innerHTML = `
+      <span class="station-code">${s.code}</span>
+      <span class="station-name">${s.name}</span>
+      <span class="station-lat">${s.lat.toFixed(1)}°N ${s.lon.toFixed(1)}°E</span>
+    `;
+    container.appendChild(el);
+  });
+}
+
+// ---------- 时间刻度 ----------
+function renderTimeScale(quake) {
+  const container = $("timeScale");
+  container.innerHTML = "";
+  // 每分钟一刻度，共 5 分钟窗口
+  const minutes = Math.floor(timeWindowSec / 60);
+  for (let m = 0; m <= minutes; m++) {
+    const sec = m * 60;
+    const x = timeToX(sec);
+    const left = 90;
+    const relX = x - left;
+    const tick = document.createElement("div");
+    tick.className = "time-tick";
+    tick.style.left = relX + "px";
+    // 格式化为 M:SS
+    const mm = String(m).padStart(2, "0");
+    tick.textContent = `T+${mm}:00`;
+    container.appendChild(tick);
+  }
+
+  // 更新顶部时窗显示
+  const origin = new Date(quake.time.replace(/-/g, "/"));
+  const end = new Date(origin.getTime() + timeWindowSec * 1000);
+  const fmt = (d) => {
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  };
+  $("timeStart").textContent = fmt(origin);
+  $("timeEnd").textContent = fmt(end);
+}
+
+// ---------- 波至点标记 ----------
+function renderArrivalMarks() {
+  const layer = $("arrivalLayer");
+  layer.innerHTML = "";
+  const n = STATIONS.length;
+  const leftOffset = 0; // arrival-layer 已从 left:90px 开始
+
+  currentArrivals.forEach((a, i) => {
+    const cy = stationToY(i, n) - 28; // 减去 time-scale 高度（arrival-layer top:28px）
+    const bandH = stationBandHeight(n);
+
+    // P 波
+    const pX = timeToX(a.pTime) - 90;
+    const pMark = createArrivalMark("p-wave", pX, cy,
+      `P ${a.pTime.toFixed(1)}s`, i, "p");
+    layer.appendChild(pMark);
+
+    // S 波
+    const sX = timeToX(a.sTime) - 90;
+    const sMark = createArrivalMark("s-wave", sX, cy,
+      `S ${a.sTime.toFixed(1)}s`, i, "s");
+    layer.appendChild(sMark);
+
+    // 峰值点
+    const pkX = timeToX(a.peakTime) - 90;
+    const pkMark = createArrivalMark("peak", pkX, cy,
+      `MAX ${a.peakTime.toFixed(0)}s`, i, "peak");
+    layer.appendChild(pkMark);
+  });
+}
+
+function createArrivalMark(cls, x, y, label, stationIdx, type) {
+  const el = document.createElement("div");
+  el.className = `arrival-mark ${cls}`;
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+  el.dataset.station = stationIdx;
+  el.dataset.type = type;
+  el.innerHTML = `<span class="arrival-label">${label}</span>`;
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onArrivalClick(stationIdx, type);
+  });
+  el.addEventListener("mouseenter", () => {
+    cursorEl.classList.add("hover-arrival");
+  });
+  el.addEventListener("mouseleave", () => {
+    cursorEl.classList.remove("hover-arrival");
+  });
+  return el;
+}
+
+// ---------- 震情档案面板 ----------
+function openDossier(quake, stationIdx, type) {
+  const arr = currentArrivals[stationIdx];
+  const st = STATIONS[stationIdx];
+  state.activeArrival = { stationIdx, type };
+
+  $("dossierEpi").textContent = "M" + quake.mag;
+  $("dossierTitle").textContent = quake.name;
+  $("dossierSub").textContent = `${quake.time} · 震级 M${quake.mag}`;
+  $("dMag").textContent = `M ${quake.mag}`;
+  $("dDepth").textContent = `${quake.depth} km`;
+  $("dTime").textContent = quake.time;
+  $("dLoc").textContent = quake.location;
+  $("dLat").textContent = quake.lat.toFixed(1) + "°";
+  $("dLon").textContent = quake.lon.toFixed(1) + "°";
+  $("dDesc").textContent = quake.desc;
+
+  // 影响列表
+  const impactContainer = $("dImpact");
+  impactContainer.innerHTML = "";
+  quake.impact.forEach((imp) => {
+    const row = document.createElement("div");
+    row.className = "impact-row";
+    row.innerHTML = `<span class="impact-key">${imp.key}</span><span class="impact-val">${imp.val}</span>`;
+    impactContainer.appendChild(row);
+  });
+
+  // 到达点高亮
+  document.querySelectorAll(".arrival-mark").forEach(m => {
+    m.classList.remove("active");
+    if (parseInt(m.dataset.station) === stationIdx && m.dataset.type === type) {
+      m.classList.add("active");
+    }
+  });
+
+  $("dossier").classList.add("open");
+}
+
+function closeDossier() {
+  $("dossier").classList.remove("open");
+  state.activeArrival = null;
+  document.querySelectorAll(".arrival-mark").forEach(m => m.classList.remove("active"));
+}
+
+// ---------- 点击波至点 ----------
+function onArrivalClick(stationIdx, type) {
+  const quake = QUAKES[state.quakeIndex];
+  openDossier(quake, stationIdx, type);
+
+  // 如果是峰值点且是大震，触发走时弧回放
+  if (type === "peak" && quake.isBig) {
+    startReplay();
+  } else if (type === "peak") {
+    startReplay();
+  }
+}
+
+// ---------- 走时弧 ----------
+function drawArcDiagram() {
+  if (!arcCtx) return;
+  if (!currentArrivals.length) return;
+  arcCtx.clearRect(0, 0, arcWidth, arcHeight);
+
+  const quake = QUAKES[state.quakeIndex];
+  const n = STATIONS.length;
+
+  // 布局：左侧震中，右侧各台站按顺序排列
+  const leftPad = 60;
+  const rightPad = 20;
+  const topPad = 25;
+  const bottomPad = 30;
+  const drawW = arcWidth - leftPad - rightPad;
+  const drawH = arcHeight - topPad - bottomPad;
+
+  // 震中点（左侧）
+  const epiX = leftPad;
+  const epiY = topPad + drawH * 0.5;
+
+  // 台站点（右侧一列）
+  const stationPositions = STATIONS.map((s, i) => ({
+    x: leftPad + drawW,
+    y: topPad + (drawH / (n - 1)) * i
+  }));
+
+  // 画地球剖面弧形底（装饰性弧线表示地壳/地幔分层）
+  arcCtx.strokeStyle = "rgba(42,51,59,0.5)";
+  arcCtx.lineWidth = 1;
+  for (let layer = 0; layer < 4; layer++) {
+    const depthY = epiY + layer * (drawH * 0.18);
+    arcCtx.beginPath();
+    arcCtx.moveTo(epiX, epiY);
+    const cp1x = epiX + drawW * 0.3;
+    const cp1y = depthY + drawH * 0.1;
+    const cp2x = epiX + drawW * 0.7;
+    const cp2y = depthY + drawH * 0.1;
+    arcCtx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y,
+      leftPad + drawW, epiY + (stationPositions[n-1].y - epiY) * 0.5);
+    arcCtx.globalAlpha = 0.3 - layer * 0.07;
+    arcCtx.stroke();
+  }
+  arcCtx.globalAlpha = 1;
+
+  // 走时弧（P 波 & S 波）
+  const isReplay = state.isReplaying;
+  const replayT = state.replayT;
+
+  currentArrivals.forEach((a, i) => {
+    const pos = stationPositions[i];
+    const dx = pos.x - epiX;
+    const dy = pos.y - epiY;
+    const arcHeight = Math.abs(dy) * 0.35 + 20;
+    const midX = (epiX + pos.x) / 2;
+    const peakY = Math.min(epiY, pos.y) - arcHeight;
+
+    // P 波弧
+    drawTravelArc(epiX, epiY, pos.x, pos.y, peakY, "#E8A23B",
+      a.pTime, isReplay, replayT, 0.6);
+
+    // S 波弧
+    drawTravelArc(epiX, epiY, pos.x, pos.y, peakY + arcHeight * 0.4, "#3FB8AF",
+      a.sTime, isReplay, replayT, 0.45);
+  });
+
+  // 画震中点
+  arcCtx.fillStyle = "#E8453B";
+  arcCtx.shadowColor = "rgba(232,69,59,0.6)";
+  arcCtx.shadowBlur = 8;
+  arcCtx.beginPath();
+  arcCtx.arc(epiX, epiY, 5, 0, Math.PI * 2);
+  arcCtx.fill();
+  arcCtx.shadowBlur = 0;
+
+  arcCtx.fillStyle = "#E8E2D4";
+  arcCtx.font = "10px system-ui, sans-serif";
+  arcCtx.textAlign = "center";
+  arcCtx.fillText("震中", epiX, epiY + 18);
+  arcCtx.font = "9px 'SF Mono', Menlo, monospace";
+  arcCtx.fillStyle = "#a39e92";
+  arcCtx.fillText("EPICENTER", epiX, epiY + 30);
+
+  // 画台站点
+  stationPositions.forEach((pos, i) => {
+    const s = STATIONS[i];
+    arcCtx.fillStyle = "#E8E2D4";
+    arcCtx.beginPath();
+    arcCtx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+    arcCtx.fill();
+
+    arcCtx.fillStyle = "#E8E2D4";
+    arcCtx.font = "10px system-ui, sans-serif";
+    arcCtx.textAlign = "left";
+    arcCtx.fillText(s.code, pos.x + 8, pos.y + 3);
+    arcCtx.fillStyle = "#a39e92";
+    arcCtx.font = "9px 'SF Mono', Menlo, monospace";
+    const distStr = (currentArrivals[i].distKm / 1000).toFixed(1) + " km";
+    arcCtx.fillText(distStr, pos.x + 8, pos.y + 15);
+  });
+
+  // 回放时间指示
+  if (isReplay) {
+    // 在弧上画波前位置
+    currentArrivals.forEach((a, i) => {
+      const pos = stationPositions[i];
+      const dx = pos.x - epiX;
+      const dy = pos.y - epiY;
+
+      if (replayT <= a.pTime) {
+        const t = replayT / a.pTime;
+        const pPos = pointOnArc(epiX, epiY, pos.x, pos.y,
+          Math.min(epiY, pos.y) - Math.abs(dy) * 0.35 - 20, t);
+        arcCtx.fillStyle = "#E8A23B";
+        arcCtx.shadowColor = "rgba(232,162,59,0.8)";
+        arcCtx.shadowBlur = 8;
+        arcCtx.beginPath();
+        arcCtx.arc(pPos.x, pPos.y, 4, 0, Math.PI * 2);
+        arcCtx.fill();
+        arcCtx.shadowBlur = 0;
+      }
+
+      if (replayT <= a.sTime) {
+        const t = replayT / a.sTime;
+        const arcH = Math.abs(dy) * 0.35 + 20;
+        const sPos = pointOnArc(epiX, epiY, pos.x, pos.y,
+          Math.min(epiY, pos.y) - arcH + arcH * 0.4, t);
+        arcCtx.fillStyle = "#3FB8AF";
+        arcCtx.shadowColor = "rgba(63,184,175,0.8)";
+        arcCtx.shadowBlur = 8;
+        arcCtx.beginPath();
+        arcCtx.arc(sPos.x, sPos.y, 3, 0, Math.PI * 2);
+        arcCtx.fill();
+        arcCtx.shadowBlur = 0;
+      }
+    });
+  }
+}
+
+// 二次贝塞尔曲线上某点
+function pointOnArc(x1, y1, x2, y2, peakY, t) {
+  const cx = (x1 + x2) / 2;
+  const cy = peakY;
+  const x = (1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t * t * x2;
+  const y = (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t * t * y2;
+  return { x, y };
+}
+
+function drawTravelArc(x1, y1, x2, y2, peakY, color, arrivalTime, isReplay, replayT, baseAlpha) {
+  const cx = (x1 + x2) / 2;
+
+  // 基础弧
+  arcCtx.strokeStyle = color;
+  arcCtx.lineWidth = 1.2;
+  arcCtx.globalAlpha = baseAlpha * 0.4;
+  arcCtx.beginPath();
+  arcCtx.moveTo(x1, y1);
+  arcCtx.quadraticCurveTo(cx, peakY, x2, y2);
+  arcCtx.stroke();
+
+  // 回放中 — 已走过部分加亮
+  if (isReplay && replayT > 0 && replayT <= arrivalTime) {
+    const t = replayT / arrivalTime;
+    arcCtx.globalAlpha = baseAlpha * 1.2;
+    arcCtx.lineWidth = 1.5;
+    arcCtx.shadowColor = color;
+    arcCtx.shadowBlur = 6;
+    arcCtx.beginPath();
+    arcCtx.moveTo(x1, y1);
+    // 近似：沿着二次贝塞尔画到 t
+    const steps = Math.max(20, Math.floor(t * 60));
+    for (let i = 1; i <= steps; i++) {
+      const p = pointOnArc(x1, y1, x2, y2, peakY, (i / steps) * t);
+      arcCtx.lineTo(p.x, p.y);
+    }
+    arcCtx.stroke();
+    arcCtx.shadowBlur = 0;
+  } else if (isReplay && replayT > arrivalTime) {
+    // 已到达，整条加亮
+    arcCtx.globalAlpha = baseAlpha * 1.2;
+    arcCtx.lineWidth = 1.5;
+    arcCtx.shadowColor = color;
+    arcCtx.shadowBlur = 4;
+    arcCtx.beginPath();
+    arcCtx.moveTo(x1, y1);
+    arcCtx.quadraticCurveTo(cx, peakY, x2, y2);
+    arcCtx.stroke();
+    arcCtx.shadowBlur = 0;
+  }
+  arcCtx.globalAlpha = 1;
+}
+
+// ---------- 震例列表 ----------
+function renderQuakeList() {
+  const container = $("quakeList");
+  container.innerHTML = "";
+  QUAKES.forEach((q, i) => {
+    const chip = document.createElement("button");
+    chip.className = "quake-chip" + (q.isBig ? " big" : "") +
+      (i === state.quakeIndex ? " active" : "");
+    chip.textContent = `M${q.mag} ${q.short}`;
+    chip.title = `${q.name} · ${q.time}`;
+    chip.addEventListener("click", () => switchQuake(i));
+    container.appendChild(chip);
+  });
+}
+
+// ---------- 切换震例 ----------
+function switchQuake(idx) {
+  if (idx < 0) idx = QUAKES.length - 1;
+  if (idx >= QUAKES.length) idx = 0;
+  state.quakeIndex = idx;
+  state.activeArrival = null;
+
+  // 停止回放
+  stopReplay();
+
+  const quake = QUAKES[idx];
+
+  // 计算到时
+  currentArrivals = computeArrivals(quake, STATIONS);
+
+  // 根据震例调整时窗（大震需要更长时间）
+  const maxPeak = Math.max(...currentArrivals.map(a => a.peakTime));
+  timeWindowSec = Math.ceil((maxPeak + 120) / 60) * 60;  // 留 2 分钟尾波
+  sampleCount = Math.floor(timeWindowSec * 10);
+
+  // 生成波形
+  waveformData = STATIONS.map((_, i) =>
+    generateWaveformFixed(sampleCount, currentArrivals, quake, i)
+  );
+
+  // 切换动画
+  const traceArea = $("traceArea");
+  traceArea.classList.remove("switching");
+  void traceArea.offsetWidth;  // reflow
+  traceArea.classList.add("switching");
+
+  // 关闭档案面板
+  closeDossier();
+
+  // 更新 UI
+  renderQuakeList();
+  renderTimeScale(quake);
+  renderStationLabels();
+  drawAll();
+  renderArrivalMarks();
+  drawArcDiagram();
+}
+
+// 修复 generateWaveform 的参数重声明问题
+function generateWaveformFixed(samples, arrivals, quake, stationIdx) {
+  const arr = arrivals[stationIdx];
+  const data = new Float32Array(samples);
+
+  // 使用种子化的伪随机保证每次同样结果
+  let seed = stationIdx * 1000 + Math.floor(quake.mag * 100);
+  function rnd() {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  }
+
+  // 背景噪声
+  for (let i = 0; i < samples; i++) {
+    data[i] = (rnd() - 0.5) * 0.04;
+  }
+
+  // P 波到达 — 高频低幅初动
+  const pIdx = Math.floor(arr.pTime * 10);
+  const pDur = Math.floor(80 + quake.mag * 5);
+  for (let i = 0; i < pDur && pIdx + i < samples; i++) {
+    const t = i / pDur;
+    const env = Math.sin(t * Math.PI) * Math.exp(-t * 2);
+    const freq = 4 + t * 3;
+    const phase = Math.sin(i * freq * 0.3) * 0.6 + Math.sin(i * freq * 0.7) * 0.4;
+    data[pIdx + i] += phase * env * (0.15 + quake.mag * 0.015);
+  }
+
+  // S 波到达 — 中低频大振幅
+  const sIdx = Math.floor(arr.sTime * 10);
+  const sDur = Math.floor(200 + quake.mag * 15);
+  for (let i = 0; i < sDur && sIdx + i < samples; i++) {
+    const t = i / sDur;
+    const env = Math.sin(t * Math.PI) * Math.exp(-t * 1.5);
+    const freq = 2 + t * 1.5;
+    const phase =
+      Math.sin(i * freq * 0.22) * 0.5 +
+      Math.sin(i * freq * 0.47) * 0.3 +
+      Math.sin(i * freq * 0.83) * 0.2;
+    data[sIdx + i] += phase * env * (0.35 + quake.mag * 0.05);
+  }
+
+  // 面波 / 峰值
+  const peakIdx = Math.floor(arr.peakTime * 10);
+  const peakDur = Math.floor(350 + quake.mag * 30);
+  const peakAmp = 0.6 + quake.mag * 0.12 + (quake.isBig ? 0.5 : 0);
+  for (let i = 0; i < peakDur && peakIdx + i < samples; i++) {
+    const t = i / peakDur;
+    let env;
+    if (t < 0.25) {
+      env = Math.sin((t / 0.25) * Math.PI / 2) ** 1.5;
+    } else {
+      env = Math.exp(-(t - 0.25) * 2.5) * Math.cos((t - 0.25) * 4) ** 2;
+    }
+    const freq = 0.8 + Math.sin(t * 6) * 0.3;
+    const phase =
+      Math.sin(i * freq * 0.11) * 0.6 +
+      Math.sin(i * freq * 0.27) * 0.25 +
+      Math.sin(i * freq * 0.53) * 0.15;
+    data[peakIdx + i] += phase * env * peakAmp;
+  }
+
+  // 尾波
+  const codaIdx = peakIdx + peakDur;
+  const codaDur = Math.floor(500 + quake.mag * 40);
+  for (let i = 0; i < codaDur && codaIdx + i < samples; i++) {
+    const t = i / codaDur;
+    const env = Math.exp(-t * 3) * 0.4;
+    const phase = Math.sin(i * 0.13 + Math.sin(i * 0.03) * 2) * 0.5;
+    data[codaIdx + i] += phase * env * (0.2 + quake.mag * 0.02);
+  }
+
+  return data;
+}
+
+// ---------- 走时弧回放 ----------
+let replayRAF = null;
+let replayStartTime = 0;
+
+function startReplay() {
+  if (state.isReplaying) return;
+  state.isReplaying = true;
+  state.replayT = 0;
+  replayStartTime = performance.now();
+  $("replayBtn").classList.add("playing");
+  $("replayBtn").querySelector("span").textContent = "回放中...";
+  replayLoop();
+}
+
+function stopReplay() {
+  state.isReplaying = false;
+  state.replayT = 0;
+  if (replayRAF) cancelAnimationFrame(replayRAF);
+  replayRAF = null;
+  $("replayBtn").classList.remove("playing");
+  $("replayBtn").querySelector("span").textContent = "走时弧回放";
+  $("arcTimeVal").textContent = "00:00";
+  drawArcDiagram();
+}
+
+function replayLoop() {
+  if (!state.isReplaying) return;
+
+  const now = performance.now();
+  const elapsed = (now - replayStartTime) / 1000;
+  const speedFactor = 8; // 回放速度倍率
+  state.replayT = elapsed * speedFactor;
+
+  const maxTime = Math.max(...currentArrivals.map(a => a.peakTime)) + 20;
+  if (state.replayT >= maxTime) {
+    state.replayT = maxTime;
+    drawArcDiagram();
+    // 循环
+    setTimeout(() => {
+      if (state.isReplaying) {
+        replayStartTime = performance.now();
+        state.replayT = 0;
+        replayLoop();
+      }
+    }, 1500);
+    return;
+  }
+
+  // 更新时间显示
+  const mm = Math.floor(state.replayT / 60);
+  const ss = Math.floor(state.replayT % 60);
+  $("arcTimeVal").textContent =
+    String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+
+  drawArcDiagram();
+
+  // 页面可见性检查在 RAF 外部
+  replayRAF = requestAnimationFrame(replayLoop);
+}
+
+// ---------- 自定义光标 ----------
+const cursorEl = document.querySelector(".cursor");
+let cursorX = window.innerWidth / 2;
+let cursorY = window.innerHeight / 2;
+
+document.addEventListener("mousemove", (e) => {
+  cursorX = e.clientX;
+  cursorY = e.clientY;
+  cursorEl.style.transform = `translate(${cursorX}px, ${cursorY}px) translate(-50%, -50%)`;
+  cursorEl.classList.remove("hidden");
+});
+
+document.addEventListener("mouseleave", () => {
+  cursorEl.classList.add("hidden");
+});
+document.addEventListener("mouseenter", () => {
+  cursorEl.classList.remove("hidden");
+});
+
+// 初始光标位置在屏幕中央
+cursorEl.style.transform = `translate(${cursorX}px, ${cursorY}px) translate(-50%, -50%)`;
+
+// ---------- 扫描线动画 ----------
+let scanRAF = null;
+let scanStartTime = 0;
+
+function startScanline() {
+  scanStartTime = performance.now();
+  scanLoop();
+}
+
+function scanLoop() {
+  if (document.hidden) {
+    scanRAF = requestAnimationFrame(scanLoop);
+    return;
+  }
+  const elapsed = (performance.now() - scanStartTime) / 1000;
+  const period = 12; // 每 12 秒扫一遍
+  const t = (elapsed % period) / period;
+  const left = 90;
+  const drawWidth = traceWidth - left - 10;
+  const x = left + t * drawWidth;
+  $("scanline").style.left = x + "px";
+  scanRAF = requestAnimationFrame(scanLoop);
+}
+
+// ---------- 页面可见性 ----------
+let scanPaused = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    // 暂停非必要动画
+    if (scanRAF) {
+      cancelAnimationFrame(scanRAF);
+      scanRAF = null;
+      scanPaused = true;
+    }
+    if (state.isReplaying) {
+      if (replayRAF) cancelAnimationFrame(replayRAF);
+      replayRAF = null;
+    }
+  } else {
+    if (scanPaused) {
+      scanStartTime = performance.now() - (state.scanX / traceWidth) * 12000;
+      scanLoop();
+      scanPaused = false;
+    }
+    if (state.isReplaying) {
+      replayStartTime = performance.now() - state.replayT * 1000 / 8;
+      replayLoop();
+    }
+  }
+});
+
+// ---------- 键盘导航 ----------
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+  if (e.key === "ArrowRight") {
+    e.preventDefault();
+    switchQuake(state.quakeIndex + 1);
+  } else if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    switchQuake(state.quakeIndex - 1);
+  } else if (e.key === "Escape") {
+    closeDossier();
+  } else if (e.key === " " || e.code === "Space") {
+    e.preventDefault();
+    if (state.isReplaying) stopReplay();
+    else startReplay();
+  }
+});
+
+// ---------- 网络切换（视觉效果）----------
+document.querySelectorAll(".network-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".network-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    // 暂只是视觉切换，不换数据
+  });
+});
+
+// ---------- 档案面板按钮 ----------
+$("dossierClose").addEventListener("click", closeDossier);
+$("replayBtn").addEventListener("click", () => {
+  if (state.isReplaying) stopReplay();
+  else startReplay();
+});
+$("replayFromDossier").addEventListener("click", () => {
+  closeDossier();
+  startReplay();
+});
+
+$("nextArrivalBtn").addEventListener("click", () => {
+  if (!state.activeArrival) return;
+  const { stationIdx, type } = state.activeArrival;
+  const types = ["p", "s", "peak"];
+  let typeIdx = types.indexOf(type);
+  let nextStation = stationIdx;
+  typeIdx++;
+  if (typeIdx >= types.length) {
+    typeIdx = 0;
+    nextStation = (nextStation + 1) % STATIONS.length;
+  }
+  onArrivalClick(nextStation, types[typeIdx]);
+});
+
+// 前进/后退按钮
+$("prevQuake").addEventListener("click", () => switchQuake(state.quakeIndex - 1));
+$("nextQuake").addEventListener("click", () => switchQuake(state.quakeIndex + 1));
+
+// 点击空白关闭档案
+$("traceArea").addEventListener("click", (e) => {
+  if (e.target.closest(".arrival-mark") || e.target.closest(".dossier")) return;
+  closeDossier();
+});
+
+// ---------- 窗口 resize ----------
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    setupCanvas();
+    renderStationLabels();
+    renderTimeScale(QUAKES[state.quakeIndex]);
+    drawAll();
+    renderArrivalMarks();
+    drawArcDiagram();
+  }, 100);
+});
+
+// ---------- 初始化 ----------
+function init() {
+  setupCanvas();
+  switchQuake(0);
+  startScanline();
+}
+
+// 确保 DOM 就绪
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
+
+// 卸载清理
+window.addEventListener("beforeunload", () => {
+  if (scanRAF) cancelAnimationFrame(scanRAF);
+  if (replayRAF) cancelAnimationFrame(replayRAF);
+});
+</script>
+</body>
+</html>
