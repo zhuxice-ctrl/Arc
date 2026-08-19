@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>茶焙志 · 武夷岩茶焙火工艺</title>
+<meta name="creative-medium" content="interactive-prototype">
+<meta name="description" content="武夷岩茶焙火工艺交互体验——以焙笼垂直剖面为空间模型的热力梯度网站">
+<style>
+/* ============================================================
+   茶焙志 · 武夷岩茶焙火工艺
+   ============================================================ */
+
+/* ---------- Reset & Base ---------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* 鲜叶层 */
+  --leaf-green: #4a7c3a;
+  --leaf-fresh: #6b9b4a;
+  --leaf-light: #8ab860;
+  /* 干燥区 */
+  --amber: #c89544;
+  --amber-dark: #b8762e;
+  /* 焙火区 */
+  --roast-brown: #8b5e1f;
+  --roast-deep: #6b3e12;
+  /* 热气层 */
+  --fire-orange: #c44520;
+  --fire-deep: #a03010;
+  /* 炭火层 */
+  --char-black: #1a0e08;
+  --char-dark: #2a1810;
+  /* 炭火光 */
+  --ember-bright: #ff6b1a;
+  --ember-light: #ff8c3a;
+  /* 点缀 */
+  --gold: #d4a052;
+  --gold-light: #e8bc6e;
+
+  --text-on-light: #2a1a0a;
+  --text-on-dark: #f0d8b0;
+  --text-muted: rgba(240, 216, 176, 0.6);
+
+  --fire-strength: 0.5; /* 0 = 低温, 1 = 高温 */
+
+  font-size: 16px;
+}
+
+html {
+  scroll-behavior: smooth;
+  cursor: none;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text-on-dark);
+  background: var(--leaf-green);
+  overflow-x: hidden;
+  cursor: none;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .heat-wave, .ember-pulse, .smoke-canvas, 
+  .steam-particle, .spark, .ash-particle,
+  .leaf-curl, .custom-cursor {
+    display: none !important;
+  }
+  html, body { cursor: auto; }
+}
+
+/* ---------- 自定义光标 ---------- */
+.custom-cursor {
+  position: fixed;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ember-light) 0%, var(--ember-bright) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px 2px var(--ember-bright), 0 0 20px 4px rgba(255, 107, 26, 0.4);
+  transition: box-shadow 0.3s ease, transform 0.1s ease;
+  will-change: left, top;
+}
+
+.custom-cursor::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 4px; height: 4px;
+  background: #fff3e0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- 滚动进度条（温度计形式） ---------- */
+.temp-progress {
+  position: fixed;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 240px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.temp-progress-bar {
+  width: 4px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.temp-progress-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(to top, var(--ember-bright), var(--gold), var(--leaf-fresh));
+  border-radius: 2px;
+  height: 0%;
+  transition: height 0.1s ease;
+}
+
+.temp-progress-labels {
+  position: absolute;
+  right: 14px;
+  top: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: "Songti SC", "SimSun", serif;
+}
+
+/* ---------- 页面主容器：焙笼纵剖 ---------- */
+.cage-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 焙笼壁 —— 左右两侧竹编 */
+.cage-wall-left,
+.cage-wall-right {
+  position: fixed;
+  top: 0;
+  width: 60px;
+  height: 100vh;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.3;
+  background: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      rgba(139, 94, 31, 0.3) 4px,
+      rgba(139, 94, 31, 0.3) 6px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 4px,
+      rgba(107, 62, 18, 0.2) 4px,
+      rgba(107, 62, 18, 0.2) 6px
+    );
+}
+.cage-wall-left { left: 0; }
+.cage-wall-right { right: 0; }
+
+/* ---------- 内容区 ---------- */
+.content-area {
+  position: relative;
+  z-index: 10;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 80px;
+}
+
+/* ============================================================
+   各层 Section
+   ============================================================ */
+
+.layer {
+  position: relative;
+  padding: 120px 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.layer h2 {
+  font-family: "Songti SC", "SimSun", "STSong", serif;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 700;
+  margin-bottom: 16px;
+  letter-spacing: 0.05em;
+}
+
+.layer .subtitle {
+  font-size: 0.9rem;
+  letter-spacing: 0.3em;
+  opacity: 0.6;
+  margin-bottom: 32px;
+  text-transform: uppercase;
+}
+
+.layer p {
+  font-size: 1.05rem;
+  line-height: 2;
+  margin-bottom: 16px;
+  max-width: 600px;
+}
+
+/* 术语标注 */
+.term {
+  position: relative;
+  color: var(--gold);
+  cursor: help;
+  border-bottom: 1px dashed var(--gold);
+  display: inline;
+}
+
+.term-tooltip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  background: rgba(26, 14, 8, 0.95);
+  color: var(--text-on-dark);
+  padding: 12px 16px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  width: 220px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 200;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  font-family: "PingFang SC", sans-serif;
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.term:hover .term-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* 墨迹晕染效果 */
+.term-tooltip::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 4px;
+  background: radial-gradient(ellipse at center, rgba(212, 160, 82, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.term-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(26, 14, 8, 0.95);
+}
+
+/* ---------- Layer 1: 鲜叶层 ---------- */
+.layer-fresh {
+  background: linear-gradient(180deg, #3d6a2e 0%, #4a7c3a 50%, #5a8a42 100%);
+  color: #f0ead8;
+  text-align: center;
+  padding-top: 80px;
+}
+
+.layer-fresh h1 {
+  font-family: "Songti SC", "SimSun", "STSong", serif;
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  margin-bottom: 16px;
+  color: #f5f0e0;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.2);
+}
+
+.layer-fresh .tagline {
+  font-size: 1.1rem;
+  letter-spacing: 0.5em;
+  opacity: 0.8;
+  margin-bottom: 60px;
+  padding-left: 0.5em;
+}
+
+.layer-fresh .intro-text {
+  max-width: 560px;
+  margin: 0 auto;
+  font-size: 1rem;
+  line-height: 2.2;
+  opacity: 0.9;
+}
+
+.scroll-hint {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.85rem;
+  letter-spacing: 0.3em;
+  opacity: 0.7;
+  animation: floatDown 2s ease-in-out infinite;
+}
+
+.scroll-hint::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 40px;
+  background: currentColor;
+  margin: 12px auto 0;
+  opacity: 0.5;
+}
+
+@keyframes floatDown {
+  0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.7; }
+  50% { transform: translateX(-50%) translateY(10px); opacity: 0.4; }
+}
+
+/* 鲜叶装饰 */
+.fresh-leaves {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.tea-leaf {
+  position: absolute;
+  width: 60px;
+  height: 28px;
+  background: var(--leaf-fresh);
+  border-radius: 50% 10% 50% 10%;
+  opacity: 0.4;
+  transform-origin: center;
+}
+
+.tea-leaf::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  width: 80%;
+  height: 1px;
+  background: rgba(0,0,0,0.2);
+}
+
+/* 蒸汽 */
+.steam-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 200px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.steam-particle {
+  position: absolute;
+  bottom: 0;
+  width: 30px;
+  height: 30px;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: steamRise 4s ease-out infinite;
+}
+
+@keyframes steamRise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  20% { opacity: 0.5; }
+  100% { transform: translateY(-200px) scale(2.5); opacity: 0; }
+}
+
+/* ---------- Layer 2: 竹篾层 ---------- */
+.layer-bamboo {
+  background: linear-gradient(180deg, #5a8a42 0%, #7a8a3a 30%, #9a7a2a 60%, #b8762e 100%);
+  position: relative;
+  padding: 60px 0;
+  min-height: 60vh;
+}
+
+.bamboo-texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.25;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 8px,
+      rgba(139, 94, 31, 0.4) 8px,
+      rgba(139, 94, 31, 0.4) 10px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 20px,
+      rgba(107, 62, 18, 0.3) 20px,
+      rgba(107, 62, 18, 0.3) 22px
+    );
+}
+
+.bamboo-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  color: #f5e6c8;
+}
+
+.bamboo-content h2 {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  margin-bottom: 20px;
+}
+
+.bamboo-content p {
+  max-width: 500px;
+  margin: 0 auto;
+  opacity: 0.85;
+  font-size: 0.95rem;
+}
+
+/* ---------- 通用 Layer 3-7 深色背景 ---------- */
+.layer-dry {
+  background: linear-gradient(180deg, #b8762e 0%, #c89544 50%, #a0681e 100%);
+  color: #fff5e0;
+}
+
+.layer-roast {
+  background: linear-gradient(180deg, #a0681e 0%, #8b5e1f 40%, #6b3e12 100%);
+  color: #f0d8a8;
+}
+
+.layer-stew {
+  background: linear-gradient(180deg, #6b3e12 0%, #5a2e08 50%, #4a2005 100%);
+  color: #e8c890;
+}
+
+.layer-heat {
+  background: linear-gradient(180deg, #4a2005 0%, #7a2810 30%, #a03010 60%, #6a1a08 100%);
+  color: #f0c090;
+  min-height: 80vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.layer-charcoal {
+  background: linear-gradient(180deg, #2a1810 0%, #1a0e08 50%, #0d0604 100%);
+  color: #d4a052;
+  position: relative;
+  overflow: hidden;
+  min-height: 120vh;
+}
+
+.layer-rest {
+  background: linear-gradient(180deg, #0d0604 0%, #1a0e08 30%, #2a1810 60%, #3d2818 100%);
+  color: #d4a052;
+}
+
+.layer-end {
+  background: linear-gradient(180deg, #3d2818 0%, #5a3a20 50%, #6b4a28 100%);
+  color: #f0d8a8;
+  text-align: center;
+  padding-bottom: 120px;
+}
+
+/* ---------- 信息卡片 ---------- */
+.info-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(212, 160, 82, 0.2);
+  border-radius: 6px;
+  padding: 28px 32px;
+  margin-top: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.info-card h3 {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 1.4rem;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+
+.info-card .temp-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(255, 107, 26, 0.2);
+  border: 1px solid rgba(255, 107, 26, 0.4);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  color: var(--ember-light);
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+.info-card ul {
+  list-style: none;
+  padding: 0;
+}
+
+.info-card li {
+  padding: 6px 0;
+  padding-left: 20px;
+  position: relative;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+.info-card li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 6px;
+  height: 6px;
+  background: var(--gold);
+  border-radius: 50%;
+}
+
+/* ---------- 焙火三档 ---------- */
+.roast-levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 32px;
+}
+
+.roast-level {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 24px;
+  border: 1px solid rgba(212, 160, 82, 0.15);
+  transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.roast-level:hover {
+  transform: translateY(-4px);
+  border-color: rgba(212, 160, 82, 0.4);
+}
+
+.roast-level .level-name {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+.roast-level .level-temp {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-bottom: 12px;
+}
+
+.roast-level .level-aroma {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  opacity: 0.9;
+}
+
+.roast-level .level-aroma strong {
+  color: var(--gold-light);
+  font-weight: 600;
+}
+
+/* ---------- 炭火层核心交互 ---------- */
+.charcoal-section-title {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.charcoal-section-title h2 {
+  color: var(--ember-light);
+}
+
+.fire-control-area {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  height: 400px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 107, 26, 0.2);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.charcoal-bed {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 180px;
+  background: linear-gradient(180deg, transparent 0%, #1a0a05 40%, #0d0502 100%);
+}
+
+/* 炭块 */
+.charcoal-piece {
+  position: absolute;
+  bottom: 40px;
+  border-radius: 40% 50% 45% 55% / 60% 50% 60% 40%;
+  background: radial-gradient(ellipse at 30% 30%, #3a2015 0%, #1a0a05 70%);
+  box-shadow: 
+    inset 0 -4px 8px rgba(0,0,0,0.8),
+    0 0 0 2px rgba(255, 107, 26, 0);
+  transition: box-shadow 0.5s ease;
+}
+
+.charcoal-piece.exposed {
+  background: radial-gradient(ellipse at 30% 30%, var(--ember-bright) 0%, #c44520 40%, #6a200a 80%);
+  box-shadow: 
+    inset 0 -4px 8px rgba(0,0,0,0.4),
+    0 0 20px 4px rgba(255, 107, 26, 0.4),
+    0 0 40px 10px rgba(255, 107, 26, 0.2);
+}
+
+/* 灰烬层 */
+.ash-layer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 160px;
+  cursor: grab;
+  z-index: 10;
+}
+
+.ash-layer:active {
+  cursor: grabbing;
+}
+
+.ash-canvas {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 炭火光晕 */
+.ember-glow {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(500px, 90%);
+  height: 200px;
+  background: radial-gradient(ellipse at center bottom, rgba(255, 107, 26, 0.3) 0%, rgba(255, 140, 58, 0.1) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 火星 */
+.spark {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: var(--ember-light);
+  border-radius: 50%;
+  box-shadow: 0 0 4px 1px var(--ember-bright);
+  pointer-events: none;
+  z-index: 8;
+}
+
+/* 温度计显示 */
+.temp-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 40px;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 107, 26, 0.2);
+}
+
+.temp-thermometer {
+  width: 20px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.temp-thermometer-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(to top, var(--ember-bright), var(--gold));
+  border-radius: 10px;
+  transition: height 0.3s ease;
+  height: 50%;
+}
+
+.temp-info {
+  flex: 1;
+  max-width: 400px;
+}
+
+.temp-value {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--ember-light);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.temp-value span {
+  font-size: 1.2rem;
+  opacity: 0.7;
+}
+
+.temp-stage {
+  font-size: 1.1rem;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+.temp-desc {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  line-height: 1.6;
+}
+
+/* 拨灰提示 */
+.ash-hint {
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: 0.6;
+  margin-top: 16px;
+  letter-spacing: 0.1em;
+}
+
+/* 拨灰粒子 */
+.ash-particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: #8b7355;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 15;
+  opacity: 0.8;
+}
+
+/* ---------- 热气波纹 ---------- */
+.heat-wave-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.heat-wave {
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 200, 100, 0.3), transparent);
+  animation: heatWave 3s ease-in-out infinite;
+}
+
+@keyframes heatWave {
+  0% { transform: translateX(-10%) scaleX(0.8); opacity: 0; }
+  50% { opacity: 0.6; }
+  100% { transform: translateX(110%) scaleX(1.2); opacity: 0; }
+}
+
+/* ---------- 烟缕 canvas ---------- */
+.smoke-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ---------- 炖火区 ---------- */
+.stew-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-top: 32px;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 4px 4px 0;
+}
+
+.stew-note-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  color: var(--gold);
+  font-family: "Songti SC", serif;
+  font-weight: 700;
+}
+
+.stew-note-text {
+  font-size: 0.95rem;
+  line-height: 1.9;
+  opacity: 0.9;
+}
+
+/* ---------- 退火静置 ---------- */
+.rest-timeline {
+  position: relative;
+  margin-top: 40px;
+  padding-left: 30px;
+}
+
+.rest-timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, var(--ember-bright), var(--gold), transparent);
+}
+
+.rest-item {
+  position: relative;
+  padding-bottom: 28px;
+}
+
+.rest-item::before {
+  content: '';
+  position: absolute;
+  left: -27px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  background: var(--gold);
+  border-radius: 50%;
+  border: 2px solid var(--char-dark);
+}
+
+.rest-item .rest-month {
+  font-family: "Songti SC", serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+.rest-item .rest-desc {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  line-height: 1.7;
+}
+
+/* ---------- 结尾：岩骨花香 ---------- */
+.layer-end h2 {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--amber-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 24px;
+}
+
+.flavor-wheel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 48px;
+  margin-bottom: 48px;
+}
+
+.flavor-tag {
+  padding: 10px 24px;
+  border: 1px solid rgba(212, 160, 82, 0.4);
+  border-radius: 30px;
+  font-size: 0.95rem;
+  color: var(--gold);
+  background: rgba(212, 160, 82, 0.08);
+  transition: all 0.3s ease;
+  font-family: "Songti SC", serif;
+  letter-spacing: 0.1em;
+}
+
+.flavor-tag:hover {
+  background: rgba(212, 160, 82, 0.2);
+  transform: translateY(-2px);
+}
+
+.end-quote {
+  max-width: 500px;
+  margin: 0 auto;
+  font-family: "Songti SC", serif;
+  font-size: 1.1rem;
+  line-height: 2;
+  opacity: 0.8;
+  font-style: italic;
+  position: relative;
+  padding: 20px 0;
+}
+
+.end-quote::before,
+.end-quote::after {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 1px;
+  background: var(--gold);
+  margin: 0 auto;
+  opacity: 0.5;
+}
+
+.end-quote::before { margin-bottom: 20px; }
+.end-quote::after { margin-top: 20px; }
+
+.varieties {
+  margin-top: 48px;
+  text-align: center;
+}
+
+.varieties h3 {
+  font-family: "Songti SC", serif;
+  font-size: 1.3rem;
+  color: var(--gold);
+  margin-bottom: 20px;
+  letter-spacing: 0.2em;
+}
+
+.variety-list {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.variety-item {
+  text-align: center;
+}
+
+.variety-name {
+  font-family: "Songti SC", serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--gold-light);
+  margin-bottom: 4px;
+}
+
+.variety-type {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.footer-note {
+  margin-top: 80px;
+  font-size: 0.8rem;
+  opacity: 0.4;
+  letter-spacing: 0.1em;
+}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+
+@media (max-width: 1024px) {
+  .content-area { padding: 0 60px; }
+  .cage-wall-left, .cage-wall-right { width: 40px; }
+  .roast-levels { grid-template-columns: 1fr; gap: 16px; }
+  .temp-progress { right: 12px; }
+}
+
+@media (max-width: 768px) {
+  .content-area { padding: 0 40px; }
+  .cage-wall-left, .cage-wall-right { display: none; }
+  .layer { padding: 80px 0; min-height: auto; }
+  .info-card { padding: 20px; }
+  .fire-control-area { height: 320px; }
+  .temp-display { flex-direction: column; text-align: center; padding: 20px; }
+  .temp-thermometer { width: 80px; height: 16px; }
+  .temp-thermometer-fill { height: 100%; width: 50%; bottom: auto; left: 0; background: linear-gradient(to right, var(--ember-bright), var(--gold)); }
+  .temp-progress { display: none; }
+  .flavor-wheel { gap: 10px; }
+  .flavor-tag { padding: 8px 16px; font-size: 0.85rem; }
+}
+
+@media (max-width: 480px) {
+  .content-area { padding: 0 24px; }
+  .layer { padding: 60px 0; }
+  .layer-fresh h1 { letter-spacing: 0.1em; }
+  .layer-fresh .tagline { font-size: 0.85rem; letter-spacing: 0.3em; }
+  .fire-control-area { height: 280px; }
+  .variety-list { gap: 20px; }
+}
+
+/* 隐藏光标元素当光标不可见时（触屏设备） */
+@media (hover: none) and (pointer: coarse) {
+  .custom-cursor { display: none; }
+  html, body { cursor: auto; }
+  .ash-layer { cursor: pointer; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="custom-cursor" id="customCursor"></div>
+
+<!-- 滚动进度温度计 -->
+<div class="temp-progress" id="tempProgress">
+  <div class="temp-progress-bar">
+    <div class="temp-progress-fill" id="tempProgressFill"></div>
+  </div>
+  <div class="temp-progress-labels">
+    <span>鲜叶</span>
+    <span>走水</span>
+    <span>焙火</span>
+    <span>炭火</span>
+  </div>
+</div>
+
+<!-- 焙笼壁 -->
+<div class="cage-wall-left"></div>
+<div class="cage-wall-right"></div>
+
+<div class="cage-wrapper">
+<div class="content-area">
+
+  <!-- ===== 第1层：鲜叶层 ===== -->
+  <section class="layer layer-fresh" data-layer="fresh" data-screen-label="01-鲜叶层">
+    <div class="fresh-leaves" id="freshLeaves"></div>
+    <div class="steam-container" id="steamContainer"></div>
+    
+    <h1>茶焙志</h1>
+    <p class="tagline">武夷岩茶焙火工艺</p>
+    <p class="intro-text">
+      武夷岩茶，生于丹霞地貌的岩缝之间，承云雾雨露之滋。
+      而一盏岩茶的<span class="term">岩韵<span class="term-tooltip">岩韵是武夷岩茶的独特风味，指茶汤入口后在口腔中产生的丰厚质感与悠长回甘，如同岩石般沉稳有力。</span></span>，
+      半数功夫在焙火。<br><br>
+      焙火，是以低温慢火将茶叶慢慢烘焙，使水分散尽，香气内敛，茶骨沉实。
+      一笼好茶，需焙茶师凭经验掌控火力，闻香、观色、手触，
+      在<span class="term">走水焙<span class="term-tooltip">走水焙是岩茶初制阶段的第一次烘焙，主要目的是去除茶叶中的水分和青草气，让茶叶初步定型。</span></span>、
+      焙火、<span class="term">炖火<span class="term-tooltip">炖火是焙火的最后阶段，用极低的温度长时间慢烘，让火气缓缓渗入茶骨，形成沉稳的岩韵。</span></span>间
+      寻得恰到好处的火候。
+    </p>
+    
+    <div class="scroll-hint">下探焙笼</div>
+  </section>
+
+  <!-- ===== 第2层：竹篾层 ===== -->
+  <section class="layer layer-bamboo" data-layer="bamboo" data-screen-label="02-竹篾层">
+    <div class="bamboo-texture" id="bambooTexture"></div>
+    <div class="bamboo-content">
+      <h2>焙笼</h2>
+      <p>
+        竹制焙笼，高约八十公分，内置竹篾筛以承茶叶。<br>
+        笼身透气，火力自下而上徐徐升腾，<br>
+        茶叶在筛上均匀受热，缓慢转化。<br><br>
+        <span style="opacity: 0.7; font-size: 0.9em;">—— 继续向下，进入焙笼深处 ——</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== 第3层：走水焙区 ===== -->
+  <section class="layer layer-dry" data-layer="dry" data-screen-label="03-走水焙">
+    <div class="heat-wave-layer">
+      <div class="heat-wave" style="top: 20%; animation-delay: 0s;"></div>
+      <div class="heat-wave" style="top: 50%; animation-delay: 1s;"></div>
+      <div class="heat-wave" style="top: 75%; animation-delay: 2s;"></div>
+    </div>
+    
+    <h2>走水焙</h2>
+    <p class="subtitle">INITIAL ROASTING</p>
+    
+    <p>
+      走水焙是岩茶初制的第一道烘焙工序。
+      刚采下的鲜叶经做青、杀青、揉捻后，
+      尚带浓重的青草气与多余水分，
+      需以适度火力初步去除，是为"走水"。
+    </p>
+    
+    <div class="info-card">
+      <h3>工艺参数</h3>
+      <div>
+        <span class="temp-badge">100–110°C</span>
+        <span class="temp-badge">2–3 小时</span>
+      </div>
+      <ul style="margin-top: 16px;">
+        <li>去除茶叶表面水分，蒸发青草气</li>
+        <li>使茶叶初步定型，便于后续精制</li>
+        <li>叶片由翠绿转为<span class="term">黄绿<span class="term-tooltip">走水焙后的茶叶呈黄绿或黄褐色，手感尚软，未完全干透。</span></span>，略带蜷曲</li>
+        <li>此时茶香初显，以清花香为主</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== 第4层：焙火区 ===== -->
+  <section class="layer layer-roast" data-layer="roast" data-screen-label="04-焙火区">
+    <div class="heat-wave-layer">
+      <div class="heat-wave" style="top: 15%; animation-delay: 0.5s;"></div>
+      <div class="heat-wave" style="top: 40%; animation-delay: 1.5s;"></div>
+      <div class="heat-wave" style="top: 65%; animation-delay: 0.8s;"></div>
+      <div class="heat-wave" style="top: 85%; animation-delay: 2.2s;"></div>
+    </div>
+    
+    <h2>焙火</h2>
+    <p class="subtitle">ROASTING</p>
+    
+    <p>
+      焙火是岩茶精制的核心工序，分轮次进行，每轮二至四小时。
+      焙茶师依茶叶品种与所需风味，选择不同的火力等级。
+      火功深浅，直接决定了岩茶的香型与茶骨。
+    </p>
+    
+    <div class="roast-levels">
+      <div class="roast-level">
+        <div class="level-name">轻火</div>
+        <div class="level-temp">约 120°C · 每轮 2 小时</div>
+        <div class="level-aroma">
+          保留茶叶天然的<strong>花香</strong>与清鲜感，
+          汤色浅黄透亮，口感清爽。
+          适合新茶客与清香型品种。
+        </div>
+      </div>
+      <div class="roast-level">
+        <div class="level-name">中火</div>
+        <div class="level-temp">约 125°C · 每轮 3 小时</div>
+        <div class="level-aroma">
+          香气转为馥郁的<strong>果香</strong>与熟香，
+          汤色橙黄，口感醇厚。
+          是武夷岩茶最经典的火功。
+        </div>
+      </div>
+      <div class="roast-level">
+        <div class="level-name">足火</div>
+        <div class="level-temp">约 130°C · 每轮 4 小时</div>
+        <div class="level-aroma">
+          高火慢焙，出<strong>焦糖香</strong>与火功香，
+          汤色深橙红，茶骨沉实，岩韵显。
+          耐泡耐存，为老茶客所好。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 第5层：炖火区 ===== -->
+  <section class="layer layer-stew" data-layer="stew" data-screen-label="05-炖火区">
+    <h2>炖火</h2>
+    <p class="subtitle">STEWING</p>
+    
+    <p>
+      炖火，又称"炖火功"，是焙火的收尾阶段。
+      此时火势收敛，以文火慢烘，
+      让火气缓缓渗入茶骨，
+      使茶香内敛、茶质沉实。
+    </p>
+    
+    <div class="info-card">
+      <h3>文火慢炖</h3>
+      <div>
+        <span class="temp-badge">80–90°C</span>
+        <span class="temp-badge">6–8 小时</span>
+      </div>
+      <ul style="margin-top: 16px;">
+        <li>低温长烘，火气缓缓渗入叶肉</li>
+        <li>茶叶由表及里均匀受热</li>
+        <li>香气从高扬转为沉稳内敛</li>
+        <li>茶汤滋味更加醇厚顺滑</li>
+        <li>是岩茶"岩韵"形成的关键步骤</li>
+      </ul>
+    </div>
+    
+    <div class="stew-note">
+      <div class="stew-note-icon">「</div>
+      <div class="stew-note-text">
+        炖火之要，在于"文火慢工"。<br>
+        火不可猛，猛则外焦内生；<br>
+        时不可短，短则气浮韵浅。<br>
+        焙茶师需守炉彻夜，观火翻茶，<br>
+        方得一盏沉实内敛的岩骨之味。
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 第6层：热气过渡层 ===== -->
+  <section class="layer layer-heat" data-layer="heat" data-screen-label="06-热气层">
+    <canvas class="smoke-canvas" id="smokeCanvas"></canvas>
+    
+    <h2>热气升腾</h2>
+    <p class="subtitle">ASCENDING HEAT</p>
+    
+    <p>
+      火生热，热生汽，汽携茶香而上。<br>
+      自炭火至茶叶，热气经焙笼层层升腾，<br>
+      温度渐降，烟霭渐淡，<br>
+      最终化作茶叶间回旋的温流。
+    </p>
+    
+    <div class="info-card">
+      <h3>焙茶师辨火之法</h3>
+      <ul>
+        <li><strong>闻香</strong> — 热气蒸腾中辨茶香之清浊浓淡，以定火候</li>
+        <li><strong>观色</strong> — 观叶色由青转黄、转褐、转乌，层层递进</li>
+        <li><strong>手触</strong> — 以手掌感受笼壁温度，翻叶触其干湿软硬</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== 第7层：炭火层（核心交互区） ===== -->
+  <section class="layer layer-charcoal" data-layer="charcoal" data-screen-label="07-炭火层">
+    <canvas class="smoke-canvas" id="smokeCanvas2"></canvas>
+    
+    <div class="charcoal-section-title">
+      <h2>炭火层</h2>
+      <p class="subtitle">THE FIRE WITHIN</p>
+      <p style="max-width: 500px; margin: 0 auto; opacity: 0.8; font-size: 0.95rem; line-height: 1.9;">
+        焙笼之下，炭火为本。杂木炭、龙眼木炭，
+        燃至通红后覆以<span class="term">谷灰<span class="term-tooltip">谷灰即稻谷壳燃烧后的灰烬，质轻透气，是焙茶控温的理想材料。通过调整灰的厚度来控制火势大小。</span></span>或砻糠灰，
+        以灰之厚薄控火之强弱。<br>
+        <strong style="color: var(--ember-light);">拨开炭灰，火势转旺；覆盖灰烬，火气渐敛。</strong>
+      </p>
+    </div>
+    
+    <!-- 拨灰控火交互区 -->
+    <div class="fire-control-area" id="fireControlArea">
+      <div class="ember-glow" id="emberGlow"></div>
+      
+      <!-- 炭块 -->
+      <div class="charcoal-piece" id="char1" style="left: 15%; width: 80px; height: 50px; bottom: 50px;"></div>
+      <div class="charcoal-piece" id="char2" style="left: 35%; width: 100px; height: 60px; bottom: 30px;"></div>
+      <div class="charcoal-piece" id="char3" style="left: 58%; width: 70px; height: 45px; bottom: 55px;"></div>
+      <div class="charcoal-piece" id="char4" style="left: 78%; width: 90px; height: 55px; bottom: 35px;"></div>
+      <div class="charcoal-piece" id="char5" style="left: 48%; width: 60px; height: 40px; bottom: 70px;"></div>
+      
+      <!-- 灰烬层（Canvas） -->
+      <div class="ash-layer" id="ashLayer">
+        <canvas class="ash-canvas" id="ashCanvas"></canvas>
+      </div>
+    </div>
+    
+    <!-- 温度显示 -->
+    <div class="temp-display">
+      <div class="temp-thermometer">
+        <div class="temp-thermometer-fill" id="thermFill"></div>
+      </div>
+      <div class="temp-info">
+        <div class="temp-value"><span id="tempNumber">105</span><span> °C</span></div>
+        <div class="temp-stage" id="tempStage">走水焙阶段</div>
+        <div class="temp-desc" id="tempDesc">初焙去青气，茶叶尚带鲜绿。以中火慢烘，缓缓去除水分。</div>
+      </div>
+    </div>
+    
+    <p class="ash-hint">← 在灰烬上拖动，拨灰控火 →</p>
+  </section>
+
+  <!-- ===== 第8层：退火静置 ===== -->
+  <section class="layer layer-rest" data-layer="rest" data-screen-label="08-退火静置">
+    <h2>退火静置</h2>
+    <p class="subtitle">RESTING & AGING</p>
+    
+    <p>
+      焙火已成，茶叶火气尚盛，味烈而韵浮。<br>
+      需装入陶罐，置于阴凉通风处静置，<br>
+      让火气缓缓消散，茶质慢慢沉淀。<br>
+      时日既久，<span class="term">岩韵<span class="term-tooltip">岩韵是武夷岩茶的核心品质特征，指茶汤入口后在口腔中形成的丰厚质感、层次变化与悠长回甘，如同岩石般沉稳而有骨力。</span></span>方显。
+    </p>
+    
+    <div class="rest-timeline">
+      <div class="rest-item">
+        <div class="rest-month">第一月 · 火气渐消</div>
+        <div class="rest-desc">
+          新焙之茶，火味浓重，茶汤刺激感强。
+          静置一月后，表面火气渐散，
+          茶汤入口渐趋柔和，但尾韵仍有火燥之感。
+        </div>
+      </div>
+      <div class="rest-item">
+        <div class="rest-month">第二月 · 香气内敛</div>
+        <div class="rest-desc">
+          二月之后，茶香由外扬转为内蕴。
+          开盖时香气不冲，入喉后徐徐浮现，
+          层次渐丰，有沉于水底之香。
+        </div>
+      </div>
+      <div class="rest-item">
+        <div class="rest-month">第三月 · 岩韵初显</div>
+        <div class="rest-desc">
+          三月既过，火气尽退，茶骨沉实。
+          茶汤醇厚顺滑，岩韵显现，
+          饮后口齿留香，回甘悠长。
+          至此，方为一泡好岩茶。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 第9层：岩骨花香（结尾） ===== -->
+  <section class="layer layer-end" data-layer="end" data-screen-label="09-岩骨花香">
+    <h2>岩骨花香</h2>
+    <p class="subtitle">THE TASTE OF ROCK</p>
+    
+    <p style="max-width: 560px; margin: 0 auto; font-size: 1.05rem; line-height: 2; opacity: 0.9;">
+      武夷岩茶之妙，在于"岩骨花香"四字。<br>
+      岩骨者，茶汤厚重有骨，饮之如临丹霞岩壁；<br>
+      花香者，香气清雅幽远，似有若无，藏于水底。<br><br>
+      而这一切，皆赖一笼炭火、一双巧手、<br>
+      与焙茶师对火候的千年体悟。
+    </p>
+    
+    <div class="flavor-wheel">
+      <span class="flavor-tag">兰香</span>
+      <span class="flavor-tag">桂香</span>
+      <span class="flavor-tag">果香</span>
+      <span class="flavor-tag">焦糖香</span>
+      <span class="flavor-tag">木质香</span>
+      <span class="flavor-tag">岩韵</span>
+      <span class="flavor-tag">回甘</span>
+      <span class="flavor-tag">枞味</span>
+    </div>
+    
+    <div class="varieties">
+      <h3>武夷名枞</h3>
+      <div class="variety-list">
+        <div class="variety-item">
+          <div class="variety-name">大红袍</div>
+          <div class="variety-type">岩茶之王</div>
+        </div>
+        <div class="variety-item">
+          <div class="variety-name">肉桂</div>
+          <div class="variety-type">香锐味浓</div>
+        </div>
+        <div class="variety-item">
+          <div class="variety-name">水仙</div>
+          <div class="variety-type">醇厚枞韵</div>
+        </div>
+        <div class="variety-item">
+          <div class="variety-name">奇兰</div>
+          <div class="variety-type">清花香型</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="end-quote">
+      茶者，南方之嘉木也。<br>
+      一尺二尺乃至数十尺，<br>
+      其巴山峡川，有两人合抱者，<br>
+      伐而掇之。
+    </div>
+    
+    <div class="footer-note">
+      茶焙志 · 武夷岩茶焙火工艺交互体验
+    </div>
+  </section>
+
+</div>
+</div>
+
+<script>
+/* ============================================================
+   茶焙志 · 交互脚本
+   ============================================================ */
+(function() {
+  'use strict';
+
+  // ---------- 状态 ----------
+  var fireStrength = 0.4; // 0 = 最低温, 1 = 最高温
+  var mouseX = window.innerWidth / 2;
+  var mouseY = window.innerHeight / 2;
+  var isPointerDown = false;
+  var lastAshClearTime = 0;
+  var ashClearCooldown = 30; // ms
+
+  var RAF = {
+    scroll: null,
+    cursor: null,
+    smoke: null,
+    spark: null
+  };
+
+  var timers = {
+    sparkInterval: null,
+    leafSteamInterval: null
+  };
+
+  // ---------- 自定义光标 ----------
+  var cursorEl = document.getElementById('customCursor');
+
+  function updateCursor() {
+    if (!cursorEl) return;
+    // 直接设置 left/top，不触发重渲染
+    cursorEl.style.left = mouseX + 'px';
+    cursorEl.style.top = mouseY + 'px';
+    RAF.cursor = null;
+  }
+
+  function onMouseMove(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (!RAF.cursor) {
+      RAF.cursor = requestAnimationFrame(updateCursor);
+    }
+  }
+
+  document.addEventListener('mousemove', onMouseMove, { passive: true });
+
+  // 触屏设备：触摸移动时也更新
+  document.addEventListener('touchmove', function(e) {
+    if (e.touches.length > 0) {
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  // ---------- 滚动驱动：背景渐变 + 进度条 ----------
+  var progressFill = document.getElementById('tempProgressFill');
+
+  function onScroll() {
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    var scrollPercent = docHeight > 0 ? Math.min(1, Math.max(0, scrollTop / docHeight)) : 0;
+
+    if (progressFill) {
+      progressFill.style.height = (scrollPercent * 100) + '%';
+    }
+
+    // 根据滚动位置调整光标亮度（暗处更亮）
+    if (cursorEl) {
+      var brightness = 0.5 + scrollPercent * 0.8;
+      cursorEl.style.boxShadow = 
+        '0 0 ' + (8 * brightness) + 'px ' + (2 * brightness) + 'px var(--ember-bright), ' +
+        '0 0 ' + (20 * brightness) + 'px ' + (4 * brightness) + 'px rgba(255, 107, 26, ' + (0.2 + scrollPercent * 0.3) + ')';
+    }
+
+    RAF.scroll = null;
+  }
+
+  window.addEventListener('scroll', function() {
+    if (!RAF.scroll) {
+      RAF.scroll = requestAnimationFrame(onScroll);
+    }
+  }, { passive: true });
+
+  // ---------- 鲜叶装饰 ----------
+  function createFreshLeaves() {
+    var container = document.getElementById('freshLeaves');
+    if (!container) return;
+    
+    var leafPositions = [
+      { x: 10, y: 20, rot: 15, size: 1 },
+      { x: 85, y: 15, rot: -20, size: 0.8 },
+      { x: 20, y: 60, rot: 30, size: 1.2 },
+      { x: 75, y: 55, rot: -10, size: 0.9 },
+      { x: 5, y: 80, rot: 45, size: 0.7 },
+      { x: 90, y: 75, rot: -35, size: 1.1 },
+      { x: 30, y: 40, rot: 5, size: 0.85 },
+      { x: 60, y: 30, rot: -15, size: 1.0 }
+    ];
+
+    leafPositions.forEach(function(pos) {
+      var leaf = document.createElement('div');
+      leaf.className = 'tea-leaf';
+      leaf.style.left = pos.x + '%';
+      leaf.style.top = pos.y + '%';
+      leaf.style.transform = 'rotate(' + pos.rot + 'deg) scale(' + pos.size + ')';
+      leaf.style.opacity = 0.2 + Math.random() * 0.2;
+      container.appendChild(leaf);
+    });
+  }
+
+  // ---------- 蒸汽粒子（鲜叶层底部） ----------
+  function createSteamParticles() {
+    var container = document.getElementById('steamContainer');
+    if (!container) return;
+
+    for (var i = 0; i < 8; i++) {
+      var particle = document.createElement('div');
+      particle.className = 'steam-particle';
+      particle.style.left = (10 + Math.random() * 80) + '%';
+      particle.style.animationDelay = (Math.random() * 4) + 's';
+      particle.style.animationDuration = (3 + Math.random() * 3) + 's';
+      container.appendChild(particle);
+    }
+  }
+
+  // ---------- 烟雾 Canvas 粒子系统 ----------
+  function initSmokeCanvas(canvasId) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    var ctx = canvas.getContext('2d');
+    var particles = [];
+    var rafId = null;
+
+    function resize() {
+      var rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+
+    function createParticle() {
+      if (!canvas || !canvas.width) return;
+      return {
+        x: Math.random() * canvas.width,
+        y: canvas.height + Math.random() * 50,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: -(0.5 + Math.random() * 1.5),
+        size: 20 + Math.random() * 40,
+        life: 1,
+        decay: 0.003 + Math.random() * 0.005,
+        opacity: 0.08 + Math.random() * 0.1
+      };
+    }
+
+    function animate() {
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 受火力强度影响的粒子生成率
+      var spawnRate = 0.1 + fireStrength * 0.3;
+      if (Math.random() < spawnRate && particles.length < 50) {
+        particles.push(createParticle());
+      }
+
+      for (var i = particles.length - 1; i >= 0; i--) {
+        var p = particles[i];
+        p.x += p.vx + Math.sin(p.y * 0.01) * 0.3;
+        p.y += p.vy * (0.5 + fireStrength * 1);
+        p.life -= p.decay;
+        p.size += 0.1;
+
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        var alpha = p.opacity * p.life;
+        var gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        gradient.addColorStop(0, 'rgba(255, 180, 100, ' + alpha + ')');
+        gradient.addColorStop(0.5, 'rgba(255, 140, 60, ' + (alpha * 0.5) + ')');
+        gradient.addColorStop(1, 'rgba(200, 80, 20, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      rafId = requestAnimationFrame(animate);
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+    
+    return {
+      start: function() {
+        if (!rafId) rafId = requestAnimationFrame(animate);
+      },
+      stop: function() {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+      },
+      resize: resize
+    };
+  }
+
+  // ---------- 灰烬 Canvas + 拨灰交互 ----------
+  var ashCanvas = document.getElementById('ashCanvas');
+  var ashCtx = ashCanvas ? ashCanvas.getContext('2d') : null;
+  var ashLayer = document.getElementById('ashLayer');
+  var fireControlArea = document.getElementById('fireControlArea');
+  var ashData = null; // 灰烬高度数据数组
+  var ASH_COLS = 0;
+  var ASH_BASE_HEIGHT = 0;
+
+  function initAshCanvas() {
+    if (!ashCanvas || !ashLayer || !fireControlArea) return;
+    
+    var rect = ashLayer.getBoundingClientRect();
+    ashCanvas.width = rect.width;
+    ashCanvas.height = rect.height;
+    ASH_COLS = Math.floor(rect.width / 4);
+    ASH_BASE_HEIGHT = rect.height * 0.4;
+    
+    // 初始化灰烬高度（全部覆盖）
+    ashData = [];
+    for (var i = 0; i < ASH_COLS; i++) {
+      // 自然的起伏
+      ashData.push(ASH_BASE_HEIGHT + Math.sin(i * 0.1) * 8 + Math.random() * 6);
+    }
+    
+    drawAsh();
+  }
+
+  function drawAsh() {
+    if (!ashCtx || !ashCanvas || !ashData) return;
+    
+    ashCtx.clearRect(0, 0, ashCanvas.width, ashCanvas.height);
+    
+    var w = ashCanvas.width;
+    var h = ashCanvas.height;
+    var colWidth = w / ASH_COLS;
+    
+    // 绘制灰烬主体
+    ashCtx.beginPath();
+    ashCtx.moveTo(0, h);
+    
+    for (var i = 0; i <= ASH_COLS; i++) {
+      var ashH = i < ASH_COLS ? ashData[i] : ashData[ASH_COLS - 1];
+      var x = i * colWidth;
+      var y = h - ashH;
+      
+      if (i === 0) {
+        ashCtx.lineTo(x, y);
+      } else {
+        // 平滑曲线
+        var prevX = (i - 1) * colWidth;
+        var cpX = (prevX + x) / 2;
+        ashCtx.quadraticCurveTo(prevX, h - (i - 1 < ASH_COLS ? ashData[i - 1] : ashData[0]), cpX, (h - (i - 1 < ASH_COLS ? ashData[i - 1] : ashData[0]) + y) / 2);
+      }
+    }
+    
+    ashCtx.lineTo(w, h);
+    ashCtx.closePath();
+    
+    // 灰烬渐变
+    var gradient = ashCtx.createLinearGradient(0, h - ASH_BASE_HEIGHT, 0, h);
+    gradient.addColorStop(0, '#6b5a48');
+    gradient.addColorStop(0.3, '#5a4a38');
+    gradient.addColorStop(1, '#3a2e20');
+    ashCtx.fillStyle = gradient;
+    ashCtx.fill();
+    
+    // 灰烬表面纹理
+    ashCtx.strokeStyle = 'rgba(180, 160, 130, 0.2)';
+    ashCtx.lineWidth = 1;
+    for (var j = 0; j < ASH_COLS; j += 3) {
+      var xPos = j * colWidth;
+      var yPos = h - ashData[j];
+      ashCtx.beginPath();
+      ashCtx.arc(xPos, yPos, 2 + Math.random() * 2, 0, Math.PI * 2);
+      ashCtx.fillStyle = 'rgba(200, 180, 150, 0.15)';
+      ashCtx.fill();
+    }
+  }
+
+  function brushAsh(clientX, clientY) {
+    if (!ashCanvas || !ashData || !fireControlArea) return;
+    
+    var now = Date.now();
+    if (now - lastAshClearTime < ashClearCooldown) return;
+    lastAshClearTime = now;
+    
+    var rect = ashCanvas.getBoundingClientRect();
+    var x = clientX - rect.left;
+    var y = clientY - rect.top;
+    
+    if (x < 0 || x > rect.width || y < 0 || y > rect.height) return;
+    
+    var colIndex = Math.floor(x / (rect.width / ASH_COLS));
+    var brushRadius = Math.floor(ASH_COLS * 0.08); // 刷子半径
+    var brushDepth = 8; // 每次拨开的深度
+    
+    for (var i = -brushRadius; i <= brushRadius; i++) {
+      var idx = colIndex + i;
+      if (idx < 0 || idx >= ASH_COLS) continue;
+      
+      // 高斯分布的刷子形状
+      var factor = 1 - Math.abs(i) / brushRadius;
+      factor = factor * factor;
+      
+      var minHeight = ASH_BASE_HEIGHT * 0.1; // 最低剩余灰烬
+      ashData[idx] = Math.max(minHeight, ashData[idx] - brushDepth * factor);
+    }
+    
+    drawAsh();
+    updateFireStrength();
+    createAshParticles(clientX, clientY);
+  }
+
+  function createAshParticles(x, y) {
+    var count = 3 + Math.floor(Math.random() * 4);
+    for (var i = 0; i < count; i++) {
+      var particle = document.createElement('div');
+      particle.className = 'ash-particle';
+      particle.style.left = (x + (Math.random() - 0.5) * 20) + 'px';
+      particle.style.top = y + 'px';
+      particle.style.position = 'fixed';
+      document.body.appendChild(particle);
+      
+      var vx = (Math.random() - 0.5) * 4;
+      var vy = -(2 + Math.random() * 4);
+      var life = 1;
+      var startTime = Date.now();
+      
+      function animateParticle(p, vx, vy) {
+        var elapsed = (Date.now() - startTime) / 1000;
+        if (elapsed > 1) {
+          p.remove();
+          return;
+        }
+        
+        var currentX = parseFloat(p.style.left) + vx;
+        var currentY = parseFloat(p.style.top) + vy + elapsed * elapsed * 20; // 重力
+        p.style.left = currentX + 'px';
+        p.style.top = currentY + 'px';
+        p.style.opacity = (1 - elapsed).toString();
+        p.style.transform = 'scale(' + (1 - elapsed * 0.5) + ')';
+        
+        requestAnimationFrame(function() { animateParticle(p, vx, vy); });
+      }
+      
+      animateParticle(particle, vx, vy);
+    }
+  }
+
+  function updateFireStrength() {
+    if (!ashData) return;
+    
+    // 计算平均灰烬覆盖率
+    var totalAsh = 0;
+    var maxAsh = ASH_BASE_HEIGHT * ASH_COLS;
+    
+    for (var i = 0; i < ASH_COLS; i++) {
+      totalAsh += ashData[i];
+    }
+    
+    var ashRatio = totalAsh / maxAsh;
+    // 灰烬越少 = 火越旺
+    fireStrength = 1 - ashRatio;
+    fireStrength = Math.max(0, Math.min(1, fireStrength));
+    
+    // 更新炭块发光状态
+    updateCharcoalGlow();
+    
+    // 更新温度显示
+    updateTemperatureDisplay();
+    
+    // 更新炭火光晕
+    updateEmberGlow();
+  }
+
+  function updateCharcoalGlow() {
+    var chars = document.querySelectorAll('.charcoal-piece');
+    var threshold = 0.3; // 火力超过多少开始发光
+    
+    chars.forEach(function(char) {
+      if (fireStrength > threshold + Math.random() * 0.2) {
+        char.classList.add('exposed');
+      } else if (fireStrength < threshold - 0.1) {
+        char.classList.remove('exposed');
+      }
+    });
+  }
+
+  function updateEmberGlow() {
+    var glow = document.getElementById('emberGlow');
+    if (!glow) return;
+    
+    var intensity = 0.2 + fireStrength * 0.6;
+    glow.style.opacity = intensity.toString();
+  }
+
+  function updateTemperatureDisplay() {
+    var tempNum = document.getElementById('tempNumber');
+    var tempStage = document.getElementById('tempStage');
+    var tempDesc = document.getElementById('tempDesc');
+    var thermFill = document.getElementById('thermFill');
+    
+    // 温度范围：70°C - 140°C
+    var temp = Math.round(70 + fireStrength * 70);
+    
+    if (tempNum) tempNum.textContent = temp;
+    if (thermFill) thermFill.style.height = (fireStrength * 100) + '%';
+    
+    var stageName = '';
+    var stageDesc = '';
+    
+    if (temp < 90) {
+      stageName = '炖火阶段';
+      stageDesc = '文火慢炖，火气渗透茶骨。茶叶在低温中缓缓转化，香气内敛，茶质沉实。';
+    } else if (temp < 105) {
+      stageName = '走水焙后期';
+      stageDesc = '水分渐散，青草气已去。茶叶由绿转黄，茶香初显。';
+    } else if (temp < 115) {
+      stageName = '走水焙阶段';
+      stageDesc = '初焙去青气，茶叶尚带鲜绿。以中火慢烘，缓缓去除水分。';
+    } else if (temp < 122) {
+      stageName = '轻火焙';
+      stageDesc = '轻火慢焙，保留天然花香。汤色浅黄透亮，口感清爽鲜雅。';
+    } else if (temp < 128) {
+      stageName = '中火焙';
+      stageDesc = '中火透焙，香气转为馥郁果香。汤色橙黄醇厚，岩茶经典风味。';
+    } else {
+      stageName = '足火焙';
+      stageDesc = '足火重焙，焦糖香与火功香并显。汤色深橙红，茶骨沉实，岩韵高扬。';
+    }
+    
+    if (tempStage) tempStage.textContent = stageName;
+    if (tempDesc) tempDesc.textContent = stageDesc;
+  }
+
+  // 拨灰交互事件
+  function handleBrush(e) {
+    var clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    brushAsh(clientX, clientY);
+  }
+
+  if (ashLayer) {
+    ashLayer.addEventListener('mousedown', function(e) {
+      isPointerDown = true;
+      handleBrush(e);
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+      if (isPointerDown) {
+        handleBrush(e);
+      }
+    });
+    
+    document.addEventListener('mouseup', function() {
+      isPointerDown = false;
+    });
+    
+    // 触屏支持
+    ashLayer.addEventListener('touchstart', function(e) {
+      isPointerDown = true;
+      handleBrush(e);
+    }, { passive: true });
+    
+    ashLayer.addEventListener('touchmove', function(e) {
+      if (isPointerDown) {
+        handleBrush(e);
+      }
+    }, { passive: true });
+    
+    ashLayer.addEventListener('touchend', function() {
+      isPointerDown = false;
+    });
+  }
+
+  // ---------- 火星迸溅 ----------
+  function createSpark() {
+    if (fireStrength < 0.2) return;
+    
+    var area = document.getElementById('fireControlArea');
+    if (!area) return;
+    
+    var rect = area.getBoundingClientRect();
+    var sparkCount = Math.floor(1 + fireStrength * 2);
+    
+    for (var i = 0; i < sparkCount; i++) {
+      var spark = document.createElement('div');
+      spark.className = 'spark';
+      var startX = rect.left + rect.width * (0.2 + Math.random() * 0.6);
+      var startY = rect.bottom - 80 - Math.random() * 40;
+      spark.style.left = startX + 'px';
+      spark.style.top = startY + 'px';
+      spark.style.position = 'fixed';
+      document.body.appendChild(spark);
+      
+      var vx = (Math.random() - 0.5) * 3;
+      var vy = -(3 + Math.random() * 5);
+      var startTime = Date.now();
+      var duration = 600 + Math.random() * 600;
+      
+      function animateSpark(s, vx, vy) {
+        var elapsed = Date.now() - startTime;
+        if (elapsed > duration) {
+          s.remove();
+          return;
+        }
+        
+        var progress = elapsed / duration;
+        var currentX = parseFloat(s.style.left) + vx;
+        var currentY = parseFloat(s.style.top) + vy + progress * progress * 2; // 重力
+        s.style.left = currentX + 'px';
+        s.style.top = currentY + 'px';
+        s.style.opacity = (1 - progress).toString();
+        
+        requestAnimationFrame(function() { animateSpark(s, vx, vy); });
+      }
+      
+      animateSpark(spark, vx, vy);
+    }
+  }
+
+  // ---------- 炭火辉光脉动 ----------
+  function emberPulse() {
+    var glow = document.getElementById('emberGlow');
+    if (!glow) return;
+    
+    var pulse = 0.8 + Math.sin(Date.now() / 1000) * 0.2;
+    var baseOpacity = 0.2 + fireStrength * 0.6;
+    glow.style.opacity = (baseOpacity * pulse).toString();
+  }
+
+  var pulseRAF = null;
+  function startPulse() {
+    function loop() {
+      emberPulse();
+      pulseRAF = requestAnimationFrame(loop);
+    }
+    pulseRAF = requestAnimationFrame(loop);
+  }
+
+  // ---------- 页面可见性管理 ----------
+  var smoke1 = null;
+  var smoke2 = null;
+  var sparkIntervalId = null;
+
+  function startAnimations() {
+    if (smoke1) smoke1.start();
+    if (smoke2) smoke2.start();
+    
+    if (!sparkIntervalId) {
+      sparkIntervalId = setInterval(function() {
+        if (Math.random() < 0.3 + fireStrength * 0.5) {
+          createSpark();
+        }
+      }, 800);
+    }
+    
+    if (!pulseRAF) startPulse();
+  }
+
+  function stopAnimations() {
+    if (smoke1) smoke1.stop();
+    if (smoke2) smoke2.stop();
+    
+    if (sparkIntervalId) {
+      clearInterval(sparkIntervalId);
+      sparkIntervalId = null;
+    }
+    
+    if (pulseRAF) {
+      cancelAnimationFrame(pulseRAF);
+      pulseRAF = null;
+    }
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      stopAnimations();
+    } else {
+      startAnimations();
+    }
+  });
+
+  window.addEventListener('beforeunload', function() {
+    stopAnimations();
+    
+    // 取消所有 RAF
+    if (RAF.scroll) cancelAnimationFrame(RAF.scroll);
+    if (RAF.cursor) cancelAnimationFrame(RAF.cursor);
+  });
+
+  // ---------- 响应式：窗口大小变化 ----------
+  var resizeTimeout = null;
+  window.addEventListener('resize', function() {
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(function() {
+      initAshCanvas();
+      if (smoke1 && smoke1.resize) smoke1.resize();
+      if (smoke2 && smoke2.resize) smoke2.resize();
+    }, 200);
+  });
+
+  // ---------- 初始化 ----------
+  function init() {
+    createFreshLeaves();
+    createSteamParticles();
+    
+    // 初始化烟雾 canvas
+    smoke1 = initSmokeCanvas('smokeCanvas');
+    smoke2 = initSmokeCanvas('smokeCanvas2');
+    
+    // 初始化灰烬
+    initAshCanvas();
+    
+    // 初始温度
+    updateTemperatureDisplay();
+    updateEmberGlow();
+    
+    // 启动动画
+    startAnimations();
+    
+    // 初始滚动状态
+    onScroll();
+    
+    // 光标初始位置：屏幕中央
+    if (cursorEl) {
+      cursorEl.style.left = '50%';
+      cursorEl.style.top = '50%';
+    }
+  }
+
+  // DOM 就绪后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+
+</body>
+</html>
