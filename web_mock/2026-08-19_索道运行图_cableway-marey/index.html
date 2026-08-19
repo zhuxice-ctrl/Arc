@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>云顶索道运行图 · 调度台</title>
+<style>
+  /* ===== 图纸色板 ===== */
+  :root{
+    --paper: #f5efe0;           /* 暖白纸 */
+    --paper-2: #ebe2cc;         /* 次纸色 */
+    --ink: #1f1d1a;             /* 墨黑 */
+    --ink-soft: #4a463f;        /* 墨灰 */
+    --ink-faint: #9b9382;       /* 浅墨 */
+    --grid: #cfc6b2;            /* 网格 */
+    --grid-major: #b8ae97;      /* 主网格 */
+    --up: #c0392b;              /* 上行 朱红 */
+    --up-soft: #e8a59c;
+    --down: #2c3e70;            /* 下行 靛青 */
+    --down-soft: #9aa6cd;
+    --warn: #c47a1a;            /* 告警 赭黄 */
+    --warn-bg: rgba(196,122,26,.12);
+    --accent: #8a6d2f;          /* 金棕 强调 */
+    --stamp: #a83232;           /* 图章红 */
+    --shadow: rgba(31,29,26,.18);
+  }
+
+  *{ box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; width: 100%; overflow: hidden; }
+  body{
+    font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ===== 自定义光标：十字准星 ===== */
+  .cursor{
+    position: fixed; top: 0; left: 0;
+    width: 24px; height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: difference;
+  }
+  .cursor::before, .cursor::after{
+    content: ''; position: absolute;
+    background: #f5efe0;
+  }
+  .cursor::before{ top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+  .cursor::after{ left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+  .cursor-dot{
+    position: absolute; top: 50%; left: 50%;
+    width: 3px; height: 3px; border-radius: 50%;
+    background: #f5efe0;
+    transform: translate(-50%, -50%);
+  }
+  .cursor-trail{
+    position: fixed; top: 0; left: 0;
+    width: 6px; height: 6px; border-radius: 50%;
+    border: 1px solid var(--ink-faint);
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: width .15s, height .15s, border-color .15s;
+  }
+  .cursor-trail.hover{ width: 14px; height: 14px; border-color: var(--up); }
+
+  /* ===== 布局 ===== */
+  .app{
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 14px 22px 12px;
+    gap: 8px;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 2px 10px;
+    border-bottom: 1px solid var(--grid-major);
+  }
+  .brand{
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .brand h1{
+    font-size: 20px; font-weight: 600; letter-spacing: 4px;
+    color: var(--ink);
+  }
+  .brand .sub{
+    font-size: 11px; letter-spacing: 2px;
+    color: var(--ink-soft);
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+  }
+  .live{
+    display: flex; align-items: center; gap: 10px;
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 12px;
+  }
+  .live .dot{
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--up);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .4; transform: scale(.7); }
+  }
+  .live .clock{
+    font-variant-numeric: tabular-nums;
+    font-size: 15px; font-weight: 500;
+    letter-spacing: 1px;
+  }
+  .live .speed{
+    color: var(--ink-soft);
+    padding: 2px 8px;
+    border: 1px solid var(--grid-major);
+    border-radius: 3px;
+  }
+
+  /* ===== 主图区 ===== */
+  .stage{
+    position: relative;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 18px;
+  }
+  .diagram-wrap{
+    position: relative;
+    min-width: 0;
+    border: 1px solid var(--grid-major);
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(255,255,255,.5), transparent 50%),
+      var(--paper);
+    overflow: hidden;
+  }
+  .diagram-wrap svg{
+    width: 100%; height: 100%;
+    display: block;
+  }
+  /* 图纸纹理 */
+  .diagram-wrap::before{
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(0,0,0,.04) 1px, transparent 0);
+    background-size: 24px 24px;
+    opacity: .6;
+    mix-blend-mode: multiply;
+  }
+  .diagram-wrap::after{
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 60px rgba(31,29,26,.08);
+  }
+
+  /* 信息区 */
+  .panel{
+    display: flex; flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .panel-card{
+    border: 1px solid var(--grid-major);
+    background: var(--paper);
+    padding: 12px 14px;
+    position: relative;
+    font-size: 13px;
+  }
+  .panel-card h3{
+    font-size: 11px; letter-spacing: 3px;
+    color: var(--ink-soft);
+    font-weight: 500;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--grid);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-card h3 .num{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+
+  /* 站点列表 */
+  .station-list{
+    display: flex; flex-direction: column;
+    gap: 6px;
+  }
+  .station-item{
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background .2s, border-color .2s;
+  }
+  .station-item:hover{
+    background: var(--paper-2);
+    border-color: var(--grid);
+  }
+  .station-item.active{
+    background: var(--paper-2);
+    border-color: var(--accent);
+  }
+  .station-item .name{ font-weight: 500; font-size: 13px; }
+  .station-item .elev{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 11px; color: var(--ink-soft);
+  }
+  .station-item .tag{
+    font-size: 10px; padding: 1px 6px;
+    border-radius: 2px;
+    background: var(--ink-soft);
+    color: var(--paper);
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+  }
+  .station-item.top .tag{ background: var(--up); }
+  .station-item.bottom .tag{ background: var(--down); }
+
+  /* 吊厢档案 */
+  .car-profile{
+    flex: 1;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .car-profile .empty{
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-faint);
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+  .car-profile .content{
+    display: flex; flex-direction: column;
+    gap: 8px;
+    animation: stampIn .35s cubic-bezier(.2,1.3,.4,1);
+    transform-origin: top left;
+  }
+  @keyframes stampIn{
+    0% { transform: scale(1.15) rotate(-2deg); opacity: 0; }
+    60% { transform: scale(.96) rotate(.5deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  .car-head{
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .car-head .id{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 28px; font-weight: 600;
+    letter-spacing: 2px;
+  }
+  .car-head .dir{
+    font-size: 12px; letter-spacing: 2px;
+    padding: 2px 8px;
+  }
+  .car-head .dir.up{ color: var(--up); border: 1px solid var(--up); }
+  .car-head .dir.down{ color: var(--down); border: 1px solid var(--down); }
+  .car-meta{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    font-size: 12px;
+  }
+  .car-meta dt{
+    color: var(--ink-faint);
+    font-size: 10px; letter-spacing: 1px;
+  }
+  .car-meta dd{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .car-trip{
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--grid);
+    font-size: 12px;
+  }
+  .car-trip .row{
+    display: flex; justify-content: space-between;
+    padding: 2px 0;
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 11px;
+  }
+  .car-trip .row span:first-child{ color: var(--ink-soft); }
+
+  /* 告警条 */
+  .warn-card{
+    border-color: var(--warn);
+    background: linear-gradient(180deg, rgba(196,122,26,.06), transparent);
+  }
+  .warn-card h3{ color: var(--warn); border-color: rgba(196,122,26,.3); }
+  .warn-list{
+    display: flex; flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+  }
+  .warn-item{
+    display: flex; justify-content: space-between;
+    padding: 3px 0;
+    color: var(--ink-soft);
+  }
+  .warn-item.active{ color: var(--warn); font-weight: 500; }
+
+  /* ===== 底栏 控制 ===== */
+  .controls{
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--grid-major);
+  }
+  .ctrl-left, .ctrl-right{
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ctrl-btn{
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    background: var(--paper);
+    border: 1px solid var(--grid-major);
+    color: var(--ink);
+    cursor: none;
+    letter-spacing: 2px;
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  .ctrl-btn:hover{
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .ctrl-btn.active{
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .ctrl-label{
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 2px;
+    margin-right: 4px;
+  }
+  .legend{
+    display: flex; align-items: center; gap: 16px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 1px;
+  }
+  .legend-item{
+    display: flex; align-items: center; gap: 6px;
+  }
+  .legend .line{
+    width: 24px; height: 2px;
+  }
+  .legend .line.up{ background: var(--up); }
+  .legend .line.down{
+    background: repeating-linear-gradient(
+      90deg, var(--down) 0 4px, transparent 4px 8px
+    );
+  }
+
+  /* SVG 元素样式 */
+  .grid-line{ stroke: var(--grid); stroke-width: .5; }
+  .grid-line.major{ stroke: var(--grid-major); stroke-width: 1; }
+  .station-line{ stroke: var(--ink-soft); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .station-label{
+    font-family: "PingFang SC",sans-serif;
+    font-size: 12px; fill: var(--ink-soft);
+    letter-spacing: 2px;
+  }
+  .station-label strong{
+    font-size: 14px; fill: var(--ink); font-weight: 600;
+  }
+  .time-label{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 10px; fill: var(--ink-faint);
+  }
+  .time-label.major{ fill: var(--ink-soft); font-size: 11px; }
+
+  .car-path{
+    fill: none;
+    stroke-width: 1.5;
+    opacity: .4;
+    transition: opacity .25s, stroke-width .25s;
+  }
+  .car-path.up{ stroke: var(--up); }
+  .car-path.down{ stroke: var(--down); stroke-dasharray: 5 3; }
+  .car-path.dim{ opacity: .08; }
+  .car-path.highlight{
+    opacity: 1;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 3px rgba(0,0,0,.15));
+  }
+  .car-dot{
+    cursor: none;
+    transition: r .2s;
+  }
+  .car-dot.up{ fill: var(--up); }
+  .car-dot.down{ fill: var(--down); }
+  .car-dot:hover{ r: 7; }
+
+  .passing-point{
+    cursor: none;
+    fill: var(--paper);
+    stroke: var(--ink);
+    stroke-width: 1.5;
+    transition: r .2s, fill .2s;
+  }
+  .passing-point:hover{
+    r: 6;
+    fill: var(--warn);
+    stroke: var(--warn);
+  }
+
+  .time-cursor-line{
+    stroke: var(--ink);
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    pointer-events: none;
+  }
+  .time-cursor-head{
+    fill: var(--ink);
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 10px;
+    pointer-events: none;
+  }
+
+  .wind-zone{
+    fill: rgba(196,122,26,.12);
+    pointer-events: none;
+  }
+  .wind-zone-line{
+    stroke: var(--warn);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    opacity: .5;
+    pointer-events: none;
+  }
+
+  .departure-band{
+    fill: rgba(192,57,43,.15);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .departure-band.show{ opacity: 1; }
+  .departure-band.down{ fill: rgba(44,62,112,.15); }
+
+  .elev-label{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 10px;
+    fill: var(--ink-faint);
+  }
+
+  /* 会车特写浮层 */
+  .meet-overlay{
+    position: absolute; inset: 0;
+    background: rgba(31,29,26,.55);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .4s;
+    z-index: 100;
+  }
+  .meet-overlay.show{
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .meet-card{
+    width: 80%; max-width: 600px;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    padding: 24px 30px;
+    position: relative;
+    transform: scale(.9);
+    transition: transform .4s cubic-bezier(.2,1.2,.4,1);
+  }
+  .meet-overlay.show .meet-card{ transform: scale(1); }
+  .meet-card h2{
+    font-size: 14px; letter-spacing: 6px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--grid-major);
+  }
+  .meet-stage{
+    position: relative;
+    height: 140px;
+    border-bottom: 1px dashed var(--grid);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .meet-cable{
+    position: absolute;
+    top: 50%; left: -10%; right: -10%;
+    height: 2px;
+    background: var(--ink-soft);
+    transform: rotate(-8deg);
+    transform-origin: center;
+  }
+  .meet-car{
+    position: absolute;
+    top: 50%;
+    width: 36px; height: 44px;
+    transform: translate(-50%, 25%);
+    transition: left 2s linear;
+  }
+  .meet-car.up .car-body{ border-color: var(--up); }
+  .meet-car.down .car-body{ border-color: var(--down); }
+  .car-body{
+    width: 100%; height: 32px;
+    border: 2px solid;
+    border-radius: 4px;
+    background: var(--paper);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 10px; font-weight: 600;
+  }
+  .car-hook{
+    position: absolute; top: -10px; left: 50%;
+    width: 2px; height: 10px;
+    background: var(--ink-soft);
+    transform: translateX(-50%);
+  }
+  .meet-info{
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .meet-info .side{
+    display: flex; flex-direction: column;
+    gap: 4px;
+  }
+  .meet-info .side.right{ text-align: right; }
+  .meet-info .side .cid{
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 18px; font-weight: 600;
+  }
+  .meet-info .side .lbl{
+    font-size: 10px; color: var(--ink-faint); letter-spacing: 2px;
+  }
+  .meet-info .mid{
+    text-align: center;
+    color: var(--warn);
+    font-family: "SF Mono","Menlo","Consolas",monospace;
+    font-size: 12px;
+  }
+  .meet-close{
+    position: absolute;
+    top: 14px; right: 16px;
+    background: none; border: none;
+    font-size: 18px; color: var(--ink-faint);
+    cursor: none;
+    line-height: 1;
+  }
+  .meet-close:hover{ color: var(--ink); }
+
+  /* 响铃动画 */
+  @keyframes ring{
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.6); opacity: 0; }
+  }
+  .ring-wave{
+    position: absolute;
+    width: 60px; height: 60px;
+    border: 2px solid var(--warn);
+    border-radius: 50%;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .ring-wave.ring{ animation: ring .8s ease-out; }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 1024px){
+    .stage{ grid-template-columns: 1fr 260px; gap: 12px; }
+    .brand h1{ font-size: 17px; letter-spacing: 3px; }
+  }
+  @media (max-width: 768px){
+    body{ cursor: auto; }
+    .cursor, .cursor-trail{ display: none; }
+    .ctrl-btn, .station-item{ cursor: pointer; }
+    .app{ padding: 10px 14px 8px; }
+    .stage{
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+    }
+    .panel{
+      max-height: 200px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .car-profile{ display: none; }
+    .brand h1{ font-size: 15px; letter-spacing: 2px; }
+    .brand .sub{ font-size: 10px; }
+  }
+  @media (max-width: 390px){
+    .diagram-wrap{ display: none; }
+    .stage{ grid-template-rows: auto; }
+    .panel{
+      max-height: none;
+      grid-template-columns: 1fr;
+    }
+    .car-profile{ display: block; }
+    .app{ grid-template-rows: auto 1fr auto; }
+    .brand h1{ font-size: 14px; }
+    .next-car{
+      padding: 12px;
+      background: var(--paper-2);
+      text-align: center;
+    }
+    .next-car .big{
+      font-family: "SF Mono","Menlo","Consolas",monospace;
+      font-size: 32px; font-weight: 600;
+      color: var(--up);
+    }
+    .next-car .lbl{
+      font-size: 11px; color: var(--ink-soft); letter-spacing: 3px;
+    }
+  }
+
+  /* 窄屏下显示下一班信息 */
+  .next-car{ display: none; }
+  @media (max-width: 390px){
+    .next-car{ display: block; }
+  }
+
+  /* ===== 减少动效 ===== */
+  @media (prefers-reduced-motion: reduce){
+    .cursor-trail, .live .dot, .ring-wave,
+    @keyframes pulse, @keyframes stampIn, @keyframes ring {
+      animation: none !important;
+    }
+    .car-path, .car-dot, .passing-point,
+    .departure-band, .meet-overlay, .meet-card {
+      transition: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor"><div class="cursor-dot"></div></div>
+<div class="cursor-trail" id="cursorTrail"></div>
+
+<div class="app">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <h1>云顶索道运行图</h1>
+      <span class="sub">MAREY DIAGRAM · DISPATCH CONSOLE</span>
+    </div>
+    <div class="live">
+      <div class="dot" id="liveDot"></div>
+      <span class="ctrl-label">当前时刻</span>
+      <span class="clock" id="clock">07:00:00</span>
+      <span class="speed" id="speedTag">1×</span>
+    </div>
+  </header>
+
+  <!-- 主舞台 -->
+  <main class="stage">
+    <div class="diagram-wrap" id="diagramWrap">
+      <svg id="diagram" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet">
+        <!-- 背景层：网格 -->
+        <g id="gridLayer"></g>
+        <!-- 风区层 -->
+        <g id="windLayer"></g>
+        <!-- 站点线层 -->
+        <g id="stationLayer"></g>
+        <!-- 发车时刻带 -->
+        <g id="departureLayer"></g>
+        <!-- 吊厢轨迹层 -->
+        <g id="pathLayer"></g>
+        <!-- 会车点层 -->
+        <g id="passingLayer"></g>
+        <!-- 时间游标 -->
+        <line id="timeCursor" class="time-cursor-line" x1="0" y1="50" x2="0" y2="550"></line>
+        <text id="timeCursorText" class="time-cursor-head" x="0" y="42" text-anchor="middle">07:00</text>
+        <!-- 吊厢点层（顶层，可交互） -->
+        <g id="carLayer"></g>
+
+        <!-- 会车响铃波 -->
+        <g id="ringLayer"></g>
+      </svg>
+
+      <!-- 会车特写浮层 -->
+      <div class="meet-overlay" id="meetOverlay">
+        <div class="meet-card">
+          <button class="meet-close" id="meetClose">×</button>
+          <h2>吊厢交会 · 三号支架区间</h2>
+          <div class="meet-stage" id="meetStage">
+            <div class="meet-cable"></div>
+            <div class="meet-car up" id="meetCarUp">
+              <div class="car-hook"></div>
+              <div class="car-body">—</div>
+            </div>
+            <div class="meet-car down" id="meetCarDown">
+              <div class="car-hook"></div>
+              <div class="car-body">—</div>
+            </div>
+            <div class="ring-wave" id="ringWave"></div>
+          </div>
+          <div class="meet-info">
+            <div class="side">
+              <div class="cid" id="meetUpId">—</div>
+              <div class="lbl">上行 · 云顶方向</div>
+            </div>
+            <div class="mid" id="meetTime">—</div>
+            <div class="side right">
+              <div class="cid" id="meetDownId">—</div>
+              <div class="lbl">下行 · 云溪方向</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 侧栏信息 -->
+    <aside class="panel">
+
+      <!-- 下一班（仅小屏显示） -->
+      <div class="panel-card next-car">
+        <div class="lbl">下一班发车</div>
+        <div class="big" id="nextBig">—</div>
+      </div>
+
+      <!-- 站点列表 -->
+      <div class="panel-card">
+        <h3>站点一览 <span class="num">5 STATIONS</span></h3>
+        <div class="station-list" id="stationList"></div>
+      </div>
+
+      <!-- 吊厢档案 -->
+      <div class="panel-card car-profile">
+        <h3>吊厢档案 <span class="num" id="profileNum">CAR-00</span></h3>
+        <div class="empty" id="carEmpty">点击图中吊厢查看档案</div>
+        <div class="content" id="carContent" style="display:none">
+          <div class="car-head">
+            <div class="id" id="profileId">—</div>
+            <div class="dir" id="profileDir">—</div>
+          </div>
+          <dl class="car-meta">
+            <dt>载客量</dt><dd id="profileCap">—</dd>
+            <dt>累计里程</dt><dd id="profileMile">—</dd>
+            <dt>当前位置</dt><dd id="profilePos">—</dd>
+            <dt>运行状态</dt><dd id="profileStatus">—</dd>
+          </dl>
+          <div class="car-trip">
+            <div class="row"><span>上站发车</span><span id="profileLastDep">—</span></div>
+            <div class="row"><span>下站到达</span><span id="profileNextArr">—</span></div>
+            <div class="row"><span>今日往返</span><span id="profileTrips">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 风速告警 -->
+      <div class="panel-card warn-card">
+        <h3>风速告警 ≥17m/s <span class="num">WIND</span></h3>
+        <div class="warn-list" id="warnList"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- 底栏控制 -->
+  <footer class="controls">
+    <div class="ctrl-left">
+      <button class="ctrl-btn" id="btnPlay">暂停</button>
+      <span class="ctrl-label">倍速</span>
+      <button class="ctrl-btn speed-btn active" data-speed="1">1×</button>
+      <button class="ctrl-btn speed-btn" data-speed="4">4×</button>
+      <button class="ctrl-btn speed-btn" data-speed="8">8×</button>
+      <button class="ctrl-btn" id="btnReset">复位</button>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="line up"></div><span>上行</span></div>
+      <div class="legend-item"><div class="line down"></div><span>下行</span></div>
+      <div class="legend-item"><svg width="12" height="12"><circle cx="6" cy="6" r="4" fill="#f5efe0" stroke="#1f1d1a" stroke-width="1.5"/></svg><span>会车点</span></div>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  //  数据模型
+  // ============================================================
+
+  // 站点：名称、海拔、沿程距离（米）
+  var STATIONS = [
+    { name: '云溪镇', elev: 580,  dist:    0, tag: '起点站' },
+    { name: '望湖台', elev: 960,  dist:  760, tag: '中间站' },
+    { name: '松垭口', elev: 1280, dist: 1400, tag: '中间站' },
+    { name: '风  穴', elev: 1680, dist: 2220, tag: '风口站' },
+    { name: '云  顶', elev: 2110, dist: 3060, tag: '终点站' }
+  ];
+
+  // 运行速度 m/s
+  var SPEED_MS = 5.0;
+  // 端站停站时长（分）
+  var DWELL_END = 1.5;
+  // 中间站停站时长（分）
+  var DWELL_MID = 0.5;
+  // 班车间隔（分）
+  var INTERVAL = 5.5;
+  // 营运开始/结束（分，从0点起算）
+  var DAY_START = 7 * 60;       // 07:00
+  var DAY_END   = 19 * 60 + 10; // 19:10
+  // 吊厢数
+  var CAR_COUNT = 6;
+
+  // 吊厢档案
+  var CARS = [
+    { id: 'C-01', capacity: 8, mileage: 28460, model: 'D-Line 8人座' },
+    { id: 'C-02', capacity: 8, mileage: 31205, model: 'D-Line 8人座' },
+    { id: 'C-03', capacity: 8, mileage: 26780, model: 'D-Line 8人座' },
+    { id: 'C-04', capacity: 6, mileage: 19340, model: 'D-Lite 6人座' },
+    { id: 'C-05', capacity: 8, mileage: 30112, model: 'D-Line 8人座' },
+    { id: 'C-06', capacity: 6, mileage: 17850, model: 'D-Lite 6人座' }
+  ];
+
+  // 风速告警时段（模拟数据，≥17m/s）
+  var WIND_WARNINGS = [
+    { start: 7*60+20,   end: 7*60+45,   station: '风  穴', speed: 18.5 },
+    { start: 11*60+10,  end: 11*60+35,  station: '风  穴', speed: 19.2 },
+    { start: 14*60+5,   end: 14*60+55,  station: '风  穴', speed: 20.8 },
+    { start: 17*60+40,  end: 18*60+10,  station: '风  穴', speed: 17.6 }
+  ];
+
+  // ============================================================
+  //  时刻表生成
+  // ============================================================
+
+  // 计算每段站间运行时长（分）
+  var SEG_TIMES = [];
+  for (var i = 0; i < STATIONS.length - 1; i++){
+    var d = STATIONS[i+1].dist - STATIONS[i].dist;
+    SEG_TIMES.push(d / SPEED_MS / 60);
+  }
+
+  // 单程总运行时间（不含停站）
+  var ONE_WAY_RUN = SEG_TIMES.reduce(function(a,b){ return a + b; }, 0);
+  // 单程含中间停站
+  var MID_STOPS = STATIONS.length - 2;
+  var ONE_WAY_TOTAL = ONE_WAY_RUN + MID_STOPS * DWELL_MID;
+  // 往返含两端停站
+  var ROUND_TRIP = ONE_WAY_TOTAL * 2 + DWELL_END * 2;
+
+  // 生成每辆车的全天分段行程
+  // leg: { dir: 'up'|'down', tStart, tEnd, dStart, dEnd }
+  function generateLegs(carIdx){
+    var legs = [];
+    var t = DAY_START + carIdx * INTERVAL;
+
+    // 先生成一次上行
+    while (t < DAY_END){
+      // 上行 leg
+      var upStart = t;
+      var upEnd = t + ONE_WAY_TOTAL;
+      legs.push({
+        dir: 'up',
+        tStart: upStart,
+        tEnd: upEnd,
+        dStart: 0,
+        dEnd: STATIONS[STATIONS.length - 1].dist
+      });
+
+      // 终点站停站
+      t = upEnd + DWELL_END;
+      if (t >= DAY_END) break;
+
+      // 下行 leg
+      var downStart = t;
+      var downEnd = t + ONE_WAY_TOTAL;
+      legs.push({
+        dir: 'down',
+        tStart: downStart,
+        tEnd: downEnd,
+        dStart: STATIONS[STATIONS.length - 1].dist,
+        dEnd: 0
+      });
+
+      // 起点站停站
+      t = downEnd + DWELL_END;
+    }
+    return legs;
+  }
+
+  var allLegs = [];
+  for (var ci = 0; ci < CAR_COUNT; ci++){
+    allLegs.push(generateLegs(ci));
+  }
+
+  // 获取某车在某时刻的位置（距离）与方向
+  function carState(carIdx, timeMin){
+    var legs = allLegs[carIdx];
+    for (var i = 0; i < legs.length; i++){
+      var leg = legs[i];
+      if (timeMin >= leg.tStart && timeMin <= leg.tEnd){
+        var frac = (timeMin - leg.tStart) / (leg.tEnd - leg.tStart);
+        var d = leg.dStart + (leg.dEnd - leg.dStart) * frac;
+        return { dir: leg.dir, dist: d, leg: leg, frac: frac, legIdx: i };
+      }
+    }
+    // 未在运行时段：显示停在端点
+    if (timeMin < legs[0].tStart){
+      return { dir: 'idle-up', dist: 0, leg: null, frac: 0, legIdx: -1 };
+    }
+    var last = legs[legs.length-1];
+    return { dir: 'idle-down', dist: last.dEnd, leg: null, frac: 1, legIdx: legs.length-1 };
+  }
+
+  // 计算会车点：所有上行 leg 与所有下行 leg 的交点（同时间同距离）
+  function computePassingPoints(){
+    var pts = [];
+    for (var ci = 0; ci < CAR_COUNT; ci++){
+      for (var cj = ci+1; cj < CAR_COUNT; cj++){
+        var legsA = allLegs[ci];
+        var legsB = allLegs[cj];
+        for (var ai = 0; ai < legsA.length; ai++){
+          var a = legsA[ai];
+          for (var bi = 0; bi < legsB.length; bi++){
+            var b = legsB[bi];
+            if (a.dir === b.dir) continue; // 同向不会车
+            // 求两条斜线交点
+            // a: dist 从 a.dStart(t=a.tStart) 到 a.dEnd(t=a.tEnd)
+            // 速度 v_a = (a.dEnd - a.dStart) / (a.tEnd - a.tStart)
+            var vA = (a.dEnd - a.dStart) / (a.tEnd - a.tStart);
+            var vB = (b.dEnd - b.dStart) / (b.tEnd - b.tStart);
+            // d = a.dStart + vA*(t - a.tStart)
+            // d = b.dStart + vB*(t - b.tStart)
+            // => a.dStart + vA*t - vA*a.tStart = b.dStart + vB*t - vB*b.tStart
+            // => t*(vA - vB) = b.dStart - vB*b.tStart - a.dStart + vA*a.tStart
+            var num = b.dStart - vB * b.tStart - a.dStart + vA * a.tStart;
+            var den = vA - vB;
+            if (Math.abs(den) < 0.001) continue;
+            var t = num / den;
+            if (t < a.tStart || t > a.tEnd) continue;
+            if (t < b.tStart || t > b.tEnd) continue;
+            var d = a.dStart + vA * (t - a.tStart);
+            pts.push({
+              t: t,
+              d: d,
+              carA: ci,
+              carB: cj,
+              dirA: a.dir,
+              dirB: b.dir
+            });
+          }
+        }
+      }
+    }
+    // 按时间排序
+    pts.sort(function(a,b){ return a.t - b.t; });
+    return pts;
+  }
+
+  var passingPoints = computePassingPoints();
+
+  // ============================================================
+  //  SVG 坐标映射
+  // ============================================================
+
+  var SVG_W = 1000, SVG_H = 600;
+  var PAD_L = 90, PAD_R = 30, PAD_T = 50, PAD_B = 40;
+  var CHART_X0 = PAD_L, CHART_X1 = SVG_W - PAD_R;
+  var CHART_Y0 = PAD_T, CHART_Y1 = SVG_H - PAD_B;
+  var CHART_W = CHART_X1 - CHART_X0;
+  var CHART_H = CHART_Y1 - CHART_Y0;
+  var TOTAL_DIST = STATIONS[STATIONS.length - 1].dist;
+
+  function timeToX(t){
+    var frac = (t - DAY_START) / (DAY_END - DAY_START);
+    return CHART_X0 + frac * CHART_W;
+  }
+  function distToY(d){
+    // 距离越大（越高）y 越小（在上方）
+    var frac = d / TOTAL_DIST;
+    return CHART_Y1 - frac * CHART_H;
+  }
+  function xToTime(x){
+    var frac = (x - CHART_X0) / CHART_W;
+    return DAY_START + frac * (DAY_END - DAY_START);
+  }
+  function yToDist(y){
+    var frac = (CHART_Y1 - y) / CHART_H;
+    return frac * TOTAL_DIST;
+  }
+
+  function fmtTime(min){
+    var h = Math.floor(min / 60);
+    var m = Math.floor(min % 60);
+    var s = Math.floor((min % 1) * 60);
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
+  }
+  function fmtTimeShort(min){
+    var h = Math.floor(min / 60);
+    var m = Math.floor(min % 60);
+    return pad(h) + ':' + pad(m);
+  }
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+  // ============================================================
+  //  DOM 引用
+  // ============================================================
+
+  var $ = function(id){ return document.getElementById(id); };
+  var svg = $('diagram');
+  var NS = 'http://www.w3.org/2000/svg';
+
+  // ============================================================
+  //  绘制背景网格
+  // ============================================================
+
+  function drawGrid(){
+    var g = $('gridLayer');
+    g.innerHTML = '';
+
+    // 垂直网格：每小时一条主，每15分一条细
+    var tStart = DAY_START;
+    var tEnd = DAY_END;
+    for (var t = Math.ceil(tStart / 60) * 60; t <= tEnd; t += 15){
+      var x = timeToX(t);
+      var hour = Math.floor(t / 60);
+      var min = t % 60;
+      var isMajor = min === 0;
+      var line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', x);
+      line.setAttribute('y1', CHART_Y0);
+      line.setAttribute('x2', x);
+      line.setAttribute('y2', CHART_Y1);
+      line.setAttribute('class', 'grid-line' + (isMajor ? ' major' : ''));
+      g.appendChild(line);
+
+      if (isMajor){
+        var txt = document.createElementNS(NS, 'text');
+        txt.setAttribute('x', x);
+        txt.setAttribute('y', CHART_Y1 + 22);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('class', 'time-label major');
+        txt.textContent = pad(hour) + ':00';
+        g.appendChild(txt);
+      } else if (min === 30) {
+        var txt2 = document.createElementNS(NS, 'text');
+        txt2.setAttribute('x', x);
+        txt2.setAttribute('y', CHART_Y1 + 20);
+        txt2.setAttribute('text-anchor', 'middle');
+        txt2.setAttribute('class', 'time-label');
+        txt2.textContent = pad(hour) + ':' + pad(min);
+        g.appendChild(txt2);
+      }
+    }
+  }
+
+  // ============================================================
+  //  绘制站点线与站名
+  // ============================================================
+
+  function drawStations(){
+    var g = $('stationLayer');
+    g.innerHTML = '';
+
+    for (var i = 0; i < STATIONS.length; i++){
+      var s = STATIONS[i];
+      var y = distToY(s.dist);
+
+      // 水平线
+      var line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', CHART_X0);
+      line.setAttribute('y1', y);
+      line.setAttribute('x2', CHART_X1);
+      line.setAttribute('y2', y);
+      line.setAttribute('class', 'station-line');
+      g.appendChild(line);
+
+      // 站名（左侧）
+      var txt = document.createElementNS(NS, 'text');
+      txt.setAttribute('x', CHART_X0 - 14);
+      txt.setAttribute('y', y + 4);
+      txt.setAttribute('text-anchor', 'end');
+      txt.setAttribute('class', 'station-label');
+      txt.innerHTML = '<strong>' + s.name + '</strong>';
+      g.appendChild(txt);
+
+      // 海拔（左侧，小）
+      var elev = document.createElementNS(NS, 'text');
+      elev.setAttribute('x', CHART_X0 - 14);
+      elev.setAttribute('y', y + 18);
+      elev.setAttribute('text-anchor', 'end');
+      elev.setAttribute('class', 'elev-label');
+      elev.textContent = '海拔 ' + s.elev + 'm';
+      g.appendChild(elev);
+    }
+  }
+
+  // ============================================================
+  //  绘制发车时刻带（初始隐藏，点击站点高亮）
+  // ============================================================
+
+  var departureBands = [];
+  function drawDepartureBands(){
+    var g = $('departureLayer');
+    g.innerHTML = '';
+    departureBands = [];
+
+    for (var si = 0; si < STATIONS.length; si++){
+      var s = STATIONS[si];
+      var y = distToY(s.dist);
+      var bandHeight = 20;
+      var bandY = y - bandHeight / 2;
+
+      // 对每辆车，计算经过该站的所有时刻
+      var upTimes = [];
+      var downTimes = [];
+      for (var ci = 0; ci < CAR_COUNT; ci++){
+        var legs = allLegs[ci];
+        for (var li = 0; li < legs.length; li++){
+          var leg = legs[li];
+          // 若 leg 跨越该站距离
+          var d = s.dist;
+          if (leg.dir === 'up' && d >= leg.dStart && d <= leg.dEnd){
+            var frac = (d - leg.dStart) / (leg.dEnd - leg.dStart);
+            var t = leg.tStart + frac * (leg.tEnd - leg.tStart);
+            upTimes.push(t);
+          } else if (leg.dir === 'down' && d <= leg.dStart && d >= leg.dEnd){
+            var frac2 = (d - leg.dStart) / (leg.dEnd - leg.dStart);
+            var t2 = leg.tStart + frac2 * (leg.tEnd - leg.tStart);
+            downTimes.push(t2);
+          }
+        }
+      }
+      upTimes.sort();
+      downTimes.sort();
+
+      // 画上行时刻带（半透明横条 + 刻度）
+      var upGroup = document.createElementNS(NS, 'g');
+      upGroup.setAttribute('class', 'departure-band');
+      upGroup.setAttribute('data-station', si);
+      upGroup.setAttribute('data-dir', 'up');
+
+      var upRect = document.createElementNS(NS, 'rect');
+      upRect.setAttribute('x', CHART_X0);
+      upRect.setAttribute('y', bandY - 12);
+      upRect.setAttribute('width', CHART_W);
+      upRect.setAttribute('height', bandHeight);
+      upGroup.appendChild(upRect);
+
+      for (var ti = 0; ti < upTimes.length; ti++){
+        var tx = timeToX(upTimes[ti]);
+        var tick = document.createElementNS(NS, 'line');
+        tick.setAttribute('x1', tx);
+        tick.setAttribute('y1', bandY - 12);
+        tick.setAttribute('x2', tx);
+        tick.setAttribute('y2', bandY + bandHeight - 12);
+        tick.setAttribute('stroke', 'var(--up)');
+        tick.setAttribute('stroke-width', 1.5);
+        upGroup.appendChild(tick);
+      }
+
+      g.appendChild(upGroup);
+
+      // 下行时刻带
+      var downGroup = document.createElementNS(NS, 'g');
+      downGroup.setAttribute('class', 'departure-band down');
+      downGroup.setAttribute('data-station', si);
+      downGroup.setAttribute('data-dir', 'down');
+
+      var downRect = document.createElementNS(NS, 'rect');
+      downRect.setAttribute('x', CHART_X0);
+      downRect.setAttribute('y', bandY + 8);
+      downRect.setAttribute('width', CHART_W);
+      downRect.setAttribute('height', bandHeight);
+      downGroup.appendChild(downRect);
+
+      for (var ti2 = 0; ti2 < downTimes.length; ti2++){
+        var tx2 = timeToX(downTimes[ti2]);
+        var tick2 = document.createElementNS(NS, 'line');
+        tick2.setAttribute('x1', tx2);
+        tick2.setAttribute('y1', bandY + 8);
+        tick2.setAttribute('x2', tx2);
+        tick2.setAttribute('y2', bandY + bandHeight + 8);
+        tick2.setAttribute('stroke', 'var(--down)');
+        tick2.setAttribute('stroke-width', 1.5);
+        downGroup.appendChild(tick2);
+      }
+
+      g.appendChild(downGroup);
+
+      departureBands.push({ station: si, up: upGroup, down: downGroup });
+    }
+  }
+
+  function highlightStation(stationIdx){
+    var items = document.querySelectorAll('.station-item');
+    for (var i = 0; i < items.length; i++){
+      items[i].classList.toggle('active', Number(items[i].dataset.idx) === stationIdx);
+    }
+    var bands = document.querySelectorAll('.departure-band');
+    for (var j = 0; j < bands.length; j++){
+      var show = Number(bands[j].dataset.station) === stationIdx;
+      bands[j].classList.toggle('show', show);
+    }
+  }
+  function clearStationHighlight(){
+    var items = document.querySelectorAll('.station-item');
+    for (var i = 0; i < items.length; i++) items[i].classList.remove('active');
+    var bands = document.querySelectorAll('.departure-band');
+    for (var j = 0; j < bands.length; j++) bands[j].classList.remove('show');
+  }
+
+  // ============================================================
+  //  绘制吊厢轨迹（全天斜线）
+  // ============================================================
+
+  var pathEls = [];
+  function drawPaths(){
+    var g = $('pathLayer');
+    g.innerHTML = '';
+    pathEls = [];
+
+    for (var ci = 0; ci < CAR_COUNT; ci++){
+      var legs = allLegs[ci];
+      for (var li = 0; li < legs.length; li++){
+        var leg = legs[li];
+        var x1 = timeToX(leg.tStart);
+        var y1 = distToY(leg.dStart);
+        var x2 = timeToX(leg.tEnd);
+        var y2 = distToY(leg.dEnd);
+
+        var path = document.createElementNS(NS, 'line');
+        path.setAttribute('x1', x1);
+        path.setAttribute('y1', y1);
+        path.setAttribute('x2', x2);
+        path.setAttribute('y2', y2);
+        path.setAttribute('class', 'car-path ' + leg.dir);
+        path.dataset.car = ci;
+        g.appendChild(path);
+        pathEls.push(path);
+      }
+    }
+  }
+
+  function highlightCar(carIdx){
+    // 其他车变淡，选中车高亮
+    for (var i = 0; i < pathEls.length; i++){
+      var p = pathEls[i];
+      var isSel = Number(p.dataset.car) === carIdx;
+      p.classList.toggle('highlight', isSel);
+      p.classList.toggle('dim', !isSel);
+    }
+    // 会车点也淡化除相关以外的
+    var pts = document.querySelectorAll('.passing-point');
+    for (var j = 0; j < pts.length; j++){
+      var pt = pts[j];
+      var a = Number(pt.dataset.cara);
+      var b = Number(pt.dataset.carb);
+      var rel = a === carIdx || b === carIdx;
+      pt.style.opacity = rel ? '1' : '0.2';
+    }
+  }
+  function clearCarHighlight(){
+    for (var i = 0; i < pathEls.length; i++){
+      pathEls[i].classList.remove('highlight', 'dim');
+    }
+    var pts = document.querySelectorAll('.passing-point');
+    for (var j = 0; j < pts.length; j++){
+      pts[j].style.opacity = '';
+    }
+  }
+
+  // ============================================================
+  //  绘制会车点
+  // ============================================================
+
+  function drawPassingPoints(){
+    var g = $('passingLayer');
+    g.innerHTML = '';
+
+    for (var i = 0; i < passingPoints.length; i++){
+      var pt = passingPoints[i];
+      var x = timeToX(pt.t);
+      var y = distToY(pt.d);
+
+      var circle = document.createElementNS(NS, 'circle');
+      circle.setAttribute('cx', x);
+      circle.setAttribute('cy', y);
+      circle.setAttribute('r', 4);
+      circle.setAttribute('class', 'passing-point');
+      circle.dataset.idx = i;
+      circle.dataset.cara = pt.carA;
+      circle.dataset.carb = pt.carB;
+      g.appendChild(circle);
+    }
+  }
+
+  // ============================================================
+  //  绘制风区
+  // ============================================================
+
+  function drawWindZones(){
+    var g = $('windLayer');
+    g.innerHTML = '';
+
+    // 风穴站附近区间 — 海拔 1500 ~ 1850 米带
+    var windTop = distToY(1850);
+    var windBottom = distToY(1500);
+
+    var rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', CHART_X0);
+    rect.setAttribute('y', windTop);
+    rect.setAttribute('width', CHART_W);
+    rect.setAttribute('height', windBottom - windTop);
+    rect.setAttribute('fill', 'rgba(196,122,26,.06)');
+    g.appendChild(rect);
+
+    // 告警时段矩形
+    for (var i = 0; i < WIND_WARNINGS.length; i++){
+      var w = WIND_WARNINGS[i];
+      var x = timeToX(w.start);
+      var ww = timeToX(w.end) - x;
+      var r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', x);
+      r.setAttribute('y', windTop);
+      r.setAttribute('width', ww);
+      r.setAttribute('height', windBottom - windTop);
+      r.setAttribute('class', 'wind-zone');
+      g.appendChild(r);
+    }
+
+    // 告警文字标签（只标第一个示例）
+    if (WIND_WARNINGS.length > 0){
+      var t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', timeToX(WIND_WARNINGS[2].start + 15));
+      t.setAttribute('y', windTop + 16);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('fill', 'var(--warn)');
+      t.setAttribute('font-size', '10');
+      t.setAttribute('font-family', 'inherit');
+      t.setAttribute('letter-spacing', '1');
+      t.textContent = '风速告警 · ≥17m/s';
+      g.appendChild(t);
+    }
+  }
+
+  // ============================================================
+  //  绘制吊厢点（动态位置）
+  // ============================================================
+
+  var carDots = [];
+  function createCarDots(){
+    var g = $('carLayer');
+    g.innerHTML = '';
+    carDots = [];
+
+    for (var ci = 0; ci < CAR_COUNT; ci++){
+      var dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('r', 5);
+      dot.setAttribute('class', 'car-dot');
+      dot.dataset.car = ci;
+      g.appendChild(dot);
+
+      // 编号标签
+      var lbl = document.createElementNS(NS, 'text');
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('font-size', '9');
+      lbl.setAttribute('font-family', 'SF Mono, Menlo, monospace');
+      lbl.setAttribute('fill', 'var(--paper)');
+      lbl.setAttribute('pointer-events', 'none');
+      lbl.setAttribute('font-weight', '600');
+      lbl.textContent = CARS[ci].id.slice(-2);
+      g.appendChild(lbl);
+
+      carDots.push({ dot: dot, label: lbl });
+    }
+  }
+
+  function updateCarPositions(timeMin){
+    for (var ci = 0; ci < CAR_COUNT; ci++){
+      var st = carState(ci, timeMin);
+      var x = timeToX(timeMin);
+      var y = distToY(st.dist);
+      var cd = carDots[ci];
+      cd.dot.setAttribute('cx', x);
+      cd.dot.setAttribute('cy', y);
+      cd.dot.setAttribute('class', 'car-dot ' + (st.dir === 'up' || st.dir === 'idle-up' ? 'up' : 'down'));
+      cd.label.setAttribute('x', x);
+      cd.label.setAttribute('y', y + 3);
+    }
+  }
+
+  // ============================================================
+  //  吊厢档案面板
+  // ============================================================
+
+  var selectedCar = null;
+  function showCarProfile(carIdx){
+    selectedCar = carIdx;
+    $('carEmpty').style.display = 'none';
+    $('carContent').style.display = 'flex';
+    $('profileNum').textContent = CARS[carIdx].id;
+    $('profileId').textContent = CARS[carIdx].id;
+    $('profileCap').textContent = CARS[carIdx].capacity + ' 人';
+    $('profileMile').textContent = CARS[carIdx].mileage.toLocaleString() + ' km';
+    updateProfileLive(carIdx, currentTime);
+  }
+  function hideCarProfile(){
+    selectedCar = null;
+    $('carEmpty').style.display = 'flex';
+    $('carContent').style.display = 'none';
+    $('profileNum').textContent = 'CAR-00';
+  }
+
+  function updateProfileLive(carIdx, timeMin){
+    var st = carState(carIdx, timeMin);
+    var dirTxt = st.dir === 'up' ? '上行' : (st.dir === 'down' ? '下行' : '待机');
+    var dirClass = st.dir === 'up' || st.dir === 'idle-up' ? 'up' : 'down';
+    $('profileDir').textContent = dirTxt;
+    $('profileDir').className = 'dir ' + dirClass;
+
+    $('profilePos').textContent = Math.round(st.dist) + ' m';
+    $('profileStatus').textContent = st.leg ? '运行中' : '停站';
+
+    // 上站/下站
+    if (st.leg){
+      // 找最近的前后站
+      var prevS = null, nextS = null;
+      for (var i = 0; i < STATIONS.length; i++){
+        var sd = STATIONS[i].dist;
+        if (st.dir === 'up'){
+          if (sd <= st.dist) prevS = i;
+          if (sd >= st.dist && nextS === null) nextS = i;
+        } else {
+          if (sd >= st.dist) prevS = i;
+          if (sd <= st.dist && nextS === null) nextS = i;
+        }
+      }
+      if (prevS !== null && nextS !== null){
+        // 精确计算时间
+        var sPrev = STATIONS[prevS];
+        var sNext = STATIONS[nextS];
+        var segDist = Math.abs(sNext.dist - sPrev.dist);
+        var prog = Math.abs(st.dist - sPrev.dist) / segDist;
+        var segT = SEG_TIMES[st.dir === 'up' ? prevS : prevS - 1];
+        var lastT = st.leg.tStart;
+        // 累加到 prevS 的时间
+        var accum = 0;
+        if (st.dir === 'up'){
+          for (var k = 0; k < prevS; k++) accum += SEG_TIMES[k];
+          if (prevS > 0) accum += (prevS) * DWELL_MID;
+        } else {
+          for (var k = STATIONS.length-1; k > prevS; k--) accum += SEG_TIMES[k-1];
+          if (prevS < STATIONS.length-1) accum += (STATIONS.length - 1 - prevS) * DWELL_MID;
+        }
+        var lastDepT = st.leg.tStart + accum;
+        var nextArrT = lastDepT + segT;
+        $('profileLastDep').textContent = fmtTimeShort(lastDepT) + ' · ' + sPrev.name;
+        $('profileNextArr').textContent = fmtTimeShort(nextArrT) + ' · ' + sNext.name;
+      }
+    } else {
+      $('profileLastDep').textContent = '—';
+      $('profileNextArr').textContent = '—';
+    }
+
+    // 今日往返数
+    var trips = 0;
+    var legs = allLegs[carIdx];
+    for (var li = 0; li < legs.length; li++){
+      if (legs[li].tEnd <= timeMin) trips++;
+    }
+    $('profileTrips').textContent = Math.floor(trips / 2) + ' 次';
+  }
+
+  // ============================================================
+  //  站点列表
+  // ============================================================
+
+  function buildStationList(){
+    var list = $('stationList');
+    list.innerHTML = '';
+    for (var i = 0; i < STATIONS.length; i++){
+      var s = STATIONS[i];
+      var item = document.createElement('div');
+      item.className = 'station-item';
+      item.dataset.idx = i;
+      if (i === 0) item.classList.add('bottom');
+      if (i === STATIONS.length - 1) item.classList.add('top');
+      item.innerHTML =
+        '<span class="name">' + s.name + '</span>' +
+        '<span class="elev">' + s.elev + 'm</span>' +
+        '<span class="tag">' + s.tag + '</span>';
+      item.addEventListener('click', function(e){
+        var idx = Number(this.dataset.idx);
+        if (document.querySelector('.station-item.active') === this){
+          clearStationHighlight();
+        } else {
+          highlightStation(idx);
+        }
+      });
+      list.appendChild(item);
+    }
+  }
+
+  // ============================================================
+  //  告警列表
+  // ============================================================
+
+  function buildWarnList(){
+    var list = $('warnList');
+    list.innerHTML = '';
+    for (var i = 0; i < WIND_WARNINGS.length; i++){
+      var w = WIND_WARNINGS[i];
+      var div = document.createElement('div');
+      div.className = 'warn-item';
+      div.innerHTML =
+        '<span>' + fmtTimeShort(w.start) + '–' + fmtTimeShort(w.end) + '</span>' +
+        '<span>' + w.speed.toFixed(1) + ' m/s</span>';
+      list.appendChild(div);
+    }
+  }
+  function updateWarnActive(timeMin){
+    var items = document.querySelectorAll('.warn-item');
+    for (var i = 0; i < WIND_WARNINGS.length; i++){
+      var w = WIND_WARNINGS[i];
+      var active = timeMin >= w.start && timeMin <= w.end;
+      items[i].classList.toggle('active', active);
+    }
+  }
+
+  // ============================================================
+  //  会车特写
+  // ============================================================
+
+  var meetOverlay = $('meetOverlay');
+  var meetStage = $('meetStage');
+  var meetCarUp = $('meetCarUp');
+  var meetCarDown = $('meetCarDown');
+  var ringWave = $('ringWave');
+
+  function showMeet(passingIdx){
+    var pt = passingPoints[passingIdx];
+    var upIdx = pt.dirA === 'up' ? pt.carA : pt.carB;
+    var downIdx = pt.dirB === 'down' ? pt.carB : pt.carA;
+
+    $('meetUpId').textContent = CARS[upIdx].id;
+    $('meetDownId').textContent = CARS[downIdx].id;
+    meetCarUp.querySelector('.car-body').textContent = CARS[upIdx].id;
+    meetCarDown.querySelector('.car-body').textContent = CARS[downIdx].id;
+    $('meetTime').textContent = fmtTime(pt.t);
+
+    // 动画起始位置
+    meetCarUp.style.left = '-5%';
+    meetCarDown.style.left = '105%';
+
+    meetOverlay.classList.add('show');
+
+    // 触发重绘
+    void meetStage.offsetWidth;
+
+    // 向中间移动
+    setTimeout(function(){
+      meetCarUp.style.left = '38%';
+      meetCarDown.style.left = '62%';
+    }, 50);
+
+    // 相遇响铃
+    setTimeout(function(){
+      ringWave.classList.add('ring');
+      playBell();
+      setTimeout(function(){ ringWave.classList.remove('ring'); }, 800);
+    }, 900);
+  }
+
+  function hideMeet(){
+    meetOverlay.classList.remove('show');
+  }
+
+  // 铃声 — Web Audio 合成，不依赖外部资源
+  var audioCtx = null;
+  function playBell(){
+    try{
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var now = audioCtx.currentTime;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 0.3);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    } catch(e){}
+  }
+
+  // ============================================================
+  //  动画主循环
+  // ============================================================
+
+  var currentTime = DAY_START; // 当前模拟时刻（分）
+  var speed = 1;               // 倍速
+  var playing = true;
+  var lastFrame = 0;
+  var rafId = null;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 若减少动效，默认暂停显示静态图
+  if (reducedMotion){
+    playing = false;
+    currentTime = DAY_START + 60 + 23; // 08:23 静态快照
+  }
+
+  function tick(ts){
+    if (!playing) { lastFrame = ts; rafId = requestAnimationFrame(tick); return; }
+
+    if (!lastFrame) lastFrame = ts;
+    var dt = (ts - lastFrame) / 1000; // 秒
+    lastFrame = ts;
+
+    // 倍速映射：1× = 1 分钟/秒， 即 60 倍快放
+    // 这样 12 小时约 12 分钟走完
+    var minPerSec = 1.0 * speed;
+    currentTime += dt * minPerSec;
+
+    if (currentTime >= DAY_END){
+      currentTime = DAY_START;
+    }
+
+    render();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function render(){
+    // 更新吊厢位置
+    updateCarPositions(currentTime);
+
+    // 更新时间游标
+    var cx = timeToX(currentTime);
+    $('timeCursor').setAttribute('x1', cx);
+    $('timeCursor').setAttribute('x2', cx);
+    $('timeCursorText').setAttribute('x', cx);
+    $('timeCursorText').textContent = fmtTimeShort(currentTime);
+
+    // 时钟显示
+    $('clock').textContent = fmtTime(currentTime);
+
+    // 告警高亮
+    updateWarnActive(currentTime);
+
+    // 档案面板
+    if (selectedCar !== null){
+      updateProfileLive(selectedCar, currentTime);
+    }
+
+    // 下一班（小屏）
+    var nextUp = findNextDeparture(0, 'up', currentTime);
+    if (nextUp !== null){
+      var wait = nextUp - currentTime;
+      var mm = Math.floor(wait);
+      var ss = Math.floor((wait % 1) * 60);
+      $('nextBig').textContent = pad(mm) + '分' + pad(ss) + '秒';
+    } else {
+      $('nextBig').textContent = '已收班';
+    }
+  }
+
+  function findNextDeparture(stationIdx, dir, timeMin){
+    var sDist = STATIONS[stationIdx].dist;
+    var best = null;
+    for (var ci = 0; ci < CAR_COUNT; ci++){
+      var legs = allLegs[ci];
+      for (var li = 0; li < legs.length; li++){
+        var leg = legs[li];
+        if (leg.dir !== dir) continue;
+        // 计算经过该站的时刻
+        var frac = (sDist - leg.dStart) / (leg.dEnd - leg.dStart);
+        if (frac < 0 || frac > 1) continue;
+        var t = leg.tStart + frac * (leg.tEnd - leg.tStart);
+        if (t >= timeMin && (best === null || t < best)) best = t;
+      }
+    }
+    return best;
+  }
+
+  // 可见性暂停
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden){
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+    } else {
+      lastFrame = 0;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function(){
+    if (rafId) cancelAnimationFrame(rafId);
+  });
+
+  // ============================================================
+  //  自定义光标
+  // ============================================================
+
+  var cursor = $('cursor');
+  var cursorTrail = $('cursorTrail');
+  var mouseX = window.innerWidth / 2;
+  var mouseY = window.innerHeight / 2;
+  var trailX = mouseX, trailY = mouseY;
+
+  function updateCursor(e){
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    cursor.style.transform = 'translate(' + mouseX + 'px,' + mouseY + 'px) translate(-50%,-50%)';
+  }
+
+  function animTrail(){
+    // 缓动跟随
+    trailX += (mouseX - trailX) * 0.18;
+    trailY += (mouseY - trailY) * 0.18;
+    cursorTrail.style.transform = 'translate(' + trailX + 'px,' + trailY + 'px) translate(-50%,-50%)';
+    requestAnimationFrame(animTrail);
+  }
+
+  document.addEventListener('mousemove', updateCursor);
+
+  // 初始化光标位置在屏幕中央
+  cursor.style.transform = 'translate(' + (window.innerWidth/2) + 'px,' + (window.innerHeight/2) + 'px) translate(-50%,-50%)';
+  cursorTrail.style.transform = 'translate(' + (window.innerWidth/2) + 'px,' + (window.innerHeight/2) + 'px) translate(-50%,-50%)';
+  mouseX = window.innerWidth / 2;
+  mouseY = window.innerHeight / 2;
+  trailX = mouseX;
+  trailY = mouseY;
+
+  if (!reducedMotion) animTrail();
+
+  // hover 交互态
+  document.addEventListener('mouseover', function(e){
+    var t = e.target;
+    if (t.classList && (
+      t.classList.contains('car-dot') ||
+      t.classList.contains('passing-point') ||
+      t.classList.contains('ctrl-btn') ||
+      t.classList.contains('station-item') ||
+      t.tagName === 'BUTTON'
+    )){
+      cursorTrail.classList.add('hover');
+    }
+  });
+  document.addEventListener('mouseout', function(e){
+    var t = e.target;
+    if (t.classList && (
+      t.classList.contains('car-dot') ||
+      t.classList.contains('passing-point') ||
+      t.classList.contains('ctrl-btn') ||
+      t.classList.contains('station-item') ||
+      t.tagName === 'BUTTON'
+    )){
+      cursorTrail.classList.remove('hover');
+    }
+  });
+
+  // ============================================================
+  //  交互绑定
+  // ============================================================
+
+  // SVG 事件委托
+  svg.addEventListener('click', function(e){
+    var t = e.target;
+    // 点击吊厢点
+    if (t.classList.contains('car-dot')){
+      var ci = Number(t.dataset.car);
+      showCarProfile(ci);
+      highlightCar(ci);
+      clearStationHighlight();
+      return;
+    }
+    // 点击会车点
+    if (t.classList.contains('passing-point')){
+      var pi = Number(t.dataset.idx);
+      var pt = passingPoints[pi];
+      // 时间跳转会车瞬间
+      currentTime = pt.t;
+      render();
+      // 弹出会车特写
+      showMeet(pi);
+      // 同时高亮两车
+      // 不持续高亮，保持全貌
+      return;
+    }
+    // 点击空白取消选中
+    hideCarProfile();
+    clearCarHighlight();
+    clearStationHighlight();
+  });
+
+  // 控制按钮
+  $('btnPlay').addEventListener('click', function(){
+    playing = !playing;
+    $('btnPlay').textContent = playing ? '暂停' : '播放';
+    $('liveDot').style.animationPlayState = playing ? 'running' : 'paused';
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.speed-btn').forEach(function(b){ b.classList.remove('active'); });
+      this.classList.add('active');
+      speed = Number(this.dataset.speed);
+      $('speedTag').textContent = speed + '×';
+    });
+  });
+
+  $('btnReset').addEventListener('click', function(){
+    currentTime = DAY_START;
+    render();
+  });
+
+  // 关闭会车浮层
+  $('meetClose').addEventListener('click', hideMeet);
+  meetOverlay.addEventListener('click', function(e){
+    if (e.target === meetOverlay) hideMeet();
+  });
+
+  // 键盘：空格 暂停/播放
+  document.addEventListener('keydown', function(e){
+    if (e.code === 'Space'){
+      e.preventDefault();
+      $('btnPlay').click();
+    } else if (e.code === 'Escape'){
+      hideMeet();
+    }
+  });
+
+  // ============================================================
+  //  下一班（390 宽度显示）
+  // ============================================================
+
+  // ============================================================
+  //  初始化
+  // ============================================================
+
+  function init(){
+    drawGrid();
+    drawWindZones();
+    drawStations();
+    drawDepartureBands();
+    drawPaths();
+    drawPassingPoints();
+    createCarDots();
+    buildStationList();
+    buildWarnList();
+
+    updateCarPositions(currentTime);
+    render();
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  init();
+
+  // 宣告升级入口
+  function announceUpgrade(){
+    window.parent && window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+  }
+  announceUpgrade();
+  if (document.readyState !== 'complete') window.addEventListener('load', announceUpgrade, { once: true });
+
+})();
+</script>
+</body>
+</html>

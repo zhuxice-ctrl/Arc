@@ -1,0 +1,1941 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="creative-medium" content="interactive-prototype">
+<title>灼兆 · 殷墟甲骨占卜台</title>
+<style>
+/* ============ CSS Variables ============ */
+:root {
+  --soil-deep: #B79A6B;
+  --soil: #D2BB88;
+  --soil-light: #E4D3A8;
+  --bone: #EFE6D0;
+  --bone-shadow: #D2C49E;
+  --ink: #241D16;
+  --ink-soft: #4A3F30;
+  --cinnabar: #B63A28;
+  --cinnabar-seal: #9C2D1E;
+  --ember: #E8703A;
+  --ember-glow: #FF9A52;
+  --paper: #F4ECDC;
+  --serif-cn: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  --kai-cn: "Kaiti SC", "STKaiti", "KaiTi", serif;
+  --sans-cn: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", "Menlo", monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--sans-cn);
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--soil-light) 0%, var(--soil) 60%, var(--soil-deep) 100%);
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: none;
+}
+
+/* Noise texture overlay */
+body::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(rgba(36,29,22,0.04) 1px, transparent 1px),
+    radial-gradient(rgba(36,29,22,0.03) 1px, transparent 1px);
+  background-size: 3px 3px, 7px 7px;
+  background-position: 0 0, 1px 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Floating dust canvas */
+#dustCanvas {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.6;
+}
+
+/* ============ Layout ============ */
+#app {
+  position: relative;
+  z-index: 3;
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 56px 1fr 88px;
+  grid-template-columns: 1fr 360px;
+  grid-template-areas:
+    "header header"
+    "stage archive"
+    "index index";
+}
+
+/* ============ Header ============ */
+header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  border-bottom: 1px solid rgba(36,29,22,0.15);
+  background: rgba(244,236,220,0.3);
+  backdrop-filter: blur(4px);
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.brand-title {
+  font-family: var(--serif-cn);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--ink);
+}
+.brand-sub {
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 2px;
+}
+.steps {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--serif-cn);
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 1px;
+}
+.step-item {
+  padding: 4px 10px;
+  border-radius: 2px;
+  transition: all 0.4s ease;
+  position: relative;
+}
+.step-item.active {
+  color: var(--cinnabar);
+  font-weight: 600;
+}
+.step-item.active::after {
+  content: "";
+  position: absolute;
+  left: 10px; right: 10px; bottom: 0;
+  height: 2px;
+  background: var(--cinnabar);
+  transform: scaleX(1);
+}
+.step-dot {
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0.4;
+}
+
+/* ============ Stage ============ */
+.stage {
+  grid-area: stage;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stage-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#boneWrap {
+  position: relative;
+  width: min(520px, 68vh);
+  height: min(520px, 68vh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+#boneWrap.switching-out {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+#boneWrap.switching-in {
+  opacity: 0;
+  transform: translateY(-12px) scale(0.97);
+}
+
+#boneSvg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 20px 40px rgba(36,29,22,0.25));
+  transition: filter 0.6s ease;
+}
+#boneSvg.heating {
+  filter: drop-shadow(0 20px 50px rgba(232,112,58,0.45));
+}
+
+/* Bone shake on crack */
+@keyframes boneShake {
+  0%   { transform: translate(0,0) rotate(0); }
+  15%  { transform: translate(-2px,1px) rotate(-0.3deg); }
+  30%  { transform: translate(2px,-1px) rotate(0.3deg); }
+  45%  { transform: translate(-1.5px,0.5px) rotate(-0.2deg); }
+  60%  { transform: translate(1.5px,-0.5px) rotate(0.2deg); }
+  75%  { transform: translate(-0.8px,0.3px) rotate(-0.1deg); }
+  100% { transform: translate(0,0) rotate(0); }
+}
+#boneWrap.shaking { animation: boneShake 0.6s cubic-bezier(0.36,0.07,0.19,0.97); }
+
+/* Drill point pulse */
+.drill-point {
+  cursor: none;
+}
+.drill-core {
+  transition: fill 0.3s ease;
+}
+@keyframes drillBreath {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.4); opacity: 0.2; }
+}
+.drill-halo {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: drillBreath 3s ease-in-out infinite;
+}
+.drill-halo.near {
+  animation-duration: 1.2s;
+  animation-name: drillBreathNear;
+}
+@keyframes drillBreathNear {
+  0%, 100% { transform: scale(1.2); opacity: 0.7; }
+  50% { transform: scale(2); opacity: 0.3; }
+}
+
+/* Heat glow overlay on bone */
+.heat-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,154,82,0.55) 0%, rgba(232,112,58,0.25) 35%, transparent 70%);
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  mix-blend-mode: screen;
+  z-index: 5;
+}
+.heat-glow.active {
+  opacity: 1;
+}
+
+/* ============ Oracle crack (兆纹) ============ */
+.crack-group {
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.crack-group.visible { opacity: 1; }
+
+.crack-path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.crack-main { stroke-width: 1.8; }
+.crack-branch { stroke-width: 1.2; }
+
+/* Growth animation controlled via JS dashoffset */
+
+/* Stage hint text */
+.stage-hint {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--kai-cn);
+  font-size: 14px;
+  color: var(--ink-soft);
+  letter-spacing: 3px;
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 4;
+}
+.stage-hint.dim { opacity: 0.25; }
+
+/* ============ Archive (Right Column) ============ */
+.archive {
+  grid-area: archive;
+  background: var(--paper);
+  border-left: 1px solid rgba(36,29,22,0.15);
+  padding: 24px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+.archive::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(36,29,22,0.035) 1px, transparent 1px);
+  background-size: 4px 4px;
+  pointer-events: none;
+}
+.archive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(36,29,22,0.15);
+  padding-bottom: 10px;
+}
+.archive-title {
+  font-family: var(--serif-cn);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--ink);
+}
+.archive-topic-chip {
+  font-family: var(--serif-cn);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cinnabar);
+  width: 36px; height: 36px;
+  border: 2px solid var(--cinnabar-seal);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-2deg);
+}
+.archive-ref {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  opacity: 0.8;
+  letter-spacing: 0.5px;
+}
+.archive-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.archive-label {
+  font-family: var(--serif-cn);
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 2px;
+  opacity: 0.7;
+}
+.archive-original {
+  font-family: var(--kai-cn);
+  font-size: 17px;
+  line-height: 1.9;
+  color: var(--ink);
+  letter-spacing: 1px;
+  padding: 10px 12px;
+  background: rgba(183,154,107,0.12);
+  border-left: 3px solid var(--soil-deep);
+  border-radius: 0 2px 2px 0;
+}
+.archive-translation {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+.archive-bg {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  opacity: 0.8;
+  padding: 8px 10px;
+  background: rgba(36,29,22,0.04);
+  border-radius: 2px;
+}
+
+/* Verdict (王占曰) */
+.verdict-block {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(182,58,40,0.3);
+  min-height: 120px;
+  position: relative;
+}
+.verdict-label {
+  font-family: var(--serif-cn);
+  font-size: 12px;
+  color: var(--cinnabar);
+  letter-spacing: 3px;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+.verdict-text {
+  font-family: var(--kai-cn);
+  font-size: 18px;
+  line-height: 1.8;
+  color: var(--cinnabar);
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+}
+.verdict-text .c-fill {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.15s ease-out;
+  vertical-align: bottom;
+}
+.verdict-text.revealed .c-fill {
+  max-width: 2em;
+}
+
+/* Seal */
+.seal {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 52px;
+  height: 52px;
+  border: 3px solid var(--cinnabar-seal);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cinnabar-seal);
+  letter-spacing: 1px;
+  opacity: 0;
+  transform: scale(1.4) rotate(-6deg);
+  transition: none;
+  pointer-events: none;
+}
+.seal.stamped {
+  animation: sealStamp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes sealStamp {
+  0%   { opacity: 0; transform: scale(1.8) rotate(-10deg); }
+  50%  { opacity: 1; transform: scale(0.9) rotate(-3deg); }
+  70%  { transform: scale(1.05) rotate(-4deg); }
+  100% { opacity: 0.9; transform: scale(1) rotate(-4deg); }
+}
+.seal-char {
+  text-align: center;
+  line-height: 1.15;
+}
+
+/* Inscription (刻辞逐字) */
+.inscription-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 8px;
+}
+.inscription-char {
+  font-family: var(--kai-cn);
+  font-size: 13px;
+  color: var(--ink-soft);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.inscription-char.visible {
+  opacity: 0.85;
+  transform: translateY(0);
+}
+
+/* ============ Bottom Index ============ */
+.bottom-index {
+  grid-area: index;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 24px;
+  border-top: 1px solid rgba(36,29,22,0.15);
+  background: rgba(244,236,220,0.4);
+  backdrop-filter: blur(4px);
+  overflow-x: auto;
+}
+.bone-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.3s ease, background 0.3s ease;
+  cursor: none;
+}
+.bone-chip:hover {
+  transform: translateY(-3px);
+  background: rgba(244,236,220,0.5);
+}
+.bone-chip.active::after {
+  content: "";
+  position: absolute;
+  left: 20%; right: 20%; bottom: 4px;
+  height: 2px;
+  background: var(--cinnabar);
+}
+.bone-chip-mini {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--serif-cn);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--bone);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(36,29,22,0.15);
+  transition: all 0.3s ease;
+}
+.bone-chip.done .bone-chip-mini {
+  color: var(--cinnabar);
+  border: 1px solid var(--cinnabar-seal);
+}
+.bone-chip-label {
+  font-family: var(--serif-cn);
+  font-size: 11px;
+  color: var(--ink-soft);
+  letter-spacing: 1px;
+}
+.bone-chip-status {
+  font-size: 10px;
+  color: var(--ink-soft);
+  opacity: 0.6;
+  font-family: var(--mono);
+}
+.bone-chip.done .bone-chip-status {
+  color: var(--cinnabar);
+  opacity: 0.9;
+}
+
+/* ============ Custom Cursor (Bronze Awl) ============ */
+#cursor {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.05s linear;
+}
+#cursor svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+#cursor .tip-glow {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  transform-origin: 50% 90%;
+  transform-box: fill-box;
+}
+#cursor.heating .tip-glow {
+  opacity: 1;
+  animation: tipGlowPulse 0.8s ease-in-out infinite;
+}
+@keyframes tipGlowPulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.4); opacity: 1; }
+}
+#cursor.heating .rod-tip {
+  fill: var(--ember-glow);
+}
+#cursor .rod-main {
+  transition: fill 0.3s ease;
+}
+#cursor.near .rod-tip {
+  fill: var(--ember);
+}
+
+/* Heat ring around cursor */
+#cursor-heat {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%) scale(0);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,154,82,0.5) 0%, rgba(232,112,58,0.2) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: 9998;
+  transition: transform 0.08s linear;
+  mix-blend-mode: screen;
+}
+
+/* ============ Opening Overlay ============ */
+#opening {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--soil-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  transition: clip-path 1.2s cubic-bezier(0.76, 0, 0.24, 1);
+  clip-path: inset(0 0 0 0);
+}
+#opening.opened {
+  clip-path: inset(0 50% 0 50%);
+  pointer-events: none;
+}
+#opening::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(rgba(36,29,22,0.08) 1px, transparent 1px),
+    radial-gradient(rgba(36,29,22,0.06) 1px, transparent 1px);
+  background-size: 4px 4px, 9px 9px;
+}
+.opening-title {
+  font-family: var(--serif-cn);
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 16px;
+  color: var(--cinnabar);
+  text-shadow: 2px 3px 0 rgba(36,29,22,0.15);
+  position: relative;
+  transform: scale(0.6) rotate(-8deg);
+  opacity: 0;
+  animation: sealDrop 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
+}
+@keyframes sealDrop {
+  0%   { transform: scale(0.4) rotate(-12deg); opacity: 0; }
+  60%  { transform: scale(1.1) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.opening-title::after {
+  content: "";
+  position: absolute;
+  inset: -8px -16px;
+  border: 4px solid var(--cinnabar-seal);
+  border-radius: 6px;
+  transform: rotate(-2deg);
+  opacity: 0.6;
+}
+.opening-sub {
+  font-family: var(--kai-cn);
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: 4px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 1.2s forwards;
+}
+.opening-guide {
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 3px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 1.6s forwards;
+  max-width: 400px;
+  text-align: center;
+  line-height: 2;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 0.9; transform: translateY(0); }
+}
+.opening-btn {
+  margin-top: 16px;
+  padding: 12px 36px;
+  font-family: var(--serif-cn);
+  font-size: 16px;
+  letter-spacing: 6px;
+  color: var(--bone);
+  background: var(--cinnabar);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 1.9s forwards;
+  transition: all 0.3s ease;
+  cursor: none;
+  box-shadow: 0 4px 12px rgba(156,45,30,0.35);
+}
+.opening-btn:hover {
+  background: var(--cinnabar-seal);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(156,45,30,0.45);
+}
+
+/* ============ Completion overlay ============ */
+#completion {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+  background: rgba(36,29,22,0.6);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+#completion.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.completion-title {
+  font-family: var(--serif-cn);
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  color: var(--cinnabar);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+.completion-sub {
+  font-family: var(--kai-cn);
+  font-size: 16px;
+  color: var(--bone);
+  letter-spacing: 4px;
+  opacity: 0.85;
+}
+.completion-close {
+  margin-top: 16px;
+  padding: 8px 28px;
+  font-family: var(--serif-cn);
+  font-size: 14px;
+  letter-spacing: 4px;
+  color: var(--bone);
+  background: transparent;
+  border: 1px solid var(--bone);
+  border-radius: 2px;
+  cursor: pointer;
+  cursor: none;
+  transition: all 0.3s ease;
+}
+.completion-close:hover {
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 768px) {
+  html, body { overflow: auto; overflow-x: hidden; }
+  body { height: auto; min-height: 100vh; }
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px auto auto auto;
+    grid-template-areas:
+      "header"
+      "stage"
+      "archive"
+      "index";
+    height: auto;
+    min-height: 100vh;
+  }
+  .stage { height: 60vh; min-height: 380px; }
+  #boneWrap { width: min(360px, 80vw); height: min(360px, 80vw); }
+  .archive {
+    border-left: none;
+    border-top: 1px solid rgba(36,29,22,0.15);
+    padding: 20px;
+    min-height: auto;
+  }
+  .bottom-index {
+    justify-content: flex-start;
+    padding: 12px 16px;
+    overflow-x: auto;
+  }
+  .bone-chip { flex-shrink: 0; }
+  .steps { display: none; }
+  header { padding: 0 16px; }
+}
+
+/* ============ Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  .drill-halo, .drill-halo.near { animation: none; }
+  #cursor.heating .tip-glow { animation: none; opacity: 1; }
+  .opening-title { animation: none; opacity: 1; transform: scale(1); }
+  .opening-sub, .opening-guide, .opening-btn { animation: none; opacity: 0.9; transform: none; }
+  .seal.stamped { animation: none; opacity: 0.9; transform: scale(1) rotate(-4deg); }
+  #opening { transition: opacity 0.4s ease; }
+  #opening.opened { clip-path: none; opacity: 0; pointer-events: none; }
+  #dustCanvas { display: none; }
+  .crack-path { transition: stroke-dashoffset 0.01s linear !important; }
+}
+
+/* Scrollbar styling */
+.archive::-webkit-scrollbar { width: 6px; }
+.archive::-webkit-scrollbar-track { background: transparent; }
+.archive::-webkit-scrollbar-thumb {
+  background: rgba(36,29,22,0.15);
+  border-radius: 3px;
+}
+.bottom-index::-webkit-scrollbar { height: 4px; }
+.bottom-index::-webkit-scrollbar-thumb {
+  background: rgba(36,29,22,0.15);
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<!-- Dust particles -->
+<canvas id="dustCanvas"></canvas>
+
+<!-- Custom cursor: bronze awl -->
+<div id="cursor">
+  <svg viewBox="0 0 24 44" xmlns="http://www.w3.org/2000/svg">
+    <!-- Glow halo -->
+    <ellipse class="tip-glow" cx="12" cy="40" rx="10" ry="6" fill="#FF9A52" opacity="0.6"/>
+    <!-- Awl rod (bronze) -->
+    <rect class="rod-main" x="10.5" y="4" width="3" height="30" rx="1" fill="#7A6B52"/>
+    <!-- Rod top -->
+    <ellipse cx="12" cy="4" rx="3" ry="1.5" fill="#8B7C60"/>
+    <!-- Tip -->
+    <path class="rod-tip" d="M10.5 34 L 12 42 L 13.5 34 Z" fill="#5A4F3D"/>
+    <!-- Shaft highlight -->
+    <rect x="11" y="6" width="0.8" height="26" fill="#9A8B70" opacity="0.6"/>
+  </svg>
+</div>
+<div id="cursor-heat"></div>
+
+<!-- Opening overlay -->
+<div id="opening">
+  <div class="opening-title">灼兆</div>
+  <div class="opening-sub">殷墟甲骨占卜台</div>
+  <div class="opening-guide">国之大事，在祀与戎。<br>执灼锥，灼其凿，观其兆。</div>
+  <button class="opening-btn" id="enterBtn">执 灼 锥</button>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <div class="brand">
+      <span class="brand-title">灼 兆</span>
+      <span class="brand-sub">殷墟甲骨占卜台</span>
+    </div>
+    <div class="steps" id="steps">
+      <span class="step-item active" data-step="drill">整治·钻凿</span>
+      <span class="step-dot"></span>
+      <span class="step-item" data-step="burn">灼兆</span>
+      <span class="step-dot"></span>
+      <span class="step-item" data-step="divine">占断</span>
+      <span class="step-dot"></span>
+      <span class="step-item" data-step="inscribe">刻辞</span>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="stage-inner">
+      <div id="boneWrap">
+        <!-- Bone SVG will be populated by JS -->
+        <svg id="boneSvg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+          <!-- Bone shape (ox scapula silhouette) -->
+          <defs>
+            <radialGradient id="boneGrad" cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stop-color="#F5EED8"/>
+              <stop offset="70%" stop-color="#EFE6D0"/>
+              <stop offset="100%" stop-color="#D2C49E"/>
+            </radialGradient>
+            <filter id="boneTexture" x="-10%" y="-10%" width="120%" height="120%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="5"/>
+              <feColorMatrix values="0 0 0 0 0.35
+                                     0 0 0 0 0.28
+                                     0 0 0 0 0.18
+                                     0 0 0 0.08 0"/>
+              <feComposite in2="SourceGraphic" operator="in"/>
+              <feBlend in="SourceGraphic" mode="multiply"/>
+            </filter>
+          </defs>
+
+          <!-- Main bone body (scapula shape) -->
+          <path id="boneShape"
+            d="M200 40
+               C260 45, 310 80, 330 140
+               C345 190, 340 250, 320 300
+               C300 350, 260 375, 220 380
+               C210 381, 190 381, 180 380
+               C140 375, 100 350, 80 300
+               C60 250, 55 190, 70 140
+               C90 80, 140 45, 200 40 Z"
+            fill="url(#boneGrad)"
+            stroke="#C8B98C"
+            stroke-width="1.5"/>
+
+          <!-- Bone ridge (spine of scapula) -->
+          <path d="M200 60
+                   C210 110, 215 170, 205 240
+                   C198 300, 185 350, 180 375"
+            stroke="#C0B286" stroke-width="3" fill="none" opacity="0.6"/>
+
+          <!-- Subtle texture lines -->
+          <path d="M120 120 C140 140, 150 180, 145 220" stroke="#D5C79E" stroke-width="0.8" fill="none" opacity="0.5"/>
+          <path d="M280 130 C270 160, 265 200, 270 240" stroke="#D5C79E" stroke-width="0.8" fill="none" opacity="0.5"/>
+          <path d="M160 300 C170 320, 180 340, 190 360" stroke="#D5C79E" stroke-width="0.8" fill="none" opacity="0.4"/>
+        </svg>
+
+        <!-- Drill points layer (absolutely positioned overlay) -->
+        <svg id="drillLayer" viewBox="0 0 400 400" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" xmlns="http://www.w3.org/2000/svg">
+          <!-- Drill points will be dynamically set -->
+        </svg>
+
+        <!-- Crack layer -->
+        <svg id="crackLayer" viewBox="0 0 400 400" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" xmlns="http://www.w3.org/2000/svg">
+        </svg>
+      </div>
+
+      <div class="heat-glow" id="heatGlow"></div>
+      <div class="stage-hint" id="stageHint">执 灼 锥 · 灼 其 凿</div>
+    </div>
+  </div>
+
+  <div class="archive">
+    <div class="archive-header">
+      <span class="archive-title">卜 问 档 案</span>
+      <span class="archive-topic-chip" id="topicChip">雨</span>
+    </div>
+
+    <div class="archive-section">
+      <span class="archive-label">卜 辞 原 文</span>
+      <div class="archive-original" id="divOriginal">
+        癸卯卜：今日雨？其自西来雨？其自东来雨？其自北来雨？其自南来雨？
+      </div>
+    </div>
+
+    <div class="archive-section">
+      <span class="archive-label">现 代 释 文</span>
+      <div class="archive-translation" id="divTranslation">
+        癸卯日占卜，今天会下雨吗？雨是从西边来？东边来？北边来？还是南边来？
+      </div>
+    </div>
+
+    <div class="archive-section">
+      <span class="archive-label">出 处</span>
+      <div class="archive-ref" id="divRef">《甲骨文合集》12870</div>
+    </div>
+
+    <div class="archive-section">
+      <span class="archive-label">背 景 注</span>
+      <div class="archive-bg" id="divBg">
+        武丁时期宾组卜辞，以五方问雨著称，反映商人对四方空间与天候的认知。
+      </div>
+    </div>
+
+    <div class="verdict-block" id="verdictBlock">
+      <div class="verdict-label">王 占 曰</div>
+      <div class="verdict-text" id="verdictText">
+        <span class="c-fill" id="verdictFill"></span>
+      </div>
+      <div class="seal" id="seal">
+        <div class="seal-char">贞<br>兆</div>
+      </div>
+      <div class="inscription-row" id="inscriptionRow"></div>
+    </div>
+  </div>
+
+  <div class="bottom-index" id="bottomIndex">
+    <!-- chips generated by JS -->
+  </div>
+</div>
+
+<!-- Completion overlay -->
+<div id="completion">
+  <div class="completion-title">五 兆 既 成</div>
+  <div class="completion-sub">契 于 龟 甲 · 藏 于 窖 穴</div>
+  <button class="completion-close" id="completionClose">继 续 观 兆</button>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ==================== DATA ====================
+  const ORACLES = [
+    {
+      id: 0,
+      topic: '雨',
+      topicLabel: '求雨',
+      original: '癸卯卜：今日雨？其自西来雨？其自东来雨？其自北来雨？其自南来雨？',
+      translation: '癸卯日占卜，今天会下雨吗？雨是从西边来？东边来？北边来？还是南边来？',
+      ref: '《甲骨文合集》12870',
+      bg: '武丁时期宾组卜辞，以五方问雨著称，反映商人对四方空间与天候的认知。',
+      verdict: '其自东来雨。',
+      // Drill points: [{x, y, isMain}]
+      drills: [
+        { x: 200, y: 160, isMain: true },
+        { x: 150, y: 250, isMain: false },
+        { x: 250, y: 250, isMain: false }
+      ],
+      // Crack paths: main stroke + branches
+      crackType: 'rain',
+      cracks: [
+        // Main trunk (卜 shape vertical)
+        { d: 'M200 160 L200 250', width: 2, type: 'main', delay: 0, duration: 700 },
+        // Horizontal top branch
+        { d: 'M200 185 L170 175', width: 1.4, type: 'branch', delay: 350, duration: 400 },
+        { d: 'M200 195 L225 182', width: 1.4, type: 'branch', delay: 400, duration: 450 },
+        // Lower branches (rain-like diagonal slants)
+        { d: 'M200 220 L175 240', width: 1.2, type: 'branch', delay: 500, duration: 350 },
+        { d: 'M200 230 L220 255', width: 1.2, type: 'branch', delay: 550, duration: 350 },
+        { d: 'M175 240 L162 265', width: 1, type: 'branch', delay: 650, duration: 300 },
+        { d: 'M220 255 L235 280', width: 1, type: 'branch', delay: 680, duration: 300 }
+      ]
+    },
+    {
+      id: 1,
+      topic: '戈',
+      topicLabel: '征战',
+      original: '辛巳卜，争贞：今者王共人呼妇好伐土方，受有佑？',
+      translation: '辛巳日占卜，贞人争问：现在王召集人马命妇好征伐土方，能获得保佑吗？',
+      ref: '《甲骨文合集》6412',
+      bg: '妇好为商王武丁之妇、同时也是统兵将领。此辞可见商代王后率军征伐方国之制。',
+      verdict: '受有佑。',
+      drills: [
+        { x: 200, y: 170, isMain: true },
+        { x: 145, y: 240, isMain: false },
+        { x: 255, y: 235, isMain: false }
+      ],
+      crackType: 'spear',
+      cracks: [
+        { d: 'M200 170 L200 290', width: 2.2, type: 'main', delay: 0, duration: 800 },
+        { d: 'M200 200 L165 190', width: 1.4, type: 'branch', delay: 380, duration: 350 },
+        { d: 'M200 210 L235 195', width: 1.4, type: 'branch', delay: 420, duration: 380 },
+        // Spear-like sharp branches
+        { d: 'M200 240 L180 260 L185 280', width: 1.3, type: 'branch', delay: 550, duration: 450 },
+        { d: 'M200 250 L225 268 L220 285', width: 1.3, type: 'branch', delay: 600, duration: 450 },
+        { d: 'M200 290 L195 320', width: 1.1, type: 'branch', delay: 750, duration: 300 },
+        { d: 'M200 290 L205 315', width: 1, type: 'branch', delay: 780, duration: 280 }
+      ]
+    },
+    {
+      id: 2,
+      topic: '子',
+      topicLabel: '生育',
+      original: '甲申卜，殻贞：妇好娩，嘉？王占曰：其惟丁娩，嘉；其惟庚娩，引吉。三旬又一日甲寅娩，不嘉，惟女。',
+      translation: '甲申日占卜，贞人殻问：妇好分娩，吉利吗？王占断说：若丁日分娩，吉利；若庚日分娩，大吉。三十一天后的甲寅日分娩，不吉，生的是女孩。',
+      ref: '《甲骨文合集》14002',
+      bg: '含叙辞、命辞、占辞、验辞四段式俱全的最著名生育卜辞之一。',
+      verdict: '其惟丁娩，嘉；其惟庚娩，引吉。',
+      drills: [
+        { x: 200, y: 165, isMain: true },
+        { x: 148, y: 260, isMain: false },
+        { x: 252, y: 258, isMain: false }
+      ],
+      crackType: 'branch',
+      cracks: [
+        { d: 'M200 165 L200 280', width: 2, type: 'main', delay: 0, duration: 750 },
+        // Branching tree shape
+        { d: 'M200 195 L160 180', width: 1.4, type: 'branch', delay: 360, duration: 400 },
+        { d: 'M200 205 L240 188', width: 1.4, type: 'branch', delay: 400, duration: 420 },
+        { d: 'M200 235 L155 225', width: 1.3, type: 'branch', delay: 520, duration: 400 },
+        { d: 'M200 245 L245 232', width: 1.3, type: 'branch', delay: 560, duration: 420 },
+        // Sub-branches
+        { d: 'M155 225 L140 210', width: 1, type: 'branch', delay: 680, duration: 300 },
+        { d: 'M245 232 L265 215', width: 1, type: 'branch', delay: 700, duration: 300 },
+        { d: 'M200 270 L180 290', width: 1.1, type: 'branch', delay: 720, duration: 320 },
+        { d: 'M200 275 L225 295', width: 1.1, type: 'branch', delay: 740, duration: 320 }
+      ]
+    },
+    {
+      id: 3,
+      topic: '旬',
+      topicLabel: '旬夕',
+      original: '癸巳卜，殻贞：旬亡祸？王占曰：有祟，其有来艰。迄至五日丁酉，允有来艰自西。沚戛告曰：土方征于我东鄙，灾二邑。',
+      translation: '癸巳日占卜，贞人殻问：未来十天没有灾祸吧？王占断说：有祟，将有祸患到来。到第五天丁酉日，果真祸患从西方来。沚戛来报告说：土方征伐我东鄙，毁了两座城邑。',
+      ref: '《甲骨文合集》6057',
+      bg: '叙命占验四段式俱全的经典范本，记录外族入侵告急。',
+      verdict: '有祟，其有来艰。',
+      drills: [
+        { x: 200, y: 155, isMain: true },
+        { x: 155, y: 250, isMain: false },
+        { x: 245, y: 248, isMain: false }
+      ],
+      crackType: 'fall',
+      cracks: [
+        { d: 'M200 155 L195 290', width: 2, type: 'main', delay: 0, duration: 700 },
+        // Falling/zigzag shape
+        { d: 'M200 180 L175 170', width: 1.4, type: 'branch', delay: 340, duration: 380 },
+        { d: 'M200 210 L230 200', width: 1.3, type: 'branch', delay: 430, duration: 380 },
+        { d: 'M197 240 L165 250', width: 1.3, type: 'branch', delay: 540, duration: 400 },
+        { d: 'M196 270 L225 280', width: 1.2, type: 'branch', delay: 620, duration: 380 },
+        { d: 'M195 290 L175 310', width: 1.1, type: 'branch', delay: 680, duration: 320 },
+        { d: 'M165 250 L150 270', width: 1, type: 'branch', delay: 680, duration: 300 }
+      ]
+    },
+    {
+      id: 4,
+      topic: '月',
+      topicLabel: '天象',
+      original: '癸未卜，争贞：旬亡祸？三日乙酉夕，月有食。闻。八月。',
+      translation: '癸未日占卜，贞人争问：未来十天没有灾祸吧？第三天乙酉的夜晚，发生了月食。消息传来。八月。',
+      ref: '《甲骨文合集》11482',
+      bg: '世界最早月食记录之一，学者据此反推商代年代。',
+      verdict: '月有食，闻。八月。',
+      drills: [
+        { x: 200, y: 168, isMain: true },
+        { x: 146, y: 255, isMain: false },
+        { x: 254, y: 252, isMain: false }
+      ],
+      crackType: 'ring',
+      cracks: [
+        { d: 'M200 168 L200 285', width: 2, type: 'main', delay: 0, duration: 750 },
+        // Ring/arc-like cracks
+        { d: 'M200 195 C175 195, 160 215, 170 240', width: 1.3, type: 'branch', delay: 370, duration: 500 },
+        { d: 'M200 205 C230 205, 245 225, 235 250', width: 1.3, type: 'branch', delay: 420, duration: 500 },
+        { d: 'M200 240 L170 255', width: 1.2, type: 'branch', delay: 580, duration: 350 },
+        { d: 'M200 250 L230 262', width: 1.2, type: 'branch', delay: 620, duration: 350 },
+        { d: 'M170 240 L155 260', width: 1, type: 'branch', delay: 680, duration: 280 },
+        { d: 'M235 250 L255 270', width: 1, type: 'branch', delay: 700, duration: 280 },
+        { d: 'M200 280 L190 310', width: 1.1, type: 'branch', delay: 750, duration: 300 },
+        { d: 'M200 282 L212 308', width: 1, type: 'branch', delay: 770, duration: 280 }
+      ]
+    }
+  ];
+
+  // ==================== STATE ====================
+  const state = {
+    currentOracle: 0,
+    doneOracles: new Set(),
+    isHeating: false,
+    heatProgress: 0,          // 0 to 1
+    heatDuration: 1300,       // ms to full heat
+    lastHeatTime: 0,
+    isCracked: false,
+    mouseX: window.innerWidth / 2,
+    mouseY: window.innerHeight / 2,
+    nearDrill: null,          // index of near drill point
+    mainDrillPos: { x: 0, y: 0 },
+    heatRAFId: null,
+    dustRAFId: null,
+    audioCtx: null,
+    heatOsc: null,
+    heatGain: null,
+    reducedMotion: false,
+    isVisible: true,
+    opened: false
+  };
+
+  // ==================== DOM REFS ====================
+  let el = {};
+
+  function initRefs() {
+    el = {
+      cursor: document.getElementById('cursor'),
+      cursorHeat: document.getElementById('cursor-heat'),
+      opening: document.getElementById('opening'),
+      enterBtn: document.getElementById('enterBtn'),
+      boneWrap: document.getElementById('boneWrap'),
+      boneSvg: document.getElementById('boneSvg'),
+      drillLayer: document.getElementById('drillLayer'),
+      crackLayer: document.getElementById('crackLayer'),
+      heatGlow: document.getElementById('heatGlow'),
+      stageHint: document.getElementById('stageHint'),
+      topicChip: document.getElementById('topicChip'),
+      divOriginal: document.getElementById('divOriginal'),
+      divTranslation: document.getElementById('divTranslation'),
+      divRef: document.getElementById('divRef'),
+      divBg: document.getElementById('divBg'),
+      verdictBlock: document.getElementById('verdictBlock'),
+      verdictFill: document.getElementById('verdictFill'),
+      verdictText: document.getElementById('verdictText'),
+      seal: document.getElementById('seal'),
+      inscriptionRow: document.getElementById('inscriptionRow'),
+      bottomIndex: document.getElementById('bottomIndex'),
+      steps: document.getElementById('steps'),
+      completion: document.getElementById('completion'),
+      completionClose: document.getElementById('completionClose'),
+      dustCanvas: document.getElementById('dustCanvas')
+    };
+  }
+
+  // ==================== UTIL ====================
+  function dist(x1, y1, x2, y2) {
+    return Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+  }
+
+  function getSvgPoint(svg, clientX, clientY) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const svgP = pt.matrixTransform(ctm.inverse());
+    return { x: svgP.x, y: svgP.y };
+  }
+
+  // ==================== CUSTOM CURSOR ====================
+  function moveCursor(x, y) {
+    state.mouseX = x;
+    state.mouseY = y;
+    el.cursor.style.transform = 'translate(' + (x - 12) + 'px, ' + (y - 40) + 'px)';
+    el.cursorHeat.style.transform = 'translate(' + x + 'px, ' + y + 'px) translate(-50%, -50%) scale(' + (0.3 + state.heatProgress * 1.2) + ')';
+  }
+
+  // ==================== DRILL POINTS ====================
+  function renderDrills() {
+    const o = ORACLES[state.currentOracle];
+    const svg = el.drillLayer;
+    svg.innerHTML = '';
+    o.drills.forEach(function(drill, i) {
+      // Outer halo
+      const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      halo.setAttribute('cx', drill.x);
+      halo.setAttribute('cy', drill.y);
+      halo.setAttribute('r', drill.isMain ? '12' : '8');
+      halo.setAttribute('fill', '#E8703A');
+      halo.setAttribute('class', 'drill-halo' + (drill.isMain ? '' : ''));
+      if (!drill.isMain) halo.style.opacity = '0.3';
+      if (!drill.isMain) halo.style.animationDuration = '5s';
+      if (!drill.isMain) {
+        halo.style.transformOrigin = drill.x + 'px ' + drill.y + 'px';
+        halo.style.transformBox = 'fill-box';
+      } else {
+        halo.style.transformOrigin = drill.x + 'px ' + drill.y + 'px';
+        halo.style.transformBox = 'fill-box';
+      }
+      svg.appendChild(halo);
+
+      // Inner dark core (drill pit)
+      const core = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      core.setAttribute('cx', drill.x);
+      core.setAttribute('cy', drill.y);
+      core.setAttribute('r', drill.isMain ? '5' : '3.5');
+      core.setAttribute('fill', '#8B7C60');
+      core.setAttribute('stroke', '#6B5D44');
+      core.setAttribute('stroke-width', '0.8');
+      core.setAttribute('class', 'drill-core');
+      svg.appendChild(core);
+
+      // Darker center dot
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', drill.x);
+      dot.setAttribute('cy', drill.y);
+      dot.setAttribute('r', drill.isMain ? '2.5' : '1.8');
+      dot.setAttribute('fill', '#5A4F3D');
+      svg.appendChild(dot);
+    });
+
+    // Cache main drill pos (in SVG coords)
+    const mainDrill = o.drills.find(function(d) { return d.isMain; });
+    if (mainDrill) {
+      state.mainDrillPos = { x: mainDrill.x, y: mainDrill.y };
+    }
+  }
+
+  // ==================== CRACKS ====================
+  function renderCrackPaths() {
+    const o = ORACLES[state.currentOracle];
+    const svg = el.crackLayer;
+    svg.innerHTML = '';
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'crack-group');
+    g.setAttribute('id', 'crackGroup');
+
+    o.cracks.forEach(function(crack, i) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', crack.d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#241D16');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-width', crack.width);
+      path.setAttribute('class', 'crack-path crack-' + crack.type);
+      path.setAttribute('data-delay', crack.delay);
+      path.setAttribute('data-duration', crack.duration);
+      path.setAttribute('data-index', i);
+
+      // Measure path length
+      try {
+        const len = path.getTotalLength();
+        path.style.strokeDasharray = len;
+        path.style.strokeDashoffset = len;
+        path.setAttribute('data-length', len);
+      } catch(e) {
+        path.setAttribute('data-length', '200');
+      }
+
+      g.appendChild(path);
+    });
+
+    svg.appendChild(g);
+  }
+
+  function animateCracks() {
+    const g = document.getElementById('crackGroup');
+    if (!g) return;
+    g.classList.add('visible');
+
+    const paths = g.querySelectorAll('.crack-path');
+    const reduced = state.reducedMotion;
+
+    paths.forEach(function(path) {
+      const delay = parseInt(path.getAttribute('data-delay'), 10) || 0;
+      const duration = parseInt(path.getAttribute('data-duration'), 10) || 500;
+      const length = parseFloat(path.getAttribute('data-length')) || 200;
+
+      if (reduced) {
+        path.style.strokeDashoffset = '0';
+        return;
+      }
+
+      path.style.transition = 'stroke-dashoffset ' + duration + 'ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      setTimeout(function() {
+        if (!state.isVisible) return;
+        path.style.strokeDashoffset = '0';
+      }, delay);
+    });
+  }
+
+  // ==================== HEAT LOGIC ====================
+  function startHeating() {
+    if (state.isHeating || state.isCracked) return;
+    state.isHeating = true;
+    state.lastHeatTime = performance.now();
+    el.cursor.classList.add('heating');
+    el.boneSvg.classList.add('heating');
+    el.heatGlow.classList.add('active');
+    el.stageHint.classList.add('dim');
+    updateStep('burn');
+
+    startHeatSound();
+
+    if (state.heatRAFId) cancelAnimationFrame(state.heatRAFId);
+    state.heatRAFId = requestAnimationFrame(heatLoop);
+  }
+
+  function heatLoop(now) {
+    if (!state.isVisible) {
+      state.heatRAFId = requestAnimationFrame(heatLoop);
+      return;
+    }
+    if (!state.isHeating) return;
+
+    const dt = now - state.lastHeatTime;
+    state.lastHeatTime = now;
+    state.heatProgress = Math.min(1, state.heatProgress + dt / state.heatDuration);
+
+    // Update heat glow on bone at main drill position
+    updateHeatGlow();
+    // Update cursor heat ring size is done in moveCursor
+
+    if (state.heatProgress >= 1) {
+      triggerCrack();
+      return;
+    }
+
+    state.heatRAFId = requestAnimationFrame(heatLoop);
+  }
+
+  function stopHeating() {
+    if (!state.isHeating) return;
+    // If progress > 0.4, still trigger crack on release (partial heat still cracks)
+    if (state.heatProgress > 0.35 && !state.isCracked) {
+      triggerCrack();
+      return;
+    }
+    state.isHeating = false;
+    state.heatProgress = 0;
+    el.cursor.classList.remove('heating');
+    el.boneSvg.classList.remove('heating');
+    el.heatGlow.classList.remove('active');
+    stopHeatSound();
+    if (state.heatRAFId) {
+      cancelAnimationFrame(state.heatRAFId);
+      state.heatRAFId = null;
+    }
+    updateStep('drill');
+  }
+
+  function updateHeatGlow() {
+    // Position heat glow overlay at main drill
+    const boneRect = el.boneWrap.getBoundingClientRect();
+    // Convert SVG coords to px
+    const svgRect = el.boneSvg.getBoundingClientRect();
+    const scaleX = svgRect.width / 400;
+    const scaleY = svgRect.height / 400;
+    const px = state.mainDrillPos.x * scaleX + svgRect.left - boneRect.left;
+    const py = state.mainDrillPos.y * scaleY + svgRect.top - boneRect.top;
+
+    const size = 60 + state.heatProgress * 160;
+    el.heatGlow.style.width = size + 'px';
+    el.heatGlow.style.height = size + 'px';
+    el.heatGlow.style.left = px + 'px';
+    el.heatGlow.style.top = py + 'px';
+    el.heatGlow.style.opacity = 0.3 + state.heatProgress * 0.7;
+  }
+
+  // ==================== CRACK TRIGGER ====================
+  function triggerCrack() {
+    state.isHeating = false;
+    state.isCracked = true;
+    if (state.heatRAFId) {
+      cancelAnimationFrame(state.heatRAFId);
+      state.heatRAFId = null;
+    }
+    stopHeatSound();
+    playCrackSound();
+
+    // Bone shake
+    el.boneWrap.classList.remove('shaking');
+    void el.boneWrap.offsetWidth; // reflow
+    el.boneWrap.classList.add('shaking');
+
+    // Animate cracks
+    animateCracks();
+
+    // Fade heat glow
+    el.heatGlow.style.opacity = '0';
+    setTimeout(function() {
+      el.heatGlow.classList.remove('active');
+    }, 400);
+    el.cursor.classList.remove('heating');
+    el.boneSvg.classList.remove('heating');
+
+    // Update step
+    updateStep('divine');
+
+    // After crack anim, show verdict
+    const totalDur = 1200;
+    setTimeout(function() {
+      revealVerdict();
+    }, totalDur - 200);
+
+    // Mark done
+    state.doneOracles.add(state.currentOracle);
+    updateBottomIndex();
+
+    // Check all done
+    if (state.doneOracles.size === ORACLES.length) {
+      setTimeout(showCompletion, 2500);
+    }
+  }
+
+  // ==================== VERDICT REVEAL ====================
+  function revealVerdict() {
+    const o = ORACLES[state.currentOracle];
+    const verdict = o.verdict;
+
+    // Cinnabar fill animation: each character revealed left to right
+    el.verdictFill.textContent = verdict;
+    el.verdictFill.style.transition = 'none';
+    el.verdictFill.style.maxWidth = '0';
+
+    // Force reflow
+    void el.verdictFill.offsetWidth;
+
+    if (state.reducedMotion) {
+      el.verdictFill.style.maxWidth = '100%';
+      el.verdictText.classList.add('revealed');
+    } else {
+      const charCount = verdict.length;
+      const duration = Math.max(800, charCount * 120);
+      el.verdictFill.style.transition = 'max-width ' + duration + 'ms cubic-bezier(0.4, 0, 0.2, 1)';
+      requestAnimationFrame(function() {
+        el.verdictFill.style.maxWidth = '100%';
+      });
+    }
+
+    // Seal stamp
+    setTimeout(function() {
+      el.seal.classList.add('stamped');
+    }, state.reducedMotion ? 100 : 600);
+
+    // Inscription characters (刻辞逐字)
+    renderInscription(o.original);
+
+    updateStep('inscribe');
+  }
+
+  function renderInscription(text) {
+    el.inscriptionRow.innerHTML = '';
+    const chars = text.split('');
+    chars.forEach(function(ch, i) {
+      const span = document.createElement('span');
+      span.className = 'inscription-char';
+      span.textContent = ch === ' ' ? '\u3000' : ch;
+      el.inscriptionRow.appendChild(span);
+
+      if (state.reducedMotion) {
+        span.classList.add('visible');
+      } else {
+        setTimeout(function() {
+          if (state.currentOracle === ORACLES.indexOf(ORACLES.find(function(o) { return o.id === state.currentOracle; }))) {
+            span.classList.add('visible');
+          }
+        }, 900 + i * 60);
+      }
+    });
+  }
+
+  // ==================== STEP INDICATOR ====================
+  function updateStep(stepKey) {
+    const items = el.steps.querySelectorAll('.step-item');
+    items.forEach(function(item) {
+      item.classList.remove('active');
+      if (item.getAttribute('data-step') === stepKey) {
+        item.classList.add('active');
+      }
+    });
+  }
+
+  // ==================== BOTTOM INDEX ====================
+  function renderBottomIndex() {
+    el.bottomIndex.innerHTML = '';
+    ORACLES.forEach(function(o, i) {
+      const chip = document.createElement('div');
+      chip.className = 'bone-chip' + (state.doneOracles.has(i) ? ' done' : '') + (i === state.currentOracle ? ' active' : '');
+      chip.setAttribute('data-index', i);
+
+      const mini = document.createElement('div');
+      mini.className = 'bone-chip-mini';
+      mini.textContent = o.topic;
+      chip.appendChild(mini);
+
+      const label = document.createElement('div');
+      label.className = 'bone-chip-label';
+      label.textContent = o.topicLabel;
+      chip.appendChild(label);
+
+      const status = document.createElement('div');
+      status.className = 'bone-chip-status';
+      status.textContent = state.doneOracles.has(i) ? '兆成' : '未卜';
+      chip.appendChild(status);
+
+      chip.addEventListener('pointerenter', function() {});
+      chip.addEventListener('click', function() {
+        switchOracle(i);
+      });
+
+      el.bottomIndex.appendChild(chip);
+    });
+  }
+
+  function updateBottomIndex() {
+    const chips = el.bottomIndex.querySelectorAll('.bone-chip');
+    chips.forEach(function(chip, i) {
+      if (state.doneOracles.has(i)) chip.classList.add('done');
+      if (i === state.currentOracle) chip.classList.add('active');
+      else chip.classList.remove('active');
+      const status = chip.querySelector('.bone-chip-status');
+      if (status) status.textContent = state.doneOracles.has(i) ? '兆成' : '未卜';
+    });
+  }
+
+  // ==================== SWITCH ORACLE ====================
+  function switchOracle(index) {
+    if (index === state.currentOracle) return;
+
+    const prev = state.currentOracle;
+    state.currentOracle = index;
+    state.isCracked = false;
+    state.isHeating = false;
+    state.heatProgress = 0;
+    if (state.heatRAFId) {
+      cancelAnimationFrame(state.heatRAFId);
+      state.heatRAFId = null;
+    }
+    stopHeatSound();
+
+    // Out animation
+    el.boneWrap.classList.add('switching-out');
+
+    setTimeout(function() {
+      // Update content
+      const o = ORACLES[index];
+      el.topicChip.textContent = o.topic;
+      el.divOriginal.textContent = o.original;
+      el.divTranslation.textContent = o.translation;
+      el.divRef.textContent = o.ref;
+      el.divBg.textContent = o.bg;
+
+      // Reset verdict
+      el.verdictFill.textContent = '';
+      el.verdictFill.style.maxWidth = '0';
+      el.verdictText.classList.remove('revealed');
+      el.seal.classList.remove('stamped');
+      el.inscriptionRow.innerHTML = '';
+
+      // Re-render drills and cracks
+      renderDrills();
+      renderCrackPaths();
+
+      // Reset step
+      updateStep('drill');
+
+      // Update hint
+      if (state.doneOracles.has(index)) {
+        el.stageHint.textContent = '此 骨 已 卜 · 可 复 灼';
+        // Restore cracks for done ones
+        setTimeout(function() {
+          const g = document.getElementById('crackGroup');
+          if (g) g.classList.add('visible');
+          const paths = g ? g.querySelectorAll('.crack-path') : [];
+          paths.forEach(function(p) { p.style.strokeDashoffset = '0'; });
+          revealVerdict();
+        }, 50);
+      } else {
+        el.stageHint.textContent = '执 灼 锥 · 灼 其 凿';
+        el.stageHint.classList.remove('dim');
+      }
+
+      // In animation
+      el.boneWrap.classList.remove('switching-out');
+      el.boneWrap.classList.add('switching-in');
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          el.boneWrap.classList.remove('switching-in');
+        });
+      });
+
+      updateBottomIndex();
+    }, state.reducedMotion ? 50 : 400);
+  }
+
+  // ==================== AUDIO ====================
+  function ensureAudio() {
+    if (state.audioCtx) return state.audioCtx;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    state.audioCtx = new Ctx();
+    return state.audioCtx;
+  }
+
+  function startHeatSound() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    if (state.heatOsc) return;
+
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 60;
+
+    // Low-pass filter for warmth
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 300;
+
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 1.2);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    state.heatOsc = osc;
+    state.heatGain = gain;
+  }
+
+  function stopHeatSound() {
+    if (state.heatOsc) {
+      try {
+        const ctx = state.audioCtx;
+        if (ctx && state.heatGain) {
+          state.heatGain.gain.cancelScheduledValues(ctx.currentTime);
+          state.heatGain.gain.setValueAtTime(state.heatGain.gain.value, ctx.currentTime);
+          state.heatGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
+        }
+        state.heatOsc.stop(ctx ? ctx.currentTime + 0.15 : 0);
+      } catch(e) {}
+      state.heatOsc = null;
+      state.heatGain = null;
+    }
+  }
+
+  function playCrackSound() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // Noise burst for crack
+    const bufferSize = ctx.sampleRate * 0.15;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      // Decaying noise with high-frequency emphasis
+      const decay = Math.pow(1 - i / bufferSize, 2.5);
+      data[i] = (Math.random() * 2 - 1) * decay * 0.4;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 800;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start();
+
+    // Also a low thump
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+    oscGain.gain.setValueAtTime(0.25, ctx.currentTime);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.15);
+  }
+
+  // ==================== DUST PARTICLES ====================
+  function initDust() {
+    const canvas = el.dustCanvas;
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let w = 0, h = 0;
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Create particles
+    const count = 40;
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        size: Math.random() * 2 + 0.5,
+        speedY: -(Math.random() * 0.3 + 0.1),
+        speedX: (Math.random() - 0.5) * 0.15,
+        opacity: Math.random() * 0.4 + 0.1,
+        drift: Math.random() * Math.PI * 2
+      });
+    }
+
+    function draw() {
+      if (!state.isVisible || state.reducedMotion) {
+        state.dustRAFId = requestAnimationFrame(draw);
+        return;
+      }
+      ctx.clearRect(0, 0, w, h);
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.drift += 0.005;
+        p.x += p.speedX + Math.sin(p.drift) * 0.2;
+        p.y += p.speedY;
+
+        if (p.y < -10) {
+          p.y = h + 10;
+          p.x = Math.random() * w;
+        }
+        if (p.x < -10) p.x = w + 10;
+        if (p.x > w + 10) p.x = -10;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 230, 208, ' + p.opacity + ')';
+        ctx.fill();
+      }
+
+      state.dustRAFId = requestAnimationFrame(draw);
+    }
+
+    state.dustRAFId = requestAnimationFrame(draw);
+  }
+
+  // ==================== NEAR DRILL DETECTION ====================
+  function checkNearDrill() {
+    const o = ORACLES[state.currentOracle];
+    const svg = el.boneSvg;
+    const svgRect = svg.getBoundingClientRect();
+    const scaleX = 400 / svgRect.width;
+    const scaleY = 400 / svgRect.height;
+
+    let nearest = null;
+    let nearestDist = Infinity;
+
+    for (let i = 0; i < o.drills.length; i++) {
+      const d = o.drills[i];
+      const dx = state.mouseX - (svgRect.left + d.x / scaleX);
+      const dy = state.mouseY - (svgRect.top + d.y / scaleY);
+      const distance = Math.sqrt(dx*dx + dy*dy);
+      if (distance < 60 && distance < nearestDist) {
+        nearest = i;
+        nearestDist = distance;
+      }
+    }
+
+    // Update halo for main drill
+    const halos = el.drillLayer.querySelectorAll('.drill-halo');
+    const mainIdx = o.drills.findIndex(function(d) { return d.isMain; });
+
+    if (nearest === mainIdx && !state.isCracked) {
+      el.cursor.classList.add('near');
+      if (halos[mainIdx]) halos[mainIdx].classList.add('near');
+      state.nearDrill = mainIdx;
+    } else {
+      el.cursor.classList.remove('near');
+      if (halos[mainIdx]) halos[mainIdx].classList.remove('near');
+      state.nearDrill = null;
+    }
+  }
+
+  // ==================== INTERACTION ====================
+  function onPointerMove(e) {
+    const x = e.clientX;
+    const y = e.clientY;
+    moveCursor(x, y);
+    checkNearDrill();
+  }
+
+  function onPointerDown(e) {
+    if (!state.opened) return;
+    if (state.nearDrill !== null && !state.isCracked) {
+      startHeating();
+    }
+  }
+
+  function onPointerUp() {
+    if (state.isHeating) {
+      stopHeating();
+    }
+  }
+
+  // ==================== VISIBILITY ====================
+  function onVisibilityChange() {
+    state.isVisible = !document.hidden;
+    if (document.hidden) {
+      // Pause heat
+      if (state.isHeating) {
+        stopHeatSound();
+      }
+    } else {
+      if (state.isHeating) {
+        state.lastHeatTime = performance.now();
+        startHeatSound();
+      }
+    }
+  }
+
+  // ==================== OPENING ====================
+  function openStage() {
+    if (state.opened) return;
+    state.opened = true;
+    el.opening.classList.add('opened');
+    updateStep('drill');
+
+    // Resume audio
+    ensureAudio();
+
+    setTimeout(function() {
+      el.opening.style.display = 'none';
+    }, 1400);
+  }
+
+  // ==================== COMPLETION ====================
+  function showCompletion() {
+    el.completion.classList.add('show');
+  }
+
+  function hideCompletion() {
+    el.completion.classList.remove('show');
+  }
+
+  // ==================== INIT ====================
+  function init() {
+    initRefs();
+    state.reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Render initial
+    renderDrills();
+    renderCrackPaths();
+    renderBottomIndex();
+
+    // Dust
+    initDust();
+
+    // Position cursor initially at center
+    moveCursor(window.innerWidth / 2, window.innerHeight / 2);
+
+    // Events
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointercancel', onPointerUp);
+
+    // Touch support
+    document.addEventListener('touchmove', function(e) {
+      if (e.touches[0]) {
+        moveCursor(e.touches[0].clientX, e.touches[0].clientY);
+        checkNearDrill();
+      }
+    }, { passive: true });
+    document.addEventListener('touchstart', function(e) {
+      if (e.touches[0]) {
+        moveCursor(e.touches[0].clientX, e.touches[0].clientY);
+        checkNearDrill();
+      }
+    }, { passive: true });
+
+    // Visibility
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // Opening
+    el.enterBtn.addEventListener('click', openStage);
+    el.enterBtn.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+
+    // Completion
+    el.completionClose.addEventListener('click', hideCompletion);
+
+    // Cleanup on unload
+    window.addEventListener('beforeunload', function() {
+      if (state.heatRAFId) cancelAnimationFrame(state.heatRAFId);
+      if (state.dustRAFId) cancelAnimationFrame(state.dustRAFId);
+      if (state.audioCtx) {
+        try { state.audioCtx.close(); } catch(e) {}
+      }
+    });
+
+    // Handle resize for heat glow position
+    window.addEventListener('resize', function() {
+      if (state.isHeating) updateHeatGlow();
+    });
+  }
+
+  // Run when DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>

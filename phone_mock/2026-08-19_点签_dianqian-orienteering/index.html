@@ -1,0 +1,2975 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>点签 DianQian - 定向越野训练伴侣</title>
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     IOF 5-color map palette + compass red + punch card cream
+     ============================================================ */
+  :root {
+    /* IOF map colors */
+    --map-white: #FFFFFF;       /* 可跑树林 / open forest */
+    --map-green: #7FB069;       /* 植被难通行 / slow vegetation */
+    --map-green-dark: #5B8C4A;  /* 最难通行 / very slow vegetation */
+    --map-yellow: #F5D97E;      /* 空旷地 / open land */
+    --map-brown: #B5793B;       /* 等高线 / contours */
+    --map-blue: #4A7FA5;        /* 水系 / water */
+    --map-black: #2B2B2B;       /* 岩石/人造物 / rock & man-made */
+    --map-magenta: #B34A8C;     /* 检查点 / control (IOF std) */
+
+    /* App semantic colors */
+    --compass-red: #D43D2A;     /* 指北针红 / action accent */
+    --punch-card: #FAF6ED;      /* 打卡纸 / punch card cream */
+    --ink: #2B2B2B;             /* 墨色 / ink */
+    --ink-60: rgba(43,43,43,.6);
+    --ink-30: rgba(43,43,43,.3);
+    --ink-10: rgba(43,43,43,.1);
+    --bg-app: #F7F4EE;          /* app background - warm paper tone */
+    --fast-green: #4A8C5A;      /* fastest split */
+    --slow-red: #B5563B;        /* slowest split */
+    --safe-bottom: 34px;        /* home indicator space */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: #E8E4DB;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular numerals for all time displays */
+  .tabular { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+  /* ============================================================
+     DESKTOP SHOWCASE FRAME
+     ============================================================ */
+  .showcase {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 28px;
+    padding: 40px 20px;
+    background:
+      radial-gradient(ellipse at top, #F0ECE1 0%, #E0DBCF 100%);
+  }
+  .showcase-title {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .showcase-title h1 {
+    font-size: 22px; font-weight: 600; letter-spacing: 4px;
+    color: var(--ink);
+  }
+  .showcase-title p {
+    font-size: 13px; color: var(--ink-60); letter-spacing: 2px;
+  }
+
+  /* ============================================================
+     PHONE FRAME  (390 x 844 logical, with bezel)
+     ============================================================ */
+  .phone {
+    position: relative;
+    width: 430px; height: 884px;
+    border-radius: 52px;
+    background: #1a1a1a;
+    padding: 20px;
+    box-shadow:
+      0 40px 80px rgba(0,0,0,.25),
+      0 10px 30px rgba(0,0,0,.15),
+      inset 0 0 0 1.5px #2a2a2a;
+  }
+  .phone::before {
+    /* side buttons hint */
+    content: '';
+    position: absolute;
+    left: -3px; top: 180px; width: 3px; height: 36px;
+    background: #1a1a1a; border-radius: 2px 0 0 2px;
+  }
+  .phone-screen {
+    position: relative;
+    width: 390px; height: 844px;
+    border-radius: 42px;
+    overflow: hidden;
+    background: var(--bg-app);
+    box-shadow: inset 0 0 0 0.5px rgba(0,0,0,.1);
+  }
+  /* Dynamic island / notch - using dynamic island style for modern look */
+  .dynamic-island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 34px; border-radius: 20px;
+    background: #000; z-index: 100;
+    pointer-events: none;
+  }
+
+  /* Status bar */
+  .status-bar {
+    position: absolute; top: 0; left: 0; right: 0; height: 54px;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 32px 0;
+    font-size: 15px; font-weight: 600;
+    z-index: 50;
+    pointer-events: none;
+    color: var(--ink);
+  }
+  .status-bar.light { color: #fff; }
+  .status-right { display: flex; align-items: center; gap: 6px; }
+  .status-bar svg { display: block; }
+
+  /* Home indicator */
+  .home-indicator {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    width: 134px; height: 5px; border-radius: 3px;
+    background: var(--ink);
+    z-index: 50;
+    pointer-events: none;
+  }
+  .home-indicator.light { background: #fff; }
+
+  /* ============================================================
+     SCREEN STACK
+     ============================================================ */
+  .screen-stack {
+    position: absolute; inset: 0;
+    overflow: hidden;
+  }
+  .screen {
+    position: absolute; inset: 0;
+    background: var(--bg-app);
+    transform: translateX(100%);
+    transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
+    z-index: 1;
+  }
+  .screen.active { transform: translateX(0); z-index: 2; }
+  .screen.behind { transform: translateX(-30%); z-index: 1; }
+  .screen.root { transform: translateX(0); z-index: 1; }
+
+  /* Screen header / nav bar */
+  .nav-bar {
+    position: absolute; top: 54px; left: 0; right: 0; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 16px;
+    z-index: 10;
+  }
+  .nav-title {
+    font-size: 17px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .nav-back {
+    position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: flex-start;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .nav-right {
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    font-size: 15px;
+    cursor: pointer;
+    color: var(--compass-red);
+  }
+
+  .screen-content {
+    position: absolute; inset: 0;
+    padding-top: 54px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .screen-content.with-nav { padding-top: 98px; }
+  .screen-content.with-toolbar { padding-bottom: calc(83px + var(--safe-bottom)); }
+  .screen-content.with-bottom-action { padding-bottom: calc(100px + var(--safe-bottom)); }
+
+  /* ============================================================
+     BOTTOM TOOLBAR (3 entries - map / history / profile)
+     ============================================================ */
+  .toolbar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: calc(83px + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: rgba(247,244,238,.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 0.5px solid var(--ink-10);
+    display: flex;
+    z-index: 20;
+  }
+  .toolbar-item {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--ink-60);
+    cursor: pointer;
+    transition: color 200ms ease;
+  }
+  .toolbar-item.active { color: var(--compass-red); }
+  .toolbar-item svg { width: 24px; height: 24px; }
+
+  /* ============================================================
+     HOME SCREEN - Map
+     ============================================================ */
+  .map-wrap {
+    position: absolute; top: 0; left: 0; right: 0;
+    bottom: calc(170px + var(--safe-bottom));
+    overflow: hidden;
+    background: var(--map-white);
+  }
+  .map-svg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: block;
+  }
+  .map-overlay {
+    position: absolute; top: 62px; left: 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 5;
+  }
+  .map-title-badge {
+    background: rgba(255,255,255,.85);
+    backdrop-filter: blur(8px);
+    padding: 8px 12px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  .map-title-badge .t1 { font-size: 14px; font-weight: 600; }
+  .map-title-badge .t2 { font-size: 11px; color: var(--ink-60); margin-top: 2px; }
+
+  .map-compass {
+    position: absolute; top: 62px; right: 16px;
+    width: 44px; height: 44px;
+    background: rgba(255,255,255,.85);
+    backdrop-filter: blur(8px);
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+  }
+  .compass-needle {
+    width: 4px; height: 28px;
+    position: relative;
+    transition: transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .compass-needle::before, .compass-needle::after {
+    content: '';
+    position: absolute; left: 0;
+    width: 0; height: 0;
+    border-left: 2px solid transparent;
+    border-right: 2px solid transparent;
+  }
+  .compass-needle::before {
+    top: 0;
+    border-bottom: 14px solid var(--compass-red);
+  }
+  .compass-needle::after {
+    bottom: 0;
+    border-bottom: 14px solid var(--ink);
+    transform: rotate(180deg);
+  }
+  .compass-needle.pulse {
+    animation: compassPulse 600ms ease;
+  }
+  @keyframes compassPulse {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    30% { transform: rotate(-8deg) scale(1.15); }
+    60% { transform: rotate(5deg) scale(1.1); }
+  }
+
+  .home-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 20px 24px calc(24px + var(--safe-bottom));
+    background: linear-gradient(to top, var(--bg-app) 60%, transparent);
+    z-index: 5;
+  }
+  .home-info-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+    padding: 0 4px;
+  }
+  .home-info-left {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .home-info-left .label {
+    font-size: 12px; color: var(--ink-60);
+  }
+  .home-info-left .value {
+    font-size: 17px; font-weight: 600;
+  }
+  .home-info-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  }
+  .home-info-right .label {
+    font-size: 12px; color: var(--ink-60);
+  }
+  .home-info-right .value {
+    font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .btn-primary {
+    width: 100%; height: 56px;
+    background: var(--compass-red);
+    color: #fff;
+    border: none; border-radius: 16px;
+    font-size: 17px; font-weight: 600;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(212, 61, 42, .3);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+    font-family: inherit;
+  }
+  .btn-primary:active {
+    transform: scale(0.97);
+    box-shadow: 0 3px 10px rgba(212, 61, 42, .25);
+  }
+
+  .home-secondary-row {
+    display: flex; gap: 10px;
+    margin-top: 12px;
+  }
+  .btn-secondary {
+    flex: 1;
+    height: 44px;
+    background: #fff;
+    color: var(--ink);
+    border: 0.5px solid var(--ink-10);
+    border-radius: 12px;
+    font-size: 14px; font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 150ms ease;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-secondary:active { background: var(--ink-10); }
+
+  /* ============================================================
+     HALF-SHEET (control descriptions)
+     ============================================================ */
+  .sheet-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0);
+    z-index: 30;
+    pointer-events: none;
+    transition: background 300ms ease;
+  }
+  .sheet-backdrop.show {
+    background: rgba(0,0,0,.4);
+    pointer-events: auto;
+  }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    max-height: 75%;
+    background: var(--punch-card);
+    border-radius: 20px 20px 0 0;
+    z-index: 31;
+    transform: translateY(100%);
+    transition: transform 400ms cubic-bezier(0.32, 0.72, 0, 1);
+    display: flex; flex-direction: column;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.12);
+  }
+  .sheet.show {
+    transform: translateY(0);
+  }
+  .sheet-grabber {
+    width: 36px; height: 5px; border-radius: 3px;
+    background: var(--ink-30);
+    margin: 8px auto;
+    cursor: grab;
+  }
+  .sheet-header {
+    padding: 4px 20px 14px;
+    text-align: center;
+    border-bottom: 0.5px solid var(--ink-10);
+  }
+  .sheet-header h3 {
+    font-size: 17px; font-weight: 600;
+  }
+  .sheet-header p {
+    font-size: 12px; color: var(--ink-60);
+    margin-top: 3px;
+  }
+  .sheet-body {
+    overflow-y: auto;
+    padding: 0 20px 20px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Control description table */
+  .ctrl-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin-top: 8px;
+  }
+  .ctrl-table th {
+    font-size: 11px; font-weight: 500; color: var(--ink-60);
+    text-align: left;
+    padding: 8px 4px;
+    border-bottom: 0.5px solid var(--ink-10);
+    letter-spacing: 0.5px;
+  }
+  .ctrl-table td {
+    padding: 10px 4px;
+    border-bottom: 0.5px solid var(--ink-10);
+    vertical-align: middle;
+  }
+  .ctrl-code {
+    font-weight: 700; font-size: 15px;
+    color: var(--map-magenta);
+    font-variant-numeric: tabular-nums;
+    width: 44px;
+  }
+  .ctrl-idx {
+    width: 28px;
+    font-size: 13px;
+    color: var(--ink-60);
+    font-variant-numeric: tabular-nums;
+  }
+  .ctrl-desc {
+    font-size: 14px;
+  }
+
+  /* ============================================================
+     PUNCH FLOW SCREEN
+     ============================================================ */
+  .punch-top-bar {
+    position: absolute; top: 54px; left: 0; right: 0;
+    height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+    background: rgba(247,244,238,.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 0.5px solid var(--ink-10);
+    z-index: 5;
+  }
+  .punch-progress {
+    display: flex; align-items: baseline; gap: 4px;
+  }
+  .punch-progress .cur {
+    font-size: 22px; font-weight: 700; color: var(--compass-red);
+    font-variant-numeric: tabular-nums;
+  }
+  .punch-progress .total {
+    font-size: 14px; color: var(--ink-60);
+    font-variant-numeric: tabular-nums;
+  }
+  .punch-timer {
+    font-size: 20px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    letter-spacing: 1px;
+  }
+  .punch-target {
+    font-size: 13px;
+    color: var(--ink-60);
+  }
+  .punch-target strong {
+    color: var(--map-magenta);
+    font-size: 15px;
+  }
+
+  .punch-map-wrap {
+    position: absolute;
+    top: 106px; bottom: calc(240px + var(--safe-bottom));
+    left: 0; right: 0;
+    overflow: hidden;
+    background: var(--map-white);
+  }
+
+  /* Current target pulse ring on map */
+  .target-pulse {
+    position: absolute;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 4;
+  }
+  .target-pulse::before {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 3px solid var(--compass-red);
+    animation: pulseRing 1.8s ease-out infinite;
+  }
+  @keyframes pulseRing {
+    0% { transform: scale(0.4); opacity: 0.9; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  .punch-strip-preview {
+    position: absolute;
+    bottom: calc(140px + var(--safe-bottom));
+    left: 16px; right: 16px;
+    height: 52px;
+    background: var(--punch-card);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    display: flex;
+    padding: 6px 8px;
+    gap: 4px;
+    z-index: 4;
+  }
+  .punch-strip-cell {
+    flex: 1;
+    border: 1px dashed var(--ink-20);
+    border-radius: 4px;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    --ink-20: rgba(43,43,43,.2);
+    transition: all 200ms ease;
+  }
+  .punch-strip-cell.done {
+    border-style: solid;
+    border-color: var(--ink-60);
+    background: rgba(255,255,255,.3);
+  }
+  .punch-strip-cell.current {
+    border-color: var(--compass-red);
+    box-shadow: 0 0 0 2px rgba(212,61,42,.15);
+  }
+  .punch-strip-cell .cell-code {
+    font-size: 9px;
+    color: var(--ink-60);
+    position: absolute;
+    top: 2px; left: 3px;
+  }
+  .pinhole-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 3px);
+    grid-template-rows: repeat(4, 3px);
+    gap: 2px;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .punch-strip-cell.done .pinhole-grid {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .pinhole {
+    width: 3px; height: 3px;
+    background: var(--ink);
+    border-radius: 50%;
+  }
+  /* different hole patterns per control code */
+  .pinhole.pattern-31 .ph-1,.pinhole.pattern-31 .ph-3,.pinhole.pattern-31 .ph-5,.pinhole.pattern-31 .ph-7,.pinhole.pattern-31 .ph-9,.pinhole.pattern-31 .ph-11 { display: none; }
+  .pinhole.pattern-32 .ph-2,.pinhole.pattern-32 .ph-4,.pinhole.pattern-32 .ph-6,.pinhole.pattern-32 .ph-8,.pinhole.pattern-32 .ph-10,.pinhole.pattern-32 .ph-12 { display: none; }
+  .pinhole.pattern-33 .ph-1,.pinhole.pattern-33 .ph-5,.pinhole.pattern-33 .ph-9 { display: none; }
+  .pinhole.pattern-34 .ph-2,.pinhole.pattern-34 .ph-6,.pinhole.pattern-34 .ph-10 { display: none; }
+  .pinhole.pattern-35 .ph-3,.pinhole.pattern-35 .ph-7,.pinhole.pattern-35 .ph-11 { display: none; }
+  .pinhole.pattern-36 .ph-1,.pinhole.pattern-36 .ph-4,.pinhole.pattern-36 .ph-7,.pinhole.pattern-36 .ph-10 { display: none; }
+  .pinhole.pattern-37 .ph-2,.pinhole.pattern-37 .ph-5,.pinhole.pattern-37 .ph-8,.pinhole.pattern-37 .ph-11 { display: none; }
+  .pinhole.pattern-38 .ph-3,.pinhole.pattern-38 .ph-6,.pinhole.pattern-38 .ph-9,.pinhole.pattern-38 .ph-12 { display: none; }
+
+  .punch-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 12px 24px calc(20px + var(--safe-bottom));
+    background: var(--bg-app);
+    z-index: 4;
+    border-top: 0.5px solid var(--ink-10);
+  }
+  .btn-punch {
+    width: 100%;
+    height: 84px;
+    background: var(--compass-red);
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 12px;
+    text-indent: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    position: relative;
+    box-shadow: 0 8px 24px rgba(212,61,42,.3);
+    transition: transform 100ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 100ms ease;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .btn-punch:active, .btn-punch.pressing {
+    transform: scale(0.94) translateY(4px);
+    box-shadow: 0 3px 10px rgba(212,61,42,.25);
+  }
+  .btn-punch-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 3px;
+    opacity: .7;
+    margin-top: 4px;
+  }
+
+  .punch-flash {
+    position: absolute; inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .punch-flash.active {
+    animation: flashWhite 200ms ease-out;
+  }
+  @keyframes flashWhite {
+    0% { opacity: 0; }
+    20% { opacity: 0.6; }
+    100% { opacity: 0; }
+  }
+
+  .punch-split-preview {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--ink-60);
+    padding: 0 4px;
+  }
+  .punch-split-preview .split-time {
+    color: var(--ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================
+     RESULTS SCREEN
+     ============================================================ */
+  .results-wrap {
+    padding: 20px 20px calc(30px + var(--safe-bottom));
+  }
+  .punch-card {
+    background: var(--punch-card);
+    border-radius: 16px;
+    padding: 24px 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.06), 0 1px 4px rgba(0,0,0,.04);
+    position: relative;
+    /* paper grain subtle effect */
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.01) 2px, rgba(0,0,0,.01) 3px);
+  }
+  .punch-card::before, .punch-card::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 10px;
+    background-image: radial-gradient(circle, var(--bg-app) 4px, transparent 4.5px);
+    background-size: 16px 10px;
+  }
+  .punch-card::before { top: -5px; }
+  .punch-card::after { bottom: -5px; background-position: 8px 0; }
+
+  .pc-header {
+    text-align: center;
+    padding-bottom: 16px;
+    border-bottom: 1.5px dashed var(--ink-30);
+    margin-bottom: 16px;
+  }
+  .pc-title {
+    font-size: 14px;
+    letter-spacing: 4px;
+    color: var(--ink-60);
+    margin-bottom: 6px;
+  }
+  .pc-total {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .pc-sub {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--ink-60);
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+  }
+  .pc-sub strong {
+    color: var(--ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .pc-meta {
+    font-size: 12px;
+    color: var(--ink-60);
+    margin-top: 6px;
+  }
+
+  .pc-splits {
+    display: flex; flex-direction: column;
+    gap: 8px;
+  }
+  .split-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  .split-code {
+    width: 28px;
+    font-weight: 600;
+    color: var(--map-magenta);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+  .split-bar-wrap {
+    flex: 1;
+    height: 20px;
+    background: rgba(43,43,43,.06);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .split-bar {
+    height: 100%;
+    width: 0;
+    border-radius: 4px;
+    background: var(--ink-60);
+    transition: width 800ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .split-bar.fast { background: var(--fast-green); }
+  .split-bar.slow { background: var(--slow-red); }
+  .split-time-val {
+    width: 50px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .results-actions {
+    display: flex; gap: 12px;
+    margin-top: 24px;
+  }
+  .btn-outline {
+    flex: 1;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid var(--ink-30);
+    background: transparent;
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-outline:active { background: var(--ink-10); }
+  .btn-solid {
+    flex: 1;
+    height: 48px;
+    border-radius: 14px;
+    border: none;
+    background: var(--ink);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-solid:active { opacity: .85; }
+
+  .results-legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 16px;
+    font-size: 11px;
+    color: var(--ink-60);
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* ============================================================
+     HISTORY SCREEN
+     ============================================================ */
+  .history-section-title {
+    font-size: 13px;
+    color: var(--ink-60);
+    padding: 16px 20px 8px;
+    letter-spacing: 1px;
+  }
+  .history-list {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .history-card {
+    background: var(--punch-card);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 200ms ease;
+  }
+  .history-card:active { transform: scale(0.98); }
+  .hc-row1 {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .hc-date {
+    font-size: 15px; font-weight: 600;
+  }
+  .hc-total {
+    font-size: 18px; font-weight: 700;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .hc-row2 {
+    display: flex; justify-content: space-between;
+    font-size: 12px;
+    color: var(--ink-60);
+  }
+  .hc-mini-strip {
+    display: flex;
+    gap: 3px;
+    margin-top: 8px;
+  }
+  .hc-mini-cell {
+    flex: 1;
+    height: 14px;
+    background: rgba(43,43,43,.1);
+    border-radius: 2px;
+  }
+  .hc-mini-cell.fast { background: var(--fast-green); }
+  .hc-mini-cell.slow { background: var(--slow-red); }
+
+  .history-swipe-wrap {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+  .history-delete-bg {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 80px;
+    background: var(--compass-red);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .history-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--ink-60);
+    font-size: 14px;
+  }
+  .history-empty .big {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: .2;
+  }
+
+  /* ============================================================
+     PROFILE SCREEN
+     ============================================================ */
+  .profile-header {
+    padding: 30px 24px 20px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .profile-avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--map-brown), var(--map-yellow));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .profile-info h2 {
+    font-size: 18px; font-weight: 600;
+  }
+  .profile-info p {
+    font-size: 13px; color: var(--ink-60);
+    margin-top: 2px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 16px;
+  }
+  .stat-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .stat-card .stat-num {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .stat-card .stat-label {
+    font-size: 12px;
+    color: var(--ink-60);
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+  .stat-card.full { grid-column: 1 / -1; }
+
+  .heatmap-wrap {
+    margin-top: 12px;
+  }
+  .heatmap {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+  }
+  .heatmap-cell {
+    aspect-ratio: 1;
+    background: var(--ink-10);
+    border-radius: 2px;
+    transition: background 200ms ease;
+  }
+  .heatmap-cell.l1 { background: rgba(74,140,90,.3); }
+  .heatmap-cell.l2 { background: rgba(74,140,90,.55); }
+  .heatmap-cell.l3 { background: rgba(74,140,90,.8); }
+  .heatmap-cell.l4 { background: var(--fast-green); }
+
+  .profile-list {
+    margin: 20px 16px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .profile-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 0.5px solid var(--ink-10);
+    cursor: pointer;
+    font-size: 15px;
+  }
+  .profile-item:last-child { border-bottom: none; }
+  .profile-item:active { background: var(--ink-10); }
+  .profile-item .arrow {
+    margin-left: auto;
+    color: var(--ink-30);
+    font-size: 14px;
+  }
+  .profile-item-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 14px;
+  }
+
+  /* ============================================================
+     DESIGN SPEC SCREEN
+     ============================================================ */
+  .spec-section {
+    margin: 20px 16px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .spec-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .swatch {
+    display: flex; flex-direction: column;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 0.5px solid var(--ink-10);
+  }
+  .swatch-color {
+    height: 48px;
+  }
+  .swatch-info {
+    padding: 6px 8px;
+    background: #fff;
+  }
+  .swatch-name {
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .swatch-hex {
+    font-size: 10px;
+    color: var(--ink-60);
+    font-family: "SF Mono", "Menlo", monospace;
+    margin-top: 2px;
+  }
+
+  .font-demo {
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 0.5px solid var(--ink-10);
+  }
+  .font-demo:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .font-demo-label {
+    font-size: 12px;
+    color: var(--ink-60);
+    margin-bottom: 6px;
+  }
+  .font-demo-ui {
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .font-demo-mono {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .anim-list {
+    display: flex; flex-direction: column;
+    gap: 10px;
+  }
+  .anim-item {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px;
+  }
+  .anim-preview {
+    width: 48px; height: 36px;
+    border-radius: 8px;
+    background: var(--punch-card);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .anim-dot {
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 50%;
+  }
+  .anim-item.punch .anim-dot {
+    animation: specPunch 1.5s ease-in-out infinite;
+  }
+  @keyframes specPunch {
+    0%, 100% { transform: translateY(-8px) scale(1); }
+    40% { transform: translateY(4px) scale(1.2); }
+    60% { transform: translateY(4px) scale(0.8); }
+  }
+  .anim-item.grow .anim-bar {
+    position: absolute;
+    left: 4px;
+    height: 6px;
+    background: var(--fast-green);
+    border-radius: 3px;
+    animation: specGrow 2s ease-out infinite;
+  }
+  @keyframes specGrow {
+    0% { width: 0; }
+    50%, 100% { width: 36px; }
+  }
+  .anim-item.slide .anim-slide-box {
+    position: absolute;
+    top: 4px; bottom: 4px;
+    width: 20px;
+    background: var(--compass-red);
+    border-radius: 4px;
+    animation: specSlide 2s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+  }
+  @keyframes specSlide {
+    0%, 30% { transform: translateX(-28px); }
+    50%, 80% { transform: translateX(0); }
+    100% { transform: translateX(-28px); }
+  }
+  .anim-item.spring .anim-spring {
+    width: 20px; height: 20px;
+    background: var(--map-brown);
+    border-radius: 50%;
+    animation: specSpring 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  }
+  @keyframes specSpring {
+    0%, 40%, 100% { transform: scale(0.6); }
+    55% { transform: scale(1.2); }
+    70% { transform: scale(0.95); }
+  }
+  .anim-desc {
+    flex: 1;
+  }
+  .anim-desc strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  .anim-desc span {
+    font-size: 11px;
+    color: var(--ink-60);
+  }
+
+  /* ============================================================
+     API DOC SCREEN
+     ============================================================ */
+  .api-block {
+    margin: 20px 16px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .api-header {
+    padding: 14px 16px;
+    border-bottom: 0.5px solid var(--ink-10);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .api-method {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+  }
+  .api-method.get { background: #E5F0E5; color: #4A8C5A; }
+  .api-method.post { background: #F0E5E5; color: #B5563B; }
+  .api-path {
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .api-body {
+    padding: 12px 16px;
+  }
+  .api-body h4 {
+    font-size: 12px;
+    color: var(--ink-60);
+    margin-bottom: 6px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    margin-bottom: 12px;
+  }
+  pre:last-child { margin-bottom: 0; }
+  .json-key { color: #9cdcfe; }
+  .json-str { color: #ce9178; }
+  .json-num { color: #b5cea8; }
+  .json-bool { color: #569cd6; }
+
+  /* ============================================================
+     REDUCED MOTION
+     ============================================================ */
+  @media (prefers-reduced-motion: reduce) {
+    .screen, .sheet, .sheet-backdrop,
+    .split-bar, .pinhole-grid, .btn-primary, .btn-punch,
+    .target-pulse::before, .compass-needle, .punch-flash.active,
+    .toolbar-item, .history-card,
+    .anim-dot, .anim-bar, .anim-slide-box, .anim-spring {
+      animation: none !important;
+      transition: none !important;
+    }
+    .screen.active, .screen.behind, .screen.root { transform: translateX(0) !important; }
+    .sheet.show { transform: translateY(0) !important; }
+    .split-bar { width: 100% !important; }
+    .pinhole-grid { opacity: 1; transform: scale(1); }
+  }
+
+  /* Map hand-drawn feel helpers */
+  .hand-outline {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+</style>
+</head>
+<body>
+
+<div class="showcase">
+  <div class="showcase-title">
+    <h1>点签 · DianQian</h1>
+    <p>定向越野训练伴侣 · iOS 原生 App Mock</p>
+  </div>
+
+  <div class="phone">
+    <div class="phone-screen" id="phoneScreen">
+      <div class="dynamic-island"></div>
+      <div class="status-bar" id="statusBar">
+        <span>9:41</span>
+        <span class="status-right">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor">
+            <rect x="0" y="8" width="3" height="4" rx="0.5"/>
+            <rect x="5" y="5" width="3" height="7" rx="0.5"/>
+            <rect x="10" y="2" width="3" height="10" rx="0.5"/>
+            <rect x="15" y="0" width="3" height="12" rx="0.5"/>
+          </svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
+            <path d="M8 2.5c2 0 3.9.7 5.4 2l1-1A9.5 9.5 0 008 1a9.5 9.5 0 00-6.4 2.5l1 1C4.1 3.2 6 2.5 8 2.5zM8 5.5c1.2 0 2.3.4 3.2 1.2l1-1A7 7 0 008 4a7 7 0 00-4.2 1.7l1 1c.9-.8 2-1.2 3.2-1.2zM8 8.5c.5 0 1 .2 1.4.5L10.8 8a4 4 0 00-5.6 0l1.4 1c.4-.3.9-.5 1.4-.5z"/>
+          </svg>
+          <svg width="26" height="12" viewBox="0 0 26 12" fill="none" stroke="currentColor" stroke-width="1">
+            <rect x="0.5" y="0.5" width="22" height="11" rx="2.5"/>
+            <rect x="2" y="2" width="16" height="8" rx="1" fill="currentColor"/>
+            <rect x="23.5" y="4" width="2" height="4" rx="1" fill="currentColor"/>
+          </svg>
+        </span>
+      </div>
+
+      <div class="screen-stack" id="screenStack">
+        <!-- Screen 0: Home / Map (root) -->
+        <div class="screen root" id="screen-home" data-screen="home">
+          <div class="map-wrap">
+            <!-- SVG orienteering map inline at top of body via JS to keep file readable -->
+            <svg class="map-svg" id="homeMap" viewBox="0 0 390 500" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <filter id="mapRough" x="-5%" y="-5%" width="110%" height="110%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"/>
+                  <feDisplacementMap in="SourceGraphic" scale="0.8"/>
+                </filter>
+              </defs>
+
+              <!-- Base: white (runable forest) -->
+              <rect width="390" height="500" fill="#FFFFFF"/>
+
+              <!-- Yellow open land patches (north & south clearings) -->
+              <path d="M20,40 Q100,20 180,50 Q260,25 320,60 Q370,50 380,90 L380,130 Q300,140 230,125 Q150,150 80,130 Q30,120 20,90 Z"
+                    fill="#F5D97E" opacity="0.9"/>
+              <path d="M40,400 Q120,380 200,410 Q280,390 350,420 L360,470 Q280,480 180,465 Q100,485 40,460 Z"
+                    fill="#F5D97E" opacity="0.9"/>
+
+              <!-- Green slow vegetation patches -->
+              <path d="M60,180 Q130,160 170,190 Q200,170 240,200 Q270,180 290,220 L290,270 Q240,280 190,260 Q140,280 90,260 Q50,250 60,220 Z"
+                    fill="#7FB069" opacity="0.85"/>
+              <!-- Dark green very slow vegetation -->
+              <path d="M100,200 Q140,190 165,210 Q180,230 170,250 Q140,260 110,245 Q90,230 100,200 Z"
+                    fill="#5B8C4A" opacity="0.9"/>
+
+              <!-- Brown contour lines (wavy curves) -->
+              <g stroke="#B5793B" stroke-width="0.8" fill="none" stroke-linecap="round" opacity="0.7">
+                <path d="M0,80 Q60,70 100,85 Q160,100 200,75 Q260,55 320,80 Q360,95 390,75"/>
+                <path d="M0,110 Q70,95 130,115 Q190,130 240,105 Q300,85 350,110 Q380,125 390,105"/>
+                <path d="M0,320 Q80,300 150,330 Q220,355 290,325 Q340,305 390,335"/>
+                <path d="M0,355 Q70,335 140,365 Q210,390 280,360 Q340,340 390,370"/>
+                <path d="M0,440 Q80,420 160,450 Q240,475 310,445 Q360,425 390,455"/>
+              </g>
+              <!-- Index contours (thicker) every 5th - just mark 2 -->
+              <g stroke="#B5793B" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.9">
+                <path d="M0,145 Q60,125 120,150 Q180,170 240,140 Q300,115 360,145 Q385,160 390,140"/>
+                <path d="M0,390 Q70,370 140,400 Q210,425 280,395 Q340,375 390,405"/>
+              </g>
+              <!-- Contour elevation labels -->
+              <text x="180" y="143" fill="#B5793B" font-size="9" font-weight="600" text-anchor="middle">50</text>
+              <text x="210" y="403" fill="#B5793B" font-size="9" font-weight="600" text-anchor="middle">40</text>
+
+              <!-- Blue water: stream + small lake -->
+              <!-- Stream winding down -->
+              <path d="M320,30 Q310,80 330,130 Q345,180 320,230 Q295,280 315,340 Q335,390 310,440"
+                    stroke="#4A7FA5" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.85"/>
+              <!-- Small lake -->
+              <ellipse cx="90" cy="340" rx="38" ry="22" fill="#4A7FA5" opacity="0.85"/>
+              <text x="90" y="344" fill="#fff" font-size="7" text-anchor="middle" opacity="0.7">小湖</text>
+
+              <!-- Black: rocks & man-made features -->
+              <!-- Paths / trails -->
+              <g stroke="#2B2B2B" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.9">
+                <!-- main trail -->
+                <path d="M40,50 L120,80 L180,60 L250,90 L290,130" stroke-dasharray="4,2"/>
+                <path d="M290,130 L260,180 L200,210 L150,190 L100,230 L60,270" stroke-dasharray="4,2"/>
+                <path d="M60,270 L80,330 L130,380 L180,420 L240,450 L310,430" stroke-dasharray="4,2"/>
+                <!-- side trails -->
+                <path d="M180,60 L160,110 L200,150" stroke-dasharray="3,2"/>
+                <path d="M200,210 L230,260 L280,290" stroke-dasharray="3,2"/>
+                <path d="M150,190 L130,250 L160,300" stroke-dasharray="3,2"/>
+                <path d="M130,380 L80,400" stroke-dasharray="3,2"/>
+              </g>
+
+              <!-- Bridge (over stream) -->
+              <rect x="312" y="285" width="18" height="8" fill="#2B2B2B" rx="1" opacity="0.9"/>
+              <text x="321" y="310" fill="#2B2B2B" font-size="7" text-anchor="middle">桥</text>
+
+              <!-- Large boulder -->
+              <ellipse cx="210" cy="260" rx="14" ry="10" fill="#2B2B2B" opacity="0.75"/>
+              <text x="210" y="280" fill="#2B2B2B" font-size="7" text-anchor="middle">大石</text>
+
+              <!-- Earth cliff -->
+              <path d="M250,320 L280,315 L290,330 L260,338 Z" fill="#2B2B2B" opacity="0.6"/>
+              <text x="270" y="350" fill="#2B2B2B" font-size="7" text-anchor="middle">土崖</text>
+
+              <!-- Small hill top -->
+              <circle cx="160" cy="100" r="3" fill="#2B2B2B" opacity="0.8"/>
+              <text x="160" y="115" fill="#2B2B2B" font-size="7" text-anchor="middle">小丘</text>
+
+              <!-- Clearing / forest gap -->
+              <ellipse cx="235" cy="165" rx="18" ry="12" fill="#FFFFFF" stroke="#2B2B2B" stroke-width="0.8" opacity="0.9"/>
+              <text x="235" y="168" fill="#2B2B2B" font-size="6" text-anchor="middle">林隙</text>
+
+              <!-- Magenta north lines (magnetic north) -->
+              <g stroke="#B34A8C" stroke-width="0.7" stroke-dasharray="6,3" opacity="0.6">
+                <line x1="20" y1="200" x2="20" y2="370"/>
+                <line x1="370" y1="60" x2="370" y2="210"/>
+              </g>
+              <!-- North arrow -->
+              <g transform="translate(355, 35)">
+                <polygon points="0,0 -6,14 0,10 6,14" fill="#B34A8C"/>
+                <text x="0" y="26" fill="#B34A8C" font-size="7" text-anchor="middle" font-weight="700">N</text>
+              </g>
+
+              <!-- Scale bar 1:10000 -->
+              <g transform="translate(20, 460)">
+                <line x1="0" y1="0" x2="100" y2="0" stroke="#2B2B2B" stroke-width="1.5"/>
+                <line x1="0" y1="-3" x2="0" y2="3" stroke="#2B2B2B" stroke-width="1.5"/>
+                <line x1="50" y1="-2" x2="50" y2="2" stroke="#2B2B2B" stroke-width="1"/>
+                <line x1="100" y1="-3" x2="100" y2="3" stroke="#2B2B2B" stroke-width="1.5"/>
+                <text x="0" y="-6" fill="#2B2B2B" font-size="8" font-weight="600">0</text>
+                <text x="50" y="-6" fill="#2B2B2B" font-size="8" text-anchor="middle">500</text>
+                <text x="100" y="-6" fill="#2B2B2B" font-size="8" text-anchor="end">1000m</text>
+                <text x="0" y="14" fill="#2B2B2B" font-size="7" font-weight="500">比例尺 1:10 000 · 等高距 5m</text>
+              </g>
+
+              <!-- Start triangle (IOF: triangle = start) -->
+              <g transform="translate(50, 68)">
+                <polygon points="0,-9 8,6 -8,6" fill="none" stroke="#B34A8C" stroke-width="2.5"/>
+                <polygon points="0,-9 8,6 -8,6" fill="#B34A8C" opacity="0.3"/>
+                <text x="0" y="-14" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">S</text>
+              </g>
+
+              <!-- Finish double circle -->
+              <g transform="translate(320, 460)">
+                <circle r="9" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                <circle r="5" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                <text x="0" y="-14" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">F</text>
+              </g>
+
+              <!-- Control points 31-38 -->
+              <g id="homeControls">
+                <g class="ctrl-pt" transform="translate(110, 105)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">31</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(170, 170)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">32</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(235, 220)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">33</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(150, 270)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">34</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(90, 335)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">35</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(210, 320)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">36</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(285, 370)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">37</text>
+                </g>
+                <g class="ctrl-pt" transform="translate(190, 420)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">38</text>
+                </g>
+              </g>
+
+              <!-- Route line preview (dashed magenta) -->
+              <path d="M50,68 L110,105 L170,170 L235,220 L150,270 L90,335 L210,320 L285,370 L190,420 L320,460"
+                    fill="none" stroke="#B34A8C" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.5"/>
+
+              <!-- Map title area -->
+              <g transform="translate(20, 28)">
+                <text x="0" y="0" fill="#2B2B2B" font-size="13" font-weight="700">奥森北园 · 短距离训练</text>
+                <text x="0" y="16" fill="#2B2B2B" font-size="9" opacity="0.6">北京奥林匹克森林公园</text>
+              </g>
+            </svg>
+
+            <div class="map-overlay">
+              <div class="map-title-badge">
+                <div class="t1">本周训练</div>
+                <div class="t2">8 个检查点 · 约 2.4 公里</div>
+              </div>
+            </div>
+            <div class="map-compass">
+              <div class="compass-needle" id="homeCompass"></div>
+            </div>
+          </div>
+
+          <div class="home-bottom">
+            <div class="home-info-row">
+              <div class="home-info-left">
+                <span class="label">场地</span>
+                <span class="value">奥森北园</span>
+              </div>
+              <div class="home-info-right">
+                <span class="label">难度</span>
+                <span class="value">中等 · 短距离</span>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="startTraining()">
+              开 始 训 练
+            </button>
+            <div class="home-secondary-row">
+              <button class="btn-secondary" onclick="openSheet()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                检查点说明
+              </button>
+              <button class="btn-secondary" onclick="goToScreen('history')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+                历史成绩
+              </button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="toolbar-item active" onclick="goToScreen('home')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="3,11 12,3 21,11 19,21 5,21"/><path d="M9 21V14h6v7"/></svg>
+              <span>地图</span>
+            </div>
+            <div class="toolbar-item" onclick="goToScreen('history')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+              <span>历史</span>
+            </div>
+            <div class="toolbar-item" onclick="goToScreen('profile')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+              <span>我的</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 1: Punch Flow -->
+        <div class="screen" id="screen-punch" data-screen="punch">
+          <div class="nav-bar">
+            <div class="nav-back" onclick="goBack()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+            </div>
+            <div class="nav-title">打点训练</div>
+            <div class="nav-right" onclick="endTrainingEarly()">结束</div>
+          </div>
+
+          <div class="punch-top-bar">
+            <div class="punch-progress">
+              <span class="cur" id="punchCur">1</span>
+              <span class="total">/ 8</span>
+            </div>
+            <div class="punch-timer tabular" id="punchTimer">00:00</div>
+            <div class="punch-target">目标 <strong id="targetCode">31</strong></div>
+          </div>
+
+          <div class="punch-map-wrap">
+            <svg class="map-svg" id="punchMap" viewBox="0 0 390 500" preserveAspectRatio="xMidYMid slice">
+              <!-- Reuse same map elements, simpler version -->
+              <rect width="390" height="500" fill="#FFFFFF"/>
+              <path d="M20,40 Q100,20 180,50 Q260,25 320,60 Q370,50 380,90 L380,130 Q300,140 230,125 Q150,150 80,130 Q30,120 20,90 Z" fill="#F5D97E" opacity="0.9"/>
+              <path d="M40,400 Q120,380 200,410 Q280,390 350,420 L360,470 Q280,480 180,465 Q100,485 40,460 Z" fill="#F5D97E" opacity="0.9"/>
+              <path d="M60,180 Q130,160 170,190 Q200,170 240,200 Q270,180 290,220 L290,270 Q240,280 190,260 Q140,280 90,260 Q50,250 60,220 Z" fill="#7FB069" opacity="0.85"/>
+              <path d="M100,200 Q140,190 165,210 Q180,230 170,250 Q140,260 110,245 Q90,230 100,200 Z" fill="#5B8C4A" opacity="0.9"/>
+              <g stroke="#B5793B" stroke-width="0.8" fill="none" stroke-linecap="round" opacity="0.7">
+                <path d="M0,80 Q60,70 100,85 Q160,100 200,75 Q260,55 320,80 Q360,95 390,75"/>
+                <path d="M0,110 Q70,95 130,115 Q190,130 240,105 Q300,85 350,110 Q380,125 390,105"/>
+                <path d="M0,320 Q80,300 150,330 Q220,355 290,325 Q340,305 390,335"/>
+                <path d="M0,355 Q70,335 140,365 Q210,390 280,360 Q340,340 390,370"/>
+                <path d="M0,440 Q80,420 160,450 Q240,475 310,445 Q360,425 390,455"/>
+              </g>
+              <g stroke="#B5793B" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.9">
+                <path d="M0,145 Q60,125 120,150 Q180,170 240,140 Q300,115 360,145 Q385,160 390,140"/>
+                <path d="M0,390 Q70,370 140,400 Q210,425 280,395 Q340,375 390,405"/>
+              </g>
+              <path d="M320,30 Q310,80 330,130 Q345,180 320,230 Q295,280 315,340 Q335,390 310,440" stroke="#4A7FA5" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.85"/>
+              <ellipse cx="90" cy="340" rx="38" ry="22" fill="#4A7FA5" opacity="0.85"/>
+              <g stroke="#2B2B2B" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.9">
+                <path d="M40,50 L120,80 L180,60 L250,90 L290,130" stroke-dasharray="4,2"/>
+                <path d="M290,130 L260,180 L200,210 L150,190 L100,230 L60,270" stroke-dasharray="4,2"/>
+                <path d="M60,270 L80,330 L130,380 L180,420 L240,450 L310,430" stroke-dasharray="4,2"/>
+                <path d="M180,60 L160,110 L200,150" stroke-dasharray="3,2"/>
+                <path d="M200,210 L230,260 L280,290" stroke-dasharray="3,2"/>
+                <path d="M150,190 L130,250 L160,300" stroke-dasharray="3,2"/>
+                <path d="M130,380 L80,400" stroke-dasharray="3,2"/>
+              </g>
+              <rect x="312" y="285" width="18" height="8" fill="#2B2B2B" rx="1" opacity="0.9"/>
+              <ellipse cx="210" cy="260" rx="14" ry="10" fill="#2B2B2B" opacity="0.75"/>
+              <path d="M250,320 L280,315 L290,330 L260,338 Z" fill="#2B2B2B" opacity="0.6"/>
+              <circle cx="160" cy="100" r="3" fill="#2B2B2B" opacity="0.8"/>
+              <ellipse cx="235" cy="165" rx="18" ry="12" fill="#FFFFFF" stroke="#2B2B2B" stroke-width="0.8" opacity="0.9"/>
+              <g stroke="#B34A8C" stroke-width="0.7" stroke-dasharray="6,3" opacity="0.6">
+                <line x1="20" y1="200" x2="20" y2="370"/>
+                <line x1="370" y1="60" x2="370" y2="210"/>
+              </g>
+
+              <!-- Route path (already visited solid, remaining dashed) -->
+              <path id="routeVisited" d="" fill="none" stroke="#D43D2A" stroke-width="2" opacity="0.7"/>
+              <path id="routeRemaining" d="M50,68 L110,105 L170,170 L235,220 L150,270 L90,335 L210,320 L285,370 L190,420 L320,460" fill="none" stroke="#B34A8C" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.4"/>
+
+              <!-- Control points -->
+              <g id="punchControls">
+                <g class="ctrl-pt" id="pt-0" data-x="110" data-y="105" transform="translate(110, 105)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">31</text>
+                </g>
+                <g class="ctrl-pt" id="pt-1" data-x="170" data-y="170" transform="translate(170, 170)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">32</text>
+                </g>
+                <g class="ctrl-pt" id="pt-2" data-x="235" data-y="220" transform="translate(235, 220)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">33</text>
+                </g>
+                <g class="ctrl-pt" id="pt-3" data-x="150" data-y="270" transform="translate(150, 270)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">34</text>
+                </g>
+                <g class="ctrl-pt" id="pt-4" data-x="90" data-y="335" transform="translate(90, 335)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">35</text>
+                </g>
+                <g class="ctrl-pt" id="pt-5" data-x="210" data-y="320" transform="translate(210, 320)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">36</text>
+                </g>
+                <g class="ctrl-pt" id="pt-6" data-x="285" data-y="370" transform="translate(285, 370)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">37</text>
+                </g>
+                <g class="ctrl-pt" id="pt-7" data-x="190" data-y="420" transform="translate(190, 420)">
+                  <circle r="6" fill="none" stroke="#B34A8C" stroke-width="2"/>
+                  <circle r="6" fill="#B34A8C" opacity="0.25"/>
+                  <text x="0" y="-9" fill="#B34A8C" font-size="8" text-anchor="middle" font-weight="700">38</text>
+                </g>
+              </g>
+            </svg>
+            <div class="target-pulse" id="targetPulse" style="left: 28%; top: 21%;"></div>
+          </div>
+
+          <!-- Punch strip preview -->
+          <div class="punch-strip-preview" id="punchStripPreview">
+            <div class="punch-strip-cell current" data-idx="0">
+              <span class="cell-code">31</span>
+              <div class="pinhole-grid pattern-31">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="1">
+              <span class="cell-code">32</span>
+              <div class="pinhole-grid pattern-32">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="2">
+              <span class="cell-code">33</span>
+              <div class="pinhole-grid pattern-33">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="3">
+              <span class="cell-code">34</span>
+              <div class="pinhole-grid pattern-34">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="4">
+              <span class="cell-code">35</span>
+              <div class="pinhole-grid pattern-35">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="5">
+              <span class="cell-code">36</span>
+              <div class="pinhole-grid pattern-36">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="6">
+              <span class="cell-code">37</span>
+              <div class="pinhole-grid pattern-37">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+            <div class="punch-strip-cell" data-idx="7">
+              <span class="cell-code">38</span>
+              <div class="pinhole-grid pattern-38">
+                <div class="pinhole ph-1"></div><div class="pinhole ph-2"></div><div class="pinhole ph-3"></div>
+                <div class="pinhole ph-4"></div><div class="pinhole ph-5"></div><div class="pinhole ph-6"></div>
+                <div class="pinhole ph-7"></div><div class="pinhole ph-8"></div><div class="pinhole ph-9"></div>
+                <div class="pinhole ph-10"></div><div class="pinhole ph-11"></div><div class="pinhole ph-12"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="punch-bottom">
+            <div class="punch-split-preview">
+              <span>上一分段</span>
+              <span class="split-time tabular" id="lastSplit">--:--</span>
+            </div>
+            <button class="btn-punch" id="btnPunch" onpointerdown="punchPress()" onpointerup="punchRelease()" onpointercancel="punchRelease()">
+              点 签
+              <span class="btn-punch-label">DIAN QIAN</span>
+            </button>
+          </div>
+          <div class="punch-flash" id="punchFlash"></div>
+        </div>
+
+        <!-- Screen 2: Results -->
+        <div class="screen" id="screen-results" data-screen="results">
+          <div class="nav-bar">
+            <div class="nav-back" onclick="goBack()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+            </div>
+            <div class="nav-title">成绩条</div>
+          </div>
+          <div class="screen-content with-nav">
+            <div class="results-wrap">
+              <div class="punch-card">
+                <div class="pc-header">
+                  <div class="pc-title">奥森北园 · 短距离训练</div>
+                  <div class="pc-total tabular" id="resultTotal">14:32</div>
+                  <div class="pc-sub">
+                    <span>平均每点 <strong id="resultAvg">01:49</strong></span>
+                    <span>共 <strong>8</strong> 点</span>
+                  </div>
+                  <div class="pc-meta" id="resultDate">2026-08-19 09:41</div>
+                </div>
+                <div class="pc-splits" id="resultSplits">
+                  <!-- filled by JS -->
+                </div>
+              </div>
+              <div class="results-legend">
+                <span><span class="legend-dot" style="background: var(--fast-green)"></span>最快分段</span>
+                <span><span class="legend-dot" style="background: var(--slow-red)"></span>最慢分段</span>
+              </div>
+              <div class="results-actions">
+                <button class="btn-outline" onclick="retryTraining()">重打本次</button>
+                <button class="btn-solid" onclick="saveResult()">保存成绩</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 3: History -->
+        <div class="screen" id="screen-history" data-screen="history">
+          <div class="nav-bar">
+            <div class="nav-title">训练历史</div>
+          </div>
+          <div class="screen-content with-nav with-toolbar">
+            <div class="history-section-title">共 <span id="historyCount">3</span> 次训练</div>
+            <div class="history-list" id="historyList">
+              <!-- filled by JS -->
+            </div>
+          </div>
+          <div class="toolbar">
+            <div class="toolbar-item" onclick="goToScreen('home')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="3,11 12,3 21,11 19,21 5,21"/><path d="M9 21V14h6v7"/></svg>
+              <span>地图</span>
+            </div>
+            <div class="toolbar-item active" onclick="goToScreen('history')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+              <span>历史</span>
+            </div>
+            <div class="toolbar-item" onclick="goToScreen('profile')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+              <span>我的</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 4: History Detail -->
+        <div class="screen" id="screen-historyDetail" data-screen="historyDetail">
+          <div class="nav-bar">
+            <div class="nav-back" onclick="goBack()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+            </div>
+            <div class="nav-title">成绩详情</div>
+          </div>
+          <div class="screen-content with-nav">
+            <div class="results-wrap">
+              <div class="punch-card" style="margin-top: 4px;">
+                <div class="pc-header">
+                  <div class="pc-title" id="hdTitle">奥森北园 · 短距离训练</div>
+                  <div class="pc-total tabular" id="hdTotal">16:08</div>
+                  <div class="pc-sub">
+                    <span>平均每点 <strong id="hdAvg">02:01</strong></span>
+                    <span>共 <strong>8</strong> 点</span>
+                  </div>
+                  <div class="pc-meta" id="hdDate">2026-08-15 07:30</div>
+                </div>
+                <div class="pc-splits" id="hdSplits">
+                  <!-- filled by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 5: Profile -->
+        <div class="screen" id="screen-profile" data-screen="profile">
+          <div class="nav-bar">
+            <div class="nav-title">我的</div>
+          </div>
+          <div class="screen-content with-nav with-toolbar">
+            <div class="profile-header">
+              <div class="profile-avatar">朱</div>
+              <div class="profile-info">
+                <h2>朱曦策</h2>
+                <p>定向越野爱好者 · 训练 12 周</p>
+              </div>
+            </div>
+
+            <div class="stat-grid">
+              <div class="stat-card">
+                <div class="stat-num" id="statCount">23</div>
+                <div class="stat-label">累计训练次数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-num" id="statPunches">184</div>
+                <div class="stat-label">总打点数</div>
+              </div>
+              <div class="stat-card full">
+                <div class="stat-num" style="font-size: 22px;" id="statFastest">00:52</div>
+                <div class="stat-label">最快单分段 · 31号点 奥森北园</div>
+                <div class="heatmap-wrap">
+                  <div class="stat-label" style="margin-bottom: 8px;">本月训练热力</div>
+                  <div class="heatmap" id="heatmap">
+                    <!-- filled by JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="profile-list">
+              <div class="profile-item" onclick="goToScreen('spec')">
+                <div class="profile-item-icon" style="background: var(--map-brown);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.8-.1 2.6-.3"/></svg>
+                </div>
+                设计规范
+                <span class="arrow">›</span>
+              </div>
+              <div class="profile-item" onclick="goToScreen('api')">
+                <div class="profile-item-icon" style="background: var(--fast-green);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16,18 22,12 16,6"/><polyline points="8,6 2,12 8,18"/></svg>
+                </div>
+                接口文档
+                <span class="arrow">›</span>
+              </div>
+              <div class="profile-item">
+                <div class="profile-item-icon" style="background: var(--map-blue);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                个人资料
+                <span class="arrow">›</span>
+              </div>
+              <div class="profile-item">
+                <div class="profile-item-icon" style="background: var(--map-magenta);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </div>
+                设置
+                <span class="arrow">›</span>
+              </div>
+            </div>
+          </div>
+          <div class="toolbar">
+            <div class="toolbar-item" onclick="goToScreen('home')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="3,11 12,3 21,11 19,21 5,21"/><path d="M9 21V14h6v7"/></svg>
+              <span>地图</span>
+            </div>
+            <div class="toolbar-item" onclick="goToScreen('history')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+              <span>历史</span>
+            </div>
+            <div class="toolbar-item active" onclick="goToScreen('profile')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+              <span>我的</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 6: Design Spec -->
+        <div class="screen" id="screen-spec" data-screen="spec">
+          <div class="nav-bar">
+            <div class="nav-back" onclick="goBack()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+            </div>
+            <div class="nav-title">设计规范</div>
+          </div>
+          <div class="screen-content with-nav">
+            <div class="spec-section">
+              <div class="spec-section-title">色板 · IOF 五色体系</div>
+              <div class="swatch-grid">
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#FFFFFF; border-bottom:1px solid #eee;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">可跑树林</div>
+                    <div class="swatch-hex">#FFFFFF</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#7FB069;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">难通行植被</div>
+                    <div class="swatch-hex">#7FB069</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#5B8C4A;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">最难通行</div>
+                    <div class="swatch-hex">#5B8C4A</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#F5D97E;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">空旷地</div>
+                    <div class="swatch-hex">#F5D97E</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#B5793B;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">等高线</div>
+                    <div class="swatch-hex">#B5793B</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#4A7FA5;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">水系</div>
+                    <div class="swatch-hex">#4A7FA5</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#2B2B2B;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">岩石 / 墨色</div>
+                    <div class="swatch-hex">#2B2B2B</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#B34A8C;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">检查点</div>
+                    <div class="swatch-hex">#B34A8C</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#D43D2A;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">指北针红</div>
+                    <div class="swatch-hex">#D43D2A</div>
+                  </div>
+                </div>
+                <div class="swatch">
+                  <div class="swatch-color" style="background:#FAF6ED; border-bottom:1px solid #eee;"></div>
+                  <div class="swatch-info">
+                    <div class="swatch-name">打卡纸</div>
+                    <div class="swatch-hex">#FAF6ED</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="spec-section">
+              <div class="spec-section-title">字体规范</div>
+              <div class="font-demo">
+                <div class="font-demo-label">UI 字体 · 中文无衬线</div>
+                <div class="font-demo-ui">点签 DianQian · 定向越野训练伴侣</div>
+              </div>
+              <div class="font-demo">
+                <div class="font-demo-label">等宽数字 · 时间显示</div>
+                <div class="font-demo-mono tabular">14:32.05 · 01:08 · 52</div>
+              </div>
+            </div>
+
+            <div class="spec-section">
+              <div class="spec-section-title">动效规范</div>
+              <div class="anim-list">
+                <div class="anim-item punch">
+                  <div class="anim-preview">
+                    <div class="anim-dot"></div>
+                  </div>
+                  <div class="anim-desc">
+                    <strong>打孔顿感</strong>
+                    <span>点签器压下 + 针孔阵列弹出 · 100ms 压缩回弹</span>
+                  </div>
+                </div>
+                <div class="anim-item grow">
+                  <div class="anim-preview">
+                    <div class="anim-bar"></div>
+                  </div>
+                  <div class="anim-desc">
+                    <strong>时间条生长</strong>
+                    <span>分段用时从左向右生长 · 缓出曲线 800ms</span>
+                  </div>
+                </div>
+                <div class="anim-item slide">
+                  <div class="anim-preview">
+                    <div class="anim-slide-box"></div>
+                  </div>
+                  <div class="anim-desc">
+                    <strong>页面栈横滑</strong>
+                    <span>push/pop 左右切换 · iOS 标准曲线 380ms</span>
+                  </div>
+                </div>
+                <div class="anim-item spring">
+                  <div class="anim-preview">
+                    <div class="anim-spring"></div>
+                  </div>
+                  <div class="anim-desc">
+                    <strong>半屏弹层弹簧</strong>
+                    <span>底部 sheet 升起 · 阻尼弹簧 400ms</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 7: API Docs -->
+        <div class="screen" id="screen-api" data-screen="api">
+          <div class="nav-bar">
+            <div class="nav-back" onclick="goBack()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+            </div>
+            <div class="nav-title">接口文档</div>
+          </div>
+          <div class="screen-content with-nav">
+            <div class="api-block">
+              <div class="api-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/mobile/v2/sessions</span>
+              </div>
+              <div class="api-body">
+                <h4>请求参数</h4>
+<pre><span class="json-key">"page"</span>: <span class="json-num">1</span>,
+<span class="json-key">"page_size"</span>: <span class="json-num">20</span>,
+<span class="json-key">"course_id"</span>: <span class="json-str">"aosen_north_short"</span></pre>
+                <h4>响应示例</h4>
+<pre>{
+  <span class="json-key">"code"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"ok"</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"total"</span>: <span class="json-num">3</span>,
+    <span class="json-key">"list"</span>: [
+      {
+        <span class="json-key">"session_id"</span>: <span class="json-str">"sess_20260819_001"</span>,
+        <span class="json-key">"course_name"</span>: <span class="json-str">"奥森北园·短距离"</span>,
+        <span class="json-key">"control_count"</span>: <span class="json-num">8</span>,
+        <span class="json-key">"distance_m"</span>: <span class="json-num">2400</span>,
+        <span class="json-key">"map_scale"</span>: <span class="json-str">"1:10000"</span>,
+        <span class="json-key">"contour_interval"</span>: <span class="json-num">5</span>
+      }
+    ]
+  }
+}</pre>
+              </div>
+            </div>
+
+            <div class="api-block">
+              <div class="api-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/mobile/v2/controls/:sessionId</span>
+              </div>
+              <div class="api-body">
+                <h4>响应示例</h4>
+<pre>{
+  <span class="json-key">"code"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"session_id"</span>: <span class="json-str">"sess_20260819_001"</span>,
+    <span class="json-key">"controls"</span>: [
+      {
+        <span class="json-key">"order"</span>: <span class="json-num">1</span>,
+        <span class="json-key">"code"</span>: <span class="json-num">31</span>,
+        <span class="json-key">"feature"</span>: <span class="json-str">"小径交叉口"</span>,
+        <span class="json-key">"x_coord"</span>: <span class="json-num">5230</span>,
+        <span class="json-key">"y_coord"</span>: <span class="json-num">3840</span>
+      },
+      {
+        <span class="json-key">"order"</span>: <span class="json-num">2</span>,
+        <span class="json-key">"code"</span>: <span class="json-num">32</span>,
+        <span class="json-key">"feature"</span>: <span class="json-str">"小丘顶"</span>,
+        <span class="json-key">"x_coord"</span>: <span class="json-num">6720</span>,
+        <span class="json-key">"y_coord"</span>: <span class="json-num">4210</span>
+      }
+    ]
+  }
+}</pre>
+              </div>
+            </div>
+
+            <div class="api-block">
+              <div class="api-header">
+                <span class="api-method post">POST</span>
+                <span class="api-path">/api/mobile/v2/result</span>
+              </div>
+              <div class="api-body">
+                <h4>请求示例</h4>
+<pre>{
+  <span class="json-key">"session_id"</span>: <span class="json-str">"sess_20260819_001"</span>,
+  <span class="json-key">"user_id"</span>: <span class="json-str">"user_zxc"</span>,
+  <span class="json-key">"total_time_ms"</span>: <span class="json-num">872000</span>,
+  <span class="json-key">"splits"</span>: [
+    { <span class="json-key">"code"</span>: <span class="json-num">31</span>, <span class="json-key">"time_ms"</span>: <span class="json-num">167000</span> },
+    { <span class="json-key">"code"</span>: <span class="json-num">32</span>, <span class="json-key">"time_ms"</span>: <span class="json-num">95000</span> },
+    { <span class="json-key">"code"</span>: <span class="json-num">33</span>, <span class="json-key">"time_ms"</span>: <span class="json-num">128000</span> }
+  ],
+  <span class="json-key">"device"</span>: <span class="json-str">"iPhone 14 Pro"</span>,
+  <span class="json-key">"timestamp"</span>: <span class="json-str">"2026-08-19T09:41:00+08:00"</span>
+}</pre>
+                <h4>响应示例</h4>
+<pre>{
+  <span class="json-key">"code"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"result_id"</span>: <span class="json-str">"res_a1b2c3"</span>,
+    <span class="json-key">"rank"</span>: <span class="json-num">12</span>,
+    <span class="json-key">"total_participants"</span>: <span class="json-num">48</span>
+  }
+}</pre>
+              </div>
+            </div>
+
+            <div class="api-block">
+              <div class="api-header">
+                <span class="api-method get">GET</span>
+                <span class="api-path">/api/mobile/v2/history</span>
+              </div>
+              <div class="api-body">
+                <h4>请求参数</h4>
+<pre><span class="json-key">"user_id"</span>: <span class="json-str">"user_zxc"</span>,
+<span class="json-key">"month"</span>: <span class="json-str">"2026-08"</span></pre>
+                <h4>响应示例</h4>
+<pre>{
+  <span class="json-key">"code"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"total_sessions"</span>: <span class="json-num">23</span>,
+    <span class="json-key">"total_punches"</span>: <span class="json-num">184</span>,
+    <span class="json-key">"fastest_split"</span>: {
+      <span class="json-key">"code"</span>: <span class="json-num">31</span>,
+      <span class="json-key">"time_ms"</span>: <span class="json-num">52000</span>,
+      <span class="json-key">"course"</span>: <span class="json-str">"奥森北园"</span>
+    },
+    <span class="json-key">"list"</span>: [
+      {
+        <span class="json-key">"result_id"</span>: <span class="json-str">"res_a1b2c3"</span>,
+        <span class="json-key">"date"</span>: <span class="json-str">"2026-08-19"</span>,
+        <span class="json-key">"course_name"</span>: <span class="json-str">"奥森北园·短距离"</span>,
+        <span class="json-key">"total_time_ms"</span>: <span class="json-num">872000</span>
+      }
+    ]
+  }
+}</pre>
+              </div>
+            </div>
+
+            <div style="height: 40px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Half sheet for control descriptions (over home) -->
+      <div class="sheet-backdrop" id="sheetBackdrop" onclick="closeSheet()"></div>
+      <div class="sheet" id="controlSheet">
+        <div class="sheet-grabber"></div>
+        <div class="sheet-header">
+          <h3>检查点说明表</h3>
+          <p>奥森北园 · 短距离 · 共 8 点</p>
+        </div>
+        <div class="sheet-body">
+          <table class="ctrl-table">
+            <thead>
+              <tr>
+                <th class="ctrl-idx">序</th>
+                <th class="ctrl-code">代号</th>
+                <th class="ctrl-desc">地物描述</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="ctrl-idx">1</td><td class="ctrl-code">31</td><td class="ctrl-desc">小径交叉口</td></tr>
+              <tr><td class="ctrl-idx">2</td><td class="ctrl-code">32</td><td class="ctrl-desc">小丘顶</td></tr>
+              <tr><td class="ctrl-idx">3</td><td class="ctrl-code">33</td><td class="ctrl-desc">林隙，中心</td></tr>
+              <tr><td class="ctrl-idx">4</td><td class="ctrl-code">34</td><td class="ctrl-desc">灌丛边缘</td></tr>
+              <tr><td class="ctrl-idx">5</td><td class="ctrl-code">35</td><td class="ctrl-desc">小湖南端</td></tr>
+              <tr><td class="ctrl-idx">6</td><td class="ctrl-code">36</td><td class="ctrl-desc">大石，南脚</td></tr>
+              <tr><td class="ctrl-idx">7</td><td class="ctrl-code">37</td><td class="ctrl-desc">土崖，下</td></tr>
+              <tr><td class="ctrl-idx">8</td><td class="ctrl-code">38</td><td class="ctrl-desc">桥，北端</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="home-indicator" id="homeIndicator"></div>
+    </div>
+  </div>
+
+  <p style="font-size: 12px; color: rgba(43,43,43,.5); letter-spacing: 1px;">点击屏幕内交互 · 390 × 844 · iOS</p>
+</div>
+
+<script>
+// ============================================================
+// APP STATE
+// ============================================================
+const CONTROL_CODES = [31, 32, 33, 34, 35, 36, 37, 38];
+const CONTROL_FEATURES = [
+  '小径交叉口', '小丘顶', '林隙，中心', '灌丛边缘',
+  '小湖南端', '大石，南脚', '土崖，下', '桥，北端'
+];
+// Mock split times (seconds) — realistic for a short course
+const MOCK_SPLITS = [167, 95, 128, 215, 142, 88, 133, 114]; // 2:47, 1:35, 2:08, 3:35, 2:22, 1:28, 2:13, 1:54
+
+// Control point screen coordinates on the punch map (in viewBox 390x500 space)
+const CTRL_COORDS = [
+  { x: 110, y: 105 }, { x: 170, y: 170 }, { x: 235, y: 220 }, { x: 150, y: 270 },
+  { x: 90, y: 335 }, { x: 210, y: 320 }, { x: 285, y: 370 }, { x: 190, y: 420 }
+];
+
+const state = {
+  currentScreen: 'home',
+  screenStack: ['home'], // stack of screen ids
+  currentPunch: 0,       // 0-indexed, which control we're punching next
+  splits: [],            // completed split times in seconds
+  startTime: 0,          // ms timestamp
+  punchStartTimes: [],   // timestamp per control start
+  timerRAF: null,
+  timerRunning: false,
+  elapsedBeforePause: 0,
+  lastTickTime: 0,
+  trainingActive: false,
+  resultsData: null,     // latest completed training
+  history: [],           // saved results
+};
+
+// ============================================================
+// SCREEN NAVIGATION (page stack push/pop)
+// ============================================================
+// Root screens: home, history, profile — these replace the stack
+// Push screens: punch, results, historyDetail, spec, api
+
+const ROOT_SCREENS = ['home', 'history', 'profile'];
+
+function goToScreen(screenId) {
+  const screen = document.getElementById('screen-' + screenId);
+  if (!screen) return;
+
+  if (ROOT_SCREENS.includes(screenId)) {
+    // Replace entire stack with this root screen
+    const allScreens = document.querySelectorAll('.screen');
+    allScreens.forEach(s => {
+      s.classList.remove('active', 'behind');
+      if (s.id === 'screen-' + screenId) {
+        s.classList.add('root');
+        s.style.transform = 'translateX(0)';
+      } else {
+        s.classList.remove('root');
+        s.style.transform = 'translateX(100%)';
+      }
+    });
+    state.screenStack = [screenId];
+    state.currentScreen = screenId;
+    updateToolbar(screenId);
+  } else {
+    // Push onto stack
+    const prevScreen = document.getElementById('screen-' + state.currentScreen);
+    if (prevScreen) {
+      prevScreen.classList.add('behind');
+      prevScreen.classList.remove('active');
+    }
+    screen.style.transform = 'translateX(0)';
+    screen.classList.add('active');
+    state.screenStack.push(screenId);
+    state.currentScreen = screenId;
+  }
+  // ensure status bar + home indicator visible on all screens
+  updateStatusBarForScreen(screenId);
+}
+
+function goBack() {
+  if (state.screenStack.length <= 1) return;
+  const currentId = state.screenStack.pop();
+  const currentEl = document.getElementById('screen-' + currentId);
+  const prevId = state.screenStack[state.screenStack.length - 1];
+  const prevEl = document.getElementById('screen-' + prevId);
+
+  if (currentEl) {
+    currentEl.style.transform = 'translateX(100%)';
+    currentEl.classList.remove('active');
+  }
+  if (prevEl) {
+    prevEl.classList.remove('behind');
+    if (ROOT_SCREENS.includes(prevId)) {
+      prevEl.classList.add('root');
+    } else {
+      prevEl.classList.add('active');
+    }
+  }
+  state.currentScreen = prevId;
+  updateToolbar(prevId);
+
+  // If leaving punch screen, pause timer
+  if (currentId === 'punch') {
+    pauseTimer();
+  }
+  // If entering punch screen (pop back shouldn't but just in case)
+  updateStatusBarForScreen(prevId);
+}
+
+function updateToolbar(screenId) {
+  const items = document.querySelectorAll('.toolbar-item');
+  const toolbarScreens = ['home', 'history', 'profile'];
+  const idx = toolbarScreens.indexOf(screenId);
+  items.forEach((item, i) => {
+    if (i === idx) item.classList.add('active');
+    else item.classList.remove('active');
+  });
+}
+
+function updateStatusBarForScreen(screenId) {
+  // All screens use dark status bar in this design
+  const sb = document.getElementById('statusBar');
+  const hi = document.getElementById('homeIndicator');
+  sb.classList.remove('light');
+  hi.classList.remove('light');
+}
+
+// ============================================================
+// HALF SHEET (control descriptions)
+// ============================================================
+function openSheet() {
+  document.getElementById('controlSheet').classList.add('show');
+  document.getElementById('sheetBackdrop').classList.add('show');
+}
+function closeSheet() {
+  document.getElementById('controlSheet').classList.remove('show');
+  document.getElementById('sheetBackdrop').classList.remove('show');
+}
+
+// Swipe down to close sheet
+(function initSheetSwipe() {
+  const sheet = document.getElementById('controlSheet');
+  const grabber = sheet.querySelector('.sheet-grabber');
+  let startY = 0, currentY = 0, dragging = false;
+
+  function onDown(e) {
+    startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+    currentY = startY;
+    dragging = true;
+    sheet.style.transition = 'none';
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const y = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+    currentY = y;
+    const dy = Math.max(0, y - startY);
+    sheet.style.transform = 'translateY(' + dy + 'px)';
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+    const dy = currentY - startY;
+    if (dy > 100) {
+      closeSheet();
+    }
+  }
+
+  grabber.addEventListener('pointerdown', onDown);
+  sheet.addEventListener('pointermove', onMove);
+  sheet.addEventListener('pointerup', onUp);
+  sheet.addEventListener('pointercancel', onUp);
+})();
+
+// ============================================================
+// TRAINING / PUNCH FLOW
+// ============================================================
+function startTraining() {
+  state.currentPunch = 0;
+  state.splits = [];
+  state.punchStartTimes = [];
+  state.elapsedBeforePause = 0;
+  state.trainingActive = true;
+
+  goToScreen('punch');
+  updatePunchUI();
+  startTimer();
+  pulseCompass();
+}
+
+function endTrainingEarly() {
+  stopTimer();
+  state.trainingActive = false;
+  goBack();
+}
+
+function retryTraining() {
+  startTraining();
+}
+
+function updatePunchUI() {
+  document.getElementById('punchCur').textContent = state.currentPunch + 1;
+  const code = CONTROL_CODES[state.currentPunch];
+  document.getElementById('targetCode').textContent = code;
+
+  // Update strip cells
+  const cells = document.querySelectorAll('#punchStripPreview .punch-strip-cell');
+  cells.forEach((cell, i) => {
+    cell.classList.remove('current', 'done');
+    if (i < state.currentPunch) cell.classList.add('done');
+    else if (i === state.currentPunch) cell.classList.add('current');
+  });
+
+  // Update target pulse position on map
+  if (state.currentPunch < 8) {
+    const coord = CTRL_COORDS[state.currentPunch];
+    // Convert SVG viewBox coords to percentage of map container
+    const mapWrap = document.querySelector('.punch-map-wrap');
+    const wrapW = mapWrap.clientWidth;
+    const wrapH = mapWrap.clientHeight;
+    // viewBox is 390x500, with xMidYMid slice — so we need to calculate the actual visible area
+    const vbW = 390, vbH = 500;
+    const scaleX = wrapW / vbW;
+    const scaleY = wrapH / vbH;
+    const scale = Math.max(scaleX, scaleY);
+    const actualW = vbW * scale;
+    const actualH = vbH * scale;
+    const offsetX = (wrapW - actualW) / 2;
+    const offsetY = (wrapH - actualH) / 2;
+    const leftPx = offsetX + coord.x * scale;
+    const topPx = offsetY + coord.y * scale;
+    const pulse = document.getElementById('targetPulse');
+    pulse.style.left = leftPx + 'px';
+    pulse.style.top = topPx + 'px';
+  }
+
+  // Update route visited path
+  updateRoutePath();
+
+  // Update last split display
+  const lastEl = document.getElementById('lastSplit');
+  if (state.splits.length > 0) {
+    lastEl.textContent = formatTime(state.splits[state.splits.length - 1]);
+  } else {
+    lastEl.textContent = '--:--';
+  }
+}
+
+function updateRoutePath() {
+  if (state.currentPunch === 0) {
+    document.getElementById('routeVisited').setAttribute('d', '');
+    return;
+  }
+  // visited path from start (50,68) through first currentPunch controls
+  let d = 'M50,68';
+  for (let i = 0; i < state.currentPunch && i < CTRL_COORDS.length; i++) {
+    d += ' L' + CTRL_COORDS[i].x + ',' + CTRL_COORDS[i].y;
+  }
+  document.getElementById('routeVisited').setAttribute('d', d);
+
+  // remaining from currentPunch to finish (320,460)
+  let rd = '';
+  if (state.currentPunch < CTRL_COORDS.length) {
+    rd = 'M';
+    if (state.currentPunch === 0) {
+      rd += '50,68';
+    } else {
+      rd += CTRL_COORDS[state.currentPunch - 1].x + ',' + CTRL_COORDS[state.currentPunch - 1].y;
+    }
+    for (let i = state.currentPunch; i < CTRL_COORDS.length; i++) {
+      rd += ' L' + CTRL_COORDS[i].x + ',' + CTRL_COORDS[i].y;
+    }
+    rd += ' L320,460';
+  } else {
+    rd = 'M' + CTRL_COORDS[CTRL_COORDS.length - 1].x + ',' + CTRL_COORDS[CTRL_COORDS.length - 1].y + ' L320,460';
+  }
+  document.getElementById('routeRemaining').setAttribute('d', rd);
+}
+
+// ============================================================
+// TIMER
+// ============================================================
+function startTimer() {
+  if (state.timerRunning) return;
+  state.timerRunning = true;
+  state.lastTickTime = performance.now();
+  state.startTime = performance.now() - state.elapsedBeforePause;
+  tickTimer();
+}
+
+function pauseTimer() {
+  if (!state.timerRunning) return;
+  state.timerRunning = false;
+  if (state.timerRAF) {
+    cancelAnimationFrame(state.timerRAF);
+    state.timerRAF = null;
+  }
+  state.elapsedBeforePause = performance.now() - state.startTime;
+}
+
+function stopTimer() {
+  state.timerRunning = false;
+  if (state.timerRAF) {
+    cancelAnimationFrame(state.timerRAF);
+    state.timerRAF = null;
+  }
+}
+
+function tickTimer() {
+  if (!state.timerRunning) return;
+  const now = performance.now();
+  const elapsed = now - state.startTime;
+  const seconds = Math.floor(elapsed / 1000);
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(seconds % 60).padStart(2, '0');
+  const timerEl = document.getElementById('punchTimer');
+  if (timerEl) timerEl.textContent = mm + ':' + ss;
+  state.timerRAF = requestAnimationFrame(tickTimer);
+}
+
+// Pause timer when page not visible
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    if (state.timerRunning) {
+      pauseTimer();
+      state._wasRunning = true;
+    }
+  } else {
+    if (state._wasRunning) {
+      startTimer();
+      state._wasRunning = false;
+    }
+  }
+});
+
+// Cleanup on unload
+window.addEventListener('beforeunload', function() {
+  stopTimer();
+});
+
+// ============================================================
+// PUNCH ACTION
+// ============================================================
+let punchLock = false; // prevent rapid double-punches
+
+function punchPress() {
+  const btn = document.getElementById('btnPunch');
+  btn.classList.add('pressing');
+}
+
+function punchRelease() {
+  const btn = document.getElementById('btnPunch');
+  btn.classList.remove('pressing');
+  doPunch();
+}
+
+function doPunch() {
+  if (punchLock) return;
+  if (state.currentPunch >= 8) return;
+  if (!state.trainingActive) return;
+
+  punchLock = true;
+
+  // Flash
+  const flash = document.getElementById('punchFlash');
+  flash.classList.remove('active');
+  // force reflow
+  void flash.offsetWidth;
+  flash.classList.add('active');
+
+  // Compass pulse
+  pulseCompass();
+
+  // Play beep (simple oscillator)
+  playBeep();
+
+  // Record split time
+  const now = performance.now();
+  const elapsed = (now - state.startTime) / 1000;
+  const prevTime = state.splits.reduce((a, b) => a + b, 0);
+  const split = elapsed - prevTime;
+  state.splits.push(Math.round(split));
+
+  // Mark cell as done — CSS transition handles the pinhole appearance
+  const cells = document.querySelectorAll('#punchStripPreview .punch-strip-cell');
+  if (cells[state.currentPunch]) {
+    cells[state.currentPunch].classList.add('done');
+    cells[state.currentPunch].classList.remove('current');
+  }
+
+  // Increment
+  state.currentPunch++;
+
+  if (state.currentPunch < 8) {
+    // More controls to go
+    if (cells[state.currentPunch]) {
+      cells[state.currentPunch].classList.add('current');
+    }
+    updatePunchUI();
+
+    // Release lock after short delay (simulate puncher reset)
+    setTimeout(function() { punchLock = false; }, 400);
+  } else {
+    // All done!
+    updatePunchUI();
+    setTimeout(function() {
+      finishTraining();
+      punchLock = false;
+    }, 600);
+  }
+}
+
+function pulseCompass() {
+  const needles = document.querySelectorAll('.compass-needle');
+  needles.forEach(n => {
+    n.classList.remove('pulse');
+    void n.offsetWidth;
+    n.classList.add('pulse');
+  });
+}
+
+// Simple beep sound using Web Audio
+let audioCtx = null;
+function playBeep() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1200;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  } catch (e) { /* ignore */ }
+}
+
+// ============================================================
+// RESULTS SCREEN
+// ============================================================
+function finishTraining() {
+  stopTimer();
+  state.trainingActive = false;
+
+  const total = state.splits.reduce((a, b) => a + b, 0);
+  const avg = Math.round(total / state.splits.length);
+
+  state.resultsData = {
+    date: new Date(),
+    course: '奥森北园·短距离',
+    total: total,
+    avg: avg,
+    splits: state.splits.slice(),
+    codes: CONTROL_CODES.slice()
+  };
+
+  // Build results
+  renderResults(state.resultsData, 'resultSplits', 'resultTotal', 'resultAvg', 'resultDate');
+
+  goToScreen('results');
+
+  // Animate split bars after a short delay (let screen transition finish)
+  setTimeout(function() {
+    animateSplitBars('resultSplits');
+  }, 400);
+}
+
+function renderResults(data, splitsId, totalId, avgId, dateId) {
+  document.getElementById(totalId).textContent = formatTime(data.total);
+  document.getElementById(avgId).textContent = formatTime(data.avg);
+
+  const date = data.date instanceof Date ? data.date : new Date(data.date);
+  const dateStr = date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0') + ' ' +
+    String(date.getHours()).padStart(2, '0') + ':' +
+    String(date.getMinutes()).padStart(2, '0');
+  document.getElementById(dateId).textContent = dateStr;
+
+  const container = document.getElementById(splitsId);
+  container.innerHTML = '';
+
+  const maxSplit = Math.max(...data.splits);
+  const minSplit = Math.min(...data.splits);
+
+  data.splits.forEach(function(split, i) {
+    const row = document.createElement('div');
+    row.className = 'split-row';
+
+    const code = document.createElement('div');
+    code.className = 'split-code';
+    code.textContent = data.codes[i];
+
+    const barWrap = document.createElement('div');
+    barWrap.className = 'split-bar-wrap';
+
+    const bar = document.createElement('div');
+    bar.className = 'split-bar';
+    if (split === minSplit && data.splits.length > 1) bar.classList.add('fast');
+    if (split === maxSplit && data.splits.length > 1) bar.classList.add('slow');
+    bar.style.width = '0%';
+    bar.dataset.width = (split / maxSplit * 100) + '%';
+
+    barWrap.appendChild(bar);
+
+    const time = document.createElement('div');
+    time.className = 'split-time-val';
+    time.textContent = formatTime(split);
+
+    row.appendChild(code);
+    row.appendChild(barWrap);
+    row.appendChild(time);
+    container.appendChild(row);
+  });
+}
+
+function animateSplitBars(containerId) {
+  const bars = document.querySelectorAll('#' + containerId + ' .split-bar');
+  bars.forEach(function(bar, i) {
+    setTimeout(function() {
+      bar.style.width = bar.dataset.width;
+    }, i * 80);
+  });
+}
+
+function formatTime(seconds) {
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(Math.floor(seconds % 60)).padStart(2, '0');
+  return mm + ':' + ss;
+}
+
+// ============================================================
+// SAVE RESULT / HISTORY
+// ============================================================
+function saveResult() {
+  if (!state.resultsData) return;
+
+  // Convert date to string for storage
+  const record = {
+    id: 'res_' + Date.now(),
+    date: state.resultsData.date.toISOString(),
+    course: state.resultsData.course,
+    total: state.resultsData.total,
+    avg: state.resultsData.avg,
+    splits: state.resultsData.splits,
+    codes: state.resultsData.codes
+  };
+
+  state.history.unshift(record);
+  localStorage.setItem('dianqian_history', JSON.stringify(state.history));
+
+  // Update UI
+  renderHistoryList();
+  updateProfileStats();
+
+  // Visual feedback - find the save button in results screen
+  const btns = document.querySelectorAll('#screen-results .btn-solid');
+  btns.forEach(function(btn) {
+    const originalText = btn.textContent;
+    btn.textContent = '已保存 ✓';
+    btn.style.background = 'var(--fast-green)';
+    setTimeout(function() {
+      btn.textContent = originalText;
+      btn.style.background = '';
+    }, 1500);
+  });
+}
+
+function loadHistory() {
+  try {
+    const stored = localStorage.getItem('dianqian_history');
+    if (stored) {
+      state.history = JSON.parse(stored);
+    } else {
+      // Seed with some sample history
+      state.history = [
+        {
+          id: 'res_sample_1',
+          date: '2026-08-15T07:30:00',
+          course: '奥森北园·短距离',
+          total: 968, avg: 121,
+          splits: [142, 108, 136, 158, 124, 98, 112, 90],
+          codes: [31, 32, 33, 34, 35, 36, 37, 38]
+        },
+        {
+          id: 'res_sample_2',
+          date: '2026-08-10T16:20:00',
+          course: '百望山·中距离',
+          total: 1845, avg: 231,
+          splits: [220, 255, 198, 310, 240, 195, 237, 190],
+          codes: [31, 32, 33, 34, 35, 36, 37, 38]
+        }
+      ];
+      localStorage.setItem('dianqian_history', JSON.stringify(state.history));
+    }
+  } catch (e) {
+    state.history = [];
+  }
+}
+
+function renderHistoryList() {
+  const list = document.getElementById('historyList');
+  const countEl = document.getElementById('historyCount');
+  if (countEl) countEl.textContent = state.history.length;
+
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (state.history.length === 0) {
+    list.innerHTML = '<div class="history-empty"><div class="big">∅</div>暂无训练记录<br><span style="font-size: 12px;">完成一次训练后，成绩会出现在这里</span></div>';
+    return;
+  }
+
+  state.history.forEach(function(record, idx) {
+    const date = new Date(record.date);
+    const dateStr = (date.getMonth() + 1) + '月' + date.getDate() + '日 ' +
+      String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+
+    const maxS = Math.max(...record.splits);
+    const minS = Math.min(...record.splits);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'history-swipe-wrap';
+
+    const card = document.createElement('div');
+    card.className = 'history-card';
+    card.onclick = function() { openHistoryDetail(idx); };
+
+    const row1 = document.createElement('div');
+    row1.className = 'hc-row1';
+    const d = document.createElement('span');
+    d.className = 'hc-date';
+    d.textContent = dateStr;
+    const t = document.createElement('span');
+    t.className = 'hc-total tabular';
+    t.textContent = formatTime(record.total);
+    row1.appendChild(d);
+    row1.appendChild(t);
+
+    const row2 = document.createElement('div');
+    row2.className = 'hc-row2';
+    const c = document.createElement('span');
+    c.textContent = record.course;
+    const s = document.createElement('span');
+    s.textContent = record.splits.length + ' 个点';
+    row2.appendChild(c);
+    row2.appendChild(s);
+
+    const strip = document.createElement('div');
+    strip.className = 'hc-mini-strip';
+    record.splits.forEach(function(sp) {
+      const cell = document.createElement('div');
+      cell.className = 'hc-mini-cell';
+      if (sp === minS && record.splits.length > 1) cell.classList.add('fast');
+      if (sp === maxS && record.splits.length > 1) cell.classList.add('slow');
+      strip.appendChild(cell);
+    });
+
+    card.appendChild(row1);
+    card.appendChild(row2);
+    card.appendChild(strip);
+
+    // Swipe delete
+    const delBg = document.createElement('div');
+    delBg.className = 'history-delete-bg';
+    delBg.textContent = '删除';
+    delBg.onclick = function(e) {
+      e.stopPropagation();
+      deleteHistory(idx);
+    };
+
+    wrap.appendChild(delBg);
+    wrap.appendChild(card);
+    setupSwipeDelete(wrap, card);
+    list.appendChild(wrap);
+  });
+}
+
+// Swipe-to-delete
+function setupSwipeDelete(wrap, card) {
+  let startX = 0, curX = 0, swiping = false;
+
+  card.addEventListener('pointerdown', function(e) {
+    startX = e.clientX;
+    curX = startX;
+    swiping = true;
+    card.style.transition = 'none';
+  });
+
+  card.addEventListener('pointermove', function(e) {
+    if (!swiping) return;
+    curX = e.clientX;
+    const dx = curX - startX;
+    if (dx < 0 && dx > -120) {
+      card.style.transform = 'translateX(' + dx + 'px)';
+    }
+  });
+
+  function endSwipe() {
+    if (!swiping) return;
+    swiping = false;
+    card.style.transition = '';
+    const dx = curX - startX;
+    if (dx < -60) {
+      card.style.transform = 'translateX(-80px)';
+      // Auto close after 3s
+      setTimeout(function() {
+        if (card.style.transform === 'translateX(-80px)') {
+          card.style.transform = '';
+        }
+      }, 3000);
+    } else {
+      card.style.transform = '';
+    }
+  }
+
+  card.addEventListener('pointerup', endSwipe);
+  card.addEventListener('pointercancel', endSwipe);
+  card.addEventListener('pointerleave', endSwipe);
+}
+
+function deleteHistory(idx) {
+  state.history.splice(idx, 1);
+  localStorage.setItem('dianqian_history', JSON.stringify(state.history));
+  renderHistoryList();
+  updateProfileStats();
+}
+
+function openHistoryDetail(idx) {
+  const record = state.history[idx];
+  if (!record) return;
+
+  renderResults(
+    { date: record.date, course: record.course, total: record.total, avg: record.avg, splits: record.splits, codes: record.codes },
+    'hdSplits', 'hdTotal', 'hdAvg', 'hdDate'
+  );
+  document.getElementById('hdTitle').textContent = record.course;
+  goToScreen('historyDetail');
+
+  setTimeout(function() {
+    animateSplitBars('hdSplits');
+  }, 400);
+}
+
+// ============================================================
+// PROFILE
+// ============================================================
+function updateProfileStats() {
+  const total = state.history.length;
+  let totalPunches = 0;
+  let fastest = Infinity;
+  let fastestInfo = null;
+
+  state.history.forEach(function(r) {
+    totalPunches += r.splits.length;
+    r.splits.forEach(function(s, i) {
+      if (s < fastest) {
+        fastest = s;
+        fastestInfo = { code: r.codes[i], course: r.course };
+      }
+    });
+  });
+
+  document.getElementById('statCount').textContent = total + 20; // add some historical
+  document.getElementById('statPunches').textContent = totalPunches + 160;
+  if (fastestInfo) {
+    document.getElementById('statFastest').textContent = formatTime(fastest);
+  }
+
+  renderHeatmap();
+}
+
+function renderHeatmap() {
+  const heatmap = document.getElementById('heatmap');
+  if (!heatmap) return;
+  heatmap.innerHTML = '';
+  // 5 weeks (35 days) of mock data for August
+  const days = 35;
+  const levels = [0, 0, 1, 0, 2, 1, 0, 1, 2, 0, 0, 1, 3, 0, 2, 1, 0, 4, 2, 0, 1, 0, 2, 4, 1, 0, 3, 2, 1, 0, 2, 1, 0, 1, 2];
+  for (let i = 0; i < days; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    const lvl = levels[i] || 0;
+    if (lvl > 0) cell.classList.add('l' + lvl);
+    heatmap.appendChild(cell);
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  loadHistory();
+  renderHistoryList();
+  updateProfileStats();
+
+  // Recompute target pulse position on resize
+  window.addEventListener('resize', function() {
+    if (state.currentScreen === 'punch') {
+      updatePunchUI();
+    }
+  });
+}
+
+// Wait for DOM
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+
+</body>
+</html>
