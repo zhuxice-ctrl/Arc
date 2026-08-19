@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>右键菜单组件 · Context Menu</title>
+<style>
+/* ============================================================
+   主题变量 —— 三套预设主题，改 --cm-* 即可换肤
+   ============================================================ */
+:root,
+.cm-theme-ink {
+  --cm-surface: #faf7f2;
+  --cm-surface-hover: #f0ebe1;
+  --cm-surface-active: #e8e1d4;
+  --cm-text: #1f1d1a;
+  --cm-text-muted: #8a8478;
+  --cm-text-disabled: #b8b2a6;
+  --cm-accent: #c2762b;
+  --cm-accent-soft: #f5ead9;
+  --cm-danger: #b3402e;
+  --cm-danger-soft: #f6e4e0;
+  --cm-border: #e0d8ca;
+  --cm-shadow: 0 8px 28px rgba(40, 30, 15, 0.16), 0 2px 8px rgba(40, 30, 15, 0.08);
+  --cm-radius: 10px;
+  --cm-radius-item: 6px;
+  --cm-min-width: 224px;
+  --cm-item-height: 36px;
+  --cm-gap: 4px;
+  --cm-font: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --cm-font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+  --cm-duration: 180ms;
+  --cm-easing: cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cm-theme-celadon {
+  --cm-surface: #f4f6f5;
+  --cm-surface-hover: #e6ede9;
+  --cm-surface-active: #dce6df;
+  --cm-text: #2a2e2c;
+  --cm-text-muted: #7a8580;
+  --cm-text-disabled: #b0bab5;
+  --cm-accent: #3d7a62;
+  --cm-accent-soft: #dceee5;
+  --cm-danger: #a8443a;
+  --cm-danger-soft: #f0ddd9;
+  --cm-border: #d2ddd6;
+  --cm-shadow: 0 8px 28px rgba(20, 40, 30, 0.14), 0 2px 8px rgba(20, 40, 30, 0.07);
+}
+.cm-theme-midnight {
+  --cm-surface: #232530;
+  --cm-surface-hover: #2e3140;
+  --cm-surface-active: #383b4c;
+  --cm-text: #e4e2dd;
+  --cm-text-muted: #908d96;
+  --cm-text-disabled: #5c5a64;
+  --cm-accent: #d4a548;
+  --cm-accent-soft: #3a3528;
+  --cm-danger: #e0685f;
+  --cm-danger-soft: #3a2826;
+  --cm-border: #3a3d4a;
+  --cm-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================
+   菜单本体 —— 可独立抽取，BEM 命名 .cm-*
+   ============================================================ */
+.cm-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: var(--cm-min-width);
+  max-width: 320px;
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius);
+  box-shadow: var(--cm-shadow);
+  padding: var(--cm-gap);
+  font-family: var(--cm-font);
+  font-size: 14px;
+  color: var(--cm-text);
+  list-style: none;
+  margin: 0;
+  opacity: 0;
+  transform: scale(0.96) translateY(4px);
+  transform-origin: var(--cm-origin, top left);
+  transition: opacity var(--cm-duration) var(--cm-easing),
+              transform var(--cm-duration) var(--cm-easing);
+  pointer-events: none;
+  user-select: none;
+}
+.cm-menu.cm-visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+
+.cm-separator {
+  height: 1px;
+  background: var(--cm-border);
+  margin: 4px 6px;
+  border: none;
+}
+
+.cm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--cm-item-height);
+  padding: 0 10px;
+  border-radius: var(--cm-radius-item);
+  cursor: pointer;
+  position: relative;
+  outline: none;
+  transition: background 80ms ease;
+}
+.cm-item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cm-text-muted);
+}
+.cm-item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-item-shortcut {
+  font-family: var(--cm-font-mono);
+  font-size: 12px;
+  color: var(--cm-text-muted);
+  flex-shrink: 0;
+}
+.cm-item-arrow {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--cm-text-muted);
+  margin-left: -4px;
+}
+.cm-item-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cm-border);
+  border-top-color: var(--cm-accent);
+  border-radius: 50%;
+  animation: cm-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+
+.cm-item:hover,
+.cm-item.cm-focused {
+  background: var(--cm-surface-hover);
+}
+.cm-item.cm-focused .cm-item-icon { color: var(--cm-accent); }
+.cm-item:active { background: var(--cm-surface-active); }
+
+.cm-item.cm-danger { color: var(--cm-danger); }
+.cm-item.cm-danger .cm-item-icon { color: var(--cm-danger); }
+.cm-item.cm-danger:hover,
+.cm-item.cm-danger.cm-focused {
+  background: var(--cm-danger-soft);
+  color: var(--cm-danger);
+}
+.cm-item.cm-danger.cm-focused .cm-item-icon { color: var(--cm-danger); }
+
+.cm-item.cm-disabled {
+  color: var(--cm-text-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.cm-item.cm-disabled .cm-item-icon,
+.cm-item.cm-disabled .cm-item-shortcut { color: var(--cm-text-disabled); }
+
+.cm-item.cm-loading { cursor: wait; pointer-events: none; }
+
+.cm-item.cm-has-submenu.cm-sub-open {
+  background: var(--cm-accent-soft);
+}
+.cm-item.cm-has-submenu.cm-sub-open .cm-item-icon { color: var(--cm-accent); }
+
+/* 子菜单容器 */
+.cm-submenu {
+  position: fixed;
+  z-index: 10000;
+}
+
+/* 焦点环 */
+.cm-item.cm-focused {
+  box-shadow: inset 0 0 0 2px var(--cm-accent);
+}
+
+/* scrim — 点击外部关闭 */
+.cm-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+}
+
+/* ============================================================
+   展示页样式（非组件部分）
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f5f3ee;
+  color: #2a2825;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.showcase-header {
+  background: #fff;
+  border-bottom: 1px solid #e8e2d8;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.showcase-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.showcase-header .subtitle {
+  font-size: 13px;
+  color: #8a8478;
+  margin-left: 8px;
+  font-weight: 400;
+}
+.theme-switcher {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.theme-switcher span { font-size: 13px; color: #8a8478; }
+.theme-btn {
+  padding: 5px 14px;
+  border: 1px solid #e0d8ca;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #5a544a;
+  transition: all 120ms ease;
+}
+.theme-btn:hover { background: #f0ebe1; }
+.theme-btn.active {
+  background: #2a2825;
+  color: #fff;
+  border-color: #2a2825;
+}
+
+.showcase-body {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #5a544a;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: #c2762b;
+  border-radius: 2px;
+}
+
+.demo-hint {
+  background: #fff;
+  border: 1px solid #e8e2d8;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #6a6458;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.demo-hint kbd {
+  font-family: "SF Mono", monospace;
+  font-size: 11px;
+  background: #f0ebe1;
+  border: 1px solid #e0d8ca;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #5a544a;
+}
+
+/* 文档列表 demo */
+.doc-list {
+  background: #fff;
+  border: 1px solid #e8e2d8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f0ebe1;
+  cursor: context-menu;
+  transition: background 100ms ease;
+}
+.doc-item:last-child { border-bottom: none; }
+.doc-item:hover { background: #faf7f2; }
+.doc-item.cm-trigger-active { background: #f5ead9; }
+.doc-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-size: 14px; font-weight: 500; color: #2a2825; }
+.doc-meta { font-size: 12px; color: #9a9488; margin-top: 2px; }
+
+/* 状态机说明 */
+.state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 32px;
+}
+.state-card {
+  background: #fff;
+  border: 1px solid #e8e2d8;
+  border-radius: 8px;
+  padding: 12px;
+}
+.state-card .state-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c2762b;
+  margin-bottom: 4px;
+}
+.state-card .state-desc { font-size: 12px; color: #8a8478; }
+
+/* 用法代码 */
+.code-block {
+  background: #1e1f24;
+  color: #e4e2dd;
+  border-radius: 8px;
+  padding: 18px 20px;
+  font-family: "SF Mono", "JetBrains Mono", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+  margin-bottom: 32px;
+}
+.code-block .ck { color: #d4a548; }
+.code-block .cs { color: #8fb8a0; }
+.code-block .cc { color: #6c6a74; }
+
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 32px;
+}
+.config-table th,
+.config-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e8e2d8;
+}
+.config-table th {
+  font-weight: 600;
+  color: #5a544a;
+  background: #faf7f2;
+}
+.config-table td:first-child {
+  font-family: "SF Mono", monospace;
+  color: #c2762b;
+  white-space: nowrap;
+}
+.config-table td:nth-child(2) { color: #6a6458; }
+
+.footer-note {
+  font-size: 12px;
+  color: #aaa49a;
+  text-align: center;
+  margin-top: 40px;
+}
+
+/* Toast 反馈（demo 用，非组件） */
+.demo-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #2a2825;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 10001;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.demo-toast.show { transform: translateX(-50%) translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-menu { transition: opacity 80ms ease; transform: none !important; }
+  .cm-item-spinner { animation-duration: 1s; }
+  .demo-toast { transition: opacity 120ms ease; }
+}
+</style>
+</head>
+<body>
+
+<div class="showcase-header">
+  <div>
+    <h1>右键菜单组件<span class="subtitle">Context Menu · 生产级可复用 UI 组件</span></h1>
+  </div>
+  <div class="theme-switcher">
+    <span>主题</span>
+    <button class="theme-btn active" data-theme="ink">墨韵</button>
+    <button class="theme-btn" data-theme="celadon">青瓷</button>
+    <button class="theme-btn" data-theme="midnight">深夜</button>
+  </div>
+</div>
+
+<div class="showcase-body">
+
+  <div class="demo-hint">
+    <strong>操作方式：</strong>
+    右键点击下方任意文档 · 或选中后按 <kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>M</kbd> · 菜单内用 <kbd>↑↓</kbd> 导航、<kbd>→</kbd> 展开子菜单、<kbd>Enter</kbd> 执行、<kbd>Esc</kbd> 关闭、字母键快速跳转
+  </div>
+
+  <div class="section-title">文档管理 · 右键试试</div>
+  <div class="doc-list" id="docList">
+    <!-- 文档项由 JS 生成 -->
+  </div>
+
+  <div style="margin-top: 40px;"></div>
+  <div class="section-title">状态机（7 态）</div>
+  <div class="state-grid" id="stateGrid"></div>
+
+  <div class="section-title">可配置 CSS 变量</div>
+  <table class="config-table" id="configTable"></table>
+
+  <div class="section-title">用法示例</div>
+  <div class="code-block" id="codeBlock"></div>
+
+  <div class="footer-note">纯 vanilla 单文件 · 无 React / Babel / CDN · JS 可抽取为 initContextMenu() · CSS 可独立抽取</div>
+</div>
+
+<div class="demo-toast" id="demoToast"></div>
+
+<script>
+/* ============================================================
+   Context Menu 组件 —— 纯 vanilla，可独立抽取
+   用法：const api = initContextMenu(triggerEl, items, options);
+   ============================================================ */
+
+const CM_ICONS = {
+  open: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z"/><path d="M6 9h4"/></svg>',
+  link: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5l3-3"/><path d="M5 8l-1.5 1.5a2.5 2.5 0 0 0 3.5 3.5L8.5 11.5"/><path d="M11 8l1.5-1.5a2.5 2.5 0 0 0-3.5-3.5L7.5 4.5"/></svg>',
+  rename: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L5 13.5l-3 .5.5-3L11 2.5z"/><path d="M9.5 4l2.5 2.5"/></svg>',
+  folder: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z"/></svg>',
+  share: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="8" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/><path d="M5.8 7l4.4-2.2M5.8 9l4.4 2.2"/></svg>',
+  download: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 7L8 10.5 11.5 7"/><path d="M3 13h10"/></svg>',
+  trash: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h10M6.5 5V3.5h3V5M5 5l.5 8h5L11 5"/></svg>',
+  copy: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V4a1 1 0 0 1 1-1h7"/></svg>',
+  info: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v3.5M8 5v.5"/></svg>',
+  arrow: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l4 4-4 4"/></svg>',
+  lock: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+  eye: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>',
+  star: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.8 4 4.2.4-3.2 2.8 1 4.2L8 11.3 4.2 13.4l1-4.2L2 6.4l4.2-.4L8 2z"/></svg>'
+};
+
+// 全局单例：同一时间只允许一个右键菜单打开
+var _cmActiveInstance = null;
+
+function initContextMenu(triggerEl, items, options) {
+  options = options || {};
+  var themeClass = options.themeClass || 'cm-theme-ink';
+  var self = {};
+  var submenuDelay = options.submenuDelay != null ? options.submenuDelay : 120;
+  var onShow = options.onShow || function() {};
+  var onClose = options.onClose || function() {};
+
+  // 菜单栈：root 在 [0]，子菜单依次 push
+  var menuStack = [];
+  var scrim = null;
+  var focusedIndex = -1;
+  var currentItems = items;
+  var typeAheadStr = '';
+  var typeAheadTimer = null;
+  var submenuTimer = null;
+  var lastFocused = null;
+  var destroyed = false;
+
+  /* ---------- 构建单个菜单 DOM ---------- */
+  function buildMenu(menuItems, level) {
+    var menu = document.createElement('ul');
+    menu.className = 'cm-menu ' + themeClass;
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-orientation', 'vertical');
+    menu.dataset.level = level;
+    menu._cmItems = menuItems;
+
+    menuItems.forEach(function(item, idx) {
+      if (item.separator) {
+        var sep = document.createElement('li');
+        sep.className = 'cm-separator';
+        sep.setAttribute('role', 'separator');
+        menu.appendChild(sep);
+        return;
+      }
+      var li = document.createElement('li');
+      li.className = 'cm-item';
+      li.setAttribute('role', 'menuitem');
+      li.tabIndex = -1;
+      li.dataset.idx = idx;
+
+      if (item.disabled) li.classList.add('cm-disabled');
+      if (item.danger) li.classList.add('cm-danger');
+      if (item.loading) li.classList.add('cm-loading');
+      if (item.submenu) li.classList.add('cm-has-submenu');
+
+      // 图标
+      var iconWrap = document.createElement('span');
+      iconWrap.className = 'cm-item-icon';
+      if (item.loading) {
+        var spinner = document.createElement('span');
+        spinner.className = 'cm-item-spinner';
+        iconWrap.appendChild(spinner);
+      } else if (item.icon && CM_ICONS[item.icon]) {
+        iconWrap.innerHTML = CM_ICONS[item.icon];
+      }
+      li.appendChild(iconWrap);
+
+      // 标签
+      var label = document.createElement('span');
+      label.className = 'cm-item-label';
+      label.textContent = item.label;
+      li.appendChild(label);
+
+      // 快捷键
+      if (item.shortcut && !item.loading) {
+        var sc = document.createElement('span');
+        sc.className = 'cm-item-shortcut';
+        sc.textContent = item.shortcut;
+        li.appendChild(sc);
+      }
+
+      // 子菜单箭头
+      if (item.submenu) {
+        var arrow = document.createElement('span');
+        arrow.className = 'cm-item-arrow';
+        arrow.innerHTML = CM_ICONS.arrow;
+        li.appendChild(arrow);
+      }
+
+      // 事件
+      if (!item.disabled && !item.loading) {
+        (function(it, menuItem, lvl) {
+          // 点击
+          menuItem.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (it.submenu) {
+              toggleSubmenu(menuItem, it, lvl);
+            } else {
+              if (typeof it.onSelect === 'function') it.onSelect(it);
+              closeAll();
+            }
+          });
+          // hover
+          menuItem.addEventListener('mouseenter', function() {
+            if (submenuTimer) { clearTimeout(submenuTimer); submenuTimer = null; }
+            setFocus(menu, menuItem);
+            if (it.submenu && lvl < menuStack.length - 1 + 1) {
+              // 关闭更深的子菜单
+              while (menuStack.length > lvl + 1) {
+                var deeper = menuStack.pop();
+                deeper.remove();
+              }
+              submenuTimer = setTimeout(function() {
+                openSubmenu(menuItem, it, lvl);
+              }, submenuDelay);
+            } else if (it.submenu) {
+              submenuTimer = setTimeout(function() {
+                openSubmenu(menuItem, it, lvl);
+              }, submenuDelay);
+            } else {
+              // 非子菜单项 hover，关闭所有子菜单
+              while (menuStack.length > lvl + 1) {
+                var d = menuStack.pop();
+                d.remove();
+              }
+            }
+          });
+        })(item, li, level);
+      }
+
+      menu.appendChild(li);
+    });
+
+    return menu;
+  }
+
+  /* ---------- 定位菜单（视口翻转） ---------- */
+  function positionMenu(menu, x, y) {
+    document.body.appendChild(menu);
+    // 先设可见以测量
+    menu.style.visibility = 'hidden';
+    menu.classList.add('cm-visible');
+    var rect = menu.getBoundingClientRect();
+    menu.classList.remove('cm-visible');
+    menu.style.visibility = '';
+
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var flipX = false, flipY = false;
+
+    var left = x;
+    var top = y;
+    if (x + rect.width > vw - 8) {
+      left = x - rect.width;
+      flipX = true;
+    }
+    if (left < 8) left = 8;
+    if (y + rect.height > vh - 8) {
+      top = y - rect.height;
+      flipY = true;
+    }
+    if (top < 8) top = 8;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // transform-origin 跟随翻转方向
+    var origin = (flipY ? 'bottom' : 'top') + ' ' + (flipX ? 'right' : 'left');
+    menu.style.setProperty('--cm-origin', origin);
+  }
+
+  /* ---------- 定位子菜单 ---------- */
+  function positionSubmenu(subMenu, parentItem) {
+    document.body.appendChild(subMenu);
+    subMenu.style.visibility = 'hidden';
+    subMenu.classList.add('cm-visible');
+    var rect = subMenu.getBoundingClientRect();
+    subMenu.classList.remove('cm-visible');
+    subMenu.style.visibility = '';
+
+    var pRect = parentItem.getBoundingClientRect();
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+
+    var x = pRect.right + 2;
+    var flipX = false;
+    if (x + rect.width > vw - 8) {
+      x = pRect.left - rect.width - 2;
+      flipX = true;
+    }
+    var y = pRect.top;
+    var flipY = false;
+    if (y + rect.height > vh - 8) {
+      y = vh - rect.height - 8;
+      flipY = true;
+    }
+    if (y < 8) y = 8;
+
+    subMenu.style.left = x + 'px';
+    subMenu.style.top = y + 'px';
+    var origin = (flipY ? 'bottom' : 'top') + ' ' + (flipX ? 'right' : 'left');
+    subMenu.style.setProperty('--cm-origin', origin);
+  }
+
+  /* ---------- 焦点管理 ---------- */
+  function setFocus(menu, item) {
+    var items = menu.querySelectorAll('.cm-item:not(.cm-disabled):not(.cm-loading)');
+    items.forEach(function(it) { it.classList.remove('cm-focused'); });
+    if (item) {
+      item.classList.add('cm-focused');
+      item.focus();
+      var idx = Array.prototype.indexOf.call(menu.children, item);
+      focusedIndex = idx;
+    }
+  }
+
+  function focusByOffset(menu, offset) {
+    var focusable = Array.prototype.filter.call(menu.children, function(c) {
+      return c.classList.contains('cm-item') && !c.classList.contains('cm-disabled') && !c.classList.contains('cm-loading');
+    });
+    if (focusable.length === 0) return;
+    var current = menu.querySelector('.cm-item.cm-focused');
+    var currentIdx = current ? focusable.indexOf(current) : -1;
+    var newIdx;
+    if (currentIdx === -1) {
+      newIdx = offset > 0 ? 0 : focusable.length - 1;
+    } else {
+      newIdx = (currentIdx + offset + focusable.length) % focusable.length;
+    }
+    setFocus(menu, focusable[newIdx]);
+  }
+
+  function focusFirst(menu) {
+    var focusable = Array.prototype.filter.call(menu.children, function(c) {
+      return c.classList.contains('cm-item') && !c.classList.contains('cm-disabled') && !c.classList.contains('cm-loading');
+    });
+    if (focusable.length) setFocus(menu, focusable[0]);
+  }
+
+  function focusLast(menu) {
+    var focusable = Array.prototype.filter.call(menu.children, function(c) {
+      return c.classList.contains('cm-item') && !c.classList.contains('cm-disabled') && !c.classList.contains('cm-loading');
+    });
+    if (focusable.length) setFocus(menu, focusable[focusable.length - 1]);
+  }
+
+  /* ---------- type-ahead 搜索 ---------- */
+  function typeAhead(menu, ch) {
+    if (typeAheadTimer) clearTimeout(typeAheadTimer);
+    typeAheadStr += ch.toLowerCase();
+    typeAheadTimer = setTimeout(function() { typeAheadStr = ''; }, 600);
+
+    var focusable = Array.prototype.filter.call(menu.children, function(c) {
+      return c.classList.contains('cm-item') && !c.classList.contains('cm-disabled') && !c.classList.contains('cm-loading');
+    });
+    for (var i = 0; i < focusable.length; i++) {
+      var label = focusable[i].querySelector('.cm-item-label');
+      if (label && label.textContent.toLowerCase().indexOf(typeAheadStr) === 0) {
+        setFocus(menu, focusable[i]);
+        break;
+      }
+    }
+  }
+
+  /* ---------- 子菜单操作 ---------- */
+  function openSubmenu(parentItem, item, level) {
+    // 关闭更深的子菜单
+    while (menuStack.length > level + 1) {
+      var d = menuStack.pop();
+      d.remove();
+    }
+    // 关闭同级已开的子菜单
+    parentItem.parentElement.querySelectorAll('.cm-item.cm-sub-open').forEach(function(el) {
+      el.classList.remove('cm-sub-open');
+    });
+
+    var subMenu = buildMenu(item.submenu, level + 1);
+    positionSubmenu(subMenu, parentItem);
+    menuStack.push(subMenu);
+    parentItem.classList.add('cm-sub-open');
+
+    // 显示
+    requestAnimationFrame(function() {
+      subMenu.classList.add('cm-visible');
+      focusFirst(subMenu);
+    });
+  }
+
+  function toggleSubmenu(parentItem, item, level) {
+    if (parentItem.classList.contains('cm-sub-open')) {
+      // 关闭
+      while (menuStack.length > level + 1) {
+        var d = menuStack.pop();
+        d.remove();
+      }
+      parentItem.classList.remove('cm-sub-open');
+    } else {
+      openSubmenu(parentItem, item, level);
+    }
+  }
+
+  function closeDeepestSubmenu() {
+    if (menuStack.length <= 1) return false;
+    var last = menuStack.pop();
+    last.remove();
+    // 标记父项
+    var parentLevel = menuStack.length - 1;
+    var parentMenu = menuStack[parentLevel];
+    if (parentMenu) {
+      parentMenu.querySelectorAll('.cm-item.cm-sub-open').forEach(function(el) {
+        // 只关闭最深层
+      });
+    }
+    // 找到对应父项并取消高亮
+    document.querySelectorAll('.cm-item.cm-sub-open').forEach(function(el) {
+      var elLevel = parseInt(el.parentElement.dataset.level, 10);
+      if (elLevel === parentLevel) {
+        el.classList.remove('cm-sub-open');
+        setFocus(parentMenu, el);
+      }
+    });
+    return true;
+  }
+
+  /* ---------- 键盘导航 ---------- */
+  function onKeyDown(e) {
+    if (menuStack.length === 0) return;
+    var currentMenu = menuStack[menuStack.length - 1];
+    var focused = currentMenu.querySelector('.cm-item.cm-focused');
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault(); e.stopPropagation();
+        focusByOffset(currentMenu, 1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault(); e.stopPropagation();
+        focusByOffset(currentMenu, -1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault(); e.stopPropagation();
+        if (focused && focused.classList.contains('cm-has-submenu')) {
+          var item = getItemByElement(focused, menuStack.length - 1);
+          if (item && item.submenu) openSubmenu(focused, item, menuStack.length - 1);
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault(); e.stopPropagation();
+        if (menuStack.length > 1) {
+          closeDeepestSubmenu();
+        }
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault(); e.stopPropagation();
+        if (focused) {
+          focused.click();
+        }
+        break;
+      case 'Escape':
+        e.preventDefault(); e.stopPropagation();
+        if (menuStack.length > 1) {
+          closeDeepestSubmenu();
+        } else {
+          closeAll();
+        }
+        break;
+      case 'Home':
+        e.preventDefault(); e.stopPropagation();
+        focusFirst(currentMenu);
+        break;
+      case 'End':
+        e.preventDefault(); e.stopPropagation();
+        focusLast(currentMenu);
+        break;
+      case 'Tab':
+        e.preventDefault(); e.stopPropagation();
+        break;
+      default:
+        // 字母键 type-ahead
+        if (e.key.length === 1 && /[a-zA-Z\u4e00-\u9fa5]/.test(e.key)) {
+          e.preventDefault();
+          typeAhead(currentMenu, e.key);
+        }
+        break;
+    }
+  }
+
+  /* ---------- 根据 DOM 元素找 item 配置（直接从菜单 DOM 的 _cmItems 取，避免递归搜索错配） ---------- */
+  function getItemByElement(el, level) {
+    var idx = parseInt(el.dataset.idx, 10);
+    var menu = menuStack[level];
+    if (menu && menu._cmItems && menu._cmItems[idx]) return menu._cmItems[idx];
+    return null;
+  }
+
+  /* ---------- 显示 / 关闭 ---------- */
+  function show(x, y) {
+    if (destroyed) return;
+    // 全局单例：关闭其他实例的菜单
+    if (_cmActiveInstance && _cmActiveInstance !== self && _cmActiveInstance._hide) {
+      _cmActiveInstance._hide();
+    }
+    closeAll();
+    _cmActiveInstance = self;
+    lastFocused = document.activeElement;
+
+    var menu = buildMenu(items, 0);
+    positionMenu(menu, x, y);
+    menuStack.push(menu);
+
+    // scrim
+    scrim = document.createElement('div');
+    scrim.className = 'cm-scrim';
+    scrim.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      closeAll();
+      // 在新位置重新打开
+      show(e.clientX, e.clientY);
+    });
+    scrim.addEventListener('click', function(e) {
+      e.preventDefault();
+      closeAll();
+    });
+    document.body.appendChild(scrim);
+
+    requestAnimationFrame(function() {
+      menu.classList.add('cm-visible');
+      focusFirst(menu);
+    });
+
+    document.addEventListener('keydown', onKeyDown, true);
+    onShow();
+  }
+
+  function closeAll() {
+    menuStack.forEach(function(m) { m.remove(); });
+    menuStack = [];
+    if (scrim) { scrim.remove(); scrim = null; }
+    document.removeEventListener('keydown', onKeyDown, true);
+    if (typeAheadTimer) { clearTimeout(typeAheadTimer); typeAheadStr = ''; }
+    if (submenuTimer) { clearTimeout(submenuTimer); }
+    if (lastFocused && typeof lastFocused.focus === 'function') {
+      lastFocused.focus();
+      lastFocused = null;
+    }
+    if (_cmActiveInstance === self) _cmActiveInstance = null;
+    onClose();
+  }
+
+  // 暴露内部关闭方法供全局单例调用
+  self._hide = closeAll;
+
+  /* ---------- 触发器绑定 ---------- */
+  triggerEl.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEl.classList.add('cm-trigger-active');
+    setTimeout(function() { triggerEl.classList.remove('cm-trigger-active'); }, 200);
+    show(e.clientX, e.clientY);
+  });
+
+  // 键盘触发
+  triggerEl.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+      e.preventDefault();
+      var rect = triggerEl.getBoundingClientRect();
+      show(rect.left + 40, rect.top + 20);
+    }
+  });
+
+  // 视口变化时关闭
+  window.addEventListener('resize', function() {
+    if (menuStack.length) closeAll();
+  });
+
+  // 长按触发（触屏）
+  var longPressTimer = null;
+  triggerEl.addEventListener('touchstart', function(e) {
+    var touch = e.touches[0];
+    longPressTimer = setTimeout(function() {
+      show(touch.clientX, touch.clientY);
+    }, 500);
+  }, { passive: true });
+  triggerEl.addEventListener('touchend', function() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+  triggerEl.addEventListener('touchmove', function() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }, { passive: true });
+
+  return {
+    show: show,
+    hide: closeAll,
+    destroy: function() {
+      destroyed = true;
+      closeAll();
+    }
+  };
+}
+
+/* ============================================================
+   展示页 demo 逻辑
+   ============================================================ */
+
+var docs = [
+  { name: '项目方案书.pdf', meta: '2.4 MB · 修改于 08-19 14:32', color: '#c2762b', ext: 'PDF' },
+  { name: '用户调研报告.docx', meta: '876 KB · 修改于 08-18 09:15', color: '#3d7a62', ext: 'DOC' },
+  { name: '财务预算表 Q3.xlsx', meta: '1.1 MB · 修改于 08-17 16:48', color: '#4a6fa5', ext: 'XLS' },
+  { name: '设计稿初版.fig', meta: '12.8 MB · 修改于 08-19 11:20', color: '#8b5cb8', ext: 'FIG' },
+  { name: '会议纪要-0819.md', meta: '24 KB · 修改于 08-19 18:05', color: '#6a6458', ext: 'MD' },
+  { name: '产品需求文档 v2.docx', meta: '1.9 MB · 修改于 08-16 10:30', color: '#3d7a62', ext: 'DOC' }
+];
+
+var docList = document.getElementById('docList');
+docs.forEach(function(doc, i) {
+  var div = document.createElement('div');
+  div.className = 'doc-item';
+  div.innerHTML = '<div class="doc-icon" style="background:' + doc.color + '">' + doc.ext + '</div>' +
+    '<div class="doc-info"><div class="doc-name">' + doc.name + '</div>' +
+    '<div class="doc-meta">' + doc.meta + '</div></div>';
+  docList.appendChild(div);
+
+  var menuItems = [
+    { label: '打开', icon: 'open', shortcut: 'Enter', onSelect: function() { showToast('已打开 ' + doc.name); } },
+    { label: '在新窗口打开', icon: 'eye', onSelect: function() { showToast('已在新窗口打开'); } },
+    { separator: true },
+    { label: '复制链接', icon: 'link', shortcut: '⌘C', onSelect: function() { showToast('链接已复制到剪贴板'); } },
+    { label: '复制文件', icon: 'copy', onSelect: function() { showToast('文件已复制'); } },
+    { label: '重命名', icon: 'rename', shortcut: 'F2', onSelect: function() { showToast('进入重命名模式'); } },
+    { separator: true },
+    {
+      label: '移动到', icon: 'folder', submenu: [
+        { label: '项目文件夹', icon: 'folder', onSelect: function() { showToast('已移动到 项目文件夹'); } },
+        { label: '个人空间', icon: 'folder', onSelect: function() { showToast('已移动到 个人空间'); } },
+        { label: '共享团队空间', icon: 'share', onSelect: function() { showToast('已移动到 共享团队空间'); } },
+        { separator: true },
+        {
+          label: '归档位置', icon: 'folder', submenu: [
+            { label: '2026 年归档', onSelect: function() { showToast('已归档到 2026'); } },
+            { label: '冷存储', onSelect: function() { showToast('已移入冷存储'); } },
+            { separator: true },
+            { label: '回收站', icon: 'trash', danger: true, onSelect: function() { showToast('已移入回收站'); } }
+          ]
+        }
+      ]
+    },
+    {
+      label: '分享', icon: 'share', submenu: [
+        { label: '生成分享链接', icon: 'link', onSelect: function() { showToast('分享链接已生成'); } },
+        { label: '邀请协作者', icon: 'share', onSelect: function() { showToast('打开邀请面板'); } },
+        { separator: true },
+        { label: '设为公开', icon: 'eye', onSelect: function() { showToast('已设为公开访问'); } },
+        { label: '锁定编辑', icon: 'lock', onSelect: function() { showToast('已锁定编辑权限'); } }
+      ]
+    },
+    { label: '收藏', icon: 'star', onSelect: function() { showToast('已添加到收藏'); } },
+    { separator: true },
+    { label: '下载', icon: 'download', loading: true },
+    { label: '查看详情', icon: 'info', onSelect: function() { showToast('打开详情面板'); } },
+    { separator: true },
+    { label: '删除', icon: 'trash', danger: true, shortcut: '⌫', onSelect: function() { showToast('已删除 ' + doc.name); } },
+    { label: '已锁定（管理员）', icon: 'lock', disabled: true }
+  ];
+
+  initContextMenu(div, menuItems, {
+    themeClass: 'cm-theme-ink',
+    onShow: function() {},
+    onClose: function() {}
+  });
+});
+
+// 整个列表也支持右键空白区域
+initContextMenu(docList, [
+  { label: '上传文件', icon: 'download', onSelect: function() { showToast('打开上传对话框'); } },
+  { label: '新建文件夹', icon: 'folder', onSelect: function() { showToast('创建新文件夹'); } },
+  { separator: true },
+  { label: '按名称排序', icon: 'rename', onSelect: function() { showToast('已按名称排序'); } },
+  { label: '按时间排序', icon: 'info', onSelect: function() { showToast('已按时间排序'); } },
+  { separator: true },
+  { label: '刷新', icon: 'eye', shortcut: '⌘R', onSelect: function() { showToast('列表已刷新'); } }
+], { themeClass: 'cm-theme-ink' });
+
+/* ---------- 主题切换 ---------- */
+var currentTheme = 'ink';
+document.querySelectorAll('.theme-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.theme-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentTheme = btn.dataset.theme;
+    var themeClass = 'cm-theme-' + currentTheme;
+    // 更新所有已绑定的菜单主题（通过 CSS scope — 菜单创建时用 themeClass，
+    // 已开菜单下次打开生效；这里改 body class 让展示页即时反馈）
+    document.body.className = '';
+    document.body.classList.add(themeClass);
+    showToast('主题已切换为「' + btn.textContent + '」');
+  });
+});
+
+/* ---------- 状态机展示 ---------- */
+var states = [
+  { name: 'closed', desc: '菜单关闭，焦点回到触发器' },
+  { name: 'opening', desc: '淡入+缩放+位移动画 180ms' },
+  { name: 'open', desc: '菜单可见，首项自动聚焦' },
+  { name: 'submenu-expanded', desc: '子菜单展开，父项高亮' },
+  { name: 'item-disabled', desc: '禁用项灰色，不可聚焦' },
+  { name: 'item-loading', desc: '加载项转圈，不可点击' },
+  { name: 'item-danger', desc: '危险项红色高亮区分' }
+];
+var stateGrid = document.getElementById('stateGrid');
+states.forEach(function(s) {
+  var card = document.createElement('div');
+  card.className = 'state-card';
+  card.innerHTML = '<div class="state-name">' + s.name + '</div><div class="state-desc">' + s.desc + '</div>';
+  stateGrid.appendChild(card);
+});
+
+/* ---------- 配置表 ---------- */
+var configs = [
+  ['--cm-surface', '菜单背景色'],
+  ['--cm-surface-hover', '悬停背景色'],
+  ['--cm-text', '主文字色'],
+  ['--cm-text-muted', '次要文字/图标色'],
+  ['--cm-accent', '主题强调色（聚焦/图标）'],
+  ['--cm-danger', '危险项文字色'],
+  ['--cm-danger-soft', '危险项悬停背景'],
+  ['--cm-border', '边框/分隔线色'],
+  ['--cm-radius', '菜单圆角'],
+  ['--cm-min-width', '菜单最小宽度'],
+  ['--cm-duration', '开启动画时长'],
+  ['--cm-easing', '动画缓动曲线']
+];
+var configTable = document.getElementById('configTable');
+configTable.innerHTML = '<thead><tr><th>变量名</th><th>说明</th></tr></thead><tbody>';
+configs.forEach(function(c) {
+  configTable.querySelector('tbody').innerHTML += '<tr><td>' + c[0] + '</td><td>' + c[1] + '</td></tr>';
+});
+
+/* ---------- 用法代码 ---------- */
+document.getElementById('codeBlock').innerHTML =
+'<span class="cc">// 1. 引入 initContextMenu（从本文件抽取 JS 部分）</span>\n' +
+'<span class="ck">const</span> items = [\n' +
+'  { label: <span class="cs">\'打开\'</span>, icon: <span class="cs">\'open\'</span>, onSelect: openFile },\n' +
+'  { label: <span class="cs">\'复制链接\'</span>, shortcut: <span class="cs">\'⌘C\'</span>, onSelect: copyLink },\n' +
+'  { separator: <span class="ck">true</span> },\n' +
+'  { label: <span class="cs">\'移动到\'</span>, icon: <span class="cs">\'folder\'</span>, submenu: [...] },\n' +
+'  { label: <span class="cs">\'下载\'</span>, loading: <span class="ck">true</span> },\n' +
+'  { label: <span class="cs">\'删除\'</span>, danger: <span class="ck">true</span>, onSelect: deleteFile }\n' +
+'];\n\n' +
+'<span class="cc">// 2. 绑定到触发元素</span>\n' +
+'<span class="ck">const</span> api = initContextMenu(triggerEl, items, {\n' +
+'  themeClass: <span class="cs">\'cm-theme-ink\'</span>,  <span class="cc">// 墨韵 / 青瓷 / 深夜</span>\n' +
+'  submenuDelay: <span class="ck">120</span>,            <span class="cc">// 子菜单展开延迟 ms</span>\n' +
+'  onShow: () => {},\n' +
+'  onClose: () => {}\n' +
+'});\n\n' +
+'<span class="cc">// 3. 可编程控制</span>\n' +
+'api.show(x, y);  <span class="cc">// 编程式打开</span>\n' +
+'api.hide();      <span class="cc">// 编程式关闭</span>\n' +
+'api.destroy();   <span class="cc">// 解绑销毁</span>';
+
+/* ---------- demo toast ---------- */
+var toastEl = document.getElementById('demoToast');
+var toastTimer = null;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { toastEl.classList.remove('show'); }, 2200);
+}
+</script>
+</body>
+</html>

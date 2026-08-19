@@ -1,0 +1,1901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>础字铸造 · 础方 CHU FANG</title>
+<style>
+/* ============================================================
+   DESIGN DNA —— 础字铸造 / 重量轴攀爬式字族发布站
+   Palette: 暖纸白 #F7F3EB / 墨黑 #1C1A17 / 铸字砖红 #B8452A
+   空间模型：固定舞台 + 左垂直字重轴 + 顶部章节
+   主交互：键盘 ↑↓ 沿字重轴攀爬，←→ 切章节，输入文字替换巨字
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --paper: #F7F3EB;
+  --paper-2: #EDE7DA;
+  --paper-3: #E2D9C6;
+  --ink: #1C1A17;
+  --ink-2: #3A3530;
+  --ink-3: #6B635B;
+  --ink-4: #9A9188;
+  --brick: #B8452A;
+  --brick-dark: #8E3520;
+  --brick-light: #D96B4F;
+  --rule: rgba(28, 26, 23, 0.12);
+  --rule-strong: rgba(28, 26, 23, 0.28);
+
+  --weight: 400;
+  --stroke-w: 0.5px;
+  --scale: 1;
+
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  --ease-cast: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --dur-cast: 260ms;
+  --dur-snap: 180ms;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-stack);
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 自定义光标 */
+.cursor-dot {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 180ms var(--ease-cast),
+              height 180ms var(--ease-cast),
+              background 180ms var(--ease-cast);
+  mix-blend-mode: difference;
+  will-change: transform;
+}
+.cursor-ring {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%, -50%);
+  transition: width 200ms var(--ease-cast),
+              height 200ms var(--ease-cast),
+              border-color 200ms var(--ease-cast),
+              opacity 200ms var(--ease-cast);
+  mix-blend-mode: difference;
+  will-change: transform;
+  opacity: 0.6;
+}
+.cursor-hover .cursor-dot {
+  width: 4px;
+  height: 4px;
+  background: var(--brick);
+}
+.cursor-hover .cursor-ring {
+  width: 44px;
+  height: 44px;
+  border-color: var(--brick);
+  opacity: 1;
+}
+.cursor-input .cursor-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+.cursor-drag .cursor-ring {
+  width: 60px;
+  height: 60px;
+  background: var(--ink);
+  opacity: 0.08;
+}
+
+@media (hover: none) {
+  .cursor-dot, .cursor-ring { display: none; }
+}
+
+/* 网格底纹 —— 印刷校样格 */
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+  opacity: 0.4;
+}
+
+/* 顶部品牌栏 */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  z-index: 100;
+  border-bottom: 1px solid var(--rule);
+  background: rgba(247, 243, 235, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--ink);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+.brand-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+.brand-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--rule-strong);
+}
+.brand-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* 章节导航 —— 顶部居中 */
+.chapters {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  z-index: 110;
+}
+.chapter-tab {
+  position: relative;
+  height: 100%;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--dur-snap) var(--ease-cast);
+  white-space: nowrap;
+}
+.chapter-tab:hover {
+  color: var(--ink);
+}
+.chapter-tab.active {
+  color: var(--ink);
+}
+.chapter-tab .num {
+  font-size: 10px;
+  color: var(--ink-4);
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.chapter-tab.active .num {
+  color: var(--brick);
+}
+.chapter-underline {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--brick);
+  transform: translateX(-50%);
+  transition: width var(--dur-cast) var(--ease-cast);
+}
+.chapter-tab.active .chapter-underline {
+  width: calc(100% - 36px);
+}
+
+/* 顶部右栏 —— 输入替换 */
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.char-input {
+  position: relative;
+  width: 160px;
+  height: 32px;
+}
+.char-input input {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  background: transparent;
+  padding: 0 10px 0 34px;
+  font-family: var(--font-stack);
+  font-size: 12px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color var(--dur-snap) var(--ease-cast);
+}
+.char-input input:focus {
+  border-color: var(--ink);
+}
+.char-input input::placeholder {
+  color: var(--ink-4);
+}
+.char-input-label {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+/* 左字重轴 */
+.weight-axis {
+  position: fixed;
+  left: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: calc(100vh - 160px);
+  max-height: 600px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.axis-label {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.axis-track {
+  position: relative;
+  width: 2px;
+  height: 100%;
+  background: var(--rule-strong);
+  cursor: pointer;
+}
+.axis-track-fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ink);
+  transition: height var(--dur-cast) var(--ease-cast);
+}
+.axis-ticks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 56px;
+  height: 100%;
+  pointer-events: none;
+}
+.axis-tick {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  width: 56px;
+  gap: 8px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.axis-tick-mark {
+  width: 8px;
+  height: 1px;
+  background: var(--rule-strong);
+  transition: width var(--dur-snap) var(--ease-cast),
+              background var(--dur-snap) var(--ease-cast);
+}
+.axis-tick.active .axis-tick-mark {
+  width: 16px;
+  background: var(--brick);
+}
+.axis-tick-label {
+  font-size: 10px;
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-snap) var(--ease-cast),
+              font-size var(--dur-snap) var(--ease-cast),
+              font-weight var(--dur-snap) var(--ease-cast);
+  white-space: nowrap;
+}
+.axis-tick.active .axis-tick-label {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 11px;
+}
+.axis-weight-name {
+  position: absolute;
+  right: -70px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity var(--dur-snap) var(--ease-cast);
+  white-space: nowrap;
+}
+.axis-tick.active .axis-weight-name {
+  opacity: 1;
+}
+
+.axis-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  z-index: 5;
+  transition: transform var(--dur-cast) var(--ease-cast),
+              border-color var(--dur-snap) var(--ease-cast),
+              background var(--dur-snap) var(--ease-cast);
+  box-shadow: 0 1px 4px rgba(28, 26, 23, 0.1);
+}
+.axis-handle:hover {
+  border-color: var(--brick);
+  transform: translate(-50%, -50%) scale(1.15);
+}
+.axis-handle.dragging {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.3);
+  background: var(--ink);
+}
+
+.axis-unit {
+  position: absolute;
+  bottom: -22px;
+  left: 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+}
+
+/* 中央巨字舞台 */
+.stage {
+  position: fixed;
+  inset: 56px 0 80px 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  overflow: hidden;
+}
+.giant-char {
+  font-family: var(--font-stack);
+  font-weight: var(--weight);
+  font-size: clamp(200px, 38vw, 520px);
+  line-height: 0.9;
+  color: var(--ink);
+  -webkit-text-stroke: var(--stroke-w) var(--ink);
+  transition: font-weight var(--dur-cast) var(--ease-cast),
+              -webkit-text-stroke-width var(--dur-cast) var(--ease-cast),
+              letter-spacing var(--dur-cast) var(--ease-cast);
+  white-space: nowrap;
+  transform: scale(var(--scale));
+  transform-origin: center center;
+  will-change: font-weight, transform;
+  font-feature-settings: "palt" 1;
+}
+.giant-char .trace {
+  position: absolute;
+  inset: 0;
+  font-weight: 100;
+  -webkit-text-stroke: 1px var(--rule);
+  color: transparent;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-cast) var(--ease-cast);
+}
+
+/* 字重指示 —— 右下角 */
+.weight-indicator {
+  position: fixed;
+  right: 40px;
+  bottom: 40px;
+  z-index: 100;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.weight-number {
+  font-size: 72px;
+  font-weight: 200;
+  line-height: 0.9;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  transition: font-weight var(--dur-cast) var(--ease-cast),
+              color var(--dur-cast) var(--ease-cast);
+}
+.weight-name {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.weight-tag {
+  font-size: 10px;
+  color: var(--brick);
+  letter-spacing: 0.15em;
+  margin-top: 2px;
+}
+
+/* 章节内容 */
+.chapter-content {
+  position: fixed;
+  inset: 56px 0 80px 120px;
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chapter-pane {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity var(--dur-cast) var(--ease-cast),
+              transform var(--dur-cast) var(--ease-cast);
+  pointer-events: none;
+}
+.chapter-pane.active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* 章节 01 —— 铸造宣言 */
+.chapter-manifesto {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  max-width: 720px;
+  text-align: center;
+  pointer-events: none;
+}
+.manifesto-quote {
+  font-size: 28px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  font-weight: var(--weight);
+  transition: font-weight var(--dur-cast) var(--ease-cast);
+  margin-bottom: 32px;
+  letter-spacing: 0.04em;
+}
+.manifesto-attrib {
+  font-size: 12px;
+  color: var(--ink-4);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.manifesto-meta {
+  margin-top: 48px;
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+}
+.meta-block {
+  text-align: left;
+}
+.meta-label {
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.meta-value {
+  font-size: 15px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 章节 02 —— 字族九重 */
+.chapter-family {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  pointer-events: none;
+}
+.family-west, .family-east {
+  padding: 60px 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.family-west {
+  border-right: 1px solid var(--rule);
+}
+.family-label {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.family-title {
+  font-size: 56px;
+  font-weight: var(--weight);
+  line-height: 1.1;
+  margin-bottom: 20px;
+  transition: font-weight var(--dur-cast) var(--ease-cast);
+  letter-spacing: -0.02em;
+}
+.family-east .family-title {
+  font-size: 48px;
+}
+.family-desc {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ink-3);
+  max-width: 360px;
+  margin-bottom: 32px;
+}
+.family-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.spec-item {
+  flex: 1;
+  min-width: 80px;
+}
+.spec-num {
+  font-size: 24px;
+  font-weight: var(--weight);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  transition: font-weight var(--dur-cast) var(--ease-cast);
+}
+.spec-name {
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+/* 章节 03 —— 字汇总览 */
+.chapter-glyphs {
+  position: absolute;
+  inset: 0;
+  padding: 60px 80px;
+  pointer-events: none;
+}
+.glyphs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 16px;
+}
+.glyphs-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.glyphs-count {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.glyphs-grid {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 2px;
+}
+.glyph-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(14px, 1.8vw, 22px);
+  font-weight: var(--weight);
+  color: var(--ink-2);
+  border: 1px solid transparent;
+  transition: font-weight var(--dur-cast) var(--ease-cast),
+              border-color 150ms var(--ease-cast),
+              background 150ms var(--ease-cast),
+              color 150ms var(--ease-cast);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.glyph-cell:hover {
+  border-color: var(--brick);
+  background: rgba(184, 69, 42, 0.06);
+  color: var(--brick);
+}
+.glyph-cell:nth-child(7n) {
+  border-right: 1px solid var(--rule);
+}
+
+/* 章节 04 —— 设计手记 */
+.chapter-notes {
+  position: absolute;
+  inset: 0;
+  padding: 60px 100px;
+  pointer-events: none;
+  overflow-y: auto;
+  max-height: 100%;
+  pointer-events: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.chapter-notes::-webkit-scrollbar { display: none; }
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px 64px;
+}
+.note-card {
+  position: relative;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-strong);
+}
+.note-num {
+  font-size: 10px;
+  color: var(--brick);
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.note-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+.note-body {
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--ink-3);
+}
+
+/* 章节 05 —— 授权获取 */
+.chapter-license {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  max-width: 800px;
+  pointer-events: none;
+}
+.license-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--rule-strong);
+  border: 1px solid var(--rule-strong);
+}
+.license-item {
+  background: var(--paper);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--ease-cast);
+}
+.license-item:hover {
+  background: var(--paper-2);
+}
+.license-tier {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--brick);
+  text-transform: uppercase;
+}
+.license-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.license-price {
+  font-size: 32px;
+  font-weight: var(--weight);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  transition: font-weight var(--dur-cast) var(--ease-cast);
+  letter-spacing: -0.02em;
+}
+.license-desc {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  flex: 1;
+}
+.license-cta {
+  font-size: 11px;
+  color: var(--ink);
+  letter-spacing: 0.15em;
+  border-top: 1px solid var(--rule-strong);
+  padding-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.license-cta .arrow {
+  transition: transform var(--dur-snap) var(--ease-cast);
+}
+.license-item:hover .license-cta .arrow {
+  transform: translateX(4px);
+}
+
+/* 底部信息栏 */
+.bottombar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px 0 120px;
+  z-index: 100;
+  border-top: 1px solid var(--rule);
+  background: rgba(247, 243, 235, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.1em;
+}
+.bottom-left, .bottom-right {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+.bottom-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  font-size: 9px;
+  color: var(--ink-2);
+  font-family: var(--font-stack);
+}
+.bottom-divider {
+  width: 1px;
+  height: 10px;
+  background: var(--rule);
+}
+
+/* 页码指示器 */
+.page-indicator {
+  position: fixed;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.page-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rule-strong);
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--ease-cast),
+              transform var(--dur-snap) var(--ease-cast);
+}
+.page-dot:hover {
+  background: var(--ink-3);
+}
+.page-dot.active {
+  background: var(--brick);
+  transform: scale(1.5);
+}
+
+/* 装饰元素 —— 铸造印记 */
+.foundry-mark {
+  position: fixed;
+  left: 130px;
+  top: 80px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.foundry-mark-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.foundry-square {
+  width: 8px;
+  height: 8px;
+  background: var(--ink);
+}
+.foundry-text {
+  font-size: 9px;
+  color: var(--ink-4);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+/* 初始加载遮罩 */
+.boot {
+  position: fixed;
+  inset: 0;
+  background: var(--paper);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 600ms var(--ease-cast);
+  pointer-events: none;
+}
+.boot-content {
+  text-align: center;
+}
+.boot-char {
+  font-size: 80px;
+  font-weight: 400;
+  color: var(--ink);
+  animation: bootBreath 1.8s var(--ease-cast) infinite;
+}
+.boot-text {
+  margin-top: 16px;
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.boot.done {
+  opacity: 0;
+}
+@keyframes bootBreath {
+  0%, 100% { font-weight: 100; opacity: 0.6; }
+  50% { font-weight: 900; opacity: 1; }
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .topbar { padding: 0 20px; }
+  .weight-axis { left: 16px; height: calc(100vh - 140px); }
+  .stage, .chapter-content { left: 80px; inset: 56px 0 60px 80px; }
+  .bottombar { padding: 0 20px 0 80px; }
+  .foundry-mark { left: 90px; }
+  .glyphs-grid { grid-template-columns: repeat(10, 1fr); }
+  .notes-grid { grid-template-columns: 1fr; gap: 32px; }
+  .chapter-family { grid-template-columns: 1fr; }
+  .family-west { border-right: none; border-bottom: 1px solid var(--rule); }
+  .family-west, .family-east { padding: 40px 60px; }
+  .chapter-glyphs, .chapter-notes { padding: 40px 60px; }
+}
+
+@media (max-width: 768px) {
+  .topbar { padding: 0 16px; }
+  .brand-sub { display: none; }
+  .char-input { width: 120px; }
+  .chapters { gap: 0; }
+  .chapter-tab { padding: 0 12px; font-size: 11px; }
+  .weight-axis { left: 8px; width: 40px; }
+  .axis-ticks { width: 40px; }
+  .axis-tick { width: 40px; gap: 4px; }
+  .axis-tick-label { font-size: 9px; }
+  .axis-weight-name { display: none; }
+  .stage, .chapter-content { left: 56px; }
+  .bottombar { padding: 0 16px 0 56px; font-size: 9px; }
+  .weight-indicator { right: 20px; bottom: 24px; }
+  .weight-number { font-size: 48px; }
+  .foundry-mark { display: none; }
+  .page-indicator { right: 16px; }
+  .glyphs-grid { grid-template-columns: repeat(7, 1fr); }
+  .license-grid { grid-template-columns: 1fr; }
+  .chapter-glyphs, .chapter-notes { padding: 32px 40px; }
+  .family-west, .family-east { padding: 24px 40px; }
+  .family-title { font-size: 40px; }
+  .family-east .family-title { font-size: 36px; }
+  .manifesto-quote { font-size: 22px; }
+}
+
+@media (max-width: 390px) {
+  .topbar { height: 48px; }
+  .chapters { height: 48px; }
+  .chapter-tab { padding: 0 8px; font-size: 10px; }
+  .chapter-tab .num { display: none; }
+  .char-input { width: 90px; }
+  .char-input input { font-size: 11px; padding-left: 30px; }
+  .char-input-label { font-size: 9px; left: 8px; }
+  .weight-axis { left: 4px; width: 32px; }
+  .axis-ticks { width: 32px; }
+  .axis-tick-mark { width: 5px; }
+  .axis-tick.active .axis-tick-mark { width: 10px; }
+  .axis-tick-label { font-size: 8px; }
+  .stage, .chapter-content {
+    left: 40px;
+    inset: 48px 0 48px 40px;
+  }
+  .bottombar {
+    height: 48px;
+    padding: 0 12px 0 40px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .bottom-key { display: none; }
+  .weight-indicator { right: 12px; bottom: 60px; }
+  .weight-number { font-size: 36px; }
+  .weight-name { font-size: 9px; }
+  .page-indicator { display: none; }
+  .glyphs-grid { grid-template-columns: repeat(5, 1fr); }
+  .chapter-glyphs, .chapter-notes { padding: 24px; }
+  .family-west, .family-east { padding: 20px 24px; }
+  .family-title { font-size: 28px; }
+  .family-east .family-title { font-size: 24px; }
+  .manifesto-quote { font-size: 18px; padding: 0 20px; }
+  .manifesto-meta { gap: 24px; flex-wrap: wrap; }
+}
+
+/* 降低动画 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .boot-char { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor-dot"></div>
+<div class="cursor-ring"></div>
+
+<!-- 校样格底纹 -->
+<div class="grain"></div>
+
+<!-- 顶部品牌栏 -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">础</div>
+    <span class="brand-name">础字铸造</span>
+    <div class="brand-divider"></div>
+    <span class="brand-sub">Chu Type Foundry</span>
+  </div>
+
+  <nav class="chapters" id="chapters">
+    <div class="chapter-tab active" data-chapter="0">
+      <span class="num">01</span>铸造宣言
+      <div class="chapter-underline"></div>
+    </div>
+    <div class="chapter-tab" data-chapter="1">
+      <span class="num">02</span>字族九重
+      <div class="chapter-underline"></div>
+    </div>
+    <div class="chapter-tab" data-chapter="2">
+      <span class="num">03</span>字汇总览
+      <div class="chapter-underline"></div>
+    </div>
+    <div class="chapter-tab" data-chapter="3">
+      <span class="num">04</span>设计手记
+      <div class="chapter-underline"></div>
+    </div>
+    <div class="chapter-tab" data-chapter="4">
+      <span class="num">05</span>授权获取
+      <div class="chapter-underline"></div>
+    </div>
+  </nav>
+
+  <div class="top-right">
+    <div class="char-input">
+      <span class="char-input-label">字</span>
+      <input type="text" id="charInput" maxlength="4" placeholder="输入文字替换巨字" />
+    </div>
+  </div>
+</header>
+
+<!-- 左侧字重轴 -->
+<aside class="weight-axis" id="weightAxis">
+  <div class="axis-label">Weight</div>
+  <div class="axis-track" id="axisTrack">
+    <div class="axis-track-fill" id="axisFill"></div>
+    <div class="axis-ticks" id="axisTicks"></div>
+    <div class="axis-handle" id="axisHandle"></div>
+  </div>
+  <div class="axis-unit">9 weights</div>
+</aside>
+
+<!-- 铸造印记 -->
+<div class="foundry-mark">
+  <div class="foundry-mark-row">
+    <div class="foundry-square"></div>
+    <span class="foundry-text">CHU FANG</span>
+  </div>
+  <div class="foundry-mark-row">
+    <div class="foundry-square" style="opacity: 0.5"></div>
+    <span class="foundry-text" style="opacity: 0.5">RELEASE 2026</span>
+  </div>
+  <div class="foundry-mark-row">
+    <div class="foundry-square" style="opacity: 0.2"></div>
+    <span class="foundry-text" style="opacity: 0.3">NINE WEIGHTS</span>
+  </div>
+</div>
+
+<!-- 中央巨字舞台 -->
+<main class="stage" id="stage">
+  <div class="giant-char" id="giantChar">础</div>
+</main>
+
+<!-- 章节内容 -->
+<div class="chapter-content">
+  <!-- 01 铸造宣言 -->
+  <section class="chapter-pane active" data-pane="0">
+    <div class="chapter-manifesto">
+      <p class="manifesto-quote" id="manifestoQuote">
+        字的重量，是时间压在纸上的痕迹。<br>
+        九层铅胎，一次成型。
+      </p>
+      <div class="manifesto-attrib">—— 础方字族 · 发刊词</div>
+      <div class="manifesto-meta">
+        <div class="meta-block">
+          <div class="meta-label">字族</div>
+          <div class="meta-value">础方 Chu Fang</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">字重</div>
+          <div class="meta-value">9 档</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">字形</div>
+          <div class="meta-value">中西文协调</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">字汇</div>
+          <div class="meta-value">28,716</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 字族九重 -->
+  <section class="chapter-pane" data-pane="1">
+    <div class="chapter-family">
+      <div class="family-west">
+        <div class="family-label">Western · 西文</div>
+        <div class="family-title">Chu Fang</div>
+        <p class="family-desc">
+          以现代无衬线骨架为底，笔端带有人工打磨的微妙圆角。九档字重从发丝般的 Hairline
+          到浓墨重笔的 Black，每一档都保持一致的字腔比例与视觉重心，适配标题到正文的全部场景。
+        </p>
+        <div class="family-specs">
+          <div class="spec-item">
+            <div class="spec-num">9</div>
+            <div class="spec-name">Weights</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">2</div>
+            <div class="spec-name">Styles</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">624</div>
+            <div class="spec-name">Glyphs</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">36</div>
+            <div class="spec-name">Languages</div>
+          </div>
+        </div>
+      </div>
+      <div class="family-east">
+        <div class="family-label">CJK · 中文</div>
+        <div class="family-title">础方</div>
+        <p class="family-desc">
+          取法传统刻本骨架，融入当代屏幕阅读的宽字面与中宫。横竖笔粗细比随字重渐进变化，
+          九档之间每一毫厘的笔画增粗都经过肉眼校准，确保从细到黑的整体气质连贯统一。
+        </p>
+        <div class="family-specs">
+          <div class="spec-item">
+            <div class="spec-num">9</div>
+            <div class="spec-name">字重</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">2</div>
+            <div class="spec-name">字形</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">28,092</div>
+            <div class="spec-name">字符</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-num">GBK</div>
+            <div class="spec-name">字符集</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 字汇总览 -->
+  <section class="chapter-pane" data-pane="2">
+    <div class="chapter-glyphs">
+      <div class="glyphs-header">
+        <span class="glyphs-title">字符抽样 · Sample Set</span>
+        <span class="glyphs-count">共 28,092 字符 · 点击预览</span>
+      </div>
+      <div class="glyphs-grid" id="glyphsGrid"></div>
+    </div>
+  </section>
+
+  <!-- 04 设计手记 -->
+  <section class="chapter-pane" data-pane="3">
+    <div class="chapter-notes">
+      <div class="notes-grid">
+        <div class="note-card">
+          <div class="note-num">NOTE 01</div>
+          <div class="note-title">字重不是简单加粗</div>
+          <p class="note-body">
+            很多人以为字重就是把线条加粗。但真正的字重系统，是从骨骼到皮肉的整体生长。
+            每加一档，字腔要适当收窄，衬角要适当圆润，字宽要微量膨胀。
+            只加粗而不调整结构，字就会像充气一样浮肿。
+          </p>
+        </div>
+        <div class="note-card">
+          <div class="note-num">NOTE 02</div>
+          <div class="note-title">中西文的视觉对齐</div>
+          <p class="note-body">
+            汉字的视觉重心天然低于西文。要让中英文在同一行内看起来协调，
+            需要把西文字母的基线和 x-height 做微量下调，同时把汉字的字面高度适当压缩。
+            差之毫厘，失之千里。
+          </p>
+        </div>
+        <div class="note-card">
+          <div class="note-num">NOTE 03</div>
+          <div class="note-title">屏幕时代的笔形逻辑</div>
+          <p class="note-body">
+            传统铅字有笔锋的韵味，但在低分辨率屏幕上，过细的笔锋会消失或锯齿化。
+            础方在笔端做了微妙的圆角处理——不是为了风格化，而是为了让字在屏幕上
+            依然能被读出笔画的来龙去脉。
+          </p>
+        </div>
+        <div class="note-card">
+          <div class="note-num">NOTE 04</div>
+          <div class="note-title">九档的分寸感</div>
+          <p class="note-body">
+            为什么是九档？因为从 100 到 900，每 100 一档，正好对应标题、副标题、正文、
+            注释、索引等不同密度的排版需求。少于七档不够用，多于十一档则差异过微，
+            用户无从选择。九，是实用与克制的平衡点。
+          </p>
+        </div>
+        <div class="note-card">
+          <div class="note-num">NOTE 05</div>
+          <div class="note-title">关于「础」这个字</div>
+          <p class="note-body">
+            「础」是柱下石，是建筑最底层的那块石头。选择它作为字族名称，
+            因为我们相信字体是所有排版的基石。一块好的础石，不该被注意到——
+            它只是稳稳地托着上面的一切。
+          </p>
+        </div>
+        <div class="note-card">
+          <div class="note-num">NOTE 06</div>
+          <div class="note-title">可变字体的未来</div>
+          <p class="note-body">
+            九档字重只是发布形态。础方同时提供可变字体版本，
+            支持在 100 至 900 之间无级调节。对设计师来说，
+            这意味着字重不再是选择题，而是一把可以精确调校的标尺。
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 授权获取 -->
+  <section class="chapter-pane" data-pane="4">
+    <div class="chapter-license">
+      <div class="license-grid">
+        <div class="license-item">
+          <div class="license-tier">Tier 01</div>
+          <div class="license-name">个人版</div>
+          <div class="license-price">¥ 198</div>
+          <p class="license-desc">
+            适合独立设计师与个人创作者。<br>
+            含全部九字重、中西文字符集、可变字体文件。<br>
+            可用于个人作品与非商业项目。
+          </p>
+          <div class="license-cta">
+            <span>立即获取</span>
+            <span class="arrow">→</span>
+          </div>
+        </div>
+        <div class="license-item">
+          <div class="license-tier">Tier 02</div>
+          <div class="license-name">团队版</div>
+          <div class="license-price">¥ 980</div>
+          <p class="license-desc">
+            适合 10 人以内设计团队。<br>
+            含个人版全部内容 + Web 字体文件 + 商业授权。<br>
+            最多 5 台设备安装，可用于客户项目。
+          </p>
+          <div class="license-cta">
+            <span>立即获取</span>
+            <span class="arrow">→</span>
+          </div>
+        </div>
+        <div class="license-item">
+          <div class="license-tier">Tier 03</div>
+          <div class="license-name">企业版</div>
+          <div class="license-price">面议</div>
+          <p class="license-desc">
+            适合品牌方与大型机构。<br>
+            含团队版全部内容 + 企业级授权 + 定制字形服务。<br>
+            不限安装数量，提供一对一技术支持。
+          </p>
+          <div class="license-cta">
+            <span>联系我们</span>
+            <span class="arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 右侧页码指示器 -->
+<nav class="page-indicator" id="pageIndicator">
+  <div class="page-dot active" data-chapter="0"></div>
+  <div class="page-dot" data-chapter="1"></div>
+  <div class="page-dot" data-chapter="2"></div>
+  <div class="page-dot" data-chapter="3"></div>
+  <div class="page-dot" data-chapter="4"></div>
+</nav>
+
+<!-- 字重数字指示 -->
+<div class="weight-indicator" id="weightIndicator">
+  <div class="weight-number" id="weightNumber">400</div>
+  <div class="weight-name" id="weightName">Regular</div>
+  <div class="weight-tag">CURRENT WEIGHT</div>
+</div>
+
+<!-- 底部信息栏 -->
+<footer class="bottombar">
+  <div class="bottom-left">
+    <span class="bottom-key"><span class="key-badge">↑</span><span class="key-badge">↓</span> 攀爬字重</span>
+    <div class="bottom-divider"></div>
+    <span class="bottom-key"><span class="key-badge">←</span><span class="key-badge">→</span> 切换章节</span>
+    <div class="bottom-divider"></div>
+    <span class="bottom-key">输入文字替换巨字</span>
+  </div>
+  <div class="bottom-right">
+    <span>© 2026 础字铸造 Chu Type Foundry</span>
+  </div>
+</footer>
+
+<!-- 启动遮罩 -->
+<div class="boot" id="boot">
+  <div class="boot-content">
+    <div class="boot-char">础</div>
+    <div class="boot-text">Loading Type</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================
+  // 状态与配置
+  // ============================================================
+  const WEIGHTS = [
+    { value: 100, name: 'Hairline', tag: '发丝' },
+    { value: 200, name: 'Thin', tag: '细' },
+    { value: 300, name: 'Light', tag: '轻' },
+    { value: 400, name: 'Regular', tag: '常规' },
+    { value: 500, name: 'Medium', tag: '适中' },
+    { value: 600, name: 'Semibold', tag: '半粗' },
+    { value: 700, name: 'Bold', tag: '粗' },
+    { value: 800, name: 'Extra Bold', tag: '特粗' },
+    { value: 900, name: 'Black', tag: '浓墨' }
+  ];
+
+  const CHAPTERS = ['铸造宣言', '字族九重', '字汇总览', '设计手记', '授权获取'];
+
+  let state = {
+    weightIndex: 3, // Regular 400
+    chapter: 0,
+    giantText: '础',
+    dragging: false,
+    rafId: null,
+    visible: true
+  };
+
+  // ============================================================
+  // DOM 引用
+  // ============================================================
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  const root = document.documentElement;
+  const giantChar = $('#giantChar');
+  const axisTicks = $('#axisTicks');
+  const axisHandle = $('#axisHandle');
+  const axisTrack = $('#axisTrack');
+  const axisFill = $('#axisFill');
+  const weightNumber = $('#weightNumber');
+  const weightName = $('#weightName');
+  const charInput = $('#charInput');
+  const glyphsGrid = $('#glyphsGrid');
+  const manifestoQuote = $('#manifestoQuote');
+  const boot = $('#boot');
+
+  // 光标
+  const cursorDot = $('.cursor-dot');
+  const cursorRing = $('.cursor-ring');
+
+  // ============================================================
+  // 可见性管理 —— 页面隐藏时暂停 RAF / 定时器
+  // ============================================================
+  document.addEventListener('visibilitychange', function() {
+    state.visible = !document.hidden;
+  });
+
+  // ============================================================
+  // 自定义光标
+  // ============================================================
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let cursorX = mouseX;
+  let cursorY = mouseY;
+  let ringX = mouseX;
+  let ringY = mouseY;
+  let cursorRaf = null;
+
+  function tickCursor() {
+    if (!state.visible) { cursorRaf = null; return; }
+    // dot 直接跟随
+    cursorX += (mouseX - cursorX) * 1;
+    cursorY += (mouseY - cursorY) * 1;
+    cursorDot.style.transform = `translate(${cursorX - 3}px, ${cursorY - 3}px)`;
+    cursorDot.style.left = '0';
+    cursorDot.style.top = '0';
+    // ring 缓动跟随
+    ringX += (mouseX - ringX) * 0.18;
+    ringY += (mouseY - ringY) * 0.18;
+    cursorRing.style.transform = `translate(${ringX - 14}px, ${ringY - 14}px)`;
+    cursorRing.style.left = '0';
+    cursorRing.style.top = '0';
+    cursorRaf = requestAnimationFrame(tickCursor);
+  }
+
+  function startCursorRaf() {
+    if (cursorRaf) return;
+    cursorRaf = requestAnimationFrame(tickCursor);
+  }
+
+  function stopCursorRaf() {
+    if (cursorRaf) {
+      cancelAnimationFrame(cursorRaf);
+      cursorRaf = null;
+    }
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (state.visible) startCursorRaf();
+  }, { passive: true });
+
+  // 光标状态切换
+  function bindHoverTargets() {
+    const targets = document.querySelectorAll(
+      '.chapter-tab, .axis-tick, .axis-handle, .glyph-cell, .license-item, ' +
+      '.char-input input, .brand, .page-dot, .bottom-key .key-badge'
+    );
+    targets.forEach(el => {
+      el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+      el.addEventListener('mouseleave', () => {
+        document.body.classList.remove('cursor-hover');
+        document.body.classList.remove('cursor-input');
+        document.body.classList.remove('cursor-drag');
+      });
+    });
+    charInput.addEventListener('focus', () => document.body.classList.add('cursor-input'));
+    charInput.addEventListener('blur', () => document.body.classList.remove('cursor-input'));
+  }
+
+  // ============================================================
+  // 字重轴 —— 生成刻度
+  // ============================================================
+  function buildAxisTicks() {
+    const trackHeight = axisTrack.clientHeight;
+    for (let i = 0; i < WEIGHTS.length; i++) {
+      const w = WEIGHTS[i];
+      const tick = document.createElement('div');
+      tick.className = 'axis-tick';
+      tick.dataset.index = i;
+      // 从上到下 100→900，反转：900 在顶部，100 在底部
+      const pct = (WEIGHTS.length - 1 - i) / (WEIGHTS.length - 1) * 100;
+      tick.style.top = pct + '%';
+      tick.innerHTML = `
+        <div class="axis-tick-mark"></div>
+        <span class="axis-tick-label">${w.value}</span>
+        <span class="axis-weight-name">${w.name}</span>
+      `;
+      tick.addEventListener('click', function(e) {
+        e.stopPropagation();
+        setWeightIndex(i);
+      });
+      axisTicks.appendChild(tick);
+    }
+  }
+
+  // ============================================================
+  // 字重状态切换
+  // ============================================================
+  function setWeightIndex(idx) {
+    idx = Math.max(0, Math.min(WEIGHTS.length - 1, idx));
+    if (idx === state.weightIndex) return;
+    state.weightIndex = idx;
+    updateWeightDisplay();
+  }
+
+  function updateWeightDisplay() {
+    const w = WEIGHTS[state.weightIndex];
+    root.style.setProperty('--weight', w.value);
+
+    // stroke 宽度随字重减小而增大（细字用描边增强可见性）
+    const strokePct = (900 - w.value) / 800; // 1→0
+    const strokeW = 0.2 + strokePct * 1.8;
+    root.style.setProperty('--stroke-w', strokeW.toFixed(2) + 'px');
+
+    // 巨字大小微调：粗字稍小，细字稍大
+    const scale = 1 - (w.value - 400) / 4000; // 400→1, 900→0.875, 100→1.075
+    root.style.setProperty('--scale', scale.toFixed(3));
+
+    // 字重数字
+    weightNumber.textContent = w.value;
+    weightNumber.style.fontWeight = w.value;
+    weightName.textContent = w.name;
+
+    // 刻度高亮
+    $$('.axis-tick').forEach((t, i) => {
+      t.classList.toggle('active', i === state.weightIndex);
+    });
+
+    // 轴柄位置
+    const pct = state.weightIndex / (WEIGHTS.length - 1); // 0=底(900在顶), 1=顶
+    // 反转：0 在顶，1 在底 → 900(8号) 在底 = 100%
+    const topPct = (1 - state.weightIndex / (WEIGHTS.length - 1)) * 100;
+    axisHandle.style.top = topPct + '%';
+
+    // 填充条高度
+    axisFill.style.height = (state.weightIndex / (WEIGHTS.length - 1) * 100) + '%';
+
+    // 字重感应的正文元素
+    const manifestoEl = $('#manifestoQuote');
+    if (manifestoEl) manifestoEl.style.fontWeight = w.value;
+    $$('.family-title').forEach(el => el.style.fontWeight = w.value);
+    $$('.spec-num').forEach(el => el.style.fontWeight = w.value);
+    $$('.license-price').forEach(el => el.style.fontWeight = w.value);
+  }
+
+  // ============================================================
+  // 轴柄拖动
+  // ============================================================
+  let dragState = { active: false, startY: 0, startIdx: 0, trackRect: null };
+
+  function startDrag(e) {
+    e.preventDefault();
+    dragState.active = true;
+    dragState.trackRect = axisTrack.getBoundingClientRect();
+    dragState.startIdx = state.weightIndex;
+    document.body.classList.add('cursor-drag');
+    axisHandle.classList.add('dragging');
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchmove', onDragTouch, { passive: false });
+    document.addEventListener('touchend', endDrag);
+  }
+
+  function onDrag(e) {
+    if (!dragState.active) return;
+    const y = e.clientY - dragState.trackRect.top;
+    updateDragFromY(y);
+  }
+
+  function onDragTouch(e) {
+    if (!dragState.active) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const y = touch.clientY - dragState.trackRect.top;
+    updateDragFromY(y);
+  }
+
+  function updateDragFromY(y) {
+    const h = dragState.trackRect.height;
+    const pct = Math.max(0, Math.min(1, y / h));
+    // 顶部 = 高字重 (idx 0)，底部 = 低字重 (idx 8)
+    const rawIdx = (1 - pct) * (WEIGHTS.length - 1);
+    const idx = Math.round(rawIdx);
+    if (idx !== state.weightIndex) {
+      setWeightIndex(idx);
+    }
+    // 实时移动轴柄（平滑）
+    axisHandle.style.top = (pct * 100) + '%';
+    axisFill.style.height = ((1 - pct) * 100) + '%';
+  }
+
+  function endDrag() {
+    dragState.active = false;
+    document.body.classList.remove('cursor-drag');
+    axisHandle.classList.remove('dragging');
+    // 吸附到最近刻度
+    updateWeightDisplay();
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', endDrag);
+    document.removeEventListener('touchmove', onDragTouch);
+    document.removeEventListener('touchend', endDrag);
+  }
+
+  axisHandle.addEventListener('mousedown', startDrag);
+  axisHandle.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    startDrag(e);
+  }, { passive: false });
+
+  // 轨道点击跳转
+  axisTrack.addEventListener('click', function(e) {
+    if (e.target === axisHandle) return;
+    const rect = axisTrack.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const pct = y / rect.height;
+    const idx = Math.round((1 - pct) * (WEIGHTS.length - 1));
+    setWeightIndex(idx);
+  });
+
+  // ============================================================
+  // 章节切换
+  // ============================================================
+  function setChapter(idx) {
+    idx = Math.max(0, Math.min(CHAPTERS.length - 1, idx));
+    if (idx === state.chapter) return;
+    state.chapter = idx;
+
+    $$('.chapter-tab').forEach((t, i) => {
+      t.classList.toggle('active', i === idx);
+    });
+    $$('.chapter-pane').forEach((p, i) => {
+      p.classList.toggle('active', i === idx);
+    });
+    $$('.page-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === idx);
+    });
+  }
+
+  $$('.chapter-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      setChapter(parseInt(this.dataset.chapter, 10));
+    });
+  });
+
+  $$('.page-dot').forEach(dot => {
+    dot.addEventListener('click', function() {
+      setChapter(parseInt(this.dataset.chapter, 10));
+    });
+  });
+
+  // ============================================================
+  // 键盘交互
+  // ============================================================
+  let keyRepeat = { up: false, down: false, left: false, right: false };
+
+  document.addEventListener('keydown', function(e) {
+    // 输入框中不拦截
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    switch(e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        if (!keyRepeat.up) {
+          keyRepeat.up = true;
+          setWeightIndex(state.weightIndex + 1);
+          startWeightHold('up');
+        }
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (!keyRepeat.down) {
+          keyRepeat.down = true;
+          setWeightIndex(state.weightIndex - 1);
+          startWeightHold('down');
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (!keyRepeat.right) {
+          keyRepeat.right = true;
+          setChapter(state.chapter + 1);
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (!keyRepeat.left) {
+          keyRepeat.left = true;
+          setChapter(state.chapter - 1);
+        }
+        break;
+    }
+  });
+
+  document.addEventListener('keyup', function(e) {
+    switch(e.key) {
+      case 'ArrowUp':
+        keyRepeat.up = false;
+        stopWeightHold();
+        break;
+      case 'ArrowDown':
+        keyRepeat.down = false;
+        stopWeightHold();
+        break;
+      case 'ArrowRight':
+        keyRepeat.right = false;
+        break;
+      case 'ArrowLeft':
+        keyRepeat.left = false;
+        break;
+    }
+  });
+
+  // 长按连续攀爬
+  let holdTimer = null;
+  let holdInterval = null;
+
+  function startWeightHold(dir) {
+    stopWeightHold();
+    let count = 0;
+    // 初始延迟
+    holdTimer = setTimeout(function tick() {
+      if (!state.visible) return;
+      if (dir === 'up' && keyRepeat.up) {
+        setWeightIndex(state.weightIndex + 1);
+        count++;
+        holdInterval = setTimeout(tick, Math.max(80, 200 - count * 10));
+      } else if (dir === 'down' && keyRepeat.down) {
+        setWeightIndex(state.weightIndex - 1);
+        count++;
+        holdInterval = setTimeout(tick, Math.max(80, 200 - count * 10));
+      }
+    }, 350);
+  }
+
+  function stopWeightHold() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    if (holdInterval) { clearTimeout(holdInterval); holdInterval = null; }
+  }
+
+  // ============================================================
+  // 巨字输入替换
+  // ============================================================
+  charInput.addEventListener('input', function() {
+    const val = this.value.trim();
+    if (val) {
+      state.giantText = val;
+      giantChar.textContent = val;
+    } else {
+      state.giantText = '础';
+      giantChar.textContent = '础';
+    }
+  });
+
+  // ============================================================
+  // 字汇网格
+  // ============================================================
+  function buildGlyphsGrid() {
+    const samples = [
+      '一','二','三','四','五','六','七','八','九','十',
+      '天','地','人','和','大','小','中','国','字','书',
+      '法','道','器','形','神','气','骨','肉','皮','毛',
+      '笔','墨','纸','砚','刻','铸','铅','铜','石','木',
+      'A','B','C','D','E','F','G','H','I','J',
+      'K','L','M','N','O','P','Q','R','S','T',
+      'U','V','W','X','Y','Z','a','b','c','d',
+      'e','f','g','h','i','j','k','l','m','n',
+      '0','1','2','3','4','5','6','7','8','9',
+      '，','。','？','！','：','；','“','”','（','）'
+    ];
+    for (let i = 0; i < 70; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'glyph-cell';
+      cell.textContent = samples[i % samples.length];
+      cell.addEventListener('click', function() {
+        giantChar.textContent = this.textContent;
+        state.giantText = this.textContent;
+        charInput.value = this.textContent;
+        // 微振动效
+        pulseGiantChar();
+      });
+      glyphsGrid.appendChild(cell);
+    }
+  }
+
+  function pulseGiantChar() {
+    giantChar.style.transition = 'transform 120ms cubic-bezier(0.25, 0.1, 0.25, 1)';
+    const s = parseFloat(getComputedStyle(root).getPropertyValue('--scale'));
+    giantChar.style.transform = `scale(${s * 1.05})`;
+    setTimeout(() => {
+      giantChar.style.transform = `scale(${s})`;
+    }, 120);
+  }
+
+  // ============================================================
+  // 品牌 Logo 点击回到首章
+  // ============================================================
+  $('.brand').addEventListener('click', function() {
+    setChapter(0);
+    setWeightIndex(3);
+  });
+
+  // ============================================================
+  // 滚动滚轮切换字重（当鼠标在左轴附近时）
+  // ============================================================
+  let wheelThrottle = false;
+  document.addEventListener('wheel', function(e) {
+    // 仅在鼠标在左轴附近时用滚轮切字重
+    if (e.clientX > 140) return;
+    e.preventDefault();
+    if (wheelThrottle) return;
+    wheelThrottle = true;
+    if (e.deltaY > 0) {
+      setWeightIndex(state.weightIndex - 1);
+    } else {
+      setWeightIndex(state.weightIndex + 1);
+    }
+    setTimeout(() => { wheelThrottle = false; }, 80);
+  }, { passive: false });
+
+  // ============================================================
+  // 动效系统 —— ≥12 个组件级特效
+  // 1. 启动遮罩淡入淡出 + 巨字呼吸
+  // 2. 字重切换时 font-weight 过渡（核心）
+  // 3. 字重切换时 stroke 宽度过渡
+  // 4. 轴柄弹性吸附
+  // 5. 刻度标签大小变化
+  // 6. 刻度标记宽度变化
+  // 7. 章节标签下划线滑入
+  // 8. 章节内容淡入上移
+  // 9. 字汇格 hover 边框+背景
+  // 10. 授权卡 hover 背景+箭头位移
+  // 11. 自定义光标缓动跟随
+  // 12. 光标 hover 状态变换（大小+颜色）
+  // 13. 巨字脉冲（点击字汇格时）
+  // 14. 轴柄 hover 缩放
+  // 15. 字重数字字重同步变化
+  // ============================================================
+
+  // ============================================================
+  // 初始化
+  // ============================================================
+  function init() {
+    buildAxisTicks();
+    buildGlyphsGrid();
+    bindHoverTargets();
+    updateWeightDisplay();
+
+    // 启动动画
+    setTimeout(function() {
+      boot.classList.add('done');
+      setTimeout(() => { boot.style.display = 'none'; }, 700);
+    }, 900);
+  }
+
+  // 等字体加载后再初始化（其实系统字体立即有，但保险起见）
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function() {
+    stopCursorRaf();
+    stopWeightHold();
+  });
+
+  // 可见性变化时暂停/恢复 RAF
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      stopCursorRaf();
+      stopWeightHold();
+    } else {
+      startCursorRaf();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
