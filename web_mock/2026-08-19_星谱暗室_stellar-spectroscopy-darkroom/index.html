@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>星谱暗室 · 恒星光谱分析台</title>
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* ====== CSS Variables / Design Tokens ====== */
+:root {
+  --amber: #C8842A;
+  --amber-glow: #E0A040;
+  --amber-dim: #8B6020;
+  --film-white: #E8E2D0;
+  --film-cream: #D8D0B8;
+  --dark-warm: #1A1410;
+  --dark-warm-2: #241C16;
+  --dark-warm-3: #2E241C;
+  --ink-brown: #3A2A1A;
+  --ink-light: #5A4030;
+  --brass: #B8860B;
+  --brass-light: #D4A02E;
+  --brass-dark: #7A5A08;
+  --safelight: rgba(200, 132, 42, 0.15);
+  
+  --font-serif: 'Noto Serif SC', Georgia, serif;
+  --font-sans: 'Noto Sans SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  
+  --easing-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-snap: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ====== Reset & Base ====== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  background: var(--dark-warm);
+  color: var(--film-white);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+}
+
+/* Safelight ambience — amber glow from top-left */
+.safelight {
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 60vw;
+  height: 60vh;
+  background: radial-gradient(ellipse at center,
+    rgba(200, 132, 42, 0.18) 0%,
+    rgba(200, 132, 42, 0.08) 30%,
+    transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: screen;
+  animation: safelightBreath 8s ease-in-out infinite;
+}
+
+@keyframes safelightBreath {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Dust particles */
+.dust-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+.dust {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: var(--amber);
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: dustFloat linear infinite;
+}
+@keyframes dustFloat {
+  0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.3; }
+  100% { transform: translateY(-10vh) translateX(30px); opacity: 0; }
+}
+
+/* Grain overlay — film grain texture */
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* ====== Custom Cursor (Brass Loupe) ====== */
+.cursor-loupe {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  width: 56px;
+  height: 56px;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s var(--easing-soft), height 0.3s var(--easing-soft),
+              border-color 0.3s var(--easing-soft);
+  will-change: transform;
+}
+.cursor-loupe .ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--brass-light);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(184, 134, 11, 0.4),
+              inset 0 0 20px rgba(184, 134, 11, 0.15);
+}
+.cursor-loupe .cross-h,
+.cursor-loupe .cross-v {
+  position: absolute;
+  background: var(--brass-light);
+  box-shadow: 0 0 6px rgba(184, 134, 11, 0.6);
+}
+.cursor-loupe .cross-h {
+  top: 50%;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+.cursor-loupe .cross-v {
+  left: 50%;
+  top: -8px;
+  bottom: -8px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.cursor-loupe .inner-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background: var(--amber-glow);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+.cursor-loupe.zoomed {
+  width: 80px;
+  height: 80px;
+}
+.cursor-loupe.zoomed .ring {
+  border-color: var(--amber-glow);
+  box-shadow: 0 0 30px rgba(200, 132, 42, 0.6),
+              inset 0 0 30px rgba(200, 132, 42, 0.25);
+}
+
+/* ====== App Layout ====== */
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+/* ====== Header ====== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  border-bottom: 1px solid rgba(200, 132, 42, 0.15);
+  position: relative;
+  z-index: 20;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo-mark {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--brass);
+  border-radius: 50%;
+  position: relative;
+}
+.logo-mark::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  right: 2px;
+  height: 2px;
+  background: linear-gradient(90deg,
+    #FF2200 0%, #FF7F00 16%, #FFFF00 33%,
+    #00FF00 50%, #00BFFF 66%, #4444FF 83%, #8B00FF 100%);
+  transform: translateY(-50%);
+}
+.site-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--film-white);
+  letter-spacing: 2px;
+}
+.site-subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber-dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.header-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  letter-spacing: 1px;
+}
+.header-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--amber);
+  margin-left: 6px;
+}
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(200, 132, 42, 0.2);
+}
+
+/* ====== Main Spectrum Stage ====== */
+.spectrum-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 40px;
+  position: relative;
+  gap: 24px;
+  overflow: hidden;
+}
+
+.stage-heading {
+  text-align: center;
+  opacity: 0;
+  animation: filmDevelop 2s var(--easing-soft) 0.3s forwards;
+}
+@keyframes filmDevelop {
+  0% { opacity: 0; filter: brightness(2) contrast(0.3); }
+  100% { opacity: 1; filter: brightness(1) contrast(1); }
+}
+.stage-heading h1 {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--film-white);
+  letter-spacing: 4px;
+  margin-bottom: 6px;
+}
+.stage-heading .h1-en {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--amber-dim);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.stage-heading p {
+  font-size: 13px;
+  color: var(--ink-light);
+  margin-top: 8px;
+  max-width: 480px;
+  line-height: 1.7;
+}
+
+/* Spectrum Band — the core navigation spine */
+.spectrum-container {
+  width: 100%;
+  max-width: 1200px;
+  position: relative;
+  opacity: 0;
+  animation: filmDevelop 2.5s var(--easing-soft) 0.8s forwards;
+}
+.spectrum-band-wrapper {
+  position: relative;
+  height: 80px;
+  border: 1px solid rgba(184, 134, 11, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow:
+    0 0 40px rgba(200, 132, 42, 0.1),
+    inset 0 0 20px rgba(0, 0, 0, 0.4);
+}
+.spectrum-band {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    #FF1000 0%,
+    #FF4400 8%,
+    #FF7F00 16%,
+    #FFBB00 24%,
+    #FFFF00 33%,
+    #AAFF00 40%,
+    #00FF33 48%,
+    #00FFCC 55%,
+    #00AAFF 63%,
+    #0044FF 72%,
+    #4400FF 82%,
+    #7A00CC 90%,
+    #8B00AA 100%);
+  animation: spectralDrift 12s ease-in-out infinite alternate;
+}
+@keyframes spectralDrift {
+  0% { filter: saturate(1) hue-rotate(0deg); }
+  100% { filter: saturate(1.05) hue-rotate(2deg); }
+}
+
+/* Absorption lines layer */
+.absorption-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.abs-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: auto;
+  cursor: none;
+  transition: background 0.2s var(--easing-soft);
+}
+.abs-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--line-width, 2px);
+  background: rgba(10, 6, 4, 0.85);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  transition: width 0.2s var(--easing-soft);
+}
+.abs-line.strong::before { --line-width: 3px; }
+.abs-line.very-strong::before { --line-width: 4.5px; }
+.abs-line:hover::before {
+  width: calc(var(--line-width, 2px) + 2px);
+  background: rgba(200, 132, 42, 0.3);
+}
+.abs-line .line-label {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--amber-dim);
+  white-space: nowrap;
+  opacity: 0;
+  transition: all 0.2s var(--easing-soft);
+  pointer-events: none;
+}
+.abs-line:hover .line-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Scanline indicator */
+.scan-indicator {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--amber-glow);
+  box-shadow: 0 0 8px var(--amber-glow), 0 0 16px rgba(200, 132, 42, 0.4);
+  pointer-events: none;
+  z-index: 5;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: opacity 0.3s;
+}
+.scan-indicator::before,
+.scan-indicator::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+.scan-indicator::before {
+  top: -1px;
+  border-top: 6px solid var(--amber-glow);
+}
+.scan-indicator::after {
+  bottom: -1px;
+  border-bottom: 6px solid var(--amber-glow);
+}
+
+/* Wavelength ruler */
+.wavelength-ruler {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 32px;
+  padding: 0 4px;
+  opacity: 0;
+  animation: filmDevelop 2s var(--easing-soft) 1.2s forwards;
+}
+.ruler-tick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.ruler-tick .tick-line {
+  width: 1px;
+  height: 8px;
+  background: rgba(200, 132, 42, 0.4);
+}
+.ruler-tick .tick-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  letter-spacing: 0.5px;
+}
+
+/* ====== Data Readout Panels ====== */
+.data-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 1200px;
+  opacity: 0;
+  animation: filmDevelop 2s var(--easing-soft) 1.5s forwards;
+}
+.data-card {
+  background: var(--dark-warm-2);
+  border: 1px solid rgba(184, 134, 11, 0.2);
+  border-radius: 2px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.data-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brass), transparent);
+  opacity: 0.5;
+}
+.data-card .label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-light);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.data-card .value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--film-white);
+  letter-spacing: -0.5px;
+  transition: color 0.2s;
+}
+.data-card .value.highlight {
+  color: var(--amber-glow);
+}
+.data-card .unit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-left: 4px;
+}
+.data-card .sub {
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-top: 4px;
+}
+
+/* ====== Element Detail Panel ====== */
+.detail-panel {
+  position: fixed;
+  top: 50%;
+  right: 32px;
+  transform: translateY(-50%) translateX(480px);
+  width: 420px;
+  background: var(--dark-warm-2);
+  border: 1px solid rgba(184, 134, 11, 0.35);
+  border-radius: 2px;
+  padding: 24px 28px;
+  z-index: 100;
+  transition: transform 0.6s var(--easing-snap);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
+}
+.detail-panel.open {
+  transform: translateY(-50%) translateX(0);
+}
+.detail-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--brass);
+  box-shadow: 0 0 10px rgba(184, 134, 11, 0.5);
+}
+.detail-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: 1px solid rgba(184, 134, 11, 0.3);
+  color: var(--ink-light);
+  cursor: none;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+  font-family: var(--font-mono);
+}
+.detail-close:hover {
+  border-color: var(--brass);
+  color: var(--amber);
+}
+
+.detail-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(184, 134, 11, 0.2);
+}
+.detail-element-name {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--film-white);
+  letter-spacing: 1px;
+}
+.detail-element-en {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--amber-dim);
+  letter-spacing: 2px;
+  margin-top: 2px;
+}
+.detail-wavelength {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--amber);
+  margin-top: 8px;
+}
+.detail-section {
+  margin-bottom: 16px;
+}
+.detail-section h4 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 400;
+}
+.detail-section p {
+  font-size: 13px;
+  color: var(--film-cream);
+  line-height: 1.7;
+}
+
+/* Electron orbital diagram */
+.orbital-diagram {
+  position: relative;
+  height: 180px;
+  margin: 8px 0 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.orbital-diagram svg {
+  width: 100%;
+  height: 100%;
+}
+.orbital-ring {
+  fill: none;
+  stroke: rgba(184, 134, 11, 0.25);
+  stroke-width: 1;
+}
+.orbital-ring.active {
+  stroke: var(--brass-light);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px rgba(184, 134, 11, 0.5));
+}
+.orbital-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--ink-light);
+}
+.orbital-label.active {
+  fill: var(--amber);
+}
+.nucleus {
+  fill: var(--amber);
+  filter: drop-shadow(0 0 6px var(--amber-glow));
+  animation: nucleusPulse 3s ease-in-out infinite;
+}
+@keyframes nucleusPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+.electron-dot {
+  fill: var(--film-white);
+  filter: drop-shadow(0 0 3px var(--film-white));
+}
+.electron-path {
+  fill: none;
+  stroke: var(--amber-glow);
+  stroke-width: 1.2;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 4px var(--amber-glow));
+}
+.electron-path.animate {
+  animation: drawPath 1.2s var(--easing-snap) forwards;
+}
+@keyframes drawPath {
+  to { stroke-dashoffset: 0; }
+}
+.photon-arrow {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity 0.5s 1s;
+}
+.photon-arrow.show {
+  opacity: 0.6;
+}
+
+.transition-label {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--amber);
+  margin-top: 4px;
+}
+
+/* ====== Stellar Classification Section ====== */
+.stellar-section {
+  padding: 0 40px 28px;
+  opacity: 0;
+  animation: filmDevelop 2.5s var(--easing-soft) 2s forwards;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.section-label .label-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.section-label .label-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(184, 134, 11, 0.3), transparent);
+}
+
+.stellar-classes {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+.stellar-class {
+  background: var(--dark-warm-2);
+  border: 1px solid rgba(184, 134, 11, 0.15);
+  border-radius: 2px;
+  padding: 12px 10px;
+  text-align: center;
+  cursor: none;
+  position: relative;
+  transition: all 0.3s var(--easing-soft);
+  overflow: hidden;
+}
+.stellar-class::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--class-color);
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+.stellar-class:hover {
+  border-color: rgba(184, 134, 11, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.stellar-class.active {
+  border-color: var(--brass-light);
+  box-shadow: 0 0 20px rgba(184, 134, 11, 0.2);
+}
+.stellar-class.active::before {
+  opacity: 1;
+  height: 3px;
+}
+.class-letter {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--film-white);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.class-temp {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  margin-bottom: 6px;
+}
+.class-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--class-color);
+  margin: 0 auto 6px;
+  box-shadow: 0 0 8px var(--class-color);
+}
+.class-name {
+  font-size: 10px;
+  color: var(--film-cream);
+  margin-bottom: 2px;
+}
+.class-star {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-light);
+}
+
+/* ====== Footer / Info Bar ====== */
+.footer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 32px;
+  border-top: 1px solid rgba(200, 132, 42, 0.12);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-light);
+  letter-spacing: 1px;
+  opacity: 0;
+  animation: filmDevelop 2s var(--easing-soft) 2.5s forwards;
+}
+.footer-left, .footer-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: safelightBreath 4s ease-in-out infinite;
+}
+
+/* ====== Instruction Overlay ====== */
+.instruction-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: hintFade 3s var(--easing-soft) 3s forwards;
+}
+@keyframes hintFade {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+/* ====== Historical Note Section ====== */
+.history-note {
+  position: fixed;
+  bottom: 50px;
+  left: 32px;
+  width: 280px;
+  padding: 16px;
+  border-left: 2px solid var(--brass);
+  background: rgba(26, 20, 16, 0.85);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transform: translateX(-20px);
+  animation: slideInNote 1.5s var(--easing-soft) 3s forwards;
+  z-index: 15;
+}
+@keyframes slideInNote {
+  to { opacity: 1; transform: translateX(0); }
+}
+.history-note h5 {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--film-white);
+  margin-bottom: 6px;
+}
+.history-note p {
+  font-size: 11px;
+  color: var(--film-cream);
+  line-height: 1.7;
+}
+.history-note .year {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber);
+  margin-bottom: 4px;
+}
+
+/* ====== Right side info ====== */
+.tip-panel {
+  position: fixed;
+  top: 80px;
+  right: 32px;
+  width: 220px;
+  opacity: 0;
+  transform: translateX(20px);
+  animation: slideInRight 1.5s var(--easing-soft) 3.2s forwards;
+  z-index: 15;
+}
+@keyframes slideInRight {
+  to { opacity: 1; transform: translateX(0); }
+}
+.tip-item {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(184, 134, 11, 0.1);
+}
+.tip-item:last-child { border-bottom: none; }
+.tip-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-light);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.tip-value {
+  font-size: 12px;
+  color: var(--film-cream);
+  font-family: var(--font-serif);
+}
+
+/* ====== Responsive ====== */
+@media (max-width: 1024px) {
+  .header { padding: 14px 24px; }
+  .spectrum-stage { padding: 16px 24px; }
+  .data-row { grid-template-columns: repeat(2, 1fr); }
+  .stellar-section { padding: 0 24px 20px; }
+  .stellar-classes { grid-template-columns: repeat(4, 1fr); }
+  .history-note { width: 220px; bottom: 100px; }
+  .tip-panel { display: none; }
+  .detail-panel { width: 360px; right: 16px; }
+}
+
+@media (max-width: 768px) {
+  .site-subtitle { display: none; }
+  .header-divider { display: none; }
+  .header-right { gap: 12px; }
+  .data-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .data-card { padding: 10px 12px; }
+  .data-card .value { font-size: 16px; }
+  .stellar-classes { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .stellar-class { padding: 8px 4px; }
+  .class-letter { font-size: 20px; }
+  .class-temp, .class-name, .class-star { display: none; }
+  .history-note { display: none; }
+  .detail-panel {
+    width: calc(100% - 32px);
+    right: 16px;
+    left: 16px;
+    top: auto;
+    bottom: 16px;
+    transform: translateY(200%);
+  }
+  .detail-panel.open {
+    transform: translateY(0);
+  }
+  .stage-heading h1 { font-size: 22px; }
+  .stage-heading p { font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .header { padding: 10px 16px; }
+  .site-title { font-size: 14px; letter-spacing: 1px; }
+  .header-right { display: none; }
+  .spectrum-stage { padding: 12px 16px; }
+  .stage-heading h1 { font-size: 18px; letter-spacing: 2px; }
+  .stage-heading .h1-en { font-size: 9px; letter-spacing: 2px; }
+  .stage-heading p { display: none; }
+  .spectrum-band-wrapper { height: 60px; }
+  .data-row { grid-template-columns: repeat(2, 1fr); }
+  .data-card .label { font-size: 8px; }
+  .data-card .value { font-size: 14px; }
+  .stellar-section { padding: 0 16px 16px; }
+  .stellar-classes { grid-template-columns: repeat(7, 1fr); }
+  .stellar-class { padding: 6px 2px; }
+  .class-letter { font-size: 14px; }
+  .class-color-dot { width: 6px; height: 6px; }
+  .footer-bar { padding: 8px 16px; font-size: 8px; }
+  .cursor-loupe { display: none; }
+  body { cursor: default; }
+  .spectrum-band-wrapper { cursor: pointer; }
+}
+
+/* ====== Reduced Motion ====== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .safelight, .dust-layer { display: none; }
+  .spectrum-band { animation: none; }
+  .electron-path { stroke-dashoffset: 0; }
+  .stage-heading, .spectrum-container, .wavelength-ruler,
+  .data-row, .stellar-section, .footer-bar, .history-note, .tip-panel {
+    opacity: 1;
+    animation: none;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Ambient layers -->
+<div class="safelight" id="safelight"></div>
+<div class="dust-layer" id="dustLayer"></div>
+<div class="grain"></div>
+
+<!-- Custom cursor -->
+<div class="cursor-loupe" id="cursorLoupe">
+  <div class="ring"></div>
+  <div class="cross-h"></div>
+  <div class="cross-v"></div>
+  <div class="inner-dot"></div>
+</div>
+
+<div class="app">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-mark"></div>
+      <div>
+        <div class="site-title">星谱暗室</div>
+        <div class="site-subtitle">Stellar Spectroscopy Darkroom</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div>
+        <span class="header-label">观测目标</span>
+        <span class="header-value" id="targetStar">太阳 · Sol</span>
+      </div>
+      <div class="header-divider"></div>
+      <div>
+        <span class="header-label">光谱类型</span>
+        <span class="header-value" id="spectralType">G2V</span>
+      </div>
+      <div class="header-divider"></div>
+      <div>
+        <span class="header-label">表面温度</span>
+        <span class="header-value" id="surfaceTemp">5778 K</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main spectrum stage -->
+  <section class="spectrum-stage">
+    <div class="stage-heading">
+      <h1>恒星光谱分析台</h1>
+      <div class="h1-en">Fraunhofer Absorption Lines Analysis</div>
+      <p>沿光谱带拖动铜框放大镜，观测夫琅禾费吸收线。每一条暗线，都是一颗恒星写给宇宙的化学签名。</p>
+    </div>
+
+    <div class="spectrum-container" id="spectrumContainer">
+      <div class="spectrum-band-wrapper" id="spectrumWrapper">
+        <div class="spectrum-band" id="spectrumBand"></div>
+        <div class="absorption-lines" id="absorptionLines"></div>
+        <div class="scan-indicator" id="scanIndicator"></div>
+      </div>
+      <div class="wavelength-ruler" id="wavelengthRuler"></div>
+      <div class="instruction-hint">拖动光标沿光谱带移动 · 点击吸收线查看元素详情</div>
+    </div>
+
+    <!-- Real-time data readout -->
+    <div class="data-row">
+      <div class="data-card">
+        <div class="label">波长 Wavelength</div>
+        <div class="value" id="valWavelength">580.0<span class="unit">nm</span></div>
+        <div class="sub" id="valWavelengthBand">可见光 · 黄色波段</div>
+      </div>
+      <div class="data-card">
+        <div class="label">频率 Frequency</div>
+        <div class="value" id="valFrequency">517.2<span class="unit">THz</span></div>
+        <div class="sub">c = λ × f</div>
+      </div>
+      <div class="data-card">
+        <div class="label">光子能量 Photon Energy</div>
+        <div class="value" id="valEnergy">2.14<span class="unit">eV</span></div>
+        <div class="sub">E = h × f</div>
+      </div>
+      <div class="data-card">
+        <div class="label">特征元素 Dominant Line</div>
+        <div class="value" id="valElement">Na 钠<span class="unit"></span></div>
+        <div class="sub" id="valElementInfo">Na-D 双线 · 冷星强吸收</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stellar classification -->
+  <section class="stellar-section">
+    <div class="section-label">
+      <span class="label-text">恒星光谱分类 · O B A F G K M</span>
+      <span class="label-line"></span>
+      <span class="label-text">温度从高到低</span>
+    </div>
+    <div class="stellar-classes" id="stellarClasses"></div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer-bar">
+    <div class="footer-left">
+      <div class="footer-dot"></div>
+      <span>暗房安全灯模式 · AMBER SAFELIGHT</span>
+    </div>
+    <div class="footer-right">
+      <span>夫琅禾费 · 1814</span>
+      <span>|</span>
+      <span>基尔霍夫 · 1859</span>
+      <span>|</span>
+      <span>星谱暗室 v1.0</span>
+    </div>
+  </footer>
+</div>
+
+<!-- Element detail panel -->
+<div class="detail-panel" id="detailPanel">
+  <button class="detail-close" id="detailClose" aria-label="关闭">×</button>
+  <div class="detail-header">
+    <div class="detail-element-name" id="detailName">氢 · Hydrogen</div>
+    <div class="detail-element-en" id="detailEn">H · Atomic Number 1</div>
+    <div class="detail-wavelength" id="detailWavelength">656.3 nm · H-α</div>
+  </div>
+  <div class="detail-section">
+    <h4>电子跃迁 Electron Transition</h4>
+    <div class="orbital-diagram" id="orbitalDiagram">
+      <svg viewBox="0 0 200 180" id="orbitalSvg">
+        <!-- nucleus -->
+        <circle class="nucleus" cx="100" cy="90" r="6" />
+        <text x="100" y="86" text-anchor="middle" class="orbital-label" style="font-size:7px; fill: var(--dark-warm); font-weight:700;">N</text>
+      </svg>
+    </div>
+    <div class="transition-label" id="transitionLabel">n = 3 → n = 2 · 巴尔末系</div>
+  </div>
+  <div class="detail-section">
+    <h4>恒星类型推断 Stellar Inference</h4>
+    <p id="detailInference">H-α 线强度直接反映恒星大气温度。很强且窄 —— M 型红巨星大气中的氢原子在低能态富集；很弱 —— O 型蓝白星温度过高，氢被电离。</p>
+  </div>
+  <div class="detail-section">
+    <h4>发现历史 Discovery</h4>
+    <p id="detailDiscovery">1814 年夫琅禾费首先标记了这条最强的太阳吸收线，后被命名为 H-α。1885 年巴耳末发现氢原子线系的数学规律。</p>
+  </div>
+</div>
+
+<!-- Historical note -->
+<div class="history-note">
+  <div class="year">1814 · 夫琅禾费</div>
+  <h5>暗线的秘密</h5>
+  <p>约瑟夫·冯·夫琅禾费用棱镜与望远镜对准太阳，首次在光谱中发现了 570 余条暗线。直到 1859 年，基尔霍夫和本生才证明：每一条暗线，都对应一种元素的吸收。</p>
+</div>
+
+<!-- Right tip panel -->
+<div class="tip-panel">
+  <div class="tip-item">
+    <div class="tip-label">操作提示</div>
+    <div class="tip-value">拖动放大镜沿光谱移动</div>
+  </div>
+  <div class="tip-item">
+    <div class="tip-label">分析波长</div>
+    <div class="tip-value">380 nm — 750 nm</div>
+  </div>
+  <div class="tip-item">
+    <div class="tip-label">口诀</div>
+    <div class="tip-value">Oh Be A Fine Girl, Kiss Me</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ====== Data ======
+  const FRAUNHOFER_LINES = [
+    { id: 'H-alpha', label: 'H-α', wavelength: 656.3, element: '氢', elementEn: 'Hydrogen', symbol: 'H',
+      transition: '巴尔末系 n=3→2', transitionN: [3, 2], series: 'Balmer',
+      strength: 'very-strong',
+      inference: 'H-α 线强度直接反映恒星大气温度。A型星巴尔末线最强，此时温度恰好使大量氢原子处于 n=2 能级。M型红巨星此线有时因发射充填而减弱；O型星温度过高，氢被电离，线极弱。',
+      discovery: '1814 年夫琅禾费首先标记了这条最强的太阳可见吸收线。1885 年巴耳末发现氢原子线系的数学规律，即巴耳末系。' },
+    { id: 'Na-D', label: 'Na-D', wavelength: 589.0, element: '钠', elementEn: 'Sodium', symbol: 'Na',
+      transition: '3s → 3p', transitionN: [3, 3], series: '共振线',
+      strength: 'strong',
+      inference: '钠 D 双线在冷星（G、K 型）中非常显著。在较热的 A 型星中几乎不可见——温度太高，钠被电离。太阳光谱中 Na-D 是最易识别的金属线之一。',
+      discovery: '钠 D 线是夫琅禾费最初标记的 D 线。由于两条线靠得极近（589.0 与 589.6 nm），常合称 D 双线。' },
+    { id: 'Mg-b', label: 'Mg-b', wavelength: 518.4, element: '镁', elementEn: 'Magnesium', symbol: 'Mg',
+      transition: '3s² → 3s3p', transitionN: [3, 3], series: '共振三线',
+      strength: 'strong',
+      inference: '镁 b 线在 K 型橙矮星中最强。镁是宇宙中丰度第七的元素，在恒星光谱的蓝-绿区形成显著的吸收带。',
+      discovery: 'Mg-b 实际上是三条紧密相邻的线（516.7、517.3、518.4 nm），合称镁 b 三线，是 G、K 型星的重要诊断线。' },
+    { id: 'Fe', label: 'Fe', wavelength: 527.0, element: '铁', elementEn: 'Iron', symbol: 'Fe',
+      transition: '多重态跃迁', transitionN: [4, 3], series: 'Fe I',
+      strength: 'normal',
+      inference: '铁线丰富是 G 型星（如太阳）的标志。恒星中铁的丰度即「金属丰度」[Fe/H]，是星系化学演化研究的核心指标。',
+      discovery: '太阳光谱中铁线有数千条之多。1860 年代基尔霍夫首次证认出太阳中的铁元素，证明恒星与地球由相同元素构成。' },
+    { id: 'H-beta', label: 'H-β', wavelength: 486.1, element: '氢', elementEn: 'Hydrogen', symbol: 'H',
+      transition: '巴尔末系 n=4→2', transitionN: [4, 2], series: 'Balmer',
+      strength: 'strong',
+      inference: 'H-β 是巴尔末系第二条线。A 型星（7500-10000K）的 H-β 最强——温度恰好使大量氢原子占据 n=2 能级。',
+      discovery: 'H-β 又称 F 线，是夫琅禾费标记的 F 暗线。它是天文学中测量恒星径向速度的重要参照线。' },
+    { id: 'H-delta', label: 'H-δ', wavelength: 410.2, element: '氢', elementEn: 'Hydrogen', symbol: 'H',
+      transition: '巴尔末系 n=6→2', transitionN: [6, 2], series: 'Balmer',
+      strength: 'normal',
+      inference: 'H-δ 是巴尔末系第六条线，位于紫端。同样在 A 型星中最强。在 O、B 型星中，由于温度过高，氢被电离，巴尔末线全部减弱。',
+      discovery: 'H-δ 位于紫光端，人眼难以察觉，但在天文底片上非常清晰。是测定恒星光谱型的重要标志之一。' },
+    { id: 'Ca-H', label: 'Ca-H', wavelength: 396.8, element: '钙', elementEn: 'Calcium II', symbol: 'Ca⁺',
+      transition: '4s → 4p', transitionN: [4, 4], series: 'Ca II H',
+      strength: 'very-strong',
+      inference: '电离钙 H 线在冷星（K、M 型）中极强。低温下钙容易失去一个电子成为 Ca⁺，其共振线在紫端非常强。G 型星也有显著的 Ca H 线。',
+      discovery: 'Ca H 与 Ca K 合称钙 H&K 线，是夫琅禾费标记的 H 线。在恒星活动（如耀斑）研究中，这两条线的发射核心是关键指标。' },
+    { id: 'Ca-K', label: 'Ca-K', wavelength: 393.4, element: '钙', elementEn: 'Calcium II', symbol: 'Ca⁺',
+      transition: '4s → 4p', transitionN: [4, 4], series: 'Ca II K',
+      strength: 'very-strong',
+      inference: '电离钙 K 线是冷星光谱中最强的特征之一。M 型红矮星的 Ca K 线常常出现发射核心，指示恒星活动水平。',
+      discovery: 'Ca K 线是夫琅禾费标记的 K 线。19 世纪末天文学家发现，不同恒星的 Ca K 线强度差异巨大，是最早的光谱分类依据之一。' }
+  ];
+
+  const STELLAR_CLASSES = [
+    { letter: 'O', temp: '≥30000K', color: '#5599FF', name: '蓝巨星', star: '参宿一 Alnitak',
+      feature: '氦电离线强，氢线极弱。质量巨大，寿命短促。' },
+    { letter: 'B', temp: '10000–30000K', color: '#AACCFF', name: '蓝白星', star: '参宿七 Rigel',
+      feature: '中性氦线出现，氢巴尔末线渐强。' },
+    { letter: 'A', temp: '7500–10000K', color: '#FFFFFF', name: '白星', star: '天狼星 Sirius',
+      feature: '巴尔末氢线最强。金属线稀少。' },
+    { letter: 'F', temp: '6000–7500K', color: '#FFFFCC', name: '黄白星', star: '老人星 Canopus',
+      feature: '氢线减弱，金属线（Ca、Fe）逐渐显现。' },
+    { letter: 'G', temp: '5200–6000K', color: '#FFDD44', name: '黄星', star: '太阳 Sol',
+      feature: '钙 H&K 线强，金属线丰富。太阳即 G2V 型。' },
+    { letter: 'K', temp: '3700–5200K', color: '#FF9933', name: '橙矮星', star: '大角星 Arcturus',
+      feature: '金属线极强，分子吸收带（TiO）开始出现。' },
+    { letter: 'M', temp: '2400–3700K', color: '#FF4422', name: '红矮星/红巨星', star: '参宿四 Betelgeuse',
+      feature: 'TiO 分子带主导。H-α 有时呈发射。数量最多。' }
+  ];
+
+  // Wavelength color band helper
+  const WAVELENGTH_MIN = 380;
+  const WAVELENGTH_MAX = 750;
+
+  function wavelengthToPct(wl) {
+    return ((wl - WAVELENGTH_MIN) / (WAVELENGTH_MAX - WAVELENGTH_MIN)) * 100;
+  }
+  function pctToWavelength(pct) {
+    return WAVELENGTH_MIN + (WAVELENGTH_MAX - WAVELENGTH_MIN) * (pct / 100);
+  }
+
+  // Wavelength band info
+  function getBandInfo(wl) {
+    if (wl >= 620) return { name: '红色波段', color: '#FF3300' };
+    if (wl >= 590) return { name: '橙色波段', color: '#FF8800' };
+    if (wl >= 570) return { name: '黄色波段', color: '#FFDD00' };
+    if (wl >= 495) return { name: '绿色波段', color: '#33CC33' };
+    if (wl >= 450) return { name: '青色波段', color: '#00BBFF' };
+    if (wl >= 420) return { name: '蓝色波段', color: '#3355FF' };
+    return { name: '紫色波段', color: '#8844FF' };
+  }
+
+  // Find closest absorption line
+  function findClosestLine(wl, threshold = 20) {
+    let closest = null;
+    let minDist = Infinity;
+    for (const line of FRAUNHOFER_LINES) {
+      const dist = Math.abs(line.wavelength - wl);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = line;
+      }
+    }
+    return minDist <= threshold ? closest : null;
+  }
+
+  // ====== Elements ======
+  const cursor = document.getElementById('cursorLoupe');
+  const spectrumWrapper = document.getElementById('spectrumWrapper');
+  const spectrumContainer = document.getElementById('spectrumContainer');
+  const absorptionLinesEl = document.getElementById('absorptionLines');
+  const scanIndicator = document.getElementById('scanIndicator');
+  const wavelengthRuler = document.getElementById('wavelengthRuler');
+  const valWavelength = document.getElementById('valWavelength');
+  const valWavelengthBand = document.getElementById('valWavelengthBand');
+  const valFrequency = document.getElementById('valFrequency');
+  const valEnergy = document.getElementById('valEnergy');
+  const valElement = document.getElementById('valElement');
+  const valElementInfo = document.getElementById('valElementInfo');
+  const stellarClassesEl = document.getElementById('stellarClasses');
+  const detailPanel = document.getElementById('detailPanel');
+  const detailClose = document.getElementById('detailClose');
+  const detailName = document.getElementById('detailName');
+  const detailEn = document.getElementById('detailEn');
+  const detailWavelength = document.getElementById('detailWavelength');
+  const detailInference = document.getElementById('detailInference');
+  const detailDiscovery = document.getElementById('detailDiscovery');
+  const orbitalSvg = document.getElementById('orbitalSvg');
+  const transitionLabel = document.getElementById('transitionLabel');
+  const dustLayer = document.getElementById('dustLayer');
+  const safelightEl = document.getElementById('safelight');
+
+  // ====== Init: Build absorption lines ======
+  function buildAbsorptionLines() {
+    FRAUNHOFER_LINES.forEach(line => {
+      const el = document.createElement('div');
+      el.className = `abs-line ${line.strength}`;
+      el.style.left = wavelengthToPct(line.wavelength) + '%';
+      el.dataset.wavelength = line.wavelength;
+      el.dataset.id = line.id;
+      // Click area: wider than line visual
+      el.style.width = '24px';
+      el.style.marginLeft = '-12px';
+      
+      const label = document.createElement('div');
+      label.className = 'line-label';
+      label.textContent = line.label + ' ' + line.wavelength + 'nm';
+      el.appendChild(label);
+      
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDetail(line);
+      });
+      
+      absorptionLinesEl.appendChild(el);
+    });
+  }
+
+  // ====== Init: Build wavelength ruler ======
+  function buildRuler() {
+    const ticks = [380, 450, 520, 590, 660, 750];
+    ticks.forEach(wl => {
+      const tick = document.createElement('div');
+      tick.className = 'ruler-tick';
+      tick.innerHTML = `
+        <div class="tick-line"></div>
+        <div class="tick-label">${wl} nm</div>
+      `;
+      wavelengthRuler.appendChild(tick);
+    });
+  }
+
+  // ====== Init: Build stellar classes ======
+  function buildStellarClasses() {
+    STELLAR_CLASSES.forEach((cls, idx) => {
+      const el = document.createElement('div');
+      el.className = 'stellar-class';
+      if (cls.letter === 'G') el.classList.add('active'); // default: Sun
+      el.style.setProperty('--class-color', cls.color);
+      el.dataset.letter = cls.letter;
+      el.innerHTML = `
+        <div class="class-color-dot"></div>
+        <div class="class-letter">${cls.letter}</div>
+        <div class="class-temp">${cls.temp}</div>
+        <div class="class-name">${cls.name}</div>
+        <div class="class-star">${cls.star.split(' ')[0]}</div>
+      `;
+      el.addEventListener('click', () => selectStellarClass(idx));
+      stellarClassesEl.appendChild(el);
+    });
+  }
+
+  function selectStellarClass(idx) {
+    const cls = STELLAR_CLASSES[idx];
+    document.querySelectorAll('.stellar-class').forEach(el => {
+      el.classList.toggle('active', el.dataset.letter === cls.letter);
+    });
+    // Simulate spectrum change based on stellar class
+    document.getElementById('targetStar').textContent = cls.star;
+    document.getElementById('spectralType').textContent = cls.letter + 'V';
+    const tempStr = cls.temp.replace('≥', '').replace('K', '').split('–');
+    const temp = tempStr.length > 1
+      ? Math.round((parseInt(tempStr[0]) + parseInt(tempStr[1])) / 2)
+      : parseInt(tempStr[0]);
+    document.getElementById('surfaceTemp').textContent = temp.toLocaleString() + ' K';
+
+    // Adjust spectrum brightness/color balance per class
+    const band = spectrumContainer.querySelector('.spectrum-band');
+    if (cls.letter === 'O' || cls.letter === 'B') {
+      band.style.filter = 'saturate(1.1) hue-rotate(-5deg) brightness(1.05)';
+    } else if (cls.letter === 'M' || cls.letter === 'K') {
+      band.style.filter = 'saturate(1.05) hue-rotate(5deg) brightness(0.95)';
+    } else {
+      band.style.filter = '';
+    }
+  }
+
+  // ====== Custom Cursor ======
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let cursorTargetX = mouseX;
+  let cursorTargetY = mouseY;
+  let cursorRafId = null;
+  let rafActive = true;
+
+  function updateCursor() {
+    if (!rafActive) return;
+    // Smooth follow with slight lag for brass loupe feel
+    cursorTargetX += (mouseX - cursorTargetX) * 0.25;
+    cursorTargetY += (mouseY - cursorTargetY) * 0.25;
+    cursor.style.left = cursorTargetX + 'px';
+    cursor.style.top = cursorTargetY + 'px';
+    cursorRafId = requestAnimationFrame(updateCursor);
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  }, { passive: true });
+
+  // Start cursor at center
+  cursor.style.left = mouseX + 'px';
+  cursor.style.top = mouseY + 'px';
+
+  // ====== Spectrum Interaction ======
+  let onSpectrum = false;
+
+  function handleSpectrumMove(e) {
+    if (!spectrumWrapper.contains(e.target) && e.target !== spectrumWrapper) return;
+    const rect = spectrumWrapper.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
+    const wl = pctToWavelength(pct);
+    
+    // Move scan indicator
+    scanIndicator.style.left = pct + '%';
+    scanIndicator.style.opacity = '1';
+    
+    // Update data
+    updateReadout(wl);
+    
+    // Zoom cursor on spectrum
+    cursor.classList.add('zoomed');
+  }
+
+  function updateReadout(wl) {
+    const bandInfo = getBandInfo(wl);
+    const freq = (299792458 / (wl * 1e-9)) / 1e12; // THz
+    const energy = freq * 4.13566733e-3; // eV (h in eV·s × THz)
+    
+    valWavelength.innerHTML = wl.toFixed(1) + '<span class="unit">nm</span>';
+    valWavelengthBand.textContent = '可见光 · ' + bandInfo.name;
+    valFrequency.innerHTML = freq.toFixed(1) + '<span class="unit">THz</span>';
+    valEnergy.innerHTML = energy.toFixed(2) + '<span class="unit">eV</span>';
+    
+    // Find closest line for element display
+    const closest = findClosestLine(wl, 30);
+    if (closest) {
+      valElement.innerHTML = closest.symbol + ' ' + closest.element;
+      valElementInfo.textContent = closest.label + ' · ' + closest.transition;
+      valElement.classList.add('highlight');
+    } else {
+      valElement.innerHTML = '连续谱<span class="unit"></span>';
+      valElementInfo.textContent = bandInfo.name + ' · 无强吸收';
+      valElement.classList.remove('highlight');
+    }
+  }
+
+  spectrumWrapper.addEventListener('mousemove', handleSpectrumMove);
+  spectrumWrapper.addEventListener('mouseenter', () => {
+    onSpectrum = true;
+    cursor.classList.add('zoomed');
+    scanIndicator.style.opacity = '1';
+  });
+  spectrumWrapper.addEventListener('mouseleave', () => {
+    onSpectrum = false;
+    cursor.classList.remove('zoomed');
+    scanIndicator.style.opacity = '0';
+  });
+
+  // Whole-body cursor hide/show
+  document.addEventListener('mouseenter', () => {
+    cursor.style.opacity = '1';
+  });
+  document.addEventListener('mouseleave', () => {
+    cursor.style.opacity = '0';
+  });
+
+  // ====== Detail Panel ======
+  let currentLine = null;
+
+  function openDetail(line) {
+    currentLine = line;
+    detailName.textContent = line.element + ' · ' + line.elementEn;
+    detailEn.textContent = line.symbol + ' · ' + line.label + ' 吸收线';
+    detailWavelength.textContent = line.wavelength + ' nm · ' + line.label;
+    detailInference.textContent = line.inference;
+    detailDiscovery.textContent = line.discovery;
+    transitionLabel.textContent = line.transition + ' · ' + line.series;
+    
+    // Build orbital diagram
+    buildOrbitalDiagram(line);
+    
+    detailPanel.classList.add('open');
+  }
+
+  function closeDetail() {
+    detailPanel.classList.remove('open');
+    currentLine = null;
+  }
+
+  detailClose.addEventListener('click', closeDetail);
+
+  function buildOrbitalDiagram(line) {
+    // Clear previous orbits
+    const oldRings = orbitalSvg.querySelectorAll('.orbital-ring, .orbital-label.ring-lbl, .electron-dot, .electron-path, .photon-arrow');
+    oldRings.forEach(el => el.remove());
+    
+    // Draw energy level orbits (n=1 through n=6 max)
+    const maxN = 6;
+    const centerX = 100, centerY = 90;
+    const baseRadius = 16;
+    const radiusStep = 14;
+    
+    const fromN = line.transitionN[0];
+    const toN = line.transitionN[1];
+    const maxShown = Math.max(fromN, toN, 4);
+    
+    for (let n = 1; n <= maxShown; n++) {
+      const r = baseRadius + (n - 1) * radiusStep;
+      const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      ring.setAttribute('class', 'orbital-ring' + (n === fromN || n === toN ? ' active' : ''));
+      ring.setAttribute('cx', centerX);
+      ring.setAttribute('cy', centerY);
+      ring.setAttribute('r', r);
+      orbitalSvg.appendChild(ring);
+      
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('class', 'orbital-label ring-lbl' + (n === fromN || n === toN ? ' active' : ''));
+      label.setAttribute('x', centerX + r + 6);
+      label.setAttribute('y', centerY + 3);
+      label.textContent = 'n=' + n;
+      orbitalSvg.appendChild(label);
+    }
+    
+    // Electron on "from" orbit (right side)
+    const fromR = baseRadius + (fromN - 1) * radiusStep;
+    const electronFrom = { x: centerX + fromR, y: centerY };
+    const toR = baseRadius + (toN - 1) * radiusStep;
+    const electronTo = { x: centerX + toR, y: centerY };
+    
+    const eDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    eDot.setAttribute('class', 'electron-dot');
+    eDot.setAttribute('cx', electronFrom.x);
+    eDot.setAttribute('cy', electronFrom.y);
+    eDot.setAttribute('r', 3);
+    orbitalSvg.appendChild(eDot);
+    
+    // Transition path (curved arc from high n to low n, on right side)
+    // Use quadratic bezier that curves outward
+    const midX = centerX + (fromR + toR) / 2 + 20;
+    const midY = centerY - 15;
+    const pathD = `M ${electronFrom.x} ${electronFrom.y} Q ${midX} ${midY} ${electronTo.x} ${electronTo.y}`;
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'electron-path');
+    path.setAttribute('d', pathD);
+    // Compute length approx
+    const approxLen = Math.abs(fromR - toR) * 2 + 40;
+    path.style.strokeDasharray = approxLen;
+    path.style.strokeDashoffset = approxLen;
+    orbitalSvg.appendChild(path);
+    
+    // Photon arrow (released to the right as wavelength)
+    const photon = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const photonStartX = electronTo.x + 10;
+    photon.setAttribute('class', 'photon-arrow');
+    photon.setAttribute('d', `M ${photonStartX} ${centerY} l 24 0 M ${photonStartX + 20} ${centerY - 4} l 4 4 l -4 4`);
+    orbitalSvg.appendChild(photon);
+    
+    // Animate after a tick
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        path.classList.add('animate');
+        photon.classList.add('show');
+      });
+    });
+  }
+
+  // ====== Dust Particles ======
+  function createDust() {
+    const count = 20;
+    for (let i = 0; i < count; i++) {
+      const d = document.createElement('div');
+      d.className = 'dust';
+      d.style.left = Math.random() * 100 + '%';
+      d.style.width = (1 + Math.random() * 2) + 'px';
+      d.style.height = d.style.width;
+      d.style.animationDuration = (15 + Math.random() * 20) + 's';
+      d.style.animationDelay = (Math.random() * 20) + 's';
+      d.style.opacity = 0.15 + Math.random() * 0.35;
+      dustLayer.appendChild(d);
+    }
+  }
+
+  // ====== Visibility handling ======
+  function handleVisibility() {
+    if (document.hidden) {
+      rafActive = false;
+      if (cursorRafId) {
+        cancelAnimationFrame(cursorRafId);
+        cursorRafId = null;
+      }
+    } else {
+      rafActive = true;
+      if (!cursorRafId) {
+        cursorRafId = requestAnimationFrame(updateCursor);
+      }
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  // ====== Initialization ======
+  function init() {
+    buildAbsorptionLines();
+    buildRuler();
+    buildStellarClasses();
+    createDust();
+    
+    // Set initial readout
+    updateReadout(580);
+    
+    // Start cursor animation
+    cursorRafId = requestAnimationFrame(updateCursor);
+    
+    // Center cursor initially (already set via mouseX/Y defaults)
+  }
+
+  // Wait for fonts to be ready for better initial render
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(init);
+  } else {
+    document.addEventListener('DOMContentLoaded', init);
+  }
+  
+  // Fallback: init after short delay
+  setTimeout(() => {
+    if (!cursorRafId) init();
+  }, 500);
+
+  // ====== Cleanup on unload ======
+  window.addEventListener('beforeunload', () => {
+    rafActive = false;
+    if (cursorRafId) cancelAnimationFrame(cursorRafId);
+  });
+
+})();
+</script>
+</body>
+</html>
