@@ -76,14 +76,14 @@ CRITICAL = 0
 
 ### Component Gate
 ```
-Interaction Mechanism >= 16/20
-Feedback / Feel >= 16/20
-Motion Quality >= 12/15
-Replay Value >= 11/15
+Utility & Need Authenticity >= 16/20
+State Completeness >= 16/20
+Interaction Feel >= 12/15
+Reusability >= 11/15
 Technical Quality >= 8/10
 CRITICAL = 0
 ```
-Component 可以视觉实验性很强，但手感指标绝对不能低。
+Component 可以视觉风格多样，但状态完整性和可复用性绝对不能低。
 
 ## 决策逻辑
 

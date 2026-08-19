@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潮间带·潮汐生物图鉴</title>
+<meta name="creative-medium" content="interactive-prototype">
+<style>
+/* ============================================================
+   潮间带·潮汐生物图鉴 — Design DNA
+   核心概念：垂直潮位水尺为全站唯一导航轴，拖动水位线逐层显露潮间带生物
+   视觉来源：礁石海岸剖面 · 潮汐水位尺 · 田野调查档案
+   色彩逻辑：礁石褐 / 海藻绿 / 海水青 / 沙黄 — 源自真实潮间带材质
+   空间逻辑：剖面式，上为海岸高处，下为潮下深水
+   ============================================================ */
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* 礁石褐 — 岩石基底 */
+  --reef-900: #2D1F14;
+  --reef-800: #3D2B1C;
+  --reef-700: #4A3728;
+  --reef-600: #6B5344;
+  --reef-500: #8B7355;
+  --reef-400: #A89070;
+
+  /* 海藻绿 — 植被色 */
+  --kelp-900: #2A3A1F;
+  --kelp-800: #3D5A3F;
+  --kelp-700: #537050;
+  --kelp-600: #6B8B5C;
+  --kelp-500: #86A068;
+
+  /* 海水青 — 水体色 */
+  --sea-900: #1A302F;
+  --sea-800: #2D5A5C;
+  --sea-700: #3E7370;
+  --sea-600: #4A8B8A;
+  --sea-500: #6BA3A0;
+  --sea-400: #8EBCBA;
+  --sea-300: #B5D5D4;
+
+  /* 沙黄 — 滩涂/干燥区 */
+  --sand-700: #8B7D4A;
+  --sand-600: #A8965A;
+  --sand-500: #C4B170;
+  --sand-400: #D9C98A;
+  --sand-300: #E8DCAB;
+
+  /* 墨水 */
+  --ink: #1A1410;
+  --ink-soft: #3A2F24;
+  --paper: #F2EBDC;
+  --paper-dark: #E8DDC7;
+
+  --gauge-width: 72px;
+  --panel-width: 340px;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body { cursor: none; }
+
+/* 自定义光标 */
+.cursor {
+  position: fixed;
+  width: 18px;
+  height: 22px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.18s cubic-bezier(0.23, 1, 0.32, 1), width 0.25s ease, height 0.25s ease;
+}
+.cursor::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  transform: rotate(180deg);
+  transition: background 0.2s ease;
+}
+.cursor::after {
+  content: "";
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translateX(-50%);
+  background: var(--paper);
+  border-radius: 50%;
+}
+.cursor.drag {
+  width: 22px;
+  height: 28px;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+.cursor.drag::before {
+  background: var(--sea-600);
+}
+.cursor.click {
+  width: 14px;
+  height: 16px;
+}
+
+/* 舞台 */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--sand-300) 0%, var(--sand-400) 15%, var(--reef-400) 40%, var(--reef-600) 65%, var(--reef-700) 80%, var(--sea-800) 100%);
+}
+
+/* ————— 背景礁石剖面 ————— */
+.reef-profile {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: calc(100% - var(--gauge-width) - 180px);
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.reef-profile svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ————— 水体 ————— */
+.water-body {
+  position: absolute;
+  left: var(--gauge-width);
+  right: 0;
+  bottom: 0;
+  height: 65%;
+  background: linear-gradient(180deg,
+    rgba(107, 163, 160, 0.55) 0%,
+    rgba(74, 139, 138, 0.7) 15%,
+    rgba(45, 90, 92, 0.85) 45%,
+    rgba(26, 48, 47, 0.95) 100%);
+  z-index: 5;
+  pointer-events: none;
+  transition: height 0.35s cubic-bezier(0.23, 1, 0.32, 1), background 0.6s ease;
+}
+.water-body::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(181, 213, 212, 0.6) 20%,
+    rgba(181, 213, 212, 0.8) 50%,
+    rgba(181, 213, 212, 0.6) 80%,
+    transparent 100%);
+  animation: waterRipple 3.5s ease-in-out infinite;
+}
+@keyframes waterRipple {
+  0%, 100% { opacity: 0.5; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(20px); }
+}
+
+/* 水面波纹（装饰条） */
+.water-sheen {
+  position: absolute;
+  width: 100%;
+  height: 30px;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.water-sheen span {
+  position: absolute;
+  height: 1px;
+  background: rgba(255,255,255,0.3);
+  top: 8px;
+  animation: sheenDrift 6s linear infinite;
+}
+
+@keyframes sheenDrift {
+  0% { transform: translateX(-30px); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateX(60px); opacity: 0; }
+}
+
+/* ————— 水位尺（左侧） ————— */
+.gauge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--gauge-width);
+  height: 100%;
+  background: var(--paper);
+  border-right: 1px solid var(--reef-400);
+  z-index: 20;
+  box-shadow: 2px 0 12px rgba(45, 31, 20, 0.08);
+}
+.gauge-title {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--reef-600);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.gauge-ruler {
+  position: absolute;
+  left: 20px;
+  top: 60px;
+  bottom: 30px;
+  width: 1px;
+  background: var(--reef-500);
+}
+.gauge-tick {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  height: 1px;
+  background: var(--reef-500);
+  font-size: 9px;
+  color: var(--reef-600);
+  line-height: 1;
+}
+.gauge-tick.major {
+  width: 14px;
+  left: -6px;
+  height: 1px;
+}
+.gauge-tick.major span {
+  position: absolute;
+  right: 18px;
+  top: -5px;
+  font-size: 10px;
+  color: var(--reef-600);
+  font-family: "SFMono-Regular", "Consolas", monospace;
+  width: 30px;
+  text-align: right;
+}
+
+/* 潮带分区标签 */
+.zone-markers {
+  position: absolute;
+  left: var(--gauge-width);
+  top: 0;
+  width: 140px;
+  height: 100%;
+  z-index: 15;
+  pointer-events: none;
+}
+.zone-marker {
+  position: absolute;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+  font-weight: 500;
+  opacity: 0.6;
+  transition: opacity 0.4s ease, color 0.4s ease;
+}
+.zone-marker::before {
+  content: "";
+  width: 36px;
+  height: 1px;
+  background: currentColor;
+}
+.zone-marker.active { opacity: 1; }
+.zone-marker.high-zone { top: 12%; color: var(--sand-700); }
+.zone-marker.mid-zone { top: 35%; color: var(--kelp-800); }
+.zone-marker.low-zone { top: 58%; color: var(--sea-700); }
+.zone-marker.sub-zone { top: 82%; color: var(--sea-800); }
+
+/* ————— 水位线（可拖拽） ————— */
+.water-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  top: 35%;
+  z-index: 50;
+  pointer-events: none;
+}
+.water-line-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--sea-600);
+  opacity: 0.5;
+  transform: translateY(-50%);
+}
+.water-line-handle {
+  position: absolute;
+  left: calc(var(--gauge-width) - 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 180px;
+  height: 42px;
+  background: var(--sea-600);
+  color: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  font-weight: 500;
+  pointer-events: auto;
+  cursor: none;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+  transition: background 0.2s ease, width 0.2s ease;
+}
+.water-line-handle:hover {
+  background: var(--sea-700);
+  width: 200px;
+}
+.water-line-handle.dragging {
+  background: var(--sea-800);
+  width: 200px;
+}
+.water-line-handle .drag-hint {
+  font-size: 10px;
+  opacity: 0.8;
+  letter-spacing: 1px;
+}
+.water-line-handle .level-num {
+  font-family: "SFMono-Regular", "Consolas", monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  background: rgba(255,255,255,0.2);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+/* ————— 潮带区域 & 生物 ————— */
+.creatures-layer {
+  position: absolute;
+  left: calc(var(--gauge-width) + 160px);
+  right: 60px;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+}
+.creature {
+  position: absolute;
+  cursor: none;
+  pointer-events: auto;
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.23, 1, 0.32, 1), filter 0.8s ease;
+  transform-origin: center bottom;
+  z-index: 2;
+}
+.creature svg {
+  display: block;
+  transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.creature:hover svg {
+  transform: scale(1.08);
+}
+.creature-label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  background: rgba(242, 235, 220, 0.9);
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.creature:hover .creature-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* 被淹没状态 */
+.creature.submerged {
+  opacity: 0 !important;
+  transform: translateY(12px) scale(0.95);
+  pointer-events: none;
+}
+
+/* 生物浮现动画 */
+@keyframes emerge {
+  0% { opacity: 0; transform: translateY(16px) scale(0.92); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.creature.visible-anim {
+  animation: emerge 0.8s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* ——— 各生物独立动效 ——— */
+/* 海葵触手摆动 */
+.creature.anemone svg .tentacle {
+  transform-origin: bottom center;
+  animation: tentacleSway 4s ease-in-out infinite;
+}
+.creature.anemone svg .tentacle:nth-child(2) { animation-delay: 0.4s; }
+.creature.anemone svg .tentacle:nth-child(3) { animation-delay: 0.8s; }
+.creature.anemone svg .tentacle:nth-child(4) { animation-delay: 1.2s; }
+.creature.anemone svg .tentacle:nth-child(5) { animation-delay: 1.6s; }
+@keyframes tentacleSway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+
+/* 海藻摆动 */
+.creature.kelp svg .frond {
+  transform-origin: bottom center;
+  animation: kelpSway 5s ease-in-out infinite;
+}
+.creature.kelp svg .frond:nth-child(2) { animation-delay: -1s; }
+.creature.kelp svg .frond:nth-child(3) { animation-delay: -2s; }
+.creature.kelp svg .frond:nth-child(4) { animation-delay: -3s; }
+@keyframes kelpSway {
+  0%, 100% { transform: skewX(-3deg); }
+  50% { transform: skewX(5deg); }
+}
+
+/* 海星缓慢旋转漂浮 */
+.creature.seastar svg {
+  animation: seastarPulse 6s ease-in-out infinite;
+}
+@keyframes seastarPulse {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50% { transform: rotate(3deg) scale(1.04); }
+}
+
+/* 海胆刺微动 */
+.creature.urchin svg .spine {
+  transform-origin: center;
+  animation: spineWiggle 2.5s ease-in-out infinite;
+}
+.creature.urchin svg .spine:nth-child(odd) { animation-delay: -0.5s; }
+@keyframes spineWiggle {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.1); }
+}
+
+/* 螺缓慢爬动 */
+.creature.snail svg {
+  animation: snailCrawl 8s ease-in-out infinite;
+}
+@keyframes snailCrawl {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(8px); }
+}
+
+/* 珊瑚藻闪烁 */
+.creature.coralline svg {
+  animation: corallineGlimmer 5s ease-in-out infinite;
+}
+@keyframes corallineGlimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+/* 海参缓慢伸缩 */
+.creature.seacuke svg {
+  animation: seacukeBreathe 7s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes seacukeBreathe {
+  0%, 100% { transform: scaleX(1) scaleY(1); }
+  50% { transform: scaleX(1.05) scaleY(0.95); }
+}
+
+/* 鱼游动 */
+.creature.fish svg {
+  animation: fishSwim 10s ease-in-out infinite;
+}
+@keyframes fishSwim {
+  0%, 100% { transform: translateX(0) scaleX(1); }
+  49% { transform: translateX(40px) scaleX(1); }
+  50% { transform: translateX(40px) scaleX(-1); }
+  99% { transform: translateX(0) scaleX(-1); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+
+/* 藤壶开合 */
+.creature.barnacle svg .operculum {
+  transform-origin: center;
+  animation: barnacleOpen 4s ease-in-out infinite;
+}
+@keyframes barnacleOpen {
+  0%, 40%, 100% { transform: scaleY(1); }
+  50%, 90% { transform: scaleY(0.3); }
+}
+
+/* 牡蛎开合 */
+.creature.oyster svg .valve {
+  transform-origin: bottom left;
+  animation: oysterOpen 5s ease-in-out infinite;
+}
+@keyframes oysterOpen {
+  0%, 30%, 100% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(-8deg); }
+}
+
+/* 石鳖缓慢移动 */
+.creature.chiton svg {
+  animation: chitonGlide 9s ease-in-out infinite;
+}
+@keyframes chitonGlide {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(6px); }
+}
+
+/* 海蟑螂疾走 */
+.creature.ligia svg {
+  animation: ligiaScurry 3s steps(2) infinite;
+}
+@keyframes ligiaScurry {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  25% { transform: translateX(4px) rotate(-2deg); }
+  50% { transform: translateX(8px) rotate(0); }
+  75% { transform: translateX(4px) rotate(2deg); }
+}
+
+/* 石花菜摆动 */
+.creature.gelidium svg .blade {
+  transform-origin: bottom center;
+  animation: gelidiumWave 4.5s ease-in-out infinite;
+}
+.creature.gelidium svg .blade:nth-child(2) { animation-delay: -1.5s; }
+.creature.gelidium svg .blade:nth-child(3) { animation-delay: -3s; }
+@keyframes gelidiumWave {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+/* ————— 标题区 ————— */
+.site-title {
+  position: absolute;
+  right: 40px;
+  top: 32px;
+  z-index: 30;
+  text-align: right;
+  pointer-events: none;
+}
+.site-title h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  color: var(--reef-900);
+  margin-bottom: 6px;
+}
+.site-title .subtitle {
+  font-size: 12px;
+  color: var(--reef-600);
+  letter-spacing: 2px;
+}
+.site-title .tide-now {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--sea-800);
+  letter-spacing: 1.5px;
+  font-family: "SFMono-Regular", "Consolas", monospace;
+}
+
+/* ————— 底部信息 ————— */
+.site-foot {
+  position: absolute;
+  left: calc(var(--gauge-width) + 20px);
+  bottom: 20px;
+  z-index: 30;
+  font-size: 10px;
+  color: var(--reef-500);
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+.site-foot .creature-count {
+  font-family: "SFMono-Regular", "Consolas", monospace;
+  color: var(--kelp-800);
+  font-weight: 600;
+}
+
+/* ————— 详情面板 ————— */
+.detail-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: var(--panel-width);
+  height: 100%;
+  background: var(--paper);
+  border-left: 1px solid var(--reef-400);
+  z-index: 60;
+  transform: translateX(100%);
+  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  padding: 48px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: -6px 0 24px rgba(45, 31, 20, 0.1);
+}
+.detail-panel.open {
+  transform: translateX(0);
+}
+.detail-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--reef-400);
+  background: transparent;
+  color: var(--reef-700);
+  font-size: 18px;
+  cursor: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.detail-close:hover {
+  background: var(--reef-700);
+  color: var(--paper);
+}
+
+.detail-illustration {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--paper-dark);
+  border: 1px solid var(--reef-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detail-illustration svg {
+  width: 70%;
+  height: 70%;
+}
+
+.detail-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+.detail-latin {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--reef-600);
+  letter-spacing: 0.5px;
+}
+.detail-zone-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  border: 1px solid var(--kelp-700);
+  color: var(--kelp-800);
+  width: fit-content;
+}
+
+.detail-section {
+  border-top: 1px solid var(--reef-400);
+  padding-top: 16px;
+}
+.detail-section-title {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--reef-600);
+  margin-bottom: 8px;
+}
+.detail-section p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.detail-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 12px;
+}
+.detail-facts dt {
+  color: var(--reef-600);
+}
+.detail-facts dd {
+  color: var(--ink-soft);
+}
+
+/* ————— 顶部图例 ————— */
+.legend {
+  position: absolute;
+  left: calc(var(--gauge-width) + 160px);
+  top: 28px;
+  z-index: 30;
+  display: flex;
+  gap: 18px;
+  pointer-events: none;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  letter-spacing: 1px;
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.legend-dot.high { background: var(--sand-600); }
+.legend-dot.mid { background: var(--kelp-700); }
+.legend-dot.low { background: var(--sea-600); }
+.legend-dot.sub { background: var(--sea-800); }
+
+/* ————— 潮水高度计（水位尺上的指示） ————— */
+.tide-indicator {
+  position: absolute;
+  left: 18px;
+  top: 35%;
+  width: 28px;
+  height: 2px;
+  background: var(--sea-600);
+  transform: translateY(-50%);
+  z-index: 25;
+  pointer-events: none;
+  transition: top 0.35s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tide-indicator::before {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 5px solid var(--sea-600);
+}
+
+/* ————— 气泡粒子 ————— */
+.bubbles {
+  position: absolute;
+  left: var(--gauge-width);
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+}
+.bubble {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  animation: bubbleRise linear infinite;
+}
+@keyframes bubbleRise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  10% { opacity: 0.8; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-300px) scale(0.5); opacity: 0; }
+}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+
+/* 1024px */
+@media (max-width: 1024px) {
+  :root {
+    --gauge-width: 60px;
+    --panel-width: 280px;
+  }
+  .creatures-layer {
+    left: calc(var(--gauge-width) + 120px);
+    right: 30px;
+  }
+  .zone-markers { width: 110px; }
+  .site-title h1 { font-size: 18px; letter-spacing: 4px; }
+  .water-line-handle { width: 150px; height: 36px; font-size: 12px; }
+  .water-line-handle:hover { width: 160px; }
+  .legend { left: calc(var(--gauge-width) + 130px); gap: 14px; }
+}
+
+/* 768px */
+@media (max-width: 768px) {
+  :root {
+    --gauge-width: 48px;
+    --panel-width: 100%;
+  }
+  .site-title { right: 20px; top: 20px; }
+  .site-title h1 { font-size: 15px; letter-spacing: 3px; }
+  .site-title .subtitle { font-size: 10px; letter-spacing: 1px; }
+  .creatures-layer {
+    left: calc(var(--gauge-width) + 80px);
+    right: 16px;
+  }
+  .zone-markers { width: 75px; }
+  .zone-marker { font-size: 10px; left: 6px; letter-spacing: 1px; }
+  .zone-marker::before { width: 24px; }
+  .gauge-title { font-size: 10px; letter-spacing: 2px; top: 20px; }
+  .gauge-ruler { left: 14px; }
+  .gauge-tick.major span { font-size: 9px; width: 24px; }
+  .water-line-handle {
+    width: 120px;
+    height: 32px;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  .water-line-handle:hover { width: 130px; }
+  .legend {
+    left: calc(var(--gauge-width) + 90px);
+    top: 60px;
+    flex-wrap: wrap;
+    max-width: 160px;
+    gap: 8px 14px;
+  }
+  .legend-item { font-size: 10px; }
+}
+
+/* 390px (移动端) */
+@media (max-width: 480px) {
+  :root {
+    --gauge-width: 40px;
+  }
+  .site-title { right: 14px; top: 14px; text-align: right; }
+  .site-title h1 { font-size: 13px; letter-spacing: 2px; }
+  .site-title .subtitle { display: none; }
+  .site-title .tide-now { font-size: 10px; margin-top: 6px; }
+  .creatures-layer {
+    left: calc(var(--gauge-width) + 60px);
+    right: 10px;
+  }
+  .zone-markers { width: 55px; }
+  .zone-marker { font-size: 9px; left: 4px; }
+  .zone-marker::before { width: 16px; }
+  .gauge-title { display: none; }
+  .gauge-ruler { left: 10px; }
+  .gauge-tick.major span { display: none; }
+  .water-line-handle {
+    width: 90px;
+    height: 28px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  .water-line-handle .drag-hint { display: none; }
+  .legend {
+    left: calc(var(--gauge-width) + 62px);
+    top: 48px;
+    gap: 6px 10px;
+    max-width: 140px;
+  }
+  .legend-item { font-size: 9px; gap: 4px; }
+  .legend-dot { width: 8px; height: 8px; }
+  .detail-panel { padding: 36px 20px 20px; gap: 14px; }
+  .detail-name { font-size: 17px; }
+  .site-foot { display: none; }
+  .tide-indicator { width: 20px; left: 12px; }
+
+  /* 移动端隐藏自定义光标 */
+  body { cursor: auto; }
+  .cursor { display: none; }
+  .water-line-handle { cursor: grab; }
+  .detail-close { cursor: pointer; }
+  .creature { cursor: pointer; }
+}
+
+/* ============================================================
+   prefers-reduced-motion 降级
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .creature.submerged { opacity: 0 !important; transform: none; }
+  .cursor { transition: none; }
+  .water-line-handle { transition: none; }
+  .detail-panel { transition: none; }
+  .water-body { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor"></div>
+
+<!-- 主舞台 -->
+<div class="stage" id="stage">
+
+  <!-- 背景礁石剖面 SVG -->
+  <div class="reef-profile" aria-hidden="true">
+    <svg viewBox="0 0 800 900" preserveAspectRatio="xMidYMax slice">
+      <!-- 沙滩 -->
+      <path d="M0 0 L200 0 L180 60 Q160 80 140 70 L120 90 Q100 120 80 110 L60 140 Q40 170 20 160 L0 180 Z" fill="#D9C98A"/>
+      <!-- 上层礁石 -->
+      <path d="M0 180 L100 170 Q140 200 160 240 L180 280 Q200 320 170 360 L140 400 Q110 440 130 490 L150 540 Q170 590 140 640 L110 690 Q80 740 100 790 L120 840 Q140 890 120 900 L0 900 Z" fill="#8B7355"/>
+      <!-- 中层礁石 -->
+      <path d="M0 450 L200 440 Q250 470 260 520 L270 580 Q280 640 250 700 L220 760 Q190 820 210 880 L220 900 L0 900 Z" fill="#6B5344"/>
+      <!-- 深层岩石 -->
+      <path d="M0 650 L320 640 Q370 680 360 750 L350 820 Q340 880 360 900 L0 900 Z" fill="#4A3728"/>
+      <!-- 海床 -->
+      <path d="M0 800 L500 790 Q550 810 540 860 L530 900 L0 900 Z" fill="#2D1F14"/>
+      <!-- 岩石纹理线 -->
+      <g stroke="#3D2B1C" stroke-width="1" fill="none" opacity="0.3">
+        <path d="M30 300 Q60 310 90 300"/>
+        <path d="M50 500 Q80 510 110 505"/>
+        <path d="M80 700 Q110 710 140 705"/>
+        <path d="M200 500 Q230 510 260 505"/>
+        <path d="M250 750 Q280 760 310 755"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 水位尺 -->
+  <div class="gauge">
+    <div class="gauge-title">潮位尺</div>
+    <div class="gauge-ruler" id="gaugeRuler"></div>
+    <div class="tide-indicator" id="tideIndicator"></div>
+  </div>
+
+  <!-- 潮带分区标记 -->
+  <div class="zone-markers">
+    <div class="zone-marker high-zone">高潮带</div>
+    <div class="zone-marker mid-zone">中潮带</div>
+    <div class="zone-marker low-zone">低潮带</div>
+    <div class="zone-marker sub-zone">潮下带</div>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot high"></span>高潮带</div>
+    <div class="legend-item"><span class="legend-dot mid"></span>中潮带</div>
+    <div class="legend-item"><span class="legend-dot low"></span>低潮带</div>
+    <div class="legend-item"><span class="legend-dot sub"></span>潮下带</div>
+  </div>
+
+  <!-- 标题 -->
+  <div class="site-title">
+    <h1>潮间带·潮汐生物图鉴</h1>
+    <div class="subtitle">拖动水位线 · 探索海岸分层世界</div>
+    <div class="tide-now" id="tideNow">水位 3.2 m</div>
+  </div>
+
+  <!-- 气泡粒子 -->
+  <div class="bubbles" id="bubbles"></div>
+
+  <!-- 水体 -->
+  <div class="water-body" id="waterBody">
+    <div class="water-sheen" id="waterSheen"></div>
+  </div>
+
+  <!-- 水位线（可拖拽） -->
+  <div class="water-line" id="waterLine">
+    <div class="water-line-track"></div>
+    <div class="water-line-handle" id="waterHandle">
+      <span class="level-num" id="levelNum">3.2 m</span>
+      <span class="drag-hint">↓ 拖动 ↑</span>
+    </div>
+  </div>
+
+  <!-- 生物层 -->
+  <div class="creatures-layer" id="creaturesLayer"></div>
+
+  <!-- 底部信息 -->
+  <div class="site-foot">
+    已记录 <span class="creature-count" id="creatureCount">0</span> / 14 种潮间带生物
+  </div>
+
+  <!-- 详情面板 -->
+  <div class="detail-panel" id="detailPanel">
+    <button class="detail-close" id="detailClose" aria-label="关闭">×</button>
+    <div class="detail-illustration" id="detailIllus"></div>
+    <div>
+      <div class="detail-name" id="detailName">—</div>
+      <div class="detail-latin" id="detailLatin">—</div>
+    </div>
+    <div class="detail-zone-badge" id="detailZone">—</div>
+    <div class="detail-section">
+      <div class="detail-section-title">形态特征</div>
+      <p id="detailMorph">—</p>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">生态习性</div>
+      <p id="detailHabit">—</p>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">基础档案</div>
+      <dl class="detail-facts">
+        <dt>门</dt><dd id="detailPhylum">—</dd>
+        <dt>栖息潮位</dt><dd id="detailTide">—</dd>
+        <dt>食性</dt><dd id="detailDiet">—</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   潮间带·潮汐生物图鉴 交互脚本
+   ============================================================ */
+(function() {
+  'use strict';
+
+  // ——— 生物数据：14 种真实潮间带生物 ———
+  const creatures = [
+    // 高潮带
+    {
+      id: 'barnacle', name: '东方小藤壶', latin: 'Chthamalus challengeri',
+      zone: 'high', zonePct: 18,
+      phylum: '节肢动物门', diet: '滤食性',
+      morph: '成体呈圆锥形，直径约 5–10mm，外壳由 6 片灰白带褐斑的钙质壳板组成。顶部口盖呈菱形，可紧闭防止水分蒸发。',
+      habit: '集群固着在高潮带岩石上，退潮时长时间暴露于空气中仍能存活。仅在涨潮被水淹没时伸出蔓足滤食浮游生物。',
+      size: 40
+    },
+    {
+      id: 'snail', name: '短滨螺', latin: 'Littorina brevicula',
+      zone: 'high', zonePct: 13,
+      phylum: '软体动物门', diet: '植食性',
+      morph: '螺壳呈圆锥形，高约 15mm，壳色深褐或灰黑，表面有细密螺肋。壳口圆形，厣角质可完全封闭。',
+      habit: '栖息于高潮带岩礁，退潮时躲藏在岩缝或贝壳下。以岩表海藻为食，是潮间带分布最高的螺类之一。',
+      size: 36
+    },
+    {
+      id: 'ligia', name: '海蟑螂', latin: 'Ligia exotica',
+      zone: 'high', zonePct: 8,
+      phylum: '节肢动物门', diet: '杂食性',
+      morph: '体长约 25–35mm，体呈椭圆形，灰褐色。触角极长可达体长的两倍，复眼发达。具 7 对步足，善疾走。',
+      habit: '栖息在高潮带岩缝中，行动极为迅速。以海藻和有机碎屑为食，受惊时迅速钻入石缝，甚至可潜入水中短暂避敌。',
+      size: 42
+    },
+    // 中潮带
+    {
+      id: 'oyster', name: '僧帽牡蛎', latin: 'Saccostrea cucullata',
+      zone: 'mid', zonePct: 30,
+      phylum: '软体动物门', diet: '滤食性',
+      morph: '壳形不规则，左壳固着在岩石上，右壳较小呈盖状。壳面粗糙呈灰褐或紫褐色，内面灰白色，边缘呈波浪形。',
+      habit: '广泛分布于中潮带岩礁，终生以左壳固着生活。依靠鳃纤毛过滤水中浮游生物和有机碎屑为食。',
+      size: 48
+    },
+    {
+      id: 'chiton', name: '花斑锉石鳖', latin: 'Ischnochiton comptus',
+      zone: 'mid', zonePct: 38,
+      phylum: '软体动物门', diet: '植食性',
+      morph: '身体扁平呈卵圆形，长约 20–30mm。背部具 8 块覆瓦状排列的钙质壳片，呈灰褐色具深色斑纹。腹面为宽大的肉足。',
+      habit: '栖息于中潮带岩礁，依靠腹足吸附于岩石表面。以岩表的硅藻和小型海藻为食，退潮时紧贴岩石防止失水。',
+      size: 44
+    },
+    {
+      id: 'anemone', name: '绿海葵', latin: 'Anthopleura midori',
+      zone: 'mid', zonePct: 42,
+      phylum: '刺胞动物门', diet: '肉食性',
+      morph: '体高约 20–40mm，呈圆柱形，体柱绿色或黄褐色。口盘周围有数圈细长触手，呈鲜绿色，触手上密布刺细胞。',
+      habit: '固着于中潮带岩缝或岩池内。退潮时触手缩成半球形以减少水分蒸发。涨潮时伸开触手捕食小型甲壳类和浮游生物。',
+      size: 50
+    },
+    {
+      id: 'pearl', name: '马氏珠母贝', latin: 'Pinctada martensi',
+      zone: 'mid', zonePct: 46,
+      phylum: '软体动物门', diet: '滤食性',
+      morph: '壳呈斜四方形，壳长约 60–80mm，左壳略凸。壳面暗褐或青褐色，具细密同心生长线和放射状鳞片。壳内面珍珠层厚，具虹彩光泽。',
+      habit: '栖息于低潮线附近至浅海岩礁，以足丝固着生活。滤食浮游硅藻和有机碎屑，是人工培育海水珍珠的主要贝种。',
+      size: 46
+    },
+    // 低潮带
+    {
+      id: 'seastar', name: '多棘海盘车', latin: 'Asterias amurensis',
+      zone: 'low', zonePct: 58,
+      phylum: '棘皮动物门', diet: '肉食性',
+      morph: '体呈五角星状，直径约 10–20cm。腕 5 条，背部黄褐或带紫色，密生小棘刺和叉棘。腹面中央具口，各腕有管足 4 列。',
+      habit: '栖息于低潮带至潮下带岩礁和沙底。以双壳类为食，能将胃翻出体外消化猎物。再生能力极强，受损腕可再生。',
+      size: 60
+    },
+    {
+      id: 'urchin', name: '马粪海胆', latin: 'Hemicentrotus pulcherrimus',
+      zone: 'low', zonePct: 62,
+      phylum: '棘皮动物门', diet: '植食性',
+      morph: '壳呈低半球形，直径约 4–6cm，壳面密生 5–6mm 长的短棘，呈暗绿或灰褐色，形似马粪。棘易折断但可再生。',
+      habit: '栖息于低潮带至潮下带岩礁海藻丰富处，昼伏夜出。以大型藻类为食，尤其喜食海带和裙带菜的幼苗。',
+      size: 48
+    },
+    {
+      id: 'seacuke', name: '仿刺参', latin: 'Apostichopus japonicus',
+      zone: 'low', zonePct: 66,
+      phylum: '棘皮动物门', diet: '沉积食性',
+      morph: '体呈圆筒形，长约 20–40cm，背面隆起具 4–6 行大小不等的圆锥状肉刺。腹面平坦具三行管足。体色青褐或深褐色。',
+      habit: '栖息于低潮带至潮下带的岩礁底和海藻床。以沉积物中的有机质和小型底栖生物为食，受刺激时可排出内脏避敌。',
+      size: 58
+    },
+    {
+      id: 'coralline', name: '珊瑚藻', latin: 'Corallina officinalis',
+      zone: 'low', zonePct: 55,
+      phylum: '红藻门', diet: '光合作用',
+      morph: '藻体呈紫红色或粉白色，高约 3–8cm。藻体钙化坚硬，呈羽状分枝，由许多小节片串连而成，形如微型珊瑚。',
+      habit: '大量生长于低潮带岩礁表面，形成粉红色的藻壳覆盖层。钙化的细胞壁使其能抵御波浪冲击，是潮间带重要的造礁藻类。',
+      size: 42
+    },
+    {
+      id: 'gelidium', name: '石花菜', latin: 'Gelidium amansii',
+      zone: 'low', zonePct: 60,
+      phylum: '红藻门', diet: '光合作用',
+      morph: '藻体紫红或淡黄色，高约 10–20cm，直立丛生，固着器假根状。主枝扁平，两侧互生羽状小枝，质地较硬。',
+      habit: '生长于低潮带岩礁，喜浪大流急之处。藻体含丰富胶质，是制取琼胶（Agar）的重要原料。',
+      size: 50
+    },
+    // 潮下带
+    {
+      id: 'kelp', name: '海带', latin: 'Laminaria japonica',
+      zone: 'sub', zonePct: 78,
+      phylum: '褐藻门', diet: '光合作用',
+      morph: '藻体呈长带状，成体长可达 2–6m，宽 20–30cm。全株分为固着器、柄部和叶片三部分。叶扁平呈棕褐色，表面光滑具光泽。',
+      habit: '生长于潮下带岩礁，依靠固着器附着于海底岩石。是冷水性大型褐藻，生长迅速，是重要的经济藻类和食用海藻。',
+      size: 90
+    },
+    {
+      id: 'fish', name: '大泷六线鱼', latin: 'Hexagrammos otakii',
+      zone: 'sub', zonePct: 88,
+      phylum: '脊索动物门', diet: '肉食性',
+      morph: '体长约 15–30cm，体呈长纺锤形。体色随环境变化，多为黄绿或棕褐色，具不规则暗色横斑。体侧具多条侧线。',
+      habit: '栖息于潮下带岩礁区和海藻丛中，属底栖性鱼类。以小型甲壳类、端足类和小鱼为食，是岩礁性鱼类的代表种。',
+      size: 56
+    }
+  ];
+
+  // ——— 各生物 SVG 图形 ———
+  const creatureSVGs = {
+    barnacle: `
+      <svg viewBox="0 0 60 60" width="40" height="40">
+        <!-- 底座 -->
+        <ellipse cx="30" cy="50" rx="22" ry="5" fill="#4A3728"/>
+        <!-- 锥形壳 -->
+        <path d="M12 48 L18 22 Q22 14 30 12 Q38 14 42 22 L48 48 Z" fill="#A89070" stroke="#6B5344" stroke-width="1.5"/>
+        <!-- 壳板接缝 -->
+        <path d="M30 14 L24 48" stroke="#6B5344" stroke-width="1" fill="none"/>
+        <path d="M30 14 L36 48" stroke="#6B5344" stroke-width="1" fill="none"/>
+        <path d="M30 14 L30 48" stroke="#8B7355" stroke-width="0.8" fill="none"/>
+        <!-- 口盖（开合） -->
+        <g class="operculum">
+          <ellipse cx="30" cy="18" rx="6" ry="4" fill="#3D2B1C"/>
+          <path d="M24 18 Q30 14 36 18" stroke="#8B7355" stroke-width="1" fill="none"/>
+        </g>
+      </svg>`,
+    snail: `
+      <svg viewBox="0 0 60 60" width="36" height="36">
+        <!-- 螺壳主体 -->
+        <path d="M15 45 Q10 35 15 25 Q22 15 35 12 Q45 10 50 18 Q53 28 48 38 Q44 46 35 48 Q25 49 18 46 Z"
+          fill="#6B5344" stroke="#3D2B1C" stroke-width="1.5"/>
+        <!-- 螺层线 -->
+        <path d="M18 30 Q25 22 38 20 Q45 19 48 24" stroke="#4A3728" stroke-width="1" fill="none"/>
+        <path d="M18 38 Q26 32 40 30 Q46 29 49 34" stroke="#4A3728" stroke-width="1" fill="none"/>
+        <!-- 壳口 -->
+        <ellipse cx="17" cy="43" rx="6" ry="9" fill="#2D1F14"/>
+        <ellipse cx="16" cy="42" rx="4" ry="7" fill="#8B7355"/>
+        <!-- 厣 -->
+        <circle cx="15" cy="43" r="3" fill="#C4B170"/>
+      </svg>`,
+    ligia: `
+      <svg viewBox="0 0 80 50" width="42" height="26">
+        <!-- 身体 -->
+        <ellipse cx="40" cy="25" rx="14" ry="9" fill="#6B5344" stroke="#3D2B1C" stroke-width="1.5"/>
+        <!-- 头 -->
+        <ellipse cx="28" cy="23" rx="6" ry="5" fill="#8B7355"/>
+        <!-- 复眼 -->
+        <circle cx="25" cy="21" r="2" fill="#2D1F14"/>
+        <circle cx="25" cy="21" r="0.8" fill="#8EBCBA"/>
+        <!-- 长触角 -->
+        <path d="M24 20 Q14 10 8 4" stroke="#3D2B1C" stroke-width="1.5" fill="none"/>
+        <path d="M24 24 Q14 30 8 38" stroke="#3D2B1C" stroke-width="1.5" fill="none"/>
+        <!-- 步足 -->
+        <path d="M32 30 Q28 38 24 42" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M38 31 Q36 40 34 44" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M44 31 Q46 40 48 44" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M48 28 Q52 36 56 40" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M48 22 Q54 18 58 16" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M44 19 Q50 12 56 10" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <!-- 尾肢 -->
+        <path d="M52 25 Q58 22 62 20" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+        <path d="M52 25 Q58 28 62 30" stroke="#4A3728" stroke-width="1.5" fill="none"/>
+      </svg>`,
+    oyster: `
+      <svg viewBox="0 0 70 70" width="48" height="48">
+        <!-- 下壳（固着壳） -->
+        <path d="M8 60 Q5 40 15 20 Q25 5 40 8 Q55 5 62 18 Q68 35 60 55 Q50 62 35 62 Q18 62 8 60 Z"
+          fill="#6B5344" stroke="#3D2B1C" stroke-width="1.5"/>
+        <!-- 壳面纹理 -->
+        <path d="M15 40 Q25 28 40 22" stroke="#4A3728" stroke-width="0.8" fill="none"/>
+        <path d="M18 50 Q30 42 48 35" stroke="#4A3728" stroke-width="0.8" fill="none"/>
+        <path d="M22 58 Q35 52 55 48" stroke="#4A3728" stroke-width="0.8" fill="none"/>
+        <!-- 上壳（盖板，可动） -->
+        <g class="valve">
+          <path d="M12 55 Q10 38 20 22 Q30 12 42 15 Q54 18 58 30 Q60 45 52 52 Q40 56 28 55 Q18 55 12 55 Z"
+            fill="#8B7355" stroke="#4A3728" stroke-width="1.5"/>
+          <path d="M20 45 Q30 38 42 32" stroke="#6B5344" stroke-width="0.8" fill="none"/>
+        </g>
+        <!-- 边缘波浪 -->
+        <path d="M12 55 Q18 53 22 55 Q28 57 34 55 Q40 53 46 55 Q52 57 58 52"
+          stroke="#A89070" stroke-width="1" fill="none"/>
+      </svg>`,
+    chiton: `
+      <svg viewBox="0 0 80 50" width="44" height="27">
+        <!-- 外套膜边缘 -->
+        <ellipse cx="40" cy="28" rx="32" ry="14" fill="#8B7355" stroke="#4A3728" stroke-width="1.5"/>
+        <!-- 8 块壳片 -->
+        <g stroke="#3D2B1C" stroke-width="1">
+          <path d="M12 25 L16 16 L22 25 Z" fill="#A89070"/>
+          <path d="M20 25 L25 13 L32 25 Z" fill="#B8A080"/>
+          <path d="M28 25 L34 11 L42 25 Z" fill="#A89070"/>
+          <path d="M37 25 L43 10 L51 25 Z" fill="#B8A080"/>
+          <path d="M46 25 L52 11 L60 25 Z" fill="#A89070"/>
+          <path d="M54 25 L59 13 L66 25 Z" fill="#B8A080"/>
+          <path d="M60 25 L65 16 L70 25 Z" fill="#A89070"/>
+          <path d="M65 25 L68 20 L72 25 Z" fill="#B8A080"/>
+        </g>
+        <!-- 壳片斑纹 -->
+        <g fill="#4A3728">
+          <circle cx="26" cy="19" r="1.5"/>
+          <circle cx="38" cy="16" r="1.2"/>
+          <circle cx="47" cy="15" r="1.5"/>
+          <circle cx="56" cy="17" r="1.2"/>
+        </g>
+        <!-- 腹足（底部） -->
+        <ellipse cx="40" cy="36" rx="28" ry="5" fill="#C4B170" opacity="0.6"/>
+      </svg>`,
+    anemone: `
+      <svg viewBox="0 0 70 80" width="50" height="58">
+        <!-- 基盘 -->
+        <ellipse cx="35" cy="70" rx="18" ry="4" fill="#3D5A3F"/>
+        <!-- 体柱 -->
+        <path d="M20 70 Q18 50 22 40 Q25 32 35 30 Q45 32 48 40 Q52 50 50 70 Z"
+          fill="#537050" stroke="#3D5A3F" stroke-width="1.5"/>
+        <!-- 体柱纹理 -->
+        <path d="M24 65 Q26 52 28 45" stroke="#3D5A3F" stroke-width="0.6" fill="none" opacity="0.5"/>
+        <path d="M32 66 Q33 54 34 42" stroke="#3D5A3F" stroke-width="0.6" fill="none" opacity="0.5"/>
+        <path d="M40 66 Q41 54 42 42" stroke="#3D5A3F" stroke-width="0.6" fill="none" opacity="0.5"/>
+        <path d="M46 65 Q44 52 42 45" stroke="#3D5A3F" stroke-width="0.6" fill="none" opacity="0.5"/>
+        <!-- 触手 -->
+        <g class="tentacle-group">
+          <path class="tentacle" d="M20 35 Q15 25 18 15 Q20 10 25 14" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M27 32 Q22 20 25 8 Q27 4 32 8" stroke="#86A068" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M35 30 Q33 18 35 5 Q37 2 40 6" stroke="#86A068" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M43 32 Q48 20 45 8 Q43 4 38 8" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M50 35 Q55 25 52 15 Q50 10 45 14" stroke="#537050" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <!-- 内圈触手 -->
+          <path class="tentacle" d="M28 32 Q27 22 30 14" stroke="#86A068" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M35 30 Q35 18 35 10" stroke="#86A068" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path class="tentacle" d="M42 32 Q43 22 40 14" stroke="#86A068" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- 口盘 -->
+        <ellipse cx="35" cy="33" rx="10" ry="4" fill="#3D5A3F"/>
+        <ellipse cx="35" cy="32" rx="4" ry="2" fill="#2A3A1F"/>
+      </svg>`,
+    pearl: `
+      <svg viewBox="0 0 60 70" width="46" height="54">
+        <!-- 左壳 -->
+        <path d="M8 60 Q3 35 15 12 Q28 2 42 6 Q55 10 58 30 Q56 55 42 62 Q25 64 8 60 Z"
+          fill="#4A3728" stroke="#2D1F14" stroke-width="1.5"/>
+        <!-- 生长线 -->
+        <path d="M14 50 Q20 32 32 18" stroke="#3D2B1C" stroke-width="0.8" fill="none"/>
+        <path d="M18 56 Q26 42 40 26" stroke="#3D2B1C" stroke-width="0.8" fill="none"/>
+        <path d="M22 60 Q32 52 48 40" stroke="#3D2B1C" stroke-width="0.8" fill="none"/>
+        <!-- 放射鳞 -->
+        <path d="M25 15 Q24 25 25 40" stroke="#6B5344" stroke-width="0.8" fill="none"/>
+        <path d="M35 12 Q34 25 35 45" stroke="#6B5344" stroke-width="0.8" fill="none"/>
+        <path d="M45 15 Q46 28 45 45" stroke="#6B5344" stroke-width="0.8" fill="none"/>
+        <!-- 珍珠层光泽（内面示意） -->
+        <path d="M30 25 Q35 22 40 25" stroke="#B5D5D4" stroke-width="1.5" fill="none" opacity="0.6"/>
+        <circle cx="36" cy="38" r="4" fill="#E8DDC7" opacity="0.8"/>
+        <circle cx="35" cy="37" r="2" fill="#F2EBDC"/>
+      </svg>`,
+    seastar: `
+      <svg viewBox="0 0 80 80" width="60" height="60">
+        <!-- 五条腕的海星 -->
+        <g stroke="#2D1F14" stroke-width="1.5">
+          <path d="M40 15 L45 35 L65 20 L55 40 L72 50 L52 50 L58 70 L40 58 L22 70 L28 50 L8 50 L25 40 L15 20 L35 35 Z"
+            fill="#8B7355"/>
+        </g>
+        <!-- 棘刺斑点 -->
+        <g fill="#6B5344">
+          <circle cx="40" cy="38" r="3"/>
+          <circle cx="32" cy="32" r="1.5"/>
+          <circle cx="48" cy="32" r="1.5"/>
+          <circle cx="35" cy="48" r="1.5"/>
+          <circle cx="45" cy="48" r="1.5"/>
+          <circle cx="30" cy="25" r="1"/>
+          <circle cx="50" cy="25" r="1"/>
+          <circle cx="25" cy="42" r="1"/>
+          <circle cx="55" cy="42" r="1"/>
+          <circle cx="40" cy="55" r="1"/>
+        </g>
+        <!-- 管足（腹面小突起） -->
+        <g fill="#C4B170" opacity="0.7">
+          <circle cx="36" cy="44" r="1"/>
+          <circle cx="44" cy="44" r="1"/>
+          <circle cx="33" cy="40" r="1"/>
+          <circle cx="47" cy="40" r="1"/>
+        </g>
+      </svg>`,
+    urchin: `
+      <svg viewBox="0 0 70 70" width="48" height="48">
+        <!-- 壳 -->
+        <ellipse cx="35" cy="40" rx="26" ry="22" fill="#537050" stroke="#2A3A1F" stroke-width="1.5"/>
+        <!-- 短棘刺 -->
+        <g class="spine-group">
+          <g class="spine">
+            <line x1="35" y1="18" x2="35" y2="12" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="22" y1="22" x2="16" y2="16" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="48" y1="22" x2="54" y2="16" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="12" y1="35" x2="5" y2="33" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="58" y1="35" x2="65" y2="33" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="15" y1="48" x2="8" y2="52" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="55" y1="48" x2="62" y2="52" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="25" y1="58" x2="22" y2="64" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="45" y1="58" x2="48" y2="64" stroke="#3D5A3F" stroke-width="2"/>
+            <line x1="35" y1="60" x2="35" y2="66" stroke="#3D5A3F" stroke-width="2"/>
+          </g>
+          <g class="spine">
+            <line x1="28" y1="20" x2="24" y2="14" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="42" y1="20" x2="46" y2="14" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="18" y1="30" x2="10" y2="26" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="52" y1="30" x2="60" y2="26" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="17" y1="44" x2="8" y2="47" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="53" y1="44" x2="62" y2="47" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="28" y1="56" x2="24" y2="62" stroke="#3D5A3F" stroke-width="1.5"/>
+            <line x1="42" y1="56" x2="46" y2="62" stroke="#3D5A3F" stroke-width="1.5"/>
+          </g>
+        </g>
+        <!-- 壳板花纹 -->
+        <g fill="#3D5A3F">
+          <circle cx="35" cy="35" r="3"/>
+          <circle cx="27" cy="32" r="1.5"/>
+          <circle cx="43" cy="32" r="1.5"/>
+          <circle cx="25" cy="42" r="1.5"/>
+          <circle cx="45" cy="42" r="1.5"/>
+          <circle cx="32" cy="48" r="1.5"/>
+          <circle cx="38" cy="48" r="1.5"/>
+        </g>
+      </svg>`,
+    seacuke: `
+      <svg viewBox="0 0 100 45" width="58" height="26">
+        <!-- 身体 -->
+        <path d="M10 28 Q8 18 18 12 Q35 6 55 8 Q75 6 88 14 Q95 22 90 32 Q75 40 50 40 Q25 40 12 34 Q8 32 10 28 Z"
+          fill="#8B7355" stroke="#4A3728" stroke-width="1.5"/>
+        <!-- 肉刺 -->
+        <g fill="#6B5344">
+          <path d="M22 14 L20 8 L24 13 Z"/>
+          <path d="M35 10 L33 4 L37 9 Z"/>
+          <path d="M48 9 L46 3 L50 8 Z"/>
+          <path d="M60 10 L58 4 L62 9 Z"/>
+          <path d="M72 12 L70 6 L74 11 Z"/>
+          <path d="M28 12 L27 7 L30 11 Z"/>
+          <path d="M42 8 L41 3 L44 7 Z"/>
+          <path d="M54 8 L53 3 L56 7 Z"/>
+          <path d="M66 10 L65 5 L68 9 Z"/>
+          <path d="M78 14 L76 8 L80 13 Z"/>
+        </g>
+        <!-- 管足 -->
+        <g stroke="#A89070" stroke-width="1.2" fill="none">
+          <line x1="20" y1="38" x2="22" y2="42"/>
+          <line x1="30" y1="39" x2="32" y2="43"/>
+          <line x1="40" y1="40" x2="42" y2="44"/>
+          <line x1="50" y1="40" x2="52" y2="44"/>
+          <line x1="60" y1="39" x2="62" y2="43"/>
+          <line x1="70" y1="38" x2="72" y2="42"/>
+          <line x1="80" y1="36" x2="82" y2="40"/>
+        </g>
+        <!-- 口（前端） -->
+        <circle cx="12" cy="25" r="3" fill="#3D2B1C"/>
+        <!-- 呼吸树（尾部示意） -->
+        <circle cx="88" cy="24" r="2" fill="#6B5344"/>
+      </svg>`,
+    coralline: `
+      <svg viewBox="0 0 60 50" width="42" height="35">
+        <!-- 珊瑚藻节片 -->
+        <g stroke="#8B6914" stroke-width="1" fill="#C4B170">
+          <!-- 主枝 -->
+          <rect x="27" y="40" width="6" height="8" rx="1"/>
+          <rect x="26" y="32" width="8" height="9" rx="1.5"/>
+          <rect x="25" y="24" width="10" height="9" rx="1.5"/>
+          <rect x="26" y="16" width="8" height="9" rx="1.5"/>
+          <rect x="27" y="9" width="6" height="8" rx="1"/>
+          <!-- 侧枝左 -->
+          <rect x="14" y="34" width="7" height="7" rx="1"/>
+          <rect x="10" y="27" width="7" height="8" rx="1.5"/>
+          <rect x="13" y="20" width="6" height="8" rx="1"/>
+          <!-- 侧枝右 -->
+          <rect x="39" y="34" width="7" height="7" rx="1"/>
+          <rect x="43" y="27" width="7" height="8" rx="1.5"/>
+          <rect x="41" y="20" width="6" height="8" rx="1"/>
+          <!-- 顶端小枝 -->
+          <rect x="25" y="3" width="4" height="7" rx="1"/>
+          <rect x="31" y="3" width="4" height="7" rx="1"/>
+        </g>
+        <!-- 粉色钙化层 -->
+        <g fill="#D9C98A">
+          <rect x="26" y="25" width="2" height="2" rx="0.5"/>
+          <rect x="32" y="25" width="2" height="2" rx="0.5"/>
+          <rect x="29" y="17" width="2" height="2" rx="0.5"/>
+        </g>
+      </svg>`,
+    gelidium: `
+      <svg viewBox="0 0 60 90" width="50" height="75">
+        <!-- 固着器 -->
+        <path d="M25 85 Q22 88 20 86" stroke="#537050" stroke-width="2" fill="none"/>
+        <path d="M30 85 Q30 89 35 88" stroke="#537050" stroke-width="2" fill="none"/>
+        <path d="M35 85 Q38 87 40 85" stroke="#537050" stroke-width="2" fill="none"/>
+        <!-- 主茎 -->
+        <path class="blade" d="M30 84 Q30 70 32 55 Q35 40 30 25 Q26 12 30 4"
+          stroke="#6B8B5C" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <!-- 羽状分枝 左侧 -->
+        <g class="blade">
+          <path d="M32 70 Q25 65 20 62" stroke="#537050" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M20 62 Q15 60 12 56" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M33 55 Q26 50 18 48" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M18 48 Q13 46 10 42" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M31 38 Q24 33 16 32" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M16 32 Q11 30 9 26" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M30 22 Q23 17 15 16" stroke="#6B8B5C" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- 羽状分枝 右侧 -->
+        <g class="blade">
+          <path d="M32 68 Q40 63 48 60" stroke="#537050" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M48 60 Q54 58 56 54" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M34 52 Q42 47 50 44" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M50 44 Q56 42 58 38" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M32 35 Q40 30 48 27" stroke="#6B8B5C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M48 27 Q54 25 56 21" stroke="#537050" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="blade">
+          <path d="M30 18 Q38 14 45 12" stroke="#6B8B5C" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+      </svg>`,
+    kelp: `
+      <svg viewBox="0 0 90 160" width="70" height="130">
+        <!-- 固着器 -->
+        <g fill="#2A3A1F">
+          <path d="M35 155 Q28 158 22 154"/>
+          <path d="M45 155 Q52 158 58 154"/>
+          <path d="M40 153 Q38 158 45 157"/>
+        </g>
+        <!-- 柄部 -->
+        <path class="frond" d="M40 155 Q38 130 42 100 Q45 75 40 45 Q36 20 42 5"
+          stroke="#3D5A3F" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <!-- 叶片群 左 -->
+        <g class="frond">
+          <path d="M40 130 Q25 125 15 118 Q10 115 8 110" stroke="#3D5A3F" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M40 115 Q20 108 8 98 Q3 92 5 85" stroke="#537050" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <path d="M40 95 Q22 85 10 72 Q5 65 8 55" stroke="#537050" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M40 70 Q22 58 12 42 Q8 32 15 22" stroke="#6B8B5C" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <path d="M40 48 Q24 35 18 20 Q16 10 22 5" stroke="#6B8B5C" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M40 28 Q28 18 26 8" stroke="#86A068" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- 叶片群 右 -->
+        <g class="frond">
+          <path d="M44 130 Q60 125 70 118 Q75 115 77 110" stroke="#3D5A3F" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M44 115 Q64 108 76 98 Q81 92 79 85" stroke="#537050" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <path d="M44 95 Q62 85 74 72 Q79 65 76 55" stroke="#537050" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M42 70 Q60 58 70 42 Q74 32 67 22" stroke="#6B8B5C" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <path d="M42 48 Q58 35 64 20 Q66 10 60 5" stroke="#6B8B5C" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M42 28 Q54 18 56 8" stroke="#86A068" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- 中带部（深色中脉） -->
+        <path class="frond" d="M40 155 Q40 120 42 85 Q44 50 40 15"
+          stroke="#2A3A1F" stroke-width="2" fill="none" opacity="0.4"/>
+      </svg>`,
+    fish: `
+      <svg viewBox="0 0 90 45" width="56" height="28">
+        <!-- 身体 -->
+        <path d="M15 22 Q20 10 45 10 Q70 10 78 22 Q70 34 45 34 Q20 34 15 22 Z"
+          fill="#8B7355" stroke="#3D2B1C" stroke-width="1.5"/>
+        <!-- 身体侧线 -->
+        <path d="M22 22 Q35 21 55 22 Q65 22 72 22" stroke="#6B5344" stroke-width="1" fill="none" stroke-dasharray="2,2"/>
+        <!-- 背部斑纹 -->
+        <g fill="#6B5344" opacity="0.6">
+          <path d="M30 13 Q32 18 30 22 Q28 18 30 13"/>
+          <path d="M42 12 Q45 18 42 22 Q40 18 42 12"/>
+          <path d="M55 13 Q58 19 55 23 Q53 19 55 13"/>
+          <path d="M65 14 Q67 19 65 22 Q63 19 65 14"/>
+        </g>
+        <!-- 背鳍 -->
+        <path d="M35 10 Q40 3 50 4 Q55 5 57 10" fill="#6B5344" stroke="#3D2B1C" stroke-width="1"/>
+        <!-- 胸鳍 -->
+        <path d="M28 24 Q32 30 38 28" fill="#8B7355" stroke="#4A3728" stroke-width="1"/>
+        <!-- 腹鳍 -->
+        <path d="M45 34 Q47 39 52 38" fill="#6B5344" stroke="#3D2B1C" stroke-width="1"/>
+        <!-- 尾鳍 -->
+        <path d="M78 22 L88 12 L84 22 L88 32 Z" fill="#8B7355" stroke="#3D2B1C" stroke-width="1.5"/>
+        <!-- 头部 -->
+        <ellipse cx="20" cy="22" rx="6" ry="7" fill="#A89070"/>
+        <!-- 眼睛 -->
+        <circle cx="17" cy="20" r="2.5" fill="#F2EBDC"/>
+        <circle cx="17" cy="20" r="1.2" fill="#2D1F14"/>
+        <!-- 嘴 -->
+        <path d="M12 24 Q10 23 9 24" stroke="#3D2B1C" stroke-width="1" fill="none"/>
+        <!-- 鳃盖 -->
+        <path d="M22 17 Q24 22 22 27" stroke="#4A3728" stroke-width="0.8" fill="none"/>
+      </svg>`
+  };
+
+  // ——— DOM 引用 ———
+  const stage = document.getElementById('stage');
+  const waterLine = document.getElementById('waterLine');
+  const waterHandle = document.getElementById('waterHandle');
+  const waterBody = document.getElementById('waterBody');
+  const waterSheen = document.getElementById('waterSheen');
+  const levelNum = document.getElementById('levelNum');
+  const tideNow = document.getElementById('tideNow');
+  const tideIndicator = document.getElementById('tideIndicator');
+  const creaturesLayer = document.getElementById('creaturesLayer');
+  const creatureCount = document.getElementById('creatureCount');
+  const cursor = document.getElementById('cursor');
+  const gaugeRuler = document.getElementById('gaugeRuler');
+  const bubbles = document.getElementById('bubbles');
+  const detailPanel = document.getElementById('detailPanel');
+  const detailClose = document.getElementById('detailClose');
+  const detailIllus = document.getElementById('detailIllus');
+  const detailName = document.getElementById('detailName');
+  const detailLatin = document.getElementById('detailLatin');
+  const detailZone = document.getElementById('detailZone');
+  const detailMorph = document.getElementById('detailMorph');
+  const detailHabit = document.getElementById('detailHabit');
+  const detailPhylum = document.getElementById('detailPhylum');
+  const detailTide = document.getElementById('detailTide');
+  const detailDiet = document.getElementById('detailDiet');
+  const zoneMarkers = document.querySelectorAll('.zone-marker');
+
+  // ——— 状态 ———
+  let waterPct = 35; // 水位（百分比：顶部 0% → 底部 100%）
+  let isDragging = false;
+  let targetPct = 35;
+  let currentPct = 35;
+  let discovered = new Set();
+
+  // 潮位高度映射：0% 顶部 = 4m，100% 底部 = 0m
+  function pctToMeters(pct) {
+    return Math.round((4 - (pct / 100) * 4) * 10) / 10;
+  }
+
+  // ——— 构建水位尺刻度 ———
+  function buildGauge() {
+    const marks = [
+      { m: 4.0, major: true },
+      { m: 3.5, major: false },
+      { m: 3.0, major: true },
+      { m: 2.5, major: false },
+      { m: 2.0, major: true },
+      { m: 1.5, major: false },
+      { m: 1.0, major: true },
+      { m: 0.5, major: false },
+      { m: 0.0, major: true },
+    ];
+    marks.forEach(m => {
+      const pct = (4 - m.m) / 4 * 100;
+      const tick = document.createElement('div');
+      tick.className = 'gauge-tick' + (m.major ? ' major' : '');
+      tick.style.top = pct + '%';
+      if (m.major) {
+        tick.innerHTML = '<span>' + m.m.toFixed(1) + '</span>';
+      }
+      gaugeRuler.appendChild(tick);
+    });
+  }
+
+  // ——— 构建生物 ———
+  function buildCreatures() {
+    const layerRect = { top: 0, height: 1 }; // 相对值
+
+    creatures.forEach((c, i) => {
+      const el = document.createElement('div');
+      el.className = 'creature ' + c.id + ' submerged';
+      el.dataset.id = c.id;
+      el.dataset.zonePct = c.zonePct;
+      el.dataset.zone = c.zone;
+
+      // 水平位置：散布在不同位置（基于 id 哈希）
+      const seed = i / creatures.length;
+      const xPct = 10 + (seed * 70) + (i % 3) * 5; // 10% - 85% 散布
+
+      el.style.top = c.zonePct + '%';
+      el.style.left = xPct + '%';
+      el.style.transform = 'translateX(-50%)';
+
+      const size = c.size || 40;
+      el.innerHTML = `
+        <div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;">
+          ${creatureSVGs[c.id] || ''}
+        </div>
+        <div class="creature-label">${c.name}</div>
+      `;
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDetail(c);
+        discovered.add(c.id);
+        creatureCount.textContent = discovered.size;
+      });
+
+      creaturesLayer.appendChild(el);
+    });
+  }
+
+  // ——— 构建水面反光条 ———
+  function buildSheen() {
+    for (let i = 0; i < 5; i++) {
+      const span = document.createElement('span');
+      span.style.left = (i * 25) + '%';
+      span.style.width = (30 + Math.random() * 40) + 'px';
+      span.style.animationDelay = (i * 1.2) + 's';
+      span.style.animationDuration = (5 + Math.random() * 3) + 's';
+      waterSheen.appendChild(span);
+    }
+  }
+
+  // ——— 构建气泡 ———
+  function buildBubbles() {
+    for (let i = 0; i < 12; i++) {
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.style.left = (5 + Math.random() * 90) + '%';
+      b.style.bottom = (Math.random() * 30) + '%';
+      const size = 2 + Math.random() * 5;
+      b.style.width = size + 'px';
+      b.style.height = size + 'px';
+      b.style.animationDuration = (8 + Math.random() * 12) + 's';
+      b.style.animationDelay = (Math.random() * 10) + 's';
+      bubbles.appendChild(b);
+    }
+  }
+
+  // ——— 水位更新 ———
+  function updateWater(pct) {
+    waterPct = pct;
+    // 水位线位置
+    waterLine.style.top = pct + '%';
+    tideIndicator.style.top = pct + '%';
+
+    // 水体高度：从底部到水位线
+    const waterHeight = 100 - pct;
+    waterBody.style.height = waterHeight + '%';
+
+    // 水位数值
+    const meters = pctToMeters(pct);
+    levelNum.textContent = meters.toFixed(1) + ' m';
+    tideNow.textContent = '水位 ' + meters.toFixed(1) + ' m';
+
+    // 水体颜色深浅随水位变化：水位低（退潮）水更深，水位高（涨潮）水更浅
+    const depth = waterHeight / 100; // 0-1
+    const deepness = Math.floor(depth * 100);
+
+    // 更新生物可见性：水位高于生物所在带 → 淹没不可见
+    const creatureEls = creaturesLayer.querySelectorAll('.creature');
+    creatureEls.forEach(el => {
+      const zonePct = parseFloat(el.dataset.zonePct);
+      // 生物在水位线以下（被淹没） → 隐藏
+      // 生物在水位线以上（露出） → 显示
+      // 实际上：潮带生物是被水淹没时才"生活"在那里，退潮时暴露
+      // 但用户体验：水位高时生物躲在水里看不见，水位低时生物露出来可看
+      // 所以：当水位 pct > zonePct（水在生物上方）→ 生物被淹没隐藏
+      //       当水位 pct < zonePct（水在生物下方）→ 生物露出可见
+      if (pct < zonePct) {
+        // 水位线在生物上方（生物在水下）→ 隐藏
+        if (!el.classList.contains('submerged')) {
+          el.classList.add('submerged');
+          el.classList.remove('visible-anim');
+        }
+      } else {
+        // 水位线降到生物以下，生物露出
+        if (el.classList.contains('submerged')) {
+          el.classList.remove('submerged');
+          // 只在首次露出时播放浮现动画
+          el.classList.add('visible-anim');
+        }
+      }
+    });
+
+    // 更新分区标记激活状态
+    zoneMarkers.forEach(m => {
+      m.classList.remove('active');
+    });
+    // 当前水位所处的带
+    if (pct < 20) {
+      document.querySelector('.zone-marker.high-zone').classList.add('active');
+    } else if (pct < 45) {
+      document.querySelector('.zone-marker.mid-zone').classList.add('active');
+    } else if (pct < 70) {
+      document.querySelector('.zone-marker.low-zone').classList.add('active');
+    } else {
+      document.querySelector('.zone-marker.sub-zone').classList.add('active');
+    }
+  }
+
+  // ——— 动画循环（阻尼跟随） ———
+  function animate() {
+    // 阻尼插值
+    const diff = targetPct - currentPct;
+    if (Math.abs(diff) > 0.1) {
+      currentPct += diff * 0.12;
+      updateWater(currentPct);
+    }
+    requestAnimationFrame(animate);
+  }
+
+  // ——— 拖拽交互 ———
+  let dragStartY = 0;
+  let dragStartPct = 0;
+
+  function onDragStart(e) {
+    isDragging = true;
+    cursor.classList.add('drag');
+    waterHandle.classList.add('dragging');
+
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    dragStartY = clientY;
+    dragStartPct = currentPct;
+    e.preventDefault();
+  }
+
+  function onDragMove(e) {
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    // 自定义光标跟随
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    cursor.style.left = clientX + 'px';
+    cursor.style.top = clientY + 'px';
+
+    if (!isDragging) return;
+
+    const stageHeight = stage.clientHeight;
+    const deltaY = clientY - dragStartY;
+    const deltaPct = (deltaY / stageHeight) * 100;
+
+    let newPct = dragStartPct + deltaPct;
+    newPct = Math.max(5, Math.min(95, newPct));
+    targetPct = newPct;
+  }
+
+  function onDragEnd() {
+    isDragging = false;
+    cursor.classList.remove('drag');
+    waterHandle.classList.remove('dragging');
+  }
+
+  // ——— 详情面板 ———
+  function openDetail(c) {
+    detailIllus.innerHTML = `<div style="width:70%;height:70%;">${creatureSVGs[c.id] || ''}</div>`;
+    detailIllus.querySelector('div').style.display = 'flex';
+    detailIllus.querySelector('div').style.alignItems = 'center';
+    detailIllus.querySelector('div').style.justifyContent = 'center';
+
+    detailName.textContent = c.name;
+    detailLatin.textContent = c.latin;
+
+    const zoneNames = { high: '高潮带', mid: '中潮带', low: '低潮带', sub: '潮下带' };
+    detailZone.textContent = zoneNames[c.zone];
+
+    detailMorph.textContent = c.morph;
+    detailHabit.textContent = c.habit;
+    detailPhylum.textContent = c.phylum;
+
+    const tideRange = {
+      high: '大潮高潮线附近',
+      mid: '平均中潮位带',
+      low: '低潮线附近',
+      sub: '低潮线以下'
+    };
+    detailTide.textContent = tideRange[c.zone];
+    detailDiet.textContent = c.diet;
+
+    detailPanel.classList.add('open');
+  }
+
+  function closeDetail() {
+    detailPanel.classList.remove('open');
+  }
+
+  // ——— 初始化 ———
+  function init() {
+    buildGauge();
+    buildCreatures();
+    buildSheen();
+    buildBubbles();
+
+    // 设置初始水位（中潮位）
+    targetPct = 45;
+    currentPct = 45;
+    updateWater(currentPct);
+
+    // 拖拽事件
+    waterHandle.addEventListener('mousedown', onDragStart);
+    waterHandle.addEventListener('touchstart', onDragStart, { passive: false });
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchend', onDragEnd);
+
+    // 点击关闭详情
+    detailClose.addEventListener('click', closeDetail);
+
+    // 自定义光标
+    document.addEventListener('mousemove', (e) => {
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top = e.clientY + 'px';
+    });
+
+    // 点击效果
+    document.addEventListener('mousedown', () => cursor.classList.add('click'));
+    document.addEventListener('mouseup', () => cursor.classList.remove('click'));
+
+    // 可点击元素 hover 态
+    document.querySelectorAll('.creature, .detail-close, .water-line-handle').forEach(el => {
+      el.addEventListener('mouseenter', () => cursor.classList.add('click'));
+      el.addEventListener('mouseleave', () => {
+        if (!isDragging) cursor.classList.remove('click');
+      });
+    });
+
+    // 开始动画循环
+    animate();
+
+    // 已发现生物计数
+    creatureCount.textContent = '0';
+  }
+
+  // 启动
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>

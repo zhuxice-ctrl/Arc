@@ -797,58 +797,50 @@ Component Critic 不应该把重点放在：
 
 而是：
 
-> **玩起来怎么样？**
+> **开发者把它搬到自己项目里，会不会觉得好用？**
 
 ---
 
-# 二十一、Component 四个重点
+# 二十一、Component 六个重点
 
-## Interaction Mechanism
+## Utility & Need Authenticity
 
-核心动作够不够明确？
-
----
-
-## Feedback Depth
-
-是否有：
-
-```text
-pre-contact
-contact
-continuous
-threshold
-completion
-release
-decay
-```
-
-不是要求全部机械出现。
-
-但必须有层次。
+这是真实项目会用的组件吗？
+还是在造一个没人需要的演示装置？
 
 ---
 
-## Physical Feeling
+## State Completeness
 
-有没有：
-
-- 惯性
-- 阻尼
-- 吸附
-- 摩擦
-- 弹性
-- 重量
-- 延迟
-- 余震
+disabled / loading / error / empty / focus 都覆盖了吗？
+至少 5 个状态。边界情况处理了吗？
 
 ---
 
-## Replay Value
+## Accessibility
 
-用户会不会：
+键盘能操作吗？焦点环可见吗？触屏可用吗？prefers-reduced-motion 降级了吗？
 
-> 再玩一下？
+---
+
+## Reusability
+
+CSS 变量暴露了吗？JS 参数可配置吗？README 有用法文档吗？抽到别的项目改不超过 3 处就能用吗？
+
+---
+
+## Interaction Feel
+
+动画时长 / 曲线符合组件语义吗？
+弹簧用于弹性反馈、阻尼用于重量确认、线性仅用于过渡。
+禁止 Ken Burns、禁止无关装饰特效。
+
+---
+
+## Code Extractability
+
+CSS / JS 能独立抽取吗？组件代码有清晰边界吗？
+还是和展示页耦合在一起、必须拆解才能用？
 
 ---
 
@@ -857,13 +849,14 @@ decay
 例如：
 
 ```text
+拟物化物理演示装置（天平/算盘/卷尺/换挡杆/转盘锁/风箱/弹弓等）
 普通按钮加 glow
 普通卡片加 hover
 只有入场动画
-没有连续输入
-没有操作闭环
-特效与输入无关系
-核心组件严重掉帧
+状态不完整（无 disabled / loading / focus）
+键盘完全不可操作
+无法在别的项目中抽取复用
+多个半成品组件堆叠
 ```
 
 ---
@@ -1252,18 +1245,18 @@ CRITICAL 必须为：
 # 三十九、Component Gate
 
 ```text
-Interaction Mechanism >= 16/20
-Feedback / Feel >= 16/20
-Motion Quality >= 12/15
-Replay Value >= 11/15
+Utility & Need Authenticity >= 16/20
+State Completeness >= 16/20
+Interaction Feel >= 12/15
+Reusability >= 11/15
 Technical Quality >= 8/10
 ```
 
-Component 可以视觉实验性很强。
+Component 可以视觉风格多样。
 
 但：
 
-**手感指标绝对不能低。**
+**状态完整性和可复用性绝对不能低。**
 
 ---
 
