@@ -1,0 +1,2104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>盐池光谱 · 晒盐场</title>
+<style>
+/* ===== 基础重置与字体 ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  background: #f2ede0;
+  color: #3a2e1a;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: none;
+}
+
+/* ===== 自定义光标 ===== */
+.cursor-wrap {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+}
+.cursor-dot {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cursor-ring {
+  position: absolute;
+  width: 36px; height: 36px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+              height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-width 0.25s ease,
+              border-radius 0.25s ease;
+}
+.cursor-wrap.is-hover .cursor-ring {
+  width: 56px; height: 56px;
+  border-width: 2px;
+}
+.cursor-wrap.is-drag .cursor-ring {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+}
+.cursor-label {
+  position: absolute;
+  top: 22px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  font-family: "Songti SC", "SimSun", serif;
+}
+.cursor-wrap.has-label .cursor-label { opacity: 1; }
+
+/* ===== 主容器 ===== */
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== 场景切换 ===== */
+.scene {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.scene-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1.03);
+}
+.scene-entering {
+  transform: scale(0.97);
+}
+
+/* ===== 顶部栏 ===== */
+.topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 28px 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 100;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.brand-title {
+  font-family: "Songti SC", "SimSun", "STSong", serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: #3a2e1a;
+}
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #8a7a5e;
+}
+.top-meta {
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #6a5a3e;
+  letter-spacing: 1px;
+}
+.top-meta .meta-val {
+  color: #3a2e1a;
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 12px;
+}
+
+/* ===== 俯瞰场景 ===== */
+.aerial-scene {
+  background: #e8dfc8;
+}
+.aerial-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(200, 180, 140, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(180, 160, 120, 0.25) 0%, transparent 50%);
+}
+
+/* 田埂网格容器 */
+.pan-grid {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(78%, 1100px);
+  aspect-ratio: 4 / 3;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 8px;
+  padding: 24px;
+  background: #c9b88a;
+  border: 3px solid #a89563;
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 0 6px #b8a678,
+    inset 0 0 60px rgba(90, 70, 30, 0.15),
+    0 20px 60px rgba(60, 45, 20, 0.2);
+}
+
+/* 单格盐池 */
+.pan-cell {
+  position: relative;
+  background: var(--pan-color, #4a7c59);
+  border: 2px solid #8a7440;
+  cursor: none;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 0.3s ease;
+}
+.pan-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(60, 45, 20, 0.3);
+  z-index: 5;
+}
+.pan-cell::before {
+  /* 水面波纹 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(255, 255, 255, 0.06) 3px,
+      rgba(255, 255, 255, 0.06) 4px
+    );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.pan-cell.has-water::before {
+  opacity: 1;
+  animation: ripples 6s linear infinite;
+}
+@keyframes ripples {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 20px; }
+}
+
+.pan-cell-label {
+  position: absolute;
+  bottom: 6px; left: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.75);
+  font-family: "SF Mono", "Menlo", monospace;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+.pan-cell-stage {
+  position: absolute;
+  top: 6px; right: 8px;
+  font-size: 9px;
+  color: rgba(255,255,255,0.65);
+  font-family: "Songti SC", "SimSun", serif;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+
+/* hover 信息卡 */
+.pan-tooltip {
+  position: fixed;
+  padding: 12px 16px;
+  background: rgba(40, 30, 15, 0.92);
+  color: #f2ede0;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.8;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  min-width: 160px;
+  backdrop-filter: blur(6px);
+}
+.pan-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.pan-tooltip .tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pan-tooltip .tt-label {
+  color: #a89563;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.pan-tooltip .tt-val {
+  font-family: "SF Mono", "Menlo", monospace;
+  color: #f0d98a;
+}
+.pan-tooltip .tt-title {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(168, 149, 99, 0.3);
+}
+
+/* ===== 单池剖面场景 ===== */
+.profile-scene {
+  background: linear-gradient(180deg, #d4c79a 0%, #e8dfc8 40%, #c9b88a 100%);
+}
+.profile-sky {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 55%;
+  background: linear-gradient(180deg,
+    #f0e6c8 0%,
+    #e8dbb0 50%,
+    #dcc98a 100%);
+  overflow: hidden;
+}
+.profile-sky::before {
+  /* 高空薄云 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 200px 40px at 20% 30%, rgba(255,255,255,0.4), transparent 70%),
+    radial-gradient(ellipse 150px 30px at 70% 20%, rgba(255,255,255,0.3), transparent 70%),
+    radial-gradient(ellipse 180px 35px at 85% 45%, rgba(255,255,255,0.25), transparent 70%);
+  opacity: 0.6;
+}
+
+/* 日轨 */
+.sun-arc-wrap {
+  position: absolute;
+  top: 8%;
+  left: 10%;
+  right: 10%;
+  height: 38%;
+  pointer-events: none;
+}
+.sun-arc-path {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 100%;
+  pointer-events: none;
+}
+.sun-arc-path svg {
+  width: 100%;
+  height: 100%;
+}
+.sun-handle {
+  position: absolute;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #fff5c0, #f0c840 55%, #d49520 100%);
+  box-shadow:
+    0 0 30px rgba(240, 200, 64, 0.6),
+    0 0 60px rgba(240, 200, 64, 0.3),
+    0 0 90px rgba(240, 200, 64, 0.15);
+  cursor: none;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  z-index: 10;
+  transition: box-shadow 0.3s ease;
+}
+.sun-handle:hover {
+  box-shadow:
+    0 0 40px rgba(240, 200, 64, 0.8),
+    0 0 80px rgba(240, 200, 64, 0.4),
+    0 0 120px rgba(240, 200, 64, 0.2);
+}
+.sun-handle::after {
+  content: '拖动';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: #8a5a10;
+  font-family: "Songti SC", "SimSun", serif;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.sun-handle:hover::after { opacity: 1; }
+
+/* 光线 */
+.sun-rays {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 200px; height: 200px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.3;
+}
+.sun-rays::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    conic-gradient(from 0deg,
+      transparent 0deg, rgba(255,240,150,0.4) 2deg, transparent 4deg,
+      transparent 28deg, rgba(255,240,150,0.3) 30deg, transparent 32deg,
+      transparent 60deg, rgba(255,240,150,0.4) 62deg, transparent 64deg,
+      transparent 88deg, rgba(255,240,150,0.3) 90deg, transparent 92deg,
+      transparent 120deg, rgba(255,240,150,0.4) 122deg, transparent 124deg,
+      transparent 148deg, rgba(255,240,150,0.3) 150deg, transparent 152deg,
+      transparent 178deg, rgba(255,240,150,0.4) 180deg, transparent 182deg,
+      transparent 210deg, rgba(255,240,150,0.3) 212deg, transparent 214deg,
+      transparent 240deg, rgba(255,240,150,0.4) 242deg, transparent 244deg,
+      transparent 270deg, rgba(255,240,150,0.3) 272deg, transparent 274deg,
+      transparent 300deg, rgba(255,240,150,0.4) 302deg, transparent 304deg,
+      transparent 330deg, rgba(255,240,150,0.3) 332deg, transparent 334deg);
+  border-radius: 50%;
+  animation: raysRotate 20s linear infinite;
+}
+@keyframes raysRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 蒸汽粒子 */
+.steam-particles {
+  position: absolute;
+  top: 10%;
+  left: 0; right: 0;
+  height: 40%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.steam-dot {
+  position: absolute;
+  bottom: 0;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  filter: blur(3px);
+  animation: steamRise linear infinite;
+}
+@keyframes steamRise {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  20% { opacity: 0.6; }
+  100% {
+    transform: translateY(-200px) scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* 池畔容器 */
+.pan-stage {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 50%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* 池体剖面图 */
+.pan-section {
+  position: relative;
+  width: 70%;
+  max-width: 900px;
+  height: 85%;
+  margin-bottom: 0;
+}
+
+/* 池壁（夯土） */
+.pan-wall {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #b89968 0%, #9a7a48 30%, #7a5e34 100%);
+  clip-path: polygon(
+    0 0,
+    5% 0,
+    10% 85%,
+    90% 85%,
+    95% 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+  box-shadow: inset 0 -10px 30px rgba(60, 40, 15, 0.3);
+}
+.pan-wall::before {
+  /* 夯土层理 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 8px,
+      rgba(60, 40, 15, 0.08) 8px,
+      rgba(60, 40, 15, 0.08) 9px
+    );
+  clip-path: inherit;
+}
+
+/* 池底 */
+.pan-floor {
+  position: absolute;
+  bottom: 0;
+  left: 10%; right: 10%;
+  height: 15%;
+  background: linear-gradient(180deg, #6a5030 0%, #4a3620 100%);
+  border-radius: 0 0 4px 4px;
+}
+
+/* 卤水（水位可动） */
+.brine {
+  position: absolute;
+  bottom: 15%;
+  left: 10.5%; right: 10.5%;
+  height: var(--brine-height, 70%);
+  background: var(--brine-color, #4a7c59);
+  transition: height 0.1s linear, background-color 0.3s ease;
+  overflow: hidden;
+}
+.brine::before {
+  /* 水面高光 */
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 30%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0.4) 70%,
+    transparent 100%);
+  animation: waterShimmer 3s ease-in-out infinite;
+}
+@keyframes waterShimmer {
+  0%, 100% { opacity: 0.5; transform: translateX(-10%); }
+  50% { opacity: 1; transform: translateX(10%); }
+}
+.brine::after {
+  /* 水下波纹 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 5px,
+      rgba(255, 255, 255, 0.04) 5px,
+      rgba(255, 255, 255, 0.04) 6px
+    );
+  animation: brineRipples 8s linear infinite;
+}
+@keyframes brineRipples {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 30px; }
+}
+
+/* 盐晶 canvas 层 */
+.crystal-canvas {
+  position: absolute;
+  bottom: 15%;
+  left: 10.5%; right: 10.5%;
+  top: 15%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 镜面反射（收盐后） */
+.mirror-reflection {
+  position: absolute;
+  bottom: 15%;
+  left: 10.5%; right: 10.5%;
+  height: 70%;
+  background: linear-gradient(180deg,
+    rgba(240, 230, 200, 0.85) 0%,
+    rgba(220, 205, 165, 0.9) 50%,
+    rgba(200, 185, 145, 0.95) 100%);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+}
+.mirror-reflection.visible { opacity: 1; }
+.mirror-reflection::before {
+  /* 天空倒影 */
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 50%;
+  background: linear-gradient(180deg,
+    rgba(245, 235, 200, 0.6) 0%,
+    rgba(230, 215, 175, 0.3) 100%);
+  transform: scaleY(-1);
+}
+.mirror-reflection::after {
+  /* 浮云倒影 */
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 20%;
+  right: 20%;
+  height: 20%;
+  background:
+    radial-gradient(ellipse 80px 15px at 30% 50%, rgba(255,255,255,0.5), transparent 70%),
+    radial-gradient(ellipse 60px 12px at 70% 60%, rgba(255,255,255,0.4), transparent 70%);
+  transform: scaleY(-1);
+  animation: cloudDrift 30s linear infinite;
+}
+@keyframes cloudDrift {
+  0% { transform: translateX(-10%) scaleY(-1); }
+  100% { transform: translateX(10%) scaleY(-1); }
+}
+
+/* 盐坨（收盐后堆在池角） */
+.salt-mound {
+  position: absolute;
+  bottom: 15%;
+  right: 10.5%;
+  width: 18%;
+  height: 0;
+  background: linear-gradient(180deg, #f8f4e8 0%, #e8dfc8 60%, #d8cfb8 100%);
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+  transition: height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 7;
+  pointer-events: none;
+  box-shadow: -4px 4px 12px rgba(60, 45, 20, 0.2);
+}
+.salt-mound.visible {
+  height: 25%;
+}
+
+/* 盐耙 */
+.salt-rake {
+  position: absolute;
+  top: 30%;
+  left: 20%;
+  width: 120px;
+  height: 60px;
+  cursor: none;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  transition: opacity 0.4s ease;
+}
+.salt-rake.active {
+  pointer-events: auto;
+  opacity: 1;
+}
+.salt-rake svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(2px 4px 6px rgba(60, 40, 15, 0.3));
+}
+
+/* ===== 数据面板 ===== */
+.data-panel {
+  position: absolute;
+  top: 50%;
+  right: 48px;
+  transform: translateY(-50%);
+  width: 220px;
+  padding: 20px;
+  background: rgba(40, 30, 15, 0.85);
+  color: #f2ede0;
+  border-radius: 4px;
+  backdrop-filter: blur(8px);
+  z-index: 50;
+}
+.data-panel-title {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 14px;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(168, 149, 99, 0.4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.data-panel-title .pan-id {
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 12px;
+  color: #a89563;
+  letter-spacing: 1px;
+}
+.data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(168, 149, 99, 0.15);
+  font-size: 12px;
+}
+.data-row:last-child { border-bottom: none; }
+.data-label {
+  color: #a89563;
+  letter-spacing: 1px;
+}
+.data-value {
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 16px;
+  color: #f0d98a;
+  letter-spacing: 1px;
+}
+.data-value.small { font-size: 13px; }
+
+/* 波美度条 */
+.be-scale {
+  margin: 16px 0;
+  padding: 12px 0;
+}
+.be-track {
+  position: relative;
+  height: 6px;
+  background: rgba(168, 149, 99, 0.2);
+  border-radius: 3px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.be-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: var(--be-progress, 0%);
+  background: linear-gradient(90deg,
+    #4a7c59 0%,
+    #8a7a3a 40%,
+    #c47a5a 70%,
+    #f0d98a 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.be-marks {
+  display: flex;
+  justify-content: space-between;
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 10px;
+  color: #8a7a5e;
+}
+
+/* 阶段标签 */
+.stage-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 2px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  background: rgba(240, 217, 138, 0.15);
+  color: #f0d98a;
+  margin-top: 4px;
+}
+
+/* ===== 返回按钮 ===== */
+.back-btn {
+  position: absolute;
+  top: 28px; left: 48px;
+  padding: 10px 20px;
+  background: rgba(40, 30, 15, 0.8);
+  color: #f2ede0;
+  border: none;
+  border-radius: 2px;
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 13px;
+  letter-spacing: 3px;
+  cursor: none;
+  z-index: 200;
+  backdrop-filter: blur(6px);
+  transition: background 0.3s ease, transform 0.3s ease;
+  pointer-events: auto;
+}
+.back-btn:hover {
+  background: rgba(40, 30, 15, 1);
+  transform: translateX(-2px);
+}
+.back-btn::before {
+  content: '←';
+  margin-right: 8px;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+.back-btn:hover::before {
+  transform: translateX(-3px);
+}
+
+/* ===== 知识面板 ===== */
+.knowledge-panel {
+  position: absolute;
+  bottom: 28px;
+  left: 48px;
+  width: 360px;
+  padding: 20px;
+  background: rgba(242, 237, 224, 0.92);
+  border: 1px solid rgba(168, 149, 99, 0.4);
+  border-radius: 4px;
+  z-index: 50;
+  backdrop-filter: blur(6px);
+}
+.knowledge-title {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: #3a2e1a;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.knowledge-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  background: #a89563;
+}
+.knowledge-text {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #5a4a30;
+  letter-spacing: 0.3px;
+}
+
+/* ===== 底部工序进度 ===== */
+.stage-nav {
+  position: absolute;
+  bottom: 28px;
+  right: 48px;
+  display: flex;
+  gap: 2px;
+  z-index: 50;
+}
+.stage-nav-item {
+  padding: 8px 14px;
+  background: rgba(40, 30, 15, 0.6);
+  color: #a89563;
+  font-size: 11px;
+  letter-spacing: 2px;
+  font-family: "Songti SC", "SimSun", serif;
+  transition: all 0.3s ease;
+  cursor: none;
+}
+.stage-nav-item:first-child { border-radius: 2px 0 0 2px; }
+.stage-nav-item:last-child { border-radius: 0 2px 2px 0; }
+.stage-nav-item.active {
+  background: rgba(240, 217, 138, 0.9);
+  color: #3a2e1a;
+}
+.stage-nav-item.done {
+  background: rgba(168, 149, 99, 0.6);
+  color: #3a2e1a;
+}
+
+/* ===== 收盐提示 ===== */
+.harvest-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px 32px;
+  background: rgba(240, 217, 138, 0.95);
+  color: #3a2e1a;
+  border-radius: 4px;
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 15px;
+  letter-spacing: 4px;
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  box-shadow: 0 8px 30px rgba(60, 45, 20, 0.2);
+}
+.harvest-hint.visible {
+  opacity: 1;
+  transform: translate(-50%, calc(-50% - 10px));
+}
+.harvest-hint small {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #8a7a5e;
+  margin-top: 6px;
+  font-family: "PingFang SC", sans-serif;
+}
+
+/* ===== 俯瞰场景底部说明 ===== */
+.aerial-legend {
+  position: absolute;
+  bottom: 32px;
+  left: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 50;
+}
+.legend-title {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: #3a2e1a;
+  margin-bottom: 4px;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #5a4a30;
+  letter-spacing: 1px;
+}
+.legend-swatch {
+  width: 24px;
+  height: 14px;
+  border: 1px solid rgba(60, 45, 20, 0.2);
+  border-radius: 2px;
+}
+
+.aerial-title-block {
+  position: absolute;
+  bottom: 32px;
+  right: 48px;
+  text-align: right;
+  z-index: 50;
+}
+.aerial-main-title {
+  font-family: "Songti SC", "SimSun", "STSong", serif;
+  font-size: 48px;
+  font-weight: 600;
+  letter-spacing: 8px;
+  color: #3a2e1a;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+.aerial-sub-title {
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: #8a7a5e;
+  margin-bottom: 16px;
+}
+.aerial-desc {
+  font-size: 11px;
+  line-height: 2;
+  color: #6a5a3e;
+  max-width: 280px;
+  letter-spacing: 0.5px;
+}
+
+/* ===== 开屏动画 ===== */
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  background: #3a2e1a;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+  transition: opacity 1.2s ease 0.5s;
+  pointer-events: none;
+}
+.intro-overlay.hidden { opacity: 0; }
+.intro-title {
+  font-family: "Songti SC", "SimSun", serif;
+  font-size: 36px;
+  color: #f0d98a;
+  letter-spacing: 12px;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: introFade 1.2s ease 0.3s forwards;
+}
+.intro-sub {
+  font-size: 13px;
+  color: #a89563;
+  letter-spacing: 6px;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: introFade 1.2s ease 0.8s forwards;
+}
+@keyframes introFade {
+  to { opacity: 1; transform: translateY(0); }
+}
+.intro-line {
+  width: 0;
+  height: 1px;
+  background: #a89563;
+  animation: lineGrow 1s ease 1.2s forwards;
+}
+@keyframes lineGrow {
+  to { width: 200px; }
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 1024px) {
+  .data-panel { right: 24px; width: 200px; padding: 16px; }
+  .knowledge-panel { left: 24px; width: 300px; }
+  .aerial-main-title { font-size: 36px; letter-spacing: 6px; }
+  .topbar { padding: 20px 24px; }
+  .pan-grid { width: 80%; }
+}
+@media (max-width: 768px) {
+  .data-panel {
+    right: auto;
+    left: 20px;
+    bottom: 20px;
+    top: auto;
+    transform: none;
+    width: calc(100% - 40px);
+  }
+  .knowledge-panel { display: none; }
+  .stage-nav { bottom: auto; top: 20px; right: 20px; }
+  .aerial-main-title { font-size: 28px; letter-spacing: 4px; }
+  .aerial-desc { display: none; }
+  .pan-grid { width: 90%; gap: 5px; padding: 16px; }
+}
+@media (max-width: 390px) {
+  .brand-title { font-size: 16px; letter-spacing: 2px; }
+  .pan-grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(6, 1fr); }
+  .aerial-main-title { font-size: 22px; }
+}
+
+/* ===== 减少动画偏好 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .cursor-ring { transition: none; }
+  .cursor-dot { transition: none; }
+}
+
+/* ===== 工具类 ===== */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- 开屏 -->
+<div class="intro-overlay" id="introOverlay">
+  <div class="intro-title">盐池光谱</div>
+  <div class="intro-line"></div>
+  <div class="intro-sub">晒 盐 场</div>
+</div>
+
+<!-- 自定义光标 -->
+<div class="cursor-wrap" id="cursor">
+  <div class="cursor-ring"></div>
+  <div class="cursor-dot"></div>
+  <div class="cursor-label" id="cursorLabel"></div>
+</div>
+
+<!-- 盐池信息 tooltip -->
+<div class="pan-tooltip" id="panTooltip">
+  <div class="tt-title" id="ttTitle">池号</div>
+  <div class="tt-row"><span class="tt-label">工序阶段</span><span class="tt-val" id="ttStage">—</span></div>
+  <div class="tt-row"><span class="tt-label">卤水面积</span><span class="tt-val" id="ttArea">—</span></div>
+  <div class="tt-row"><span class="tt-label">波美度</span><span class="tt-val" id="ttBe">—</span></div>
+  <div class="tt-row"><span class="tt-label">预计可收</span><span class="tt-val" id="ttYield">—</span></div>
+</div>
+
+<div class="app">
+
+  <!-- ===== 俯瞰场景 ===== -->
+  <div class="scene aerial-scene" id="aerialScene">
+    <div class="aerial-bg"></div>
+
+    <!-- 顶部栏 -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-title">盐池光谱</div>
+        <div class="brand-sub">SALT PAN SPECTRUM</div>
+      </div>
+      <div class="top-meta">
+        <div>运城 · 解池 <span class="meta-val" id="metaDate">—</span></div>
+        <div>全场池数 <span class="meta-val" id="metaCount">24</span></div>
+        <div>日均蒸发 <span class="meta-val" id="metaEvap">8.2 mm</span></div>
+      </div>
+    </div>
+
+    <!-- 盐田网格 -->
+    <div class="pan-grid" id="panGrid"></div>
+
+    <!-- 图例 -->
+    <div class="aerial-legend">
+      <div class="legend-title">工序色谱</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#3a6b52"></span>纳潮 · 引入海水</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#6b7a3a"></span>蒸发 · 初级浓缩</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8a6a3a"></span>调节 · 中级浓缩</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#b87a5a"></span>结晶 · 杜氏盐藻显色</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f0e8c8"></span>收盐 · 析出完成</div>
+    </div>
+
+    <!-- 标题块 -->
+    <div class="aerial-title-block">
+      <div class="aerial-main-title">晒盐场</div>
+      <div class="aerial-sub-title">THE SALTWORKS</div>
+      <div class="aerial-desc">
+        俯瞰这片传承千年的盐田。<br>
+        田埂划出的每一方格，都在阳光与风的照料下，<br>
+        慢慢析出雪白的盐晶。<br>
+        <span style="color:#8a7a5e">点击任一盐池，亲手完成一次晒盐。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 单池剖面场景 ===== -->
+  <div class="scene profile-scene scene-hidden" id="profileScene">
+    <!-- 天空区 -->
+    <div class="profile-sky">
+      <!-- 蒸汽粒子 -->
+      <div class="steam-particles" id="steamParticles"></div>
+
+      <!-- 日轨 -->
+      <div class="sun-arc-wrap" id="sunArcWrap">
+        <div class="sun-arc-path">
+          <svg viewBox="0 0 100 50" preserveAspectRatio="none">
+            <path d="M 2 48 Q 50 -5 98 48"
+              fill="none" stroke="rgba(168,149,99,0.3)" stroke-width="0.5" stroke-dasharray="1 2"/>
+          </svg>
+        </div>
+        <div class="sun-handle" id="sunHandle" style="left: 10%; top: 85%;">
+          <div class="sun-rays"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 返回按钮 -->
+    <button class="back-btn" id="backBtn">返回俯瞰</button>
+
+    <!-- 顶部元信息 -->
+    <div class="topbar" style="justify-content: flex-end; pointer-events: none;">
+      <div class="top-meta" style="margin-top: 0;">
+        <div>盐池编号 <span class="meta-val" id="profilePanId">A-01</span></div>
+        <div>卤水面积 <span class="meta-val" id="profileArea">—</span></div>
+        <div>盐工 <span class="meta-val">老陈</span></div>
+      </div>
+    </div>
+
+    <!-- 池畔舞台 -->
+    <div class="pan-stage">
+      <div class="pan-section" id="panSection">
+        <!-- 池壁 -->
+        <div class="pan-wall"></div>
+        <!-- 池底 -->
+        <div class="pan-floor"></div>
+        <!-- 卤水 -->
+        <div class="brine" id="brine"></div>
+        <!-- 盐晶 canvas -->
+        <canvas class="crystal-canvas" id="crystalCanvas"></canvas>
+        <!-- 镜面反射 -->
+        <div class="mirror-reflection" id="mirrorReflection"></div>
+        <!-- 盐坨 -->
+        <div class="salt-mound" id="saltMound"></div>
+        <!-- 盐耙 -->
+        <div class="salt-rake" id="saltRake">
+          <svg viewBox="0 0 120 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- 木柄 -->
+            <rect x="55" y="0" width="6" height="35" fill="#8a5a2a" rx="2"/>
+            <!-- 耙梁 -->
+            <rect x="15" y="30" width="90" height="8" fill="#a8683a" rx="2"/>
+            <!-- 耙齿 -->
+            <rect x="18" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="28" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="38" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="48" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="58" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="68" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="78" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="88" y="38" width="3" height="20" fill="#7a4a20"/>
+            <rect x="98" y="38" width="3" height="20" fill="#7a4a20"/>
+            <!-- 木纹 -->
+            <line x1="57" y1="2" x2="57" y2="33" stroke="rgba(60,40,15,0.3)" stroke-width="1"/>
+          </svg>
+        </div>
+        <!-- 收盐提示 -->
+        <div class="harvest-hint" id="harvestHint">
+          盐已结晶，拖耙收盐
+          <small>按住盐耙从左拖到右</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- 数据面板 -->
+    <div class="data-panel">
+      <div class="data-panel-title">
+        <span>池畔读数</span>
+        <span class="pan-id" id="dataPanId">A-01</span>
+      </div>
+      <div class="be-scale">
+        <div class="data-row" style="border: none; padding: 0 0 4px 0;">
+          <span class="data-label">波美度 °Bé</span>
+          <span class="data-value" id="beValue">5.0</span>
+        </div>
+        <div class="be-track">
+          <div class="be-fill" id="beFill" style="--be-progress: 0%"></div>
+        </div>
+        <div class="be-marks">
+          <span>5</span><span>15</span><span>25.5</span><span>30</span>
+        </div>
+      </div>
+      <div class="data-row">
+        <span class="data-label">卤水水位</span>
+        <span class="data-value small" id="waterLevel">85%</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">结晶覆盖</span>
+        <span class="data-value small" id="crystalCover">0%</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">当前阶段</span>
+        <span class="stage-tag" id="currentStage">纳潮</span>
+      </div>
+    </div>
+
+    <!-- 知识面板 -->
+    <div class="knowledge-panel" id="knowledgePanel">
+      <div class="knowledge-title" id="knowledgeTitle">波美度</div>
+      <div class="knowledge-text" id="knowledgeText">
+        波美度（°Bé）是表示溶液浓度的一种方法，由法国化学家波美发明。
+        海水的波美度约为 3.5°Bé，当卤水蒸发浓缩至 25.5°Bé 时，
+        氯化钠开始结晶析出。
+      </div>
+    </div>
+
+    <!-- 工序进度 -->
+    <div class="stage-nav" id="stageNav">
+      <div class="stage-nav-item active" data-stage="0">纳潮</div>
+      <div class="stage-nav-item" data-stage="1">蒸发</div>
+      <div class="stage-nav-item" data-stage="2">调节</div>
+      <div class="stage-nav-item" data-stage="3">结晶</div>
+      <div class="stage-nav-item" data-stage="4">收盐</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== 配置 =====
+  const CONFIG = {
+    TOTAL_PANS: 24,
+    GRID_COLS: 6,
+    GRID_ROWS: 4,
+    MIN_BE: 3.5,       // 海水初始波美度
+    MAX_BE: 30,        // 结晶完成波美度
+    CRYSTAL_BE: 25.5,  // 结晶阈值
+    ALGAE_BE: 20,      // 杜氏盐藻显色阈值
+    STAGE_NAMES: ['纳潮', '蒸发', '调节', '结晶', '收盐'],
+    STAGE_BE_RANGES: [
+      [3.5, 8],        // 纳潮
+      [8, 18],         // 蒸发
+      [18, 25.5],      // 调节
+      [25.5, 30],      // 结晶
+      [30, 30]         // 收盐
+    ],
+    // 波美度到卤水颜色的映射（浓度越高颜色越深→转粉）
+    BE_COLORS: [
+      { be: 3.5, color: '#3a6b52' },   // 藻绿（海水）
+      { be: 10, color: '#5a7a3a' },    // 黄绿
+      { be: 18, color: '#8a7a3a' },    // 黄褐
+      { be: 22, color: '#a87a4a' },    // 褐粉（盐藻开始显色）
+      { be: 25, color: '#b87a5a' },    // 藻粉
+      { be: 27, color: '#c88a6a' },    // 淡粉盐晶开始析出
+      { be: 30, color: '#e8d8b0' }     // 结晶白
+    ]
+  };
+
+  // ===== 状态 =====
+  const state = {
+    pans: [],          // 所有盐池状态
+    currentPanIndex: -1,
+    scene: 'aerial',   // aerial | profile
+    sunPosition: 0,    // 0-1 日轨位置
+    isDraggingSun: false,
+    isDraggingRake: false,
+    evaporationRate: 0,
+    rafts: [],         // 盐晶
+    harvested: false,
+    crystalCoverage: 0,
+    steamTimer: null,
+    rafId: null,
+    lastTime: 0,
+    paused: false,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  };
+
+  // ===== DOM 引用 =====
+  const $ = (id) => document.getElementById(id);
+  const dom = {
+    introOverlay: $('introOverlay'),
+    cursor: $('cursor'),
+    cursorLabel: $('cursorLabel'),
+    panTooltip: $('panTooltip'),
+    ttTitle: $('ttTitle'),
+    ttStage: $('ttStage'),
+    ttArea: $('ttArea'),
+    ttBe: $('ttBe'),
+    ttYield: $('ttYield'),
+    panGrid: $('panGrid'),
+    aerialScene: $('aerialScene'),
+    profileScene: $('profileScene'),
+    metaDate: $('metaDate'),
+    metaCount: $('metaCount'),
+    metaEvap: $('metaEvap'),
+    sunHandle: $('sunHandle'),
+    sunArcWrap: $('sunArcWrap'),
+    brine: $('brine'),
+    crystalCanvas: $('crystalCanvas'),
+    mirrorReflection: $('mirrorReflection'),
+    saltMound: $('saltMound'),
+    saltRake: $('saltRake'),
+    harvestHint: $('harvestHint'),
+    beValue: $('beValue'),
+    beFill: $('beFill'),
+    waterLevel: $('waterLevel'),
+    crystalCover: $('crystalCover'),
+    currentStage: $('currentStage'),
+    profilePanId: $('profilePanId'),
+    profileArea: $('profileArea'),
+    dataPanId: $('dataPanId'),
+    knowledgeTitle: $('knowledgeTitle'),
+    knowledgeText: $('knowledgeText'),
+    stageNav: $('stageNav'),
+    backBtn: $('backBtn'),
+    steamParticles: $('steamParticles'),
+    panSection: $('panSection')
+  };
+
+  // ===== 工具函数 =====
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function getBeColor(be) {
+    const colors = CONFIG.BE_COLORS;
+    if (be <= colors[0].be) return colors[0].color;
+    if (be >= colors[colors.length - 1].be) return colors[colors.length - 1].color;
+    for (let i = 0; i < colors.length - 1; i++) {
+      if (be >= colors[i].be && be <= colors[i + 1].be) {
+        const t = (be - colors[i].be) / (colors[i + 1].be - colors[i].be);
+        return hexLerp(colors[i].color, colors[i + 1].color, t);
+      }
+    }
+    return colors[0].color;
+  }
+  function hexLerp(c1, c2, t) {
+    const r1 = parseInt(c1.slice(1, 3), 16);
+    const g1 = parseInt(c1.slice(3, 5), 16);
+    const b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16);
+    const g2 = parseInt(c2.slice(3, 5), 16);
+    const b2 = parseInt(c2.slice(5, 7), 16);
+    const r = Math.round(lerp(r1, r2, t));
+    const g = Math.round(lerp(g1, g2, t));
+    const b = Math.round(lerp(b1, b2, t));
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  function getStageIndex(be) {
+    if (be < 8) return 0;
+    if (be < 18) return 1;
+    if (be < 25.5) return 2;
+    if (be < 30) return 3;
+    return 4;
+  }
+  function getStageName(be) {
+    return CONFIG.STAGE_NAMES[getStageIndex(be)];
+  }
+  function formatArea(ha) {
+    return ha.toFixed(2) + ' 亩';
+  }
+
+  // ===== 初始化盐池 =====
+  function initPans() {
+    const areas = [
+      2.8, 3.2, 2.5, 3.0, 2.7, 3.1,
+      2.6, 2.9, 3.3, 2.4, 2.8, 3.0,
+      3.1, 2.7, 2.5, 2.9, 3.2, 2.6,
+      2.8, 3.0, 2.7, 3.1, 2.9, 2.5
+    ];
+    // 各池初始波美度（不同工序阶段）
+    const initialBes = [
+      4.2, 7.5, 12.3, 18.6, 23.1, 27.4,
+      5.1, 9.8, 14.2, 20.5, 24.8, 28.2,
+      3.8, 8.6, 16.7, 21.3, 26.5, 29.1,
+      6.3, 11.4, 17.8, 22.7, 25.9, 30.0
+    ];
+    for (let i = 0; i < CONFIG.TOTAL_PANS; i++) {
+      const row = Math.floor(i / CONFIG.GRID_COLS);
+      const col = i % CONFIG.GRID_COLS;
+      const rowLabel = String.fromCharCode(65 + row);
+      const colLabel = String(col + 1).padStart(2, '0');
+      state.pans.push({
+        id: `${rowLabel}-${colLabel}`,
+        row, col,
+        area: areas[i],
+        be: initialBes[i],
+        waterLevel: lerp(60, 90, 1 - (initialBes[i] - CONFIG.MIN_BE) / (CONFIG.MAX_BE - CONFIG.MIN_BE)),
+        crystalCoverage: initialBes[i] >= CONFIG.CRYSTAL_BE
+          ? clamp((initialBes[i] - CONFIG.CRYSTAL_BE) / (CONFIG.MAX_BE - CONFIG.CRYSTAL_BE), 0, 1) * 100
+          : 0,
+        harvested: initialBes[i] >= CONFIG.MAX_BE - 0.1,
+        crystals: []
+      });
+    }
+  }
+
+  // ===== 渲染俯瞰网格 =====
+  function renderAerialGrid() {
+    const grid = dom.panGrid;
+    grid.innerHTML = '';
+    state.pans.forEach((pan, idx) => {
+      const cell = document.createElement('div');
+      cell.className = 'pan-cell';
+      if (pan.be < CONFIG.MAX_BE - 0.1) cell.classList.add('has-water');
+      cell.style.setProperty('--pan-color', getBeColor(pan.be));
+      cell.dataset.index = idx;
+
+      const label = document.createElement('div');
+      label.className = 'pan-cell-label';
+      label.textContent = pan.id;
+      cell.appendChild(label);
+
+      const stage = document.createElement('div');
+      stage.className = 'pan-cell-stage';
+      stage.textContent = getStageName(pan.be);
+      cell.appendChild(stage);
+
+      // 事件
+      cell.addEventListener('mouseenter', (e) => showPanTooltip(idx, e));
+      cell.addEventListener('mousemove', (e) => movePanTooltip(e));
+      cell.addEventListener('mouseleave', hidePanTooltip);
+      cell.addEventListener('click', () => enterPan(idx));
+
+      grid.appendChild(cell);
+    });
+  }
+
+  function showPanTooltip(idx, e) {
+    const pan = state.pans[idx];
+    dom.ttTitle.textContent = `盐池 ${pan.id}`;
+    dom.ttStage.textContent = getStageName(pan.be);
+    dom.ttArea.textContent = formatArea(pan.area);
+    dom.ttBe.textContent = pan.be.toFixed(1) + ' °Bé';
+    const yieldEst = pan.be >= CONFIG.CRYSTAL_BE
+      ? (pan.area * pan.crystalCoverage / 100 * 0.8).toFixed(1) + ' 吨'
+      : '待结晶';
+    dom.ttYield.textContent = yieldEst;
+    dom.panTooltip.classList.add('visible');
+    movePanTooltip(e);
+  }
+  function movePanTooltip(e) {
+    const tip = dom.panTooltip;
+    let x = e.clientX + 20;
+    let y = e.clientY + 20;
+    const rect = tip.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth - 20) x = e.clientX - rect.width - 20;
+    if (y + rect.height > window.innerHeight - 20) y = e.clientY - rect.height - 20;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function hidePanTooltip() {
+    dom.panTooltip.classList.remove('visible');
+  }
+
+  // ===== 场景切换 =====
+  function enterPan(idx) {
+    state.currentPanIndex = idx;
+    const pan = state.pans[idx];
+    // 更新剖面场景数据
+    updateProfileData(pan);
+    // 切换场景
+    dom.aerialScene.classList.add('scene-hidden');
+    dom.profileScene.classList.remove('scene-hidden');
+    dom.profileScene.classList.add('scene-entering');
+    requestAnimationFrame(() => {
+      dom.profileScene.classList.remove('scene-entering');
+    });
+    state.scene = 'profile';
+
+    // 初始化结晶 canvas
+    initCrystalCanvas();
+    // 生成该池已有的盐晶
+    if (pan.crystals && pan.crystals.length > 0) {
+      state.crystals = pan.crystals;
+    } else {
+      state.crystals = generateCrystalsForCoverage(pan.crystalCoverage / 100);
+    }
+    state.crystalCoverage = pan.crystalCoverage;
+    state.harvested = pan.harvested;
+
+    // 盐耙可用性
+    if (pan.be >= CONFIG.MAX_BE - 0.5 && !pan.harvested) {
+      showHarvestHint();
+    } else {
+      hideHarvestHint();
+    }
+
+    // 镜面状态
+    if (pan.harvested) {
+      dom.mirrorReflection.classList.add('visible');
+      dom.saltMound.classList.add('visible');
+    } else {
+      dom.mirrorReflection.classList.remove('visible');
+      dom.saltMound.classList.remove('visible');
+    }
+
+    // 开始 RAF 循环
+    startRafLoop();
+  }
+
+  function exitToAerial() {
+    // 保存当前池状态
+    if (state.currentPanIndex >= 0) {
+      const pan = state.pans[state.currentPanIndex];
+      pan.crystalCoverage = state.crystalCoverage;
+      pan.harvested = state.harvested;
+      pan.crystals = state.crystals || [];
+    }
+
+    dom.profileScene.classList.add('scene-hidden');
+    dom.aerialScene.classList.remove('scene-hidden');
+    state.scene = 'aerial';
+
+    // 更新俯瞰网格颜色（因为盐池状态可能变了）
+    renderAerialGrid();
+
+    // 停止 RAF
+    stopRafLoop();
+  }
+
+  function updateProfileData(pan) {
+    dom.profilePanId.textContent = pan.id;
+    dom.dataPanId.textContent = pan.id;
+    dom.profileArea.textContent = formatArea(pan.area);
+
+    updateBeDisplay(pan.be);
+    updateWaterDisplay(pan.waterLevel);
+    updateCrystalDisplay(pan.crystalCoverage);
+    updateStageDisplay(pan.be);
+    updateKnowledgePanel(pan.be);
+    dom.brine.style.setProperty('--brine-color', getBeColor(pan.be));
+    dom.brine.style.setProperty('--brine-height', pan.waterLevel + '%');
+  }
+
+  // ===== 数据显示 =====
+  function updateBeDisplay(be) {
+    dom.beValue.textContent = be.toFixed(1);
+    const progress = clamp((be - CONFIG.MIN_BE) / (CONFIG.MAX_BE - CONFIG.MIN_BE), 0, 1) * 100;
+    dom.beFill.style.setProperty('--be-progress', progress + '%');
+  }
+  function updateWaterDisplay(level) {
+    dom.waterLevel.textContent = Math.round(level) + '%';
+    dom.brine.style.setProperty('--brine-height', level + '%');
+  }
+  function updateCrystalDisplay(cov) {
+    dom.crystalCover.textContent = Math.round(cov) + '%';
+  }
+  function updateStageDisplay(be) {
+    const stageIdx = getStageIndex(be);
+    dom.currentStage.textContent = CONFIG.STAGE_NAMES[stageIdx];
+    // 更新进度导航
+    dom.stageNav.querySelectorAll('.stage-nav-item').forEach((el, i) => {
+      el.classList.remove('active', 'done');
+      if (i < stageIdx) el.classList.add('done');
+      if (i === stageIdx) el.classList.add('active');
+    });
+  }
+  function updateKnowledgePanel(be) {
+    const stageIdx = getStageIndex(be);
+    const knowledges = [
+      { title: '纳潮', text: '纳潮是晒盐的第一道工序。盐工开启潮闸，将海水引入盐田，利用潮汐的自然力量完成取水。海水的波美度约为 3.5°Bé，含盐量约 3.5%。运城盐池古称"解池"，已有四千余年的产盐历史。' },
+      { title: '蒸发', text: '卤水在初级蒸发池中接受日晒风吹，水分逐渐蒸发，浓度缓慢上升。这一阶段波美度从 5°Bé 升至约 18°Bé。盐工需定期"活碴"，搅动卤水以加速蒸发。风力、日照与空气湿度决定了蒸发的快慢。' },
+      { title: '调节', text: '调节池是浓缩的中间环节，卤水被调配到合适的浓度后，才会转入结晶池。当波美度超过 20°Bé 时，卤水中的杜氏盐藻因 β-胡萝卜素积累而显粉红色——这就是盐池呈现梦幻色彩的原因。' },
+      { title: '结晶', text: '当波美度达到 25.5°Bé，氯化钠达到饱和，开始从卤水中析出。最初是微小的晶核，随后逐渐生长为规则的多边形晶体。盐工称为"生花"。结晶过程需要稳定的天气，大雨会稀释卤水、溶解盐晶。' },
+      { title: '收盐', text: '盐晶铺满池底后，盐工用盐耙将盐粒推拢成坨，再运至盐廪堆放。收完盐的池底残留一层薄卤水，如镜面般倒映天光云影——茶卡盐湖的"天空之镜"正由此而来。苦卤（母液）则可用于提取氯化钾、硫酸镁等化工原料。' }
+    ];
+    dom.knowledgeTitle.textContent = knowledges[stageIdx].title;
+    dom.knowledgeText.textContent = knowledges[stageIdx].text;
+  }
+
+  // ===== 日轨拖动 =====
+  function setupSunDrag() {
+    const handle = dom.sunHandle;
+    const wrap = dom.sunArcWrap;
+
+    handle.addEventListener('mousedown', startDrag);
+    handle.addEventListener('touchstart', startDrag, { passive: false });
+
+    function startDrag(e) {
+      if (state.harvested) return;
+      e.preventDefault();
+      state.isDraggingSun = true;
+      dom.cursor.classList.add('is-drag');
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('touchmove', onDrag, { passive: false });
+      document.addEventListener('mouseup', stopDrag);
+      document.addEventListener('touchend', stopDrag);
+    }
+
+    function onDrag(e) {
+      if (!state.isDraggingSun) return;
+      e.preventDefault();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const rect = wrap.getBoundingClientRect();
+      let t = clamp((clientX - rect.left) / rect.width, 0, 1);
+
+      // 计算日轨上的位置（四分之一椭圆弧近似）
+      state.sunPosition = t;
+      // 太阳 y 位置：两端低，中间高（抛物线）
+      const yPct = 90 - Math.sin(t * Math.PI) * 75; // 90% -> 15% -> 90%
+      const xPct = t * 100;
+
+      handle.style.left = xPct + '%';
+      handle.style.top = yPct + '%';
+
+      // 蒸发速率与太阳高度正相关
+      state.evaporationRate = Math.sin(t * Math.PI) * 0.8;
+    }
+
+    function stopDrag() {
+      state.isDraggingSun = false;
+      dom.cursor.classList.remove('is-drag');
+      state.evaporationRate = 0;
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('touchmove', onDrag);
+      document.removeEventListener('mouseup', stopDrag);
+      document.removeEventListener('touchend', stopDrag);
+    }
+  }
+
+  // ===== 盐晶系统 =====
+  let crystalCtx = null;
+  let canvasW = 0, canvasH = 0;
+
+  function initCrystalCanvas() {
+    const canvas = dom.crystalCanvas;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    crystalCtx = canvas.getContext('2d');
+    crystalCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    canvasW = rect.width;
+    canvasH = rect.height;
+  }
+
+  function generateCrystalsForCoverage(coverage) {
+    const crystals = [];
+    if (coverage <= 0) return crystals;
+    const count = Math.floor(coverage * 120); // 最大 120 颗
+    for (let i = 0; i < count; i++) {
+      crystals.push(createCrystal(
+        Math.random() * canvasW,
+        lerp(canvasH * 0.6, canvasH * 0.95, Math.random()),
+        lerp(6, 24, Math.random()),
+        Math.random() * Math.PI * 2
+      ));
+    }
+    return crystals;
+  }
+
+  function createCrystal(x, y, size, rotation) {
+    return {
+      x, y, size, rotation,
+      sides: 6, // 六边形
+      opacity: 0,
+      targetOpacity: 1,
+      growth: 0, // 0-1 生长进度
+      growthSpeed: lerp(0.002, 0.008, Math.random()),
+      twinkle: Math.random() * Math.PI * 2,
+      twinkleSpeed: lerp(0.5, 2, Math.random())
+    };
+  }
+
+  function updateCrystals(dt, be) {
+    const crystals = state.crystals || [];
+    const targetCoverage = be >= CONFIG.CRYSTAL_BE
+      ? clamp((be - CONFIG.CRYSTAL_BE) / (CONFIG.MAX_BE - CONFIG.CRYSTAL_BE), 0, 1)
+      : 0;
+    const targetCount = Math.floor(targetCoverage * 120);
+
+    // 生成新晶核
+    if (crystals.length < targetCount && be >= CONFIG.CRYSTAL_BE && !state.harvested) {
+      // 概率性生成（不要一帧全冒出来）
+      if (Math.random() < 0.3) {
+        const crystal = createCrystal(
+          Math.random() * canvasW,
+          lerp(canvasH * 0.5, canvasH * 0.95, Math.random()),
+          lerp(6, 24, Math.random()),
+          Math.random() * Math.PI * 2
+        );
+        crystal.growth = 0.1;
+        crystals.push(crystal);
+      }
+    }
+
+    // 更新每颗盐晶
+    for (let i = crystals.length - 1; i >= 0; i--) {
+      const c = crystals[i];
+      // 生长
+      if (c.growth < 1) {
+        c.growth = Math.min(1, c.growth + c.growthSpeed * dt * 60);
+      }
+      // 闪烁
+      c.twinkle += c.twinkleSpeed * dt;
+      // 透明度随生长
+      c.opacity = c.growth * 0.85 + Math.sin(c.twinkle) * 0.1;
+
+      // 低于结晶阈值时溶解
+      if (be < CONFIG.CRYSTAL_BE - 1) {
+        c.growth -= 0.005 * dt * 60;
+        if (c.growth <= 0) {
+          crystals.splice(i, 1);
+        }
+      }
+    }
+
+    state.crystalCoverage = (crystals.length / 120) * 100;
+    state.crystals = crystals;
+  }
+
+  function drawCrystals() {
+    if (!crystalCtx || !state.crystals) return;
+    crystalCtx.clearRect(0, 0, canvasW, canvasH);
+
+    state.crystals.forEach(c => {
+      if (c.opacity <= 0.01) return;
+      crystalCtx.save();
+      crystalCtx.translate(c.x, c.y);
+      crystalCtx.rotate(c.rotation);
+      crystalCtx.globalAlpha = c.opacity;
+
+      const size = c.size * c.growth;
+      // 绘制六边形盐晶
+      crystalCtx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(angle) * size;
+        const py = Math.sin(angle) * size;
+        if (i === 0) crystalCtx.moveTo(px, py);
+        else crystalCtx.lineTo(px, py);
+      }
+      crystalCtx.closePath();
+
+      // 填充：白色半透明带高光
+      const gradient = crystalCtx.createRadialGradient(-size * 0.2, -size * 0.2, 0, 0, 0, size);
+      gradient.addColorStop(0, 'rgba(255, 253, 240, 0.95)');
+      gradient.addColorStop(0.6, 'rgba(248, 244, 225, 0.85)');
+      gradient.addColorStop(1, 'rgba(220, 210, 180, 0.7)');
+      crystalCtx.fillStyle = gradient;
+      crystalCtx.fill();
+
+      // 边缘高光
+      crystalCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      crystalCtx.lineWidth = 1.5;
+      crystalCtx.stroke();
+
+      // 内部纹理（十字线）
+      crystalCtx.beginPath();
+      crystalCtx.moveTo(-size * 0.7, 0);
+      crystalCtx.lineTo(size * 0.7, 0);
+      crystalCtx.moveTo(0, -size * 0.7);
+      crystalCtx.lineTo(0, size * 0.7);
+      crystalCtx.strokeStyle = 'rgba(200, 190, 160, 0.4)';
+      crystalCtx.lineWidth = 0.8;
+      crystalCtx.stroke();
+
+      crystalCtx.restore();
+    });
+  }
+
+  // ===== 盐耙收盐 =====
+  function setupRakeDrag() {
+    const rake = dom.saltRake;
+    const stage = dom.panSection;
+
+    function startDrag(e) {
+      if (!state.harvested && getCurrentBe() >= CONFIG.MAX_BE - 0.5) {
+        e.preventDefault();
+        state.isDraggingRake = true;
+        dom.cursor.classList.add('is-drag');
+        setCursorLabel('收盐中');
+        document.addEventListener('mousemove', onRakeDrag);
+        document.addEventListener('touchmove', onRakeDrag, { passive: false });
+        document.addEventListener('mouseup', stopRakeDrag);
+        document.addEventListener('touchend', stopRakeDrag);
+      }
+    }
+    rake.addEventListener('mousedown', startDrag);
+    rake.addEventListener('touchstart', startDrag, { passive: false });
+
+    function onRakeDrag(e) {
+      if (!state.isDraggingRake) return;
+      e.preventDefault();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const rect = stage.getBoundingClientRect();
+      const x = clamp(clientX - rect.left, rect.width * 0.12, rect.width * 0.95);
+      const y = clamp(rect.height * 0.72, rect.height * 0.72, rect.height * 0.85); // 固定高度
+
+      rake.style.left = x + 'px';
+      rake.style.top = y + 'px';
+
+      // 推进收盐进度
+      const progress = clamp((x - rect.width * 0.12) / (rect.width * 0.83), 0, 1);
+      harvestCrystals(progress);
+    }
+
+    function stopRakeDrag() {
+      state.isDraggingRake = false;
+      dom.cursor.classList.remove('is-drag');
+      setCursorLabel('');
+      document.removeEventListener('mousemove', onRakeDrag);
+      document.removeEventListener('touchmove', onRakeDrag);
+      document.removeEventListener('mouseup', stopRakeDrag);
+      document.removeEventListener('touchend', stopRakeDrag);
+    }
+  }
+
+  function harvestCrystals(progress) {
+    if (!state.crystals || state.crystals.length === 0) return;
+
+    // 耙子扫过的 x 位置对应的 canvas x
+    const rakeCanvasX = progress * canvasW;
+
+    // 移除耙子扫过位置左侧的盐晶
+    for (let i = state.crystals.length - 1; i >= 0; i--) {
+      const c = state.crystals[i];
+      if (c.x < rakeCanvasX - 10) {
+        // 有概率被耙走（模拟阻力，不是一颗不剩）
+        if (Math.random() < 0.85) {
+          state.crystals.splice(i, 1);
+        }
+      }
+    }
+
+    // 更新覆盖率
+    state.crystalCoverage = (state.crystals.length / 120) * 100;
+    updateCrystalDisplay(state.crystalCoverage);
+
+    // 检查收盐完成
+    if (progress > 0.9 && state.crystals.length < 15) {
+      completeHarvest();
+    }
+  }
+
+  function completeHarvest() {
+    if (state.harvested) return;
+    state.harvested = true;
+    state.crystals = [];
+    state.crystalCoverage = 0;
+    updateCrystalDisplay(0);
+
+    // 显示镜面效果
+    dom.mirrorReflection.classList.add('visible');
+    // 显示盐坨
+    setTimeout(() => {
+      dom.saltMound.classList.add('visible');
+    }, 400);
+
+    // 隐藏盐耙和提示
+    dom.saltRake.classList.remove('active');
+    hideHarvestHint();
+
+    // 更新阶段
+    updateStageDisplay(CONFIG.MAX_BE);
+    updateBeDisplay(CONFIG.MAX_BE);
+    updateKnowledgePanel(CONFIG.MAX_BE);
+  }
+
+  function showHarvestHint() {
+    dom.harvestHint.classList.add('visible');
+    dom.saltRake.classList.add('active');
+    // 初始位置
+    const rect = dom.panSection.getBoundingClientRect();
+    dom.saltRake.style.left = (rect.width * 0.2) + 'px';
+    dom.saltRake.style.top = (rect.height * 0.72) + 'px';
+  }
+  function hideHarvestHint() {
+    dom.harvestHint.classList.remove('visible');
+  }
+
+  function getCurrentBe() {
+    const pan = state.pans[state.currentPanIndex];
+    return pan ? pan.be : CONFIG.MIN_BE;
+  }
+
+  // ===== 蒸发状态机 =====
+  function updateEvaporation(dt) {
+    if (state.harvested) return;
+    if (state.evaporationRate <= 0) return;
+
+    const panIdx = state.currentPanIndex;
+    if (panIdx < 0) return;
+    const pan = state.pans[panIdx];
+
+    // 蒸发速率（°Bé / 秒）：与太阳位置正弦相关
+    const beIncrease = state.evaporationRate * 1.5 * dt;
+    const newBe = clamp(pan.be + beIncrease, CONFIG.MIN_BE, CONFIG.MAX_BE);
+    pan.be = newBe;
+
+    // 水位下降（蒸发速率越快，水位降得越快）
+    const waterDecrease = state.evaporationRate * 3 * dt;
+    pan.waterLevel = clamp(pan.waterLevel - waterDecrease, 15, 95);
+
+    // 更新显示
+    updateBeDisplay(newBe);
+    updateWaterDisplay(pan.waterLevel);
+    updateStageDisplay(newBe);
+    dom.brine.style.setProperty('--brine-color', getBeColor(newBe));
+    dom.brine.style.setProperty('--brine-height', pan.waterLevel + '%');
+
+    // 阶段跨越时更新知识面板
+    updateKnowledgePanel(newBe);
+
+    // 达到收盐条件时显示提示
+    if (newBe >= CONFIG.MAX_BE - 0.5 && !state.harvested && !dom.harvestHint.classList.contains('visible')) {
+      showHarvestHint();
+    }
+
+    // 蒸汽粒子
+    spawnSteamParticle();
+  }
+
+  // ===== 蒸汽粒子 =====
+  let lastSteamTime = 0;
+  function spawnSteamParticle() {
+    if (state.reducedMotion) return;
+    const now = performance.now();
+    if (now - lastSteamTime < 200 / state.evaporationRate) return; // 蒸发越快粒子越密
+    lastSteamTime = now;
+
+    const particle = document.createElement('div');
+    particle.className = 'steam-dot';
+    const brineRect = dom.brine.getBoundingClientRect();
+    const wrapRect = dom.steamParticles.getBoundingClientRect();
+    const startX = Math.random() * brineRect.width + brineRect.left - wrapRect.left;
+    particle.style.left = startX + 'px';
+    particle.style.animationDuration = lerp(3, 6, Math.random()) + 's';
+    particle.style.animationDelay = Math.random() * 0.5 + 's';
+    dom.steamParticles.appendChild(particle);
+
+    // 动画结束后移除
+    setTimeout(() => {
+      if (particle.parentNode) particle.parentNode.removeChild(particle);
+    }, 7000);
+  }
+
+  // ===== RAF 循环 =====
+  function startRafLoop() {
+    if (state.rafId) return;
+    state.lastTime = performance.now();
+    function loop(t) {
+      if (state.paused) {
+        state.rafId = requestAnimationFrame(loop);
+        return;
+      }
+      const dt = Math.min((t - state.lastTime) / 1000, 0.05); // 最大 50ms，防止切后台跳变
+      state.lastTime = t;
+
+      // 蒸发状态机
+      updateEvaporation(dt);
+      // 盐晶更新
+      updateCrystals(dt, state.pans[state.currentPanIndex]?.be || CONFIG.MIN_BE);
+      // 绘制盐晶
+      drawCrystals();
+
+      state.rafId = requestAnimationFrame(loop);
+    }
+    state.rafId = requestAnimationFrame(loop);
+  }
+
+  function stopRafLoop() {
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+  }
+
+  // ===== 可见性 API =====
+  function setupVisibility() {
+    document.addEventListener('visibilitychange', () => {
+      state.paused = document.hidden;
+      if (!state.paused) {
+        state.lastTime = performance.now();
+      }
+    });
+  }
+
+  // ===== 自定义光标 =====
+  function setupCursor() {
+    const cursor = dom.cursor;
+    let cx = window.innerWidth / 2;
+    let cy = window.innerHeight / 2;
+    let tx = cx, ty = cy;
+    let rafId = null;
+
+    function updateCursor() {
+      // 阻尼跟随
+      cx += (tx - cx) * 0.25;
+      cy += (ty - cy) * 0.25;
+      cursor.style.transform = `translate(${cx}px, ${cy}px)`;
+      if (!state.reducedMotion) {
+        rafId = requestAnimationFrame(updateCursor);
+      } else {
+        cursor.style.transform = `translate(${tx}px, ${ty}px)`;
+      }
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      tx = e.clientX;
+      ty = e.clientY;
+      if (state.reducedMotion) {
+        cursor.style.transform = `translate(${tx}px, ${ty}px)`;
+      }
+      if (!rafId && !state.reducedMotion) {
+        rafId = requestAnimationFrame(updateCursor);
+      }
+    });
+
+    // 触屏设备隐藏光标
+    if ('ontouchstart' in window) {
+      cursor.style.display = 'none';
+      document.body.style.cursor = 'auto';
+    }
+
+    // hover 状态
+    document.addEventListener('mouseover', (e) => {
+      const target = e.target;
+      if (target.closest('.pan-cell') || target.closest('button') ||
+          target.closest('.sun-handle') || target.closest('.salt-rake') ||
+          target.closest('.stage-nav-item') || target.closest('.back-btn')) {
+        cursor.classList.add('is-hover');
+      } else {
+        cursor.classList.remove('is-hover');
+      }
+    });
+  }
+
+  function setCursorLabel(text) {
+    dom.cursorLabel.textContent = text;
+    if (text) {
+      dom.cursor.classList.add('has-label');
+    } else {
+      dom.cursor.classList.remove('has-label');
+    }
+  }
+
+  // ===== 响应式重绘 =====
+  function setupResize() {
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (state.scene === 'profile') {
+          initCrystalCanvas();
+          // 重新分布盐晶
+          if (state.crystals && state.crystals.length > 0) {
+            state.crystals.forEach(c => {
+              c.x = Math.random() * canvasW;
+              c.y = lerp(canvasH * 0.5, canvasH * 0.95, Math.random());
+            });
+          }
+        }
+      }, 200);
+    });
+  }
+
+  // ===== 日期 =====
+  function setDate() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    dom.metaDate.textContent = `${y}.${m}.${d}`;
+  }
+
+  // ===== 开屏动画 =====
+  function playIntro() {
+    setTimeout(() => {
+      dom.introOverlay.classList.add('hidden');
+      setTimeout(() => {
+        dom.introOverlay.style.display = 'none';
+      }, 1800);
+    }, 2200);
+  }
+
+  // ===== 全局事件绑定 =====
+  function setupEvents() {
+    dom.backBtn.addEventListener('click', exitToAerial);
+
+    // 键盘返回
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.scene === 'profile') {
+        exitToAerial();
+      }
+    });
+  }
+
+  // ===== 初始化 =====
+  function init() {
+    setDate();
+    initPans();
+    renderAerialGrid();
+    setupCursor();
+    setupSunDrag();
+    setupRakeDrag();
+    setupVisibility();
+    setupResize();
+    setupEvents();
+    playIntro();
+  }
+
+  // 卸载清理
+  window.addEventListener('beforeunload', () => {
+    stopRafLoop();
+  });
+
+  // DOM 就绪后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+
+</body>
+</html>
