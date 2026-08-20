@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="creative-medium" content="interactive-prototype">
+<title>打铁花 · 一夜千树</title>
+<style>
+  /* ========== 基础重置 ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; overflow-x: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "STKaiti", "KaiTi", serif;
+    background: #0a0806;
+    color: #d8cfc2;
+    line-height: 1.7;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 自定义光标 */
+  #custom-cursor {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff8e7 0%, #ffd66b 40%, #ff7a2e 70%, transparent 100%);
+    box-shadow: 0 0 16px 4px rgba(255, 180, 60, 0.75),
+                0 0 32px 8px rgba(255, 100, 30, 0.35);
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width 0.15s, height 0.15s, opacity 0.2s;
+    mix-blend-mode: screen;
+  }
+  #custom-cursor::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: #fff;
+    transform: translate(-50%, -50%);
+  }
+  #custom-cursor.hovering { width: 22px; height: 22px; }
+  #custom-cursor.charging {
+    animation: pulse-heat 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes pulse-heat {
+    from { box-shadow: 0 0 16px 4px rgba(255, 180, 60, 0.75), 0 0 32px 8px rgba(255, 100, 30, 0.35); }
+    to   { box-shadow: 0 0 24px 8px rgba(255, 220, 120, 0.9), 0 0 48px 16px rgba(255, 140, 40, 0.55); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #custom-cursor.charging { animation: none; }
+  }
+
+  /* ========== 舞台 ========== */
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    min-height: 600px;
+    overflow: hidden;
+    background: #0a0806;
+  }
+  .stage-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* 舞台上的 UI 层 */
+  .stage-ui {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .stage-ui * { pointer-events: auto; }
+
+  .title-block {
+    position: absolute;
+    top: 32px;
+    left: 40px;
+    color: #e8d9bd;
+    letter-spacing: 0.2em;
+    font-family: "STKaiti", "KaiTi", "FangSong", serif;
+  }
+  .title-block .main-title {
+    font-size: 28px;
+    font-weight: 700;
+    text-shadow: 0 0 20px rgba(255, 120, 40, 0.3);
+    margin-bottom: 4px;
+  }
+  .title-block .sub-title {
+    font-size: 13px;
+    opacity: 0.6;
+    letter-spacing: 0.4em;
+  }
+
+  /* 温度标尺 */
+  .temp-gauge {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 52vh;
+    max-height: 500px;
+    border: 1px solid rgba(216, 207, 194, 0.25);
+    border-radius: 8px;
+    background: rgba(20, 16, 12, 0.6);
+    overflow: hidden;
+    backdrop-filter: blur(4px);
+  }
+  .temp-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0%;
+    background: linear-gradient(to top, #8b1a0a, #d64a1a 40%, #ff9a3c 70%, #fff4c4 100%);
+    transition: height 0.1s ease-out;
+    box-shadow: 0 -4px 20px rgba(255, 150, 60, 0.6);
+  }
+  .temp-label {
+    position: absolute;
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transform-origin: right center;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: rgba(216, 207, 194, 0.5);
+    white-space: nowrap;
+  }
+
+  /* 击打次数 */
+  .hit-count {
+    position: absolute;
+    top: 36px;
+    right: 64px;
+    text-align: right;
+    color: rgba(216, 207, 194, 0.6);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+  }
+  .hit-count .num {
+    display: block;
+    font-size: 28px;
+    color: #e8d9bd;
+    font-family: "STKaiti", "KaiTi", serif;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  /* 提示文字 */
+  .hint-text {
+    position: absolute;
+    bottom: 28%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+    letter-spacing: 0.3em;
+    color: rgba(232, 217, 189, 0.5);
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+  .hint-text.hidden { opacity: 0; }
+  .hint-text .kbd {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1px solid rgba(232, 217, 189, 0.3);
+    border-radius: 4px;
+    margin: 0 6px;
+    font-size: 12px;
+  }
+
+  /* 花谱志按钮 */
+  .archive-btn {
+    position: absolute;
+    bottom: 32px;
+    right: 40px;
+    color: rgba(232, 217, 189, 0.7);
+    font-size: 14px;
+    letter-spacing: 0.25em;
+    writing-mode: vertical-rl;
+    text-decoration: none;
+    cursor: none;
+    transition: color 0.3s;
+  }
+  .archive-btn:hover { color: #ffb060; }
+  .archive-btn .arrow {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 16px;
+    animation: bob-down 1.5s ease-in-out infinite;
+  }
+  @keyframes bob-down {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(6px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .archive-btn .arrow { animation: none; }
+  }
+
+  /* 退火收工按钮（首屏右下角附近） */
+  .anneal-btn {
+    position: absolute;
+    bottom: 32px;
+    left: 40px;
+    padding: 10px 22px;
+    background: transparent;
+    border: 1px solid rgba(232, 217, 189, 0.35);
+    color: #e8d9bd;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    cursor: none;
+    font-family: inherit;
+    transition: all 0.3s;
+    border-radius: 2px;
+  }
+  .anneal-btn:hover {
+    border-color: #ff8c3c;
+    color: #ffb060;
+    box-shadow: 0 0 20px rgba(255, 120, 40, 0.25) inset, 0 0 12px rgba(255, 120, 40, 0.2);
+  }
+
+  /* 震屏效果 */
+  .stage.shake { animation: shake 0.25s ease-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-4px, 2px); }
+    40% { transform: translate(3px, -2px); }
+    60% { transform: translate(-2px, 3px); }
+    80% { transform: translate(2px, -1px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage.shake { animation: none; }
+  }
+
+  /* 收工暗场 */
+  .stage.dimmed .stage-canvas {
+    filter: brightness(0.45) saturate(1.1);
+    transition: filter 2.5s ease-in-out;
+  }
+  .stage.dimmed .title-block,
+  .stage.dimmed .hit-count,
+  .stage.dimmed .temp-gauge,
+  .stage.dimmed .temp-label,
+  .stage.dimmed .archive-btn,
+  .stage.dimmed .anneal-btn {
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+  }
+
+  /* 收工花谱卡 */
+  .huapu-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    width: min(420px, 80vw);
+    padding: 48px 40px 40px;
+    background: rgba(24, 18, 12, 0.92);
+    border: 1px solid rgba(255, 140, 60, 0.3);
+    box-shadow: 0 0 80px rgba(255, 100, 40, 0.2);
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1.2s 1s, transform 1.2s 1s;
+    z-index: 20;
+  }
+  .stage.dimmed .huapu-card {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+  .huapu-card h2 {
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 26px;
+    color: #ffc880;
+    letter-spacing: 0.4em;
+    margin-bottom: 8px;
+    font-weight: 400;
+  }
+  .huapu-card .seal-num {
+    font-size: 13px;
+    color: rgba(232, 217, 189, 0.6);
+    letter-spacing: 0.25em;
+    margin-bottom: 28px;
+  }
+  .huapu-card .seal {
+    display: inline-block;
+    width: 64px; height: 64px;
+    line-height: 64px;
+    border: 2px solid #c83820;
+    color: #e85030;
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 20px;
+    letter-spacing: 0;
+    background: rgba(200, 56, 32, 0.08);
+    margin-bottom: 24px;
+    transform: rotate(-6deg);
+  }
+  .huapu-card .stats {
+    display: flex;
+    justify-content: center;
+    gap: 36px;
+    margin-bottom: 28px;
+  }
+  .huapu-card .stat-item .val {
+    font-size: 24px;
+    color: #ffc880;
+    font-family: "STKaiti", "KaiTi", serif;
+    font-weight: 700;
+  }
+  .huapu-card .stat-item .lbl {
+    font-size: 11px;
+    color: rgba(232, 217, 189, 0.5);
+    letter-spacing: 0.2em;
+    margin-top: 2px;
+  }
+  .huapu-card .replay-btn {
+    padding: 8px 24px;
+    background: transparent;
+    border: 1px solid rgba(255, 140, 60, 0.5);
+    color: #ffb060;
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    cursor: none;
+    font-family: inherit;
+    transition: all 0.3s;
+  }
+  .huapu-card .replay-btn:hover {
+    background: rgba(255, 140, 60, 0.1);
+  }
+
+  /* ========== 花谱志 ========== */
+  .archive {
+    background: #120e0a;
+    padding: 120px 0 80px;
+    position: relative;
+  }
+  .archive-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 60px;
+  }
+  .archive-section {
+    margin-bottom: 80px;
+    position: relative;
+  }
+  .archive-section h2 {
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 22px;
+    color: #ffc880;
+    letter-spacing: 0.3em;
+    margin-bottom: 24px;
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .archive-section h2::before {
+    content: '';
+    width: 3px; height: 22px;
+    background: linear-gradient(to bottom, #ff8c3c, #8b2a10);
+    border-radius: 2px;
+  }
+  .archive-section p {
+    font-size: 15px;
+    line-height: 2;
+    color: #c8bdae;
+    margin-bottom: 14px;
+    text-indent: 2em;
+  }
+  .archive-header {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+  .archive-header h1 {
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 38px;
+    color: #e8d9bd;
+    letter-spacing: 0.5em;
+    margin-bottom: 12px;
+    font-weight: 400;
+  }
+  .archive-header .sub {
+    font-size: 13px;
+    color: rgba(232, 217, 189, 0.4);
+    letter-spacing: 0.4em;
+  }
+  .archive-header .divider {
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #ff8c3c, transparent);
+    margin: 20px auto;
+  }
+
+  /* 花棒解剖 */
+  .stick-diagram {
+    position: relative;
+    width: 100%;
+    height: 260px;
+    margin: 30px 0 20px;
+    background: rgba(20, 16, 12, 0.5);
+    border: 1px solid rgba(216, 207, 194, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .stick-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .stick-toggle {
+    margin-top: 14px;
+    padding: 6px 18px;
+    background: transparent;
+    border: 1px solid rgba(255, 140, 60, 0.35);
+    color: #ffb060;
+    font-size: 12px;
+    letter-spacing: 0.25em;
+    cursor: none;
+    font-family: inherit;
+    transition: all 0.3s;
+    border-radius: 2px;
+  }
+  .stick-toggle:hover {
+    background: rgba(255, 140, 60, 0.1);
+  }
+
+  /* 温度标尺互动区 */
+  .temp-slider-wrap {
+    margin: 30px 0;
+    padding: 30px 40px;
+    background: rgba(20, 16, 12, 0.5);
+    border: 1px solid rgba(216, 207, 194, 0.1);
+    border-radius: 4px;
+  }
+  .temp-slider-track {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #2a1810, #8b1a0a 25%, #d64a1a 50%, #ff9a3c 75%, #fff4c4 100%);
+    margin: 20px 0 16px;
+    cursor: none;
+  }
+  .temp-slider-thumb {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 12px rgba(255, 200, 100, 0.8);
+    cursor: none;
+  }
+  .temp-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .temp-val {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: "STKaiti", "KaiTi", serif;
+    color: #ffc880;
+    letter-spacing: 0.05em;
+  }
+  .temp-state {
+    font-size: 14px;
+    color: #c8bdae;
+    letter-spacing: 0.2em;
+  }
+  .temp-desc {
+    font-size: 13px;
+    color: rgba(216, 207, 194, 0.55);
+    line-height: 1.8;
+    margin-top: 12px;
+  }
+
+  /* 艺人规矩 */
+  .rules-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 20px;
+  }
+  .rules-list li {
+    position: relative;
+    padding: 16px 0 16px 28px;
+    border-bottom: 1px solid rgba(216, 207, 194, 0.08);
+    color: #c8bdae;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .rules-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 24px;
+    width: 10px; height: 2px;
+    background: #ff8c3c;
+  }
+  .rules-list li strong {
+    color: #ffc880;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    margin-right: 8px;
+  }
+
+  /* 结尾 */
+  .ending {
+    text-align: center;
+    padding: 80px 40px;
+    background: #0e0a07;
+    border-top: 1px solid rgba(216, 207, 194, 0.06);
+  }
+  .ending-text {
+    font-size: 15px;
+    color: rgba(232, 217, 189, 0.5);
+    letter-spacing: 0.15em;
+    line-height: 2;
+    margin-bottom: 32px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .ending-anneal {
+    padding: 14px 40px;
+    background: transparent;
+    border: 1px solid rgba(255, 140, 60, 0.4);
+    color: #ffc880;
+    font-size: 15px;
+    letter-spacing: 0.4em;
+    cursor: none;
+    font-family: inherit;
+    transition: all 0.4s;
+    border-radius: 2px;
+    font-family: "STKaiti", "KaiTi", serif;
+  }
+  .ending-anneal:hover {
+    background: rgba(255, 120, 40, 0.15);
+    border-color: #ff8c3c;
+    box-shadow: 0 0 30px rgba(255, 120, 40, 0.3);
+  }
+  footer {
+    text-align: center;
+    padding: 28px 20px;
+    background: #0a0806;
+    color: rgba(216, 207, 194, 0.25);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    border-top: 1px solid rgba(216, 207, 194, 0.04);
+  }
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0a0806; }
+  ::-webkit-scrollbar-thumb { background: #3a2a1e; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- 自定义光标 -->
+<div id="custom-cursor"></div>
+
+<!-- ========== 城墙舞台 ========== -->
+<section class="stage" id="stage">
+  <!-- 多层画布：城墙背景 + 灼痕 + 火花粒子 -->
+  <canvas class="stage-canvas" id="wallCanvas"></canvas>
+  <canvas class="stage-canvas" id="burnCanvas"></canvas>
+  <canvas class="stage-canvas" id="sparkCanvas"></canvas>
+
+  <div class="stage-ui">
+    <div class="title-block">
+      <div class="main-title">打铁花</div>
+      <div class="sub-title">一 夜 千 树</div>
+    </div>
+
+    <div class="hit-count">
+      <span class="num" id="hitCount">0</span>
+      击
+    </div>
+
+    <div class="temp-label">铁 水 温 度</div>
+    <div class="temp-gauge">
+      <div class="temp-fill" id="tempFill"></div>
+    </div>
+
+    <div class="hint-text" id="hintText">
+      按住 <span class="kbd">蓄力</span> 松开 <span class="kbd">击打</span>
+    </div>
+
+    <a href="#archive" class="archive-btn">花谱志<span class="arrow">↓</span></a>
+    <button class="anneal-btn" id="annealBtn">退 火 收 工</button>
+  </div>
+
+  <!-- 收工花谱卡 -->
+  <div class="huapu-card" id="huapuCard">
+    <h2>今 夜 花 谱</h2>
+    <div class="seal-num" id="sealNum">—</div>
+    <div class="seal">打铁花</div>
+    <div class="stats">
+      <div class="stat-item">
+        <div class="val" id="finalHits">0</div>
+        <div class="lbl">击打数</div>
+      </div>
+      <div class="stat-item">
+        <div class="val" id="finalSparks">0</div>
+        <div class="lbl">火花数</div>
+      </div>
+    </div>
+    <button class="replay-btn" id="replayBtn">再 打 一 场</button>
+  </div>
+</section>
+
+<!-- ========== 花谱志 ========== -->
+<section class="archive" id="archive">
+  <div class="archive-inner">
+    <div class="archive-header">
+      <h1>花 谱 志</h1>
+      <div class="divider"></div>
+      <div class="sub">确 山 铁 花 · 工 艺 档 案</div>
+    </div>
+
+    <!-- 花棚与仪式 -->
+    <div class="archive-section">
+      <h2>花 棚 与 仪 式</h2>
+      <p>确山铁花，河南确山流传的民间焰火技艺，二〇〇八年入选国家级非物质文化遗产扩展名录。北宋已有记载，明清时盛。</p>
+      <p>打铁花有「花棚」—— 柳木搭就的三层棚架，棚顶铺新鲜柳枝，铁花打上棚顶溅落如瀑，称「千树万树梨花开」。棚下立熔炉，风箱鼓动，生铁熔成赤红铁水。</p>
+      <p>打花前须祭炉、拜祖师，焚香祷告。艺人赤膊上阵，手持两根柳木花棒，上棒盛铁水，下棒击打，一击之下，铁水腾空，撞向花棚，漫天飞溅。</p>
+    </div>
+
+    <!-- 花棒解剖 -->
+    <div class="archive-section">
+      <h2>花 棒 解 剖</h2>
+      <p>花棒以新鲜柳木制成，浸水后方可使用——柳木含水分高，铁水落上不易燃，仅表面炭化，一击即碎。一棒分上下两截，上棒曰「舀棒」，端有凹坑盛铁水；下棒曰「打棒」，平直有力。</p>
+      <div class="stick-diagram">
+        <canvas class="stick-canvas" id="stickCanvas"></canvas>
+      </div>
+      <button class="stick-toggle" id="stickToggle">展 开 剖 面</button>
+    </div>
+
+    <!-- 温度标尺 -->
+    <div class="archive-section">
+      <h2>温 度 色 阶</h2>
+      <p>生铁熔点约一千五百三十八摄氏度，击打时铁水约一千六百摄氏度。火花离棒即开始冷却，由白炽而橙黄、而赤红，落地前已降至数百度。拖动下方标尺，观铁色变化。</p>
+      <div class="temp-slider-wrap">
+        <div class="temp-info">
+          <div class="temp-val"><span id="tempVal">1600</span>°C</div>
+          <div class="temp-state" id="tempState">炽 白 熔 融</div>
+        </div>
+        <div class="temp-slider-track" id="tempSlider">
+          <div class="temp-slider-thumb" id="tempThumb"></div>
+        </div>
+        <div class="temp-desc" id="tempDesc">铁水呈亮白近蓝之色，黏度最低，最易飞溅成花。艺人趁此时机舀出击打，花形最为饱满。</div>
+      </div>
+    </div>
+
+    <!-- 艺人规矩 -->
+    <div class="archive-section">
+      <h2>艺 人 规 矩</h2>
+      <ul class="rules-list">
+        <li><strong>赤膊上阵</strong>铁星落于皮肤即滑落，穿衣反而易烧着。赤膊是规矩，也是勇气。</li>
+        <li><strong>击打要准而脆</strong>一棒下去，干脆利落，忌拖泥带水。力发于腰，送于臂，脆于腕。</li>
+        <li><strong>力道忌拖泥带水</strong>铁水舀多少、打多高、溅多远，全凭手上分寸。多一分则溅出棚外，少一分则不成花。</li>
+        <li><strong>逆风不打</strong>风向不对，铁花倒卷，伤己伤人。老艺人抬头看旗，旗飘不对，今日歇工。</li>
+      </ul>
+    </div>
+
+    <!-- 传承 -->
+    <div class="archive-section">
+      <h2>传 承</h2>
+      <p>打铁花是危险的活计，学徒须练三年基本功：先练臂力，再练舀沙，最后才碰铁水。老艺人说「手上有准，心里有根」，准头比什么都重要。</p>
+      <p>如今的打铁花，不只是庙会社火的余兴，也是国家级非遗。年轻人愿意学的少，肯吃苦的更少，但只要还有一炉铁水在烧，这朵千年铁花就不会熄灭。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 结尾 ========== -->
+<section class="ending">
+  <p class="ending-text">
+    铁水入柳，一击成花。<br>
+    千年以来，每逢吉庆，便有艺人赤膊立炉前，<br>
+    以一身孤胆，换满天星雨。
+  </p>
+  <button class="ending-anneal" id="endingAnnealBtn">退 火 收 工</button>
+</section>
+
+<footer>确山打铁花 · 国家级非物质文化遗产</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== 自定义光标 ==========
+  const cursor = document.getElementById('custom-cursor');
+  let cursorX = window.innerWidth / 2;
+  let cursorY = window.innerHeight / 2;
+
+  function moveCursor(x, y) {
+    cursorX = x;
+    cursorY = y;
+    cursor.style.left = x + 'px';
+    cursor.style.top = y + 'px';
+  }
+
+  document.addEventListener('mousemove', function(e) {
+    moveCursor(e.clientX, e.clientY);
+  }, { passive: true });
+
+  // 触摸支持
+  document.addEventListener('touchmove', function(e) {
+    if (e.touches[0]) {
+      moveCursor(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: true });
+
+  // 悬停效果
+  const hoverTargets = 'button, a, .temp-slider-track, .stick-toggle';
+  document.addEventListener('mouseover', function(e) {
+    if (e.target.closest(hoverTargets)) cursor.classList.add('hovering');
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (e.target.closest(hoverTargets)) cursor.classList.remove('hovering');
+  });
+
+  // ========== 工具函数 ==========
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  // 温度色阶：返回 {r,g,b}
+  // 1600°C: 白炽 (#fff4c4) → 1200°C: 亮橙 (#ff9a3c) → 900°C: 红橙 (#d64a1a) → 600°C: 暗红 (#8b1a0a) → 冷却: 消失
+  function tempColor(temp) {
+    // temp: 0 ~ 1600
+    const t = clamp(temp, 0, 1600) / 1600;
+    let r, g, b;
+    if (t > 0.7) {
+      // 0.7 ~ 1.0: 橙黄→白炽
+      const p = (t - 0.7) / 0.3;
+      r = 255;
+      g = Math.floor(154 + (244 - 154) * p);
+      b = Math.floor(60 + (196 - 60) * p);
+    } else if (t > 0.4) {
+      // 0.4 ~ 0.7: 红橙→亮橙
+      const p = (t - 0.4) / 0.3;
+      r = Math.floor(214 + (255 - 214) * p);
+      g = Math.floor(74 + (154 - 74) * p);
+      b = Math.floor(26 + (60 - 26) * p);
+    } else if (t > 0.15) {
+      // 0.15 ~ 0.4: 暗红→红橙
+      const p = (t - 0.15) / 0.25;
+      r = Math.floor(139 + (214 - 139) * p);
+      g = Math.floor(26 + (74 - 26) * p);
+      b = Math.floor(10 + (26 - 10) * p);
+    } else {
+      // 0 ~ 0.15: 黑→暗红
+      const p = t / 0.15;
+      r = Math.floor(20 + (139 - 20) * p);
+      g = Math.floor(5 + (26 - 5) * p);
+      b = Math.floor(3 + (10 - 3) * p);
+    }
+    return { r: r, g: g, b: b };
+  }
+
+  // ========== 画布设置 ==========
+  const wallCanvas = document.getElementById('wallCanvas');
+  const burnCanvas = document.getElementById('burnCanvas');
+  const sparkCanvas = document.getElementById('sparkCanvas');
+  const wallCtx = wallCanvas.getContext('2d');
+  const burnCtx = burnCanvas.getContext('2d');
+  const sparkCtx = sparkCanvas.getContext('2d');
+
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let wallTop = 0;        // 城墙顶部 y
+  let wallBottom = 0;     // 城墙底部 y
+  let troughY = 0;        // 铁水槽 y
+  let troughX = 0;        // 铁水槽中心 x
+  let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    [wallCanvas, burnCanvas, sparkCanvas].forEach(function(c) {
+      c.width = W * DPR;
+      c.height = H * DPR;
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
+    });
+    wallCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    burnCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sparkCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // 城墙几何：上半部分 65% 是墙
+    wallTop = H * 0.08;
+    wallBottom = H * 0.7;
+    troughY = H * 0.82;
+    troughX = W * 0.5;
+
+    drawWall();
+    // 灼痕画布保持（缩放导致清空，需要重新生成）
+  }
+
+  window.addEventListener('resize', resize);
+
+  // ========== 绘制城墙 ==========
+  function drawWall() {
+    const ctx = wallCtx;
+    ctx.clearRect(0, 0, W, H);
+
+    // 夜空背景
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, wallBottom);
+    skyGrad.addColorStop(0, '#0a0806');
+    skyGrad.addColorStop(0.5, '#120d08');
+    skyGrad.addColorStop(1, '#1a120a');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, wallBottom);
+
+    // 远处朦胧月亮 / 光晕
+    const moonX = W * 0.78;
+    const moonY = wallTop + 60;
+    const moonGrad = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 120);
+    moonGrad.addColorStop(0, 'rgba(255, 220, 160, 0.15)');
+    moonGrad.addColorStop(0.4, 'rgba(255, 180, 100, 0.06)');
+    moonGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = moonGrad;
+    ctx.fillRect(moonX - 150, moonY - 150, 300, 300);
+
+    // 城墙主体（砖墙）
+    const wallHeight = wallBottom - wallTop;
+    const brickH = 22;
+    const brickW = 60;
+    const baseColor = { r: 92, g: 68, b: 48 };
+
+    for (let row = 0; row * brickH < wallHeight + brickH; row++) {
+      const y = wallTop + row * brickH;
+      const offset = (row % 2) * (brickW / 2);
+      for (let x = -brickW; x < W + brickW; x += brickW) {
+        const bx = x + offset;
+        // 随机变化
+        const noise = (Math.sin(bx * 0.013 + row * 2.7) + Math.cos(row * 0.7 + bx * 0.03)) * 0.5;
+        const shade = 0.5 + noise * 0.35;
+        // 上面更暗，下面稍亮（地面反光）
+        const yFactor = 0.7 + (y - wallTop) / wallHeight * 0.5;
+        const r = Math.floor(baseColor.r * shade * yFactor + 20);
+        const g = Math.floor(baseColor.g * shade * yFactor + 14);
+        const b = Math.floor(baseColor.b * shade * yFactor + 8);
+
+        ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+        ctx.fillRect(bx + 1, y + 1, brickW - 2, brickH - 2);
+
+        // 砖缝
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx + 0.5, y + 0.5, brickW - 1, brickH - 1);
+
+        // 一些污渍/磨损
+        if (Math.random() < 0.06) {
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillRect(bx + rand(5, 40), y + rand(4, 14), rand(8, 20), rand(2, 5));
+        }
+      }
+    }
+
+    // 城墙顶部垛口（城齿）
+    const merlonW = 40;
+    const merlonH = 48;
+    const gapW = 28;
+    ctx.fillStyle = '#3d2d1e';
+    for (let x = 0; x < W + merlonW; x += merlonW + gapW) {
+      // 垛口实体
+      ctx.fillRect(x, wallTop - merlonH, merlonW, merlonH);
+      // 顶部阴影线
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(x, wallTop - merlonH, merlonW, 3);
+      ctx.fillStyle = '#3d2d1e';
+    }
+    // 墙顶压缝
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, wallTop - 2, W, 2);
+
+    // 城墙底部地基
+    const baseGrad = ctx.createLinearGradient(0, wallBottom - 40, 0, wallBottom + 20);
+    baseGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
+    baseGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(0, wallBottom - 40, W, 60);
+
+    // 地面（打铁台区域）
+    const groundGrad = ctx.createLinearGradient(0, wallBottom, 0, H);
+    groundGrad.addColorStop(0, '#1a120a');
+    groundGrad.addColorStop(1, '#0d0906');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, wallBottom, W, H - wallBottom);
+  }
+
+  // ========== 铁水槽与花棒（绘制在 spark 画布，每帧刷新） ==========
+  function drawTroughAndStick(chargePower) {
+    const ctx = sparkCtx;
+    const cx = troughX;
+    const ty = troughY;
+
+    // 地面反光（随蓄力增强）
+    const glowIntensity = 0.15 + chargePower * 0.5;
+    const glowGrad = ctx.createRadialGradient(cx, ty + 20, 0, cx, ty + 20, 180);
+    glowGrad.addColorStop(0, 'rgba(255, 140, 40, ' + glowIntensity + ')');
+    glowGrad.addColorStop(0.5, 'rgba(255, 80, 20, ' + (glowIntensity * 0.3) + ')');
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(cx - 200, ty - 60, 400, 260);
+
+    // 铁水槽（侧面看）
+    const troughW = 100;
+    const troughH = 28;
+    // 槽身
+    ctx.fillStyle = '#2a1e14';
+    ctx.fillRect(cx - troughW / 2, ty, troughW, troughH);
+    // 槽沿
+    ctx.fillStyle = '#1a120a';
+    ctx.fillRect(cx - troughW / 2 - 4, ty - 4, troughW + 8, 6);
+
+    // 槽中铁水（液面随蓄力波动）
+    const moltenColor = tempColor(1200 + chargePower * 400);
+    const moltenStr = 'rgb(' + moltenColor.r + ',' + moltenColor.g + ',' + moltenColor.b + ')';
+    ctx.fillStyle = moltenStr;
+    ctx.fillRect(cx - troughW / 2 + 6, ty + 4, troughW - 12, 8);
+    // 铁水高光
+    ctx.fillStyle = 'rgba(255, 240, 200, ' + (0.3 + chargePower * 0.5) + ')';
+    ctx.fillRect(cx - troughW / 2 + 10, ty + 5, troughW - 20, 2);
+
+    // 花棒（柳木棒）——蓄力时向后下方拉
+    const stickLength = 90;
+    const stickBaseX = cx + 80;
+    const stickBaseY = ty - 5;
+    // 蓄力角度：0 ~ -35度（后拉）
+    const chargeAngle = -chargePower * 0.5; // 弧度
+    const stickEndX = stickBaseX + Math.cos(chargeAngle) * stickLength;
+    const stickEndY = stickBaseY + Math.sin(chargeAngle) * stickLength;
+
+    // 棒身
+    ctx.strokeStyle = '#6b4a2a';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(stickBaseX, stickBaseY);
+    ctx.lineTo(stickEndX, stickEndY);
+    ctx.stroke();
+
+    // 棒身纹理
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const t = 0.2 + i * 0.2;
+      const tx = stickBaseX + (stickEndX - stickBaseX) * t;
+      const ty2 = stickBaseY + (stickEndY - stickBaseY) * t;
+      ctx.beginPath();
+      ctx.moveTo(tx - 3, ty2 - 2);
+      ctx.lineTo(tx + 3, ty2 + 2);
+      ctx.stroke();
+    }
+
+    // 上棒（舀棒）端头 —— 盛铁水的凹坑
+    ctx.fillStyle = '#7a5530';
+    ctx.beginPath();
+    ctx.arc(stickEndX, stickEndY, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // 铁水小球
+    if (chargePower > 0.05) {
+      const dropletColor = tempColor(1300 + chargePower * 300);
+      ctx.fillStyle = 'rgb(' + dropletColor.r + ',' + dropletColor.g + ',' + dropletColor.b + ')';
+      ctx.beginPath();
+      ctx.arc(stickEndX, stickEndY - 1, 6 + chargePower * 2, 0, Math.PI * 2);
+      ctx.fill();
+      // 高光
+      ctx.fillStyle = 'rgba(255, 250, 220, ' + (0.5 + chargePower * 0.3) + ')';
+      ctx.beginPath();
+      ctx.arc(stickEndX - 1.5, stickEndY - 2.5, 2 + chargePower * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ========== 火花物理 ==========
+  const sparks = [];
+  const MAX_SPARKS = 600;
+  let totalSparks = 0;
+
+  function Spark(x, y, vx, vy, temp, size) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.temp = temp;    // 初始温度 1200~1600
+    this.size = size;    // 火花半径
+    this.coolRate = rand(8, 18); // 每秒冷却速度
+    this.hitWall = false;
+    this.trail = [];
+    this.maxTrail = 4;
+    this.life = 0;
+  }
+
+  Spark.prototype.update = function(dt) {
+    this.life += dt;
+
+    // 拖尾
+    this.trail.push({ x: this.x, y: this.y, temp: this.temp });
+    if (this.trail.length > this.maxTrail) this.trail.shift();
+
+    // 重力
+    this.vy += 380 * dt; // px/s²
+    // 空气阻力
+    this.vx *= (1 - 0.6 * dt);
+    this.vy *= (1 - 0.3 * dt);
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    // 冷却
+    this.temp -= this.coolRate * dt * 60;
+
+    // 撞墙检测（墙面前方约 wallZ 深度，简化为 x 范围判定，火花从下往上飞向墙面）
+    // 简化模型：火花飞到墙Top~wallBottom高度范围时，x 接近墙面就视为撞墙
+    if (!this.hitWall && this.y > wallTop + 20 && this.y < wallBottom - 10) {
+      // 墙面判定：火花在墙体"深度"内。用一个接近墙面的 x 阈值
+      // 因为是 2D 伪深度，我们设定：火花越过某一条"墙线"就撞墙
+      // 墙线设为 y 的函数——墙面有微小弧度，中间略突出
+      const wallLineY = this.y;
+      const wallLineX = W * 0.5 + Math.sin((wallLineY - wallTop) / (wallBottom - wallTop) * Math.PI) * 30;
+      // 火花从中心出发，向两侧飞，撞到墙面留下痕迹
+      // 简化：当火花飞行距离较远，且速度变缓时，标记为撞墙
+      const distFromCenter = Math.abs(this.x - troughX);
+      const wallProximity = W * 0.32; // 墙面距中心距离
+
+      if (distFromCenter > wallProximity && this.vx !== 0) {
+        this.hitWall = true;
+        this.onWallHit();
+        // 反弹 / 迸裂
+        this.vx *= -0.3;
+        this.vy *= 0.5;
+        this.temp *= 0.6;
+        this.size *= 0.6;
+      }
+    }
+
+    // 落地
+    if (this.y > H - 20) {
+      this.temp = 0;
+    }
+
+    return this.temp > 50 && this.y < H + 50 && this.x > -50 && this.x < W + 50;
+  };
+
+  Spark.prototype.onWallHit = function() {
+    // 在灼痕画布上留下痕迹
+    const burnX = this.x;
+    const burnY = this.y;
+    const burnSize = this.size * rand(2, 4);
+    const c = tempColor(this.temp * 0.7);
+
+    burnCtx.save();
+    burnCtx.globalCompositeOperation = 'lighter';
+    const grad = burnCtx.createRadialGradient(burnX, burnY, 0, burnX, burnY, burnSize);
+    grad.addColorStop(0, 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',0.45)');
+    grad.addColorStop(0.5, 'rgba(' + Math.floor(c.r * 0.5) + ',' + Math.floor(c.g * 0.3) + ',' + Math.floor(c.b * 0.2) + ',0.15)');
+    grad.addColorStop(1, 'transparent');
+    burnCtx.fillStyle = grad;
+    burnCtx.beginPath();
+    burnCtx.arc(burnX, burnY, burnSize, 0, Math.PI * 2);
+    burnCtx.fill();
+
+    // 迸裂溅射痕迹
+    const splashCount = Math.floor(rand(3, 7));
+    for (let i = 0; i < splashCount; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(burnSize * 0.3, burnSize * 1.5);
+      const sx = burnX + Math.cos(angle) * dist;
+      const sy = burnY + Math.sin(angle) * dist;
+      const ss = rand(1, 3);
+      burnCtx.fillStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + rand(0.1, 0.3) + ')';
+      burnCtx.beginPath();
+      burnCtx.arc(sx, sy, ss, 0, Math.PI * 2);
+      burnCtx.fill();
+    }
+    burnCtx.restore();
+
+    // 生成小碎片火花
+    const fragCount = Math.floor(rand(2, 6));
+    for (let i = 0; i < fragCount; i++) {
+      if (sparks.length >= MAX_SPARKS) break;
+      const fa = rand(0, Math.PI * 2);
+      const fs = rand(40, 160);
+      sparks.push(new Spark(
+        burnX, burnY,
+        Math.cos(fa) * fs * (Math.random() < 0.5 ? -1 : 1) * 0.5,
+        Math.sin(fa) * fs - 50,
+        this.temp * rand(0.4, 0.7),
+        rand(0.8, 2)
+      ));
+      totalSparks++;
+    }
+  };
+
+  Spark.prototype.draw = function(ctx) {
+    const c = tempColor(this.temp);
+    const alpha = clamp(this.temp / 400, 0.1, 1);
+
+    // 拖尾
+    if (this.trail.length > 1) {
+      ctx.strokeStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + (alpha * 0.4) + ')';
+      ctx.lineWidth = this.size * 0.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = this.trail[i];
+        if (i === 0) ctx.moveTo(t.x, t.y);
+        else ctx.lineTo(t.x, t.y);
+      }
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+    }
+
+    // 主体
+    ctx.fillStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 白热核心
+    if (this.temp > 1100) {
+      ctx.fillStyle = 'rgba(255, 250, 220, ' + clamp((this.temp - 1100) / 500, 0, 0.9) + ')';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+
+  // ========== 击打逻辑 ==========
+  const stage = document.getElementById('stage');
+  const hitCountEl = document.getElementById('hitCount');
+  const tempFillEl = document.getElementById('tempFill');
+  const hintTextEl = document.getElementById('hintText');
+  let hitCount = 0;
+  let isCharging = false;
+  let chargeStart = 0;
+  let chargePower = 0;      // 0 ~ 1
+  let chargeRaf = null;
+  let firstHit = false;
+
+  function startCharge() {
+    if (isCharging) return;
+    if (isDimmed) return;
+    isCharging = true;
+    chargeStart = performance.now();
+    cursor.classList.add('charging');
+    chargeLoop();
+  }
+
+  function chargeLoop() {
+    if (!isCharging) return;
+    const elapsed = (performance.now() - chargeStart) / 1000;
+    chargePower = clamp(elapsed / 1.2, 0, 1); // 1.2秒蓄满
+    updateTempGauge(chargePower);
+    chargeRaf = requestAnimationFrame(chargeLoop);
+  }
+
+  function releaseCharge() {
+    if (!isCharging) return;
+    isCharging = false;
+    cursor.classList.remove('charging');
+    if (chargeRaf) { cancelAnimationFrame(chargeRaf); chargeRaf = null; }
+
+    if (chargePower < 0.1) {
+      chargePower = 0;
+      return;
+    }
+
+    strike(chargePower);
+    chargePower = 0;
+
+    if (!firstHit) {
+      firstHit = true;
+      hintTextEl.classList.add('hidden');
+    }
+  }
+
+  function strike(power) {
+    hitCount++;
+    hitCountEl.textContent = hitCount;
+
+    // 震屏
+    if (!reducedMotion) {
+      stage.classList.remove('shake');
+      void stage.offsetWidth; // reflow
+      stage.classList.add('shake');
+      setTimeout(function() { stage.classList.remove('shake'); }, 260);
+    }
+
+    // 生成火花
+    const count = Math.floor(30 + power * 70);
+    for (let i = 0; i < count; i++) {
+      if (sparks.length >= MAX_SPARKS) {
+        sparks.shift();
+      }
+      // 从铁水槽上方发射
+      const sx = troughX + rand(-15, 15);
+      const sy = troughY - 5;
+      // 角度：向上扇形分布，中间集中
+      const angleBase = -Math.PI / 2; // 正上方
+      const spread = rand(-0.9, 0.9);
+      const angle = angleBase + spread * (1 - power * 0.3);
+      const speed = rand(260, 420) * (0.6 + power * 0.7);
+
+      const vx = Math.cos(angle) * speed + rand(-30, 30);
+      const vy = Math.sin(angle) * speed + rand(-40, 20);
+      const temp = 1200 + power * 350 + rand(-100, 100);
+      const size = rand(1.2, 3) * (0.7 + power * 0.6);
+
+      sparks.push(new Spark(sx, sy, vx, vy, temp, size));
+      totalSparks++;
+    }
+  }
+
+  function updateTempGauge(power) {
+    const pct = power * 100;
+    tempFillEl.style.height = pct + '%';
+  }
+
+  // 鼠标/触摸事件：在舞台区域按住蓄力
+  stage.addEventListener('mousedown', function(e) {
+    if (e.target.closest('button, a')) return;
+    startCharge();
+  });
+  document.addEventListener('mouseup', function() {
+    releaseCharge();
+  });
+  stage.addEventListener('touchstart', function(e) {
+    if (e.target.closest('button, a')) return;
+    e.preventDefault();
+    startCharge();
+  }, { passive: false });
+  document.addEventListener('touchend', function() {
+    releaseCharge();
+  });
+
+  // ========== 主循环 ==========
+  let rafId = null;
+  let lastTime = 0;
+  let running = true;
+  let isDimmed = false;
+
+  function loop(now) {
+    if (!running) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+
+    // 清空火花层
+    sparkCtx.clearRect(0, 0, W, H);
+
+    // 更新 & 绘制火花
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      const alive = s.update(dt);
+      if (!alive) {
+        sparks.splice(i, 1);
+      } else {
+        s.draw(sparkCtx);
+      }
+    }
+
+    // 绘制铁水槽与花棒
+    drawTroughAndStick(chargePower);
+
+    // 灼痕余温呼吸（极轻微）
+    if (!reducedMotion && !isDimmed) {
+      const breath = Math.sin(now * 0.001) * 0.02 + 0.98;
+      burnCanvas.style.opacity = breath;
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function startLoop() {
+    if (rafId) return;
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stopLoop() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // 可见性变化时暂停/恢复
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      running = false;
+      stopLoop();
+    } else {
+      running = true;
+      lastTime = performance.now();
+      startLoop();
+    }
+  });
+
+  // 卸载清理
+  window.addEventListener('beforeunload', function() {
+    running = false;
+    stopLoop();
+    if (chargeRaf) cancelAnimationFrame(chargeRaf);
+  });
+
+  // ========== 退火收工 ==========
+  const annealBtn = document.getElementById('annealBtn');
+  const endingAnnealBtn = document.getElementById('endingAnnealBtn');
+  const huapuCard = document.getElementById('huapuCard');
+  const sealNumEl = document.getElementById('sealNum');
+  const finalHitsEl = document.getElementById('finalHits');
+  const finalSparksEl = document.getElementById('finalSparks');
+  const replayBtn = document.getElementById('replayBtn');
+
+  function doAnneal() {
+    if (isDimmed) return;
+    isDimmed = true;
+    // 停止蓄力
+    if (isCharging) releaseCharge();
+    stage.classList.add('dimmed');
+
+    // 填充花谱信息
+    const now = new Date();
+    const dateStr = now.getFullYear() + '' +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0');
+    const numStr = String(hitCount).padStart(3, '0');
+    sealNumEl.textContent = '编号 ' + dateStr + '·' + numStr;
+    finalHitsEl.textContent = hitCount;
+    finalSparksEl.textContent = totalSparks;
+
+    // 滚回舞台
+    stage.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function resetShow() {
+    isDimmed = false;
+    stage.classList.remove('dimmed');
+    // 清空灼痕
+    burnCtx.clearRect(0, 0, W, H);
+    hitCount = 0;
+    totalSparks = 0;
+    hitCountEl.textContent = '0';
+    sparks.length = 0;
+    firstHit = false;
+    hintTextEl.classList.remove('hidden');
+    updateTempGauge(0);
+  }
+
+  annealBtn.addEventListener('click', doAnneal);
+  endingAnnealBtn.addEventListener('click', doAnneal);
+  replayBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    resetShow();
+  });
+
+  // ========== 花棒解剖画布 ==========
+  const stickCanvas = document.getElementById('stickCanvas');
+  const stickCtx = stickCanvas.getContext('2d');
+  const stickToggle = document.getElementById('stickToggle');
+  let stickCutaway = false;
+
+  function resizeStickCanvas() {
+    const rect = stickCanvas.parentElement.getBoundingClientRect();
+    stickCanvas.width = rect.width * DPR;
+    stickCanvas.height = rect.height * DPR;
+    stickCanvas.style.width = rect.width + 'px';
+    stickCanvas.style.height = rect.height + 'px';
+    stickCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawStickDiagram();
+  }
+
+  function drawStickDiagram() {
+    const ctx = stickCtx;
+    const cw = stickCanvas.width / DPR;
+    const ch = stickCanvas.height / DPR;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const centerY = ch / 2;
+    const stickLen = cw * 0.6;
+    const stickX = (cw - stickLen) / 2;
+    const stickR = 14;
+
+    // 棒身（上棒，盛铁水端）
+    ctx.fillStyle = '#6b4a2a';
+    // 整体棒身
+    ctx.beginPath();
+    ctx.roundRect(stickX, centerY - stickR, stickLen, stickR * 2, stickR);
+    ctx.fill();
+
+    // 木纹
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const yy = centerY - stickR + 3 + i * 3.5;
+      ctx.beginPath();
+      ctx.moveTo(stickX + 10, yy);
+      ctx.bezierCurveTo(
+        stickX + stickLen * 0.3, yy + rand(-1, 1),
+        stickX + stickLen * 0.7, yy + rand(-1, 1),
+        stickX + stickLen - 10, yy
+      );
+      ctx.stroke();
+    }
+
+    // 端头凹坑（盛铁水处）
+    const tipX = stickX + stickLen;
+    ctx.fillStyle = '#3a2818';
+    ctx.beginPath();
+    ctx.arc(tipX - 4, centerY, stickR - 2, Math.PI * 0.5, Math.PI * 1.5);
+    ctx.fill();
+
+    // 铁水
+    ctx.fillStyle = '#ff9a3c';
+    ctx.beginPath();
+    ctx.arc(tipX - 6, centerY, stickR - 5, Math.PI * 0.6, Math.PI * 1.4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 240, 200, 0.6)';
+    ctx.beginPath();
+    ctx.arc(tipX - 8, centerY - 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 剖面模式
+    if (stickCutaway) {
+      // 半切视图
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.5)';
+      ctx.fillRect(stickX, centerY, stickLen, stickR);
+
+      // 内部纹理（浸水层）
+      ctx.fillStyle = 'rgba(80, 100, 120, 0.3)';
+      ctx.fillRect(stickX + 20, centerY + 2, stickLen - 40, 3);
+
+      // 标注线
+      ctx.strokeStyle = 'rgba(255, 180, 90, 0.5)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+
+      // 标注1：柳木纤维层
+      ctx.beginPath();
+      ctx.moveTo(stickX + stickLen * 0.3, centerY - 20);
+      ctx.lineTo(stickX + stickLen * 0.3, centerY - stickR - 10);
+      ctx.stroke();
+      ctx.fillStyle = '#ffc880';
+      ctx.font = '12px "STKaiti", "KaiTi", serif';
+      ctx.fillText('柳木纤维层', stickX + stickLen * 0.3 + 8, centerY - stickR - 14);
+
+      // 标注2：浸水保护层
+      ctx.beginPath();
+      ctx.moveTo(stickX + stickLen * 0.55, centerY + 4);
+      ctx.lineTo(stickX + stickLen * 0.55, centerY + 30);
+      ctx.stroke();
+      ctx.fillText('浸水保护层', stickX + stickLen * 0.55 + 8, centerY + 34);
+
+      // 标注3：铁水凹坑
+      ctx.beginPath();
+      ctx.moveTo(tipX - 8, centerY - 8);
+      ctx.lineTo(tipX + 20, centerY - 30);
+      ctx.stroke();
+      ctx.fillText('铁水凹坑', tipX + 24, centerY - 28);
+
+      ctx.setLineDash([]);
+    } else {
+      // 普通模式：名称标注
+      ctx.fillStyle = 'rgba(232, 217, 189, 0.4)';
+      ctx.font = '12px "STKaiti", "KaiTi", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('上 棒 · 舀 棒', stickX + stickLen / 2, centerY + stickR + 24);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  stickToggle.addEventListener('click', function() {
+    stickCutaway = !stickCutaway;
+    stickToggle.textContent = stickCutaway ? '收 起 剖 面' : '展 开 剖 面';
+    drawStickDiagram();
+  });
+
+  // ========== 温度标尺互动 ==========
+  const tempSlider = document.getElementById('tempSlider');
+  const tempThumb = document.getElementById('tempThumb');
+  const tempValEl = document.getElementById('tempVal');
+  const tempStateEl = document.getElementById('tempState');
+  const tempDescEl = document.getElementById('tempDesc');
+  let sliderDragging = false;
+  let sliderVal = 0.8; // 0~1
+
+  const tempStates = [
+    { min: 200, max: 500, state: '暗 红 余 烬', desc: '铁已冷却至暗红，仅余烬温。击打不能成花，仅溅出细碎火星。' },
+    { min: 500, max: 800, state: '赤 红 将 熔', desc: '铁呈樱桃红色，接近熔点。此时铁性尚脆，花形细碎不均。' },
+    { min: 800, max: 1100, state: '橙 红 初 熔', desc: '铁开始软化，表层熔融。老艺人观色辨温，橙红即近千度。' },
+    { min: 1100, max: 1400, state: '金 橙 流 动', desc: '铁水已成，流而不稀。此时击打，花大而瓣少，如金菊绽放。' },
+    { min: 1400, max: 1600, state: '炽 白 熔 融', desc: '铁水呈亮白近蓝之色，黏度最低，最易飞溅成花。艺人趁此时机舀出击打，花形最为饱满。' }
+  ];
+
+  function updateSliderUI() {
+    const pct = sliderVal * 100;
+    tempThumb.style.left = pct + '%';
+    const temp = Math.floor(200 + sliderVal * 1400);
+    tempValEl.textContent = temp;
+
+    // 找对应状态
+    let current = tempStates[0];
+    for (let i = 0; i < tempStates.length; i++) {
+      if (temp >= tempStates[i].min) current = tempStates[i];
+    }
+    tempStateEl.textContent = current.state;
+    tempDescEl.textContent = current.desc;
+  }
+
+  function setSliderFromX(clientX) {
+    const rect = tempSlider.getBoundingClientRect();
+    const x = clamp(clientX - rect.left, 0, rect.width);
+    sliderVal = x / rect.width;
+    updateSliderUI();
+  }
+
+  tempSlider.addEventListener('mousedown', function(e) {
+    sliderDragging = true;
+    setSliderFromX(e.clientX);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (sliderDragging) setSliderFromX(e.clientX);
+  });
+  document.addEventListener('mouseup', function() {
+    sliderDragging = false;
+  });
+  // 触摸
+  tempSlider.addEventListener('touchstart', function(e) {
+    sliderDragging = true;
+    if (e.touches[0]) setSliderFromX(e.touches[0].clientX);
+  }, { passive: true });
+  document.addEventListener('touchmove', function(e) {
+    if (sliderDragging && e.touches[0]) setSliderFromX(e.touches[0].clientX);
+  }, { passive: true });
+  document.addEventListener('touchend', function() {
+    sliderDragging = false;
+  });
+
+  // ========== 初始化 ==========
+  function init() {
+    resize();
+    resizeStickCanvas();
+    updateSliderUI();
+    updateTempGauge(0);
+    startLoop();
+  }
+
+  // 确保 roundRect 可用
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+      if (typeof r === 'number') r = [r, r, r, r];
+      this.beginPath();
+      this.moveTo(x + r[0], y);
+      this.lineTo(x + w - r[1], y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r[1]);
+      this.lineTo(x + w, y + h - r[2]);
+      this.quadraticCurveTo(x + w, y + h, x + w - r[2], y + h);
+      this.lineTo(x + r[3], y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r[3]);
+      this.lineTo(x, y + r[0]);
+      this.quadraticCurveTo(x, y, x + r[0], y);
+      this.closePath();
+      return this;
+    };
+  }
+
+  // 窗口大小变化时调整花棒画布
+  window.addEventListener('resize', function() {
+    setTimeout(resizeStickCanvas, 100);
+  });
+
+  // reduced motion 变化监听
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', function(e) {
+    reducedMotion = e.matches;
+  });
+
+  init();
+
+})();
+</script>
+</body>
+</html>
